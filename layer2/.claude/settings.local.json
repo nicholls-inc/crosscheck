@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:aristotle.harmonic.fun)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

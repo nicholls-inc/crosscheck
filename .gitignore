@@ -3,3 +3,5 @@ layer1/target/
 
 # Lean 4 lake build artifacts
 layer2/.lake/
+
+.env

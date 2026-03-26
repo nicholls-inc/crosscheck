@@ -5,7 +5,7 @@ leanVersion = "v4.28.0"
 [[require]]
 name = "leansqlite"
 git = "https://github.com/leanprover/leansqlite"
-rev = "main"
+rev = "afe450e"
 
 [[lean_lib]]
 name = "ContractGraph"
