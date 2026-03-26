@@ -176,6 +176,8 @@ Examples:
   NULL                        -- static bound (use param_* columns)
 ```
 
+**Naming convention:** The `input_` prefix followed by a `ConstraintKind` name (lowercase, matching the `ToString` instance in Types.lean) forms the variable name used in dependent expressions. This convention must be consistent between the grammar, the Rust extractor that writes `dependent_expr` strings, and the Lean `composeContracts` function that builds lookup keys.
+
 ### 2.3 Edge discovery
 
 Edge discovery determines which functions write to which model fields. This is the mechanism that populates the `edges` table.
@@ -379,6 +381,17 @@ inductive ConstraintKind where
   | length
   | choices
   deriving Repr, BEq, Hashable
+
+/-- Explicit ToString ensures s!"input_{kind}" produces "input_precision", etc.,
+    matching the dependent_expr grammar convention (Section 2.2). -/
+instance : ToString ConstraintKind where
+  toString
+    | .precision   => "precision"
+    | .nullability => "nullability"
+    | .type        => "type"
+    | .range       => "range"
+    | .length      => "length"
+    | .choices     => "choices"
 
 /-- Verification levels, ordered from strongest to weakest. -/
 inductive VerificationLevel where
@@ -646,6 +659,8 @@ Step 3 — Check composed guarantee against model: Composed guarantee is precisi
 
 **Why pairwise checking misses this:** If you check B→model in isolation, B's postcondition is `max(input_precision, 3)`. Without knowing B's actual input, the checker evaluates the best case: with input_precision ≤ 3, B's output is `max(≤3, 3) = 3`, which satisfies the model. The inconsistency only manifests when A's actual guarantee (precision ≤ 4) propagates through B.
 
+This comparison assumes a pairwise checker resolves unbound `input_precision` variables optimistically (best-case input). A conservative pairwise checker could instead flag "unknown input bound" as a warning, but would diagnose a configuration error rather than the semantic inconsistency. The graph checker's advantage is providing the *correct* diagnosis: the specific upstream value that causes the violation.
+
 ```lean
 -- Composition.lean
 
@@ -668,7 +683,11 @@ def composeContracts (source target : Node) : List Constraint :=
           depExpr := none
           verificationLevel :=
             weakerOf postcon.verificationLevel (weakestIn source.postconditions) }
-      | none => postcon
+      | none =>
+        -- Evaluation failed: unresolved input binding or malformed expression.
+        -- Preserve the unresolved postcondition and downgrade verification level
+        -- to signal that composition could not be completed.
+        { postcon with verificationLevel := .extracted }
 
 /-- Check consistency across a multi-hop path by composing
     contracts at each step. At each edge:
@@ -681,11 +700,15 @@ def checkPath (path : List Edge) : CheckResult := ...
     If checkPath returns consistent, then the composed guarantee
     from the first node logically implies the assumptions of the
     last node (relative to the behavior model and evalDepExpr). -/
-theorem checkPath_sound (path : List Edge) :
+theorem checkPath_sound (path : List Edge) (hne : path ≠ []) :
     checkPath path = .consistent →
-    composedGuaranteeImplies (path.head!.source) (path.getLast!.target) := by
+    composedGuaranteeImplies (path.head hne).source (path.getLast hne).target := by
   sorry -- to be filled during implementation
+  -- Uses List.head/List.getLast with nonemptiness proof instead of
+  -- panicking head!/getLast!. Path enumeration guarantees non-empty paths.
 ```
+
+**Unresolved dependent postconditions:** When `evalDepExpr` returns `none` during composition, the dependent postcondition could not be resolved to a static bound. This is a configuration or extraction error (e.g., mismatched naming convention, missing upstream postcondition). The checker MUST emit a `WARNING`-severity diagnostic for any constraint that still has `depExpr = some _` and `staticBound = none` after composition, with a message indicating which input names were expected vs. which were available. This prevents silent pass-through of the exact bug class the tool exists to catch.
 
 ### 4.3 Weakest-link verification level
 
@@ -706,6 +729,26 @@ def pathVerificationLevel (path : List Edge) : VerificationLevel :=
              (weakestIn edge.target.preconditions)
   ) .proved
 ```
+
+### 4.4 Path enumeration
+
+The checker enumerates all simple paths from function nodes to model nodes in the contract graph. For the PoC's three-node graph, this is exhaustive.
+
+```lean
+/-- Enumerate all simple paths from function nodes to model nodes. -/
+def enumeratePaths (graph : ContractGraph) : List (List Edge) :=
+  let modelNodes := graph.nodes.filter (·.kind == "model")
+  let functionNodes := graph.nodes.filter (·.kind == "function")
+  functionNodes.flatMap fun src =>
+    modelNodes.flatMap fun tgt =>
+      findAllSimplePaths graph.edges src tgt
+
+/-- Find all simple (non-repeating) paths between two nodes via DFS. -/
+def findAllSimplePaths (edges : List Edge) (src tgt : Node)
+    : List (List Edge) := ...
+```
+
+For the PoC, the graph is small enough that exhaustive enumeration is tractable. Scalability is explicitly out of scope (Section 9). Paths of length zero (a node checked against itself) are excluded.
 
 ---
 
@@ -873,7 +916,7 @@ relationship = "writes_to"
 **Why pairwise checking misses this:**
 
 - `compute_offpeak → split_energy`: A guarantees precision ≤ 4, B accepts precision ≤ 10. Consistent.
-- `split_energy → EnergyRecord.energy` (in isolation): B's postcondition is `max(input_precision, 3)`. Without knowing B's actual input, the best case is input_precision ≤ 3, yielding output `max(≤3, 3) = 3`. Satisfies model. Looks consistent.
+- `split_energy → EnergyRecord.energy` (in isolation): B's postcondition is `max(input_precision, 3)`. Without knowing B's actual input, the pairwise checker must either assume best-case input (yielding false-consistent) or reject the unresolved variable (yielding a configuration error, not a semantic inconsistency). Either way, the root cause is obscured.
 - `compute_offpeak → split_energy → EnergyRecord.energy` (composed): A's guarantee (4) propagates through B: `max(4, 3) = 4`. Model requires ≤ 3. **Inconsistent.**
 
 ---
