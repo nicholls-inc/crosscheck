@@ -753,7 +753,43 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-### 5.2 Output format
+### 5.2 Lean binary output (IPC format)
+
+The Lean binary (`Main.lean`) outputs structured JSON to stdout. The Rust CLI parses this JSON and formats it for human display (Section 5.3). Using JSON as the IPC format rather than having Lean emit human-readable text ensures:
+
+- The Rust CLI controls all user-facing formatting (consistent with the CLI being the UX surface).
+- Structured output is machine-parseable for future CI integration.
+- The Lean binary remains a pure checker with no formatting concerns.
+
+**JSON schema:**
+
+```json
+{
+  "summary": {
+    "contracts_checked": 14,
+    "edges_checked": 5,
+    "paths_checked": 3
+  },
+  "results": [
+    {
+      "status": "inconsistent",
+      "severity": "error",
+      "source": { "file": "billing/utils.py", "line": 42, "name": "split_energy" },
+      "target": { "file": "billing/models.py", "line": 15, "name": "EnergyRecord.energy" },
+      "path": ["split_energy", "EnergyRecord.energy"],
+      "source_guarantee": "precision <= 6",
+      "target_requirement": "precision <= 3",
+      "verification_level": "EXTRACTED",
+      "suggestion": "Reduce function output precision to <= 3, or widen model decimal_places to 6."
+    }
+  ],
+  "exit_code": 1
+}
+```
+
+The Lean binary exits with code 0 on success (JSON written) and code 2 on internal error (e.g., database read failure). The `exit_code` field in the JSON payload indicates the *semantic* result (0 = consistent, 1 = inconsistencies found), which the Rust CLI uses as its own exit code.
+
+### 5.3 Output format (human-readable)
 
 ```
 CONTRACTS EXTRACTED: 14 (8 explicit, 6 implicit)
@@ -779,7 +815,7 @@ ERROR  billing/utils.py:20 → billing/utils.py:42 → billing/models.py:15
 RESULT: 2 errors, 0 warnings. Exit code 1.
 ```
 
-### 5.3 Exit codes
+### 5.4 Exit codes
 
 | Code | Meaning |
 |------|---------|
