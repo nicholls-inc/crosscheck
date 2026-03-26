@@ -135,7 +135,9 @@ CREATE TABLE contracts (
     verification_level  TEXT NOT NULL DEFAULT 'EXTRACTED'
                         CHECK (verification_level IN ('PROVED', 'TESTED', 'EXTRACTED', 'ASSUMED')),
     -- For function contracts: is this a precondition or postcondition?
-    contract_role       TEXT CHECK (contract_role IN ('precondition', 'postcondition', 'invariant', NULL)),
+    contract_role       TEXT CHECK (contract_role IN ('precondition', 'postcondition', NULL)),
+    -- Note: 'invariant' excluded from PoC. Future extension: invariants
+    -- would be checked as both pre- and postconditions at every node on a path.
     -- For dependent postconditions: expression relating output to input.
     -- NULL for static bounds. String expression for dependent contracts.
     -- e.g. "max(input_precision, 3)" means the output precision is
@@ -148,8 +150,10 @@ CREATE TABLE edges (
     source_node_id  INTEGER NOT NULL REFERENCES nodes(id),
     target_node_id  INTEGER NOT NULL REFERENCES nodes(id),
     relationship    TEXT NOT NULL CHECK (relationship IN (
-                        'calls', 'writes_to', 'returns_to'
+                        'calls', 'writes_to'
                     )),
+    -- Note: 'returns_to' excluded from PoC. Can be added without schema
+    -- migration if needed for modeling return-value flow in multi-hop chains.
     -- How this edge was discovered
     discovery       TEXT NOT NULL CHECK (discovery IN ('ast_pattern', 'manual', 'type_inference'))
 );
