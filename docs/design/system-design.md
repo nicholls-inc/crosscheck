@@ -413,11 +413,14 @@ inductive DepExpr where
   | sub    : DepExpr → DepExpr → DepExpr
   deriving Repr, BEq
 
-/-- A contract constraint. Either a static bound or a dependent expression. -/
+/-- A contract constraint. Either a static bound, a dependent expression,
+    or a non-numeric constraint (type name or choices list). -/
 structure Constraint where
   kind              : ConstraintKind
   staticBound       : Option Int := none
   depExpr           : Option DepExpr := none
+  typeName          : Option String := none        -- for kind = .type
+  choicesList       : Option (List String) := none  -- for kind = .choices
   sourceFile        : String
   sourceLine        : Nat
   verificationLevel : VerificationLevel
@@ -573,6 +576,75 @@ def readContractGraph (dbPath : String) : IO ContractGraph := do
   db.close
   return { nodes, contracts, edges }
 ```
+
+**Translation rules: SQL row to Lean `Constraint`**
+
+Each row in the `contracts` table maps to a `Constraint` value according to the `constraint_type` column. The `staticBound` field receives a single `Int` value derived from the relevant parameter column(s):
+
+| `constraint_type` | SQL column used for `staticBound` | Notes |
+|-------------------|----------------------------------|-------|
+| `'precision'` | `param_decimal_places` | Fractional digit bound; this is the value compared against function postconditions. `param_max_digits` is stored but used only for the integer-digit check (see behavior model). |
+| `'nullability'` | `param_nullable` | 0 = NOT NULL, 1 = NULL. Interpreted as `Bool` in the checker. |
+| `'type'` | `none` (uses `typeName` field) | Type constraints use string equality (`param_type_name`), not numeric bounds. |
+| `'range'` | `param_min_value` and/or `param_max_value` | Generates up to two `Constraint` values: one for min bound, one for max bound. |
+| `'length'` | `param_max_length` | Direct mapping. |
+| `'choices'` | `none` (uses `choicesList` field) | Choices use string list membership (`param_choices`, split on commas). |
+
+**Key design decision: `param_decimal_places` as precision bound, not `param_max_digits`.** For precision consistency checking, the relevant bound is `decimal_places`, because a function postcondition `precision(result) <= 6` means "at most 6 fractional digits" and a model's `DecimalField(decimal_places=3)` requires "at most 3 fractional digits." The consistency check compares the function's fractional-digit guarantee against the model's `decimal_places`. The `max_digits` constraint governs total digits (integer + fractional) and is checked separately if a `max_digits` postcondition exists.
+
+**`readContracts` implementation sketch:**
+
+```lean
+def readContracts (db : SQLite.LowLevel.Database) : IO (List (Nat × Constraint)) := do
+  let stmt ← db.prepare
+    "SELECT node_id, constraint_type, param_decimal_places, \
+     param_max_length, param_nullable, param_type_name, \
+     param_min_value, param_max_value, param_choices, \
+     source_file, source_line, verification_level, \
+     contract_role, dependent_expr FROM contracts"
+  let mut results := []
+  while (← stmt.step) do
+    let nodeId := (← stmt.getInt 0).toNat
+    let constraintType ← stmt.getText 1
+    let baseConstraint :=
+      { kind := parseConstraintKind constraintType
+        sourceFile := ← stmt.getText 9
+        sourceLine := (← stmt.getInt 10).toNat
+        verificationLevel := parseVerifLevel (← stmt.getText 11) }
+    let constraint := match constraintType with
+      | "precision" =>
+        { baseConstraint with
+          staticBound := stmt.getInt? 2    -- param_decimal_places
+          depExpr := (stmt.getText? 13).bind parseDepExpr }
+      | "nullability" =>
+        { baseConstraint with
+          staticBound := stmt.getInt? 4 }  -- param_nullable
+      | "length" =>
+        { baseConstraint with
+          staticBound := stmt.getInt? 3 }  -- param_max_length
+      | "type" =>
+        { baseConstraint with
+          typeName := stmt.getText? 5 }    -- param_type_name
+      | "choices" =>
+        { baseConstraint with
+          choicesList := (stmt.getText? 8).map (·.splitOn ",") }
+      | "range" =>
+        -- Range generates up to two constraints (min and max).
+        -- Handled specially below.
+        baseConstraint
+      | _ => baseConstraint
+    -- For range constraints, generate separate min/max entries.
+    if constraintType == "range" then
+      if let some minVal := stmt.getReal? 6 then  -- param_min_value
+        results := results ++ [(nodeId, { baseConstraint with staticBound := some minVal.toInt })]
+      if let some maxVal := stmt.getReal? 7 then  -- param_max_value
+        results := results ++ [(nodeId, { baseConstraint with staticBound := some maxVal.toInt })]
+    else
+      results := results ++ [(nodeId, constraint)]
+  return results
+```
+
+The `readContracts` function returns `(Nat × Constraint)` pairs (node ID and constraint). The caller groups these by `node_id` and `contract_role` to populate each `Node`'s `preconditions` and `postconditions` lists.
 
 ---
 
