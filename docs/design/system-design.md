@@ -1049,7 +1049,7 @@ relationship = "writes_to"
 
 - **Rust stable** (latest, via `rustup`)
 - **`ruff_python_parser`** + **`ruff_python_ast`**: Python AST parsing (from the Ruff monorepo crates)
-- **`ruff_python_semantic`**: import resolution for cross-file edge discovery
+- **`ruff_python_semantic`**: import resolution for cross-file edge discovery. **PoC note:** The PoC test fixtures (`bug1`, `transitive`) both use manual override files for edge declarations, meaning `ruff_python_semantic` is not exercised by the core demo paths. This dependency is included for the AST-based edge discovery path (Section 2.3), but if compilation time or dependency weight becomes an issue, edge discovery can be deferred to post-PoC with all edges provided via `overrides.toml`. Contract extraction (model fields, function signatures, body analysis) does NOT require this crate — only cross-file name resolution for edge discovery does.
 - **`rusqlite`** (with `bundled` feature): SQLite output, bundles the amalgamation
 - **`toml`**: config and defaults table parsing
 - **`clap`**: CLI argument parsing
