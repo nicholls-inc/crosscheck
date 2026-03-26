@@ -1,6 +1,6 @@
 name = "ContractGraph"
 version = "0.1.0"
-leanVersion = "v4.29.0-rc6"
+leanVersion = "v4.28.0"
 
 [[require]]
 name = "leansqlite"
