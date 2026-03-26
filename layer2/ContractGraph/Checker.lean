@@ -112,72 +112,87 @@ def constraintImplies (c d : Constraint) : Prop :=
 private theorem kind_bne_false {a b : ConstraintKind} (h : a = b) :
     (a != b) = false := by subst h; cases a <;> rfl
 
-/--
-PROVIDED SOLUTION
-Split on the `if source.kind != target.kind` guard in checkConstraintPair using
-kind_bne_false hk. The true branch closes by contradiction (hk says kinds equal, guard
-says not equal). In the else branch, subst hk and `cases c.kind` to get 6 subgoals:
-- precision/length/range: case-split on c.staticBound and d.staticBound. When both are
-  `some sg`/`some tr`, unfold checkStaticBounds at h, split on the `if sg ≤ tr` — the
-  true branch gives the goal directly, the false branch gives .inconsistent = .consistent
-  which is absurd.
-- nullability: case-split on c.staticBound and d.staticBound. When both are some, DO NOT
-  use `simp_all [checkNullability]` — it causes an infinite loop via checkNullability.eq_1.
-  Instead unfold checkNullability at h and do casework on the Bool values of (sn != 0) and
-  !(tn != 0). When sn = 0: Left; rfl. When tn ≠ 0: Right; exact the hypothesis.
-- type: case-split on c.typeName and d.typeName. When both are some, unfold
-  checkTypeConsistency at h. Use eq_of_beq to convert (st == tt) = true to st = tt.
-- choices: the goal is True; use trivial.
--/
+/-- Helper: foldl with an inconsistent accumulator stays inconsistent. -/
+private theorem foldl_inconsistent_stays (tl : List (Constraint × Constraint))
+    (d : DiagnosticInfo) :
+    tl.foldl (fun (acc : CheckResult) (post, pre) =>
+      match acc with
+      | CheckResult.inconsistent _ => acc
+      | CheckResult.consistent => checkConstraintPair post pre)
+      (CheckResult.inconsistent d) = CheckResult.inconsistent d := by
+  induction tl with
+  | nil => rfl
+  | cons hd tl ih => simp [List.foldl]; exact ih
+
+set_option maxHeartbeats 800000 in
 theorem pair_sound (c d : Constraint) (hk : c.kind = d.kind)
     (h : checkConstraintPair c d = .consistent) :
     constraintImplies c d := by
-  sorry
+  unfold constraintImplies checkConstraintPair at *
+  simp only [kind_bne_false hk, Bool.false_eq_true, ↓reduceIte] at h
+  intro hk'
+  rcases c with ⟨ck, csb, _, ctn, _, _, _, _⟩
+  rcases d with ⟨dk, dsb, _, dtn, _, _, _, _⟩
+  simp only at hk hk' ⊢ h
+  subst hk
+  cases ck <;> simp_all
+  · -- precision
+    cases csb <;> cases dsb <;> simp_all [checkStaticBounds]
+  · -- nullability
+    cases csb <;> cases dsb <;> simp_all
+    rename_i sn tn
+    unfold checkNullability at h
+    split at h <;> simp_all
+    rename_i h_impl
+    by_cases hsn : sn = 0
+    · exact Or.inl hsn
+    · exact Or.inr (h_impl hsn)
+  · -- type
+    cases ctn <;> cases dtn <;> simp_all [checkTypeConsistency]
+  · -- range
+    cases csb <;> cases dsb <;> simp_all [checkStaticBounds]
+  · -- length
+    cases csb <;> cases dsb <;> simp_all [checkStaticBounds]
 
-/--
-PROVIDED SOLUTION
-Induction on the list. Base case: vacuously true (empty list). Inductive case: the foldl
-only stays .consistent if the current element produces .consistent AND the rest of the foldl
-produces .consistent. In the step, split on the match in the foldl body — if acc is
-.inconsistent, foldl returns .inconsistent (contradiction with the hypothesis). If acc is
-.consistent, then checkConstraintPair must return .consistent for the head, and the
-induction hypothesis closes the tail.
--/
 theorem foldl_consistent (pairs : List (Constraint × Constraint))
     (h : pairs.foldl (fun (acc : CheckResult) (post, pre) =>
       match acc with
       | CheckResult.inconsistent _ => acc
       | CheckResult.consistent => checkConstraintPair post pre) CheckResult.consistent = CheckResult.consistent) :
     ∀ p ∈ pairs, checkConstraintPair p.1 p.2 = CheckResult.consistent := by
-  sorry
+  induction pairs with
+  | nil => intro p hp; simp at hp
+  | cons hd tl ih =>
+    intro p hp
+    simp [List.foldl] at h
+    cases hcp : checkConstraintPair hd.1 hd.2 with
+    | consistent =>
+      rw [hcp] at h
+      cases hp with
+      | head => exact hcp
+      | tail _ hmem => exact ih h p hmem
+    | inconsistent di =>
+      rw [hcp] at h
+      rw [foldl_inconsistent_stays] at h
+      exact absurd h (by simp)
 
-/--
-PROVIDED SOLUTION
-Unfold the flatMap/map definition. Use List.mem_flatMap to decompose membership in the
-outer list, then List.mem_map to decompose membership in the inner list. The witnesses
-are c (from hc) and d (from hd).
--/
 theorem mem_pairs (source target : Node) (c d : Constraint)
     (hc : c ∈ source.postconditions) (hd : d ∈ target.preconditions) :
     (c, d) ∈ (source.postconditions.flatMap fun post =>
       target.preconditions.map fun pre => (post, pre)) := by
-  sorry
+  grind
 
-/--
-SOUNDNESS THEOREM (edge consistency).
-If checkEdge returns consistent, then the source's guarantees
-logically imply the target's assumptions.
-
-PROVIDED SOLUTION
-Unfold checkEdge. Apply foldl_consistent to the hypothesis to get that every pair in
-the cross product has checkConstraintPair returning .consistent. Given c ∈ postconditions
-and d ∈ preconditions, use mem_pairs to show (c, d) is in the cross product. Then apply
-pair_sound with the kind equality hypothesis to conclude constraintImplies c d.
--/
 theorem checkEdge_sound (source target : Node) :
     checkEdge source target = .consistent →
     (∀ c ∈ source.postconditions, ∀ d ∈ target.preconditions,
       c.kind = d.kind →
       constraintImplies c d) := by
-  sorry
+  intro h_check c hc d hd hk
+  have h_all := foldl_consistent
+    (source.postconditions.flatMap fun post => target.preconditions.map fun pre => (post, pre))
+    h_check
+  have h_mem := mem_pairs source target c d hc hd
+  have h_pair := h_all (c, d) h_mem
+  exact pair_sound c d hk h_pair
 
+end ContractGraph

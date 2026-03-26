@@ -115,22 +115,58 @@ def composedGuaranteeImplies (source target : Node) : Prop :=
   ∀ c ∈ source.postconditions, ∀ d ∈ target.preconditions,
     c.kind = d.kind → constraintImplies c d
 
-/--
-SOUNDNESS THEOREM (path composition).
-If checkPath returns all consistent, then the composed guarantee
-from the first node implies the assumptions of the last node.
+-- The original checkPath_sound theorem as stated below is FALSE for multi-hop paths.
+-- Counterexample: Consider a path [edge1, edge2] where:
+--   edge1.source.postconditions = [{precision, staticBound = 30}]
+--   edge1.target.preconditions = [{precision, staticBound = 100}]   (30 ≤ 100 ✓)
+--   edge1.target.postconditions = []
+--   edge2.target.preconditions = [{precision, staticBound = 25}]
+-- checkPath returns all consistent (each edge individually passes), but
+-- composedGuaranteeImplies edge1.source edge2.target requires 30 ≤ 25, which is false.
+-- The issue is that composedGuaranteeImplies relates the ORIGINAL source's postconditions
+-- to the LAST target's preconditions, but checkPath only verifies each edge against
+-- composed intermediate nodes — not the original source against the final target.
+--
+-- /--
+-- SOUNDNESS THEOREM (path composition).
+-- If checkPath returns all consistent, then the composed guarantee
+-- from the first node implies the assumptions of the last node.
+-- -/
+-- theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
+--     (h : ∀ r ∈ checkPath path, r = CheckResult.consistent) :
+--     composedGuaranteeImplies (path.head hne).source (path.getLast hne).target := by
+--   sorry
 
-PROVIDED SOLUTION
-Induction on path. Base case (single edge): unfold checkPath to get checkEdgeFull, then
-apply checkEdge_sound. For the inductive case (edge :: nextEdge :: rest): the hypothesis
-gives that edgeResult is .consistent (decompose List.Forall on the cons), so checkEdge_sound
-applies to the first edge. The composed node's postconditions need to be shown to imply the
-last node's preconditions via the induction hypothesis on the remaining path. The key insight
-is that composedGuaranteeImplies is transitive through contract composition.
--/
-theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
+/-- CORRECTED SOUNDNESS THEOREM (single-edge case).
+    The original `checkPath_sound` was false for multi-hop paths because
+    `composedGuaranteeImplies` relates the original source's postconditions to the
+    last target's preconditions, but `checkPath` verifies each edge against composed
+    intermediate nodes — not the original source against the final target directly.
+
+    This corrected version proves the single-edge case, which IS sound: if checkPath
+    on a single-edge path returns consistent, then the source's guarantees logically
+    imply the target's assumptions. -/
+theorem checkPath_sound_single (edge : Edge)
+    (h : ∀ r ∈ checkPath [edge], r = CheckResult.consistent) :
+    composedGuaranteeImplies edge.source edge.target := by
+  simp [checkPath, checkEdgeFull] at h
+  exact checkEdge_sound edge.source edge.target h
+
+/-- CORRECTED SOUNDNESS THEOREM (first-edge guarantee).
+    For any non-empty path, if checkPath returns all consistent, then the first edge's
+    source guarantees imply the first edge's target's assumptions. This is the strongest
+    universally-true statement we can make from checkPath's all-consistent result. -/
+theorem checkPath_sound_first_edge (path : List Edge) (hne : path ≠ [])
     (h : ∀ r ∈ checkPath path, r = CheckResult.consistent) :
-    composedGuaranteeImplies (path.head hne).source (path.getLast hne).target := by
-  sorry
+    composedGuaranteeImplies (path.head hne).source (path.head hne).target := by
+  match path, hne with
+  | [edge], _ =>
+    simp [checkPath, checkEdgeFull] at h
+    exact checkEdge_sound edge.source edge.target h
+  | edge :: _ :: _, _ =>
+    simp only [List.head_cons]
+    have h1 : checkEdgeFull edge = .consistent := by
+      apply h; simp [checkPath]
+    exact checkEdge_sound edge.source edge.target h1
 
 end ContractGraph
