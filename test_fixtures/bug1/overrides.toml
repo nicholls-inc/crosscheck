@@ -1,0 +1,9 @@
+[[edges]]
+source = "bug1.utils.split_energy"
+target = "bug1.models.EnergyRecord.energy"
+relationship = "writes_to"
+
+[[edges]]
+source = "bug1.utils.split_energy"
+target = "bug1.models.EnergyRecord.off_peak_energy"
+relationship = "writes_to"

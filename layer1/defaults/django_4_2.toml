@@ -1,0 +1,69 @@
+# Generated Django 4.2 field defaults
+
+[fields.DecimalField]
+null = false
+blank = false
+
+[fields.CharField]
+null = false
+blank = false
+
+[fields.IntegerField]
+null = false
+blank = false
+
+[fields.PositiveIntegerField]
+null = false
+blank = false
+implicit_validators = ["MinValueValidator(0)"]
+
+[fields.BooleanField]
+null = false
+blank = true
+
+[fields.TextField]
+null = false
+blank = false
+
+[fields.ForeignKey]
+null = false
+blank = false
+
+[fields.FloatField]
+null = false
+blank = false
+
+[fields.BigIntegerField]
+null = false
+blank = false
+
+[fields.SmallIntegerField]
+null = false
+blank = false
+
+[fields.SlugField]
+null = false
+blank = false
+max_length = 50
+
+[fields.DateField]
+null = false
+blank = false
+
+[fields.DateTimeField]
+null = false
+blank = false
+
+[fields.TimeField]
+null = false
+blank = false
+
+[fields.EmailField]
+null = false
+blank = false
+max_length = 254
+
+[fields.URLField]
+null = false
+blank = false
+max_length = 200

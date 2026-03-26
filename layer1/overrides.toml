@@ -1,0 +1,8 @@
+# Manual edge overrides for contract graph verifier
+# Use this file to declare edges that cannot be discovered via AST analysis.
+
+# Example:
+# [[edges]]
+# source = "billing.utils.split_energy"
+# target = "billing.models.EnergyRecord.energy"
+# relationship = "writes_to"

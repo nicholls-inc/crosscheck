@@ -1,0 +1,19 @@
+name = "ContractGraph"
+version = "0.1.0"
+leanVersion = "v4.29.0-rc6"
+
+[[require]]
+name = "leansqlite"
+git = "https://github.com/leanprover/leansqlite"
+rev = "main"
+
+[[lean_lib]]
+name = "ContractGraph"
+
+[[lean_exe]]
+name = "contract-graph-checker"
+root = "ContractGraph.Main"
+
+[[lean_lib]]
+name = "ContractGraphTest"
+globs = ["ContractGraphTest.+"]

@@ -1,0 +1,25 @@
+[package]
+name = "crosscheck-contracts"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Python AST parsing (from ruff project)
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff", tag = "0.11.6" }
+ruff_python_ast = { git = "https://github.com/astral-sh/ruff", tag = "0.11.6" }
+
+# SQLite output
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Config parsing
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+# CLI
+clap = { version = "=4.5.23", features = ["derive"] }
+
+# Error handling
+anyhow = "1"
+
+# JSON output for diagnostics
+serde_json = "1"

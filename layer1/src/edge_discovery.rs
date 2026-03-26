@@ -1,0 +1,192 @@
+use ruff_python_ast::{self as ast, Expr, Stmt};
+use serde::Deserialize;
+
+/// A discovered edge between a function and a model.
+#[derive(Debug)]
+pub struct DiscoveredEdge {
+    pub source_function: String,
+    pub target_model: String,
+    pub target_field: Option<String>,
+    pub relationship: String,
+    pub discovery: String,
+}
+
+/// Discover edges from Django ORM write patterns in function bodies.
+pub fn discover_edges(stmts: &[Stmt]) -> Vec<DiscoveredEdge> {
+    let mut edges = Vec::new();
+
+    for stmt in stmts {
+        match stmt {
+            Stmt::FunctionDef(func_def) => {
+                let func_name = func_def.name.to_string();
+                discover_edges_in_body(&func_def.body, &func_name, &mut edges);
+            }
+            Stmt::ClassDef(class_def) => {
+                for body_stmt in &class_def.body {
+                    if let Stmt::FunctionDef(func_def) = body_stmt {
+                        let func_name = func_def.name.to_string();
+                        discover_edges_in_body(&func_def.body, &func_name, &mut edges);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    edges
+}
+
+/// Discover edges within a function body.
+fn discover_edges_in_body(stmts: &[Stmt], func_name: &str, edges: &mut Vec<DiscoveredEdge>) {
+    for stmt in stmts {
+        discover_edges_in_stmt(stmt, func_name, edges);
+    }
+}
+
+/// Discover edges in a single statement.
+fn discover_edges_in_stmt(stmt: &Stmt, func_name: &str, edges: &mut Vec<DiscoveredEdge>) {
+    match stmt {
+        Stmt::Expr(expr_stmt) => {
+            discover_edges_in_expr(&expr_stmt.value, func_name, edges);
+        }
+        Stmt::Assign(assign) => {
+            discover_edges_in_expr(&assign.value, func_name, edges);
+        }
+        Stmt::AnnAssign(ann_assign) => {
+            if let Some(value) = &ann_assign.value {
+                discover_edges_in_expr(value, func_name, edges);
+            }
+        }
+        Stmt::Return(ret) => {
+            if let Some(value) = &ret.value {
+                discover_edges_in_expr(value, func_name, edges);
+            }
+        }
+        Stmt::If(if_stmt) => {
+            discover_edges_in_body(&if_stmt.body, func_name, edges);
+            for clause in &if_stmt.elif_else_clauses {
+                discover_edges_in_body(&clause.body, func_name, edges);
+            }
+        }
+        Stmt::For(for_stmt) => {
+            discover_edges_in_body(&for_stmt.body, func_name, edges);
+        }
+        Stmt::While(while_stmt) => {
+            discover_edges_in_body(&while_stmt.body, func_name, edges);
+        }
+        Stmt::With(with_stmt) => {
+            discover_edges_in_body(&with_stmt.body, func_name, edges);
+        }
+        Stmt::Try(try_stmt) => {
+            discover_edges_in_body(&try_stmt.body, func_name, edges);
+            for handler in &try_stmt.handlers {
+                let ast::ExceptHandler::ExceptHandler(h) = handler;
+                discover_edges_in_body(&h.body, func_name, edges);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Discover edges in an expression.
+fn discover_edges_in_expr(expr: &Expr, func_name: &str, edges: &mut Vec<DiscoveredEdge>) {
+    match expr {
+        // Pattern 1: Model.objects.create(field=expr)
+        Expr::Call(call) => {
+            if let Some(model_name) = is_objects_create(&call.func) {
+                for keyword in &call.arguments.keywords {
+                    if let Some(field_name) = &keyword.arg {
+                        edges.push(DiscoveredEdge {
+                            source_function: func_name.to_string(),
+                            target_model: model_name.clone(),
+                            target_field: Some(field_name.to_string()),
+                            relationship: "writes_to".to_string(),
+                            discovery: "ast_pattern".to_string(),
+                        });
+                    }
+                }
+            }
+            // Pattern 2: Model(field=expr) -- constructor call
+            else if let Some(model_name) = is_model_constructor(&call.func) {
+                for keyword in &call.arguments.keywords {
+                    if let Some(field_name) = &keyword.arg {
+                        edges.push(DiscoveredEdge {
+                            source_function: func_name.to_string(),
+                            target_model: model_name.clone(),
+                            target_field: Some(field_name.to_string()),
+                            relationship: "writes_to".to_string(),
+                            discovery: "ast_pattern".to_string(),
+                        });
+                    }
+                }
+            }
+            // Recurse into call arguments
+            for arg in &call.arguments.args {
+                discover_edges_in_expr(arg, func_name, edges);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Check if expression is Model.objects.create.
+fn is_objects_create(expr: &Expr) -> Option<String> {
+    if let Expr::Attribute(attr) = expr {
+        if attr.attr.as_str() == "create" {
+            if let Expr::Attribute(inner) = attr.value.as_ref() {
+                if inner.attr.as_str() == "objects" {
+                    if let Expr::Name(name) = inner.value.as_ref() {
+                        return Some(name.id.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Check if expression is a Model constructor call (capitalized name).
+fn is_model_constructor(expr: &Expr) -> Option<String> {
+    if let Expr::Name(name) = expr {
+        let first = name.id.chars().next()?;
+        if first.is_uppercase() {
+            return Some(name.id.to_string());
+        }
+    }
+    None
+}
+
+// --- Override loading ---
+
+/// Override edge from TOML config.
+#[derive(Debug, Deserialize)]
+pub struct OverrideEdge {
+    pub source: String,
+    pub target: String,
+    pub relationship: String,
+}
+
+/// Override config file structure.
+#[derive(Debug, Deserialize)]
+pub struct OverrideConfig {
+    #[serde(default)]
+    pub edges: Vec<OverrideEdge>,
+}
+
+/// Load manual edge overrides from a TOML file.
+pub fn load_overrides(path: &std::path::Path) -> anyhow::Result<Vec<DiscoveredEdge>> {
+    let content = std::fs::read_to_string(path)?;
+    let config: OverrideConfig = toml::from_str(&content)?;
+
+    Ok(config
+        .edges
+        .into_iter()
+        .map(|e| DiscoveredEdge {
+            source_function: e.source,
+            target_model: e.target,
+            target_field: None,
+            relationship: e.relationship,
+            discovery: "manual".to_string(),
+        })
+        .collect())
+}
