@@ -324,6 +324,8 @@ if x is None:
 
 **How the analyzer works:** it collects all `return` statements in the function body and analyzes the expression of each. For `quantize()` and `round()`, it extracts the precision argument. For arithmetic operations, it infers the worst-case precision widening. For `None` returns, it flags nullability. The function's postcondition is the *weakest* guarantee across all return paths (e.g., if one path returns `quantize(x, 3)` and another returns raw `x`, the postcondition cannot guarantee precision ≤ 3).
 
+**Tuple returns:** When a `return` statement returns a tuple expression `(e1, e2, ...)`, the body analyzer applies pattern matching to each element independently and takes the *weakest* (largest) precision bound across all elements as the function's precision postcondition. For example, `return (x.quantize(Decimal('0.000001')), y.quantize(Decimal('0.000001')))` yields `precision(result) <= 6` because both elements are quantized to 6dp. If one element had `quantize(Decimal('0.001'))` (3dp) and another had `quantize(Decimal('0.000001'))` (6dp), the postcondition would be `precision(result) <= 6` (the weaker guarantee). Per-element postconditions (e.g., "result[0] has precision <= 3, result[1] has precision <= 6") are not in scope for the PoC. The tool treats the function return as a single contract unit.
+
 **Patterns NOT in scope for the PoC:**
 
 - Precision through string formatting (`f"{value:.3f}"`)
@@ -475,12 +477,19 @@ This is the irreducible trust assumption. Each definition formalizes what a Djan
 /-- A DecimalField(max_digits=m, decimal_places=d) accepts a value v iff:
     - v has at most d fractional digits
     - v has at most m total digits (integer + fractional)
-    
+    - v has at most (m - d) integer digits
+
+    The third check prevents values like 999.999 in DecimalField(max_digits=5,
+    decimal_places=3) — the integer part (999) has 3 digits but
+    max_digits - decimal_places = 5 - 3 = 2.
+
     Django source: django/db/models/fields/__init__.py, DecimalField.validate()
     Django docs: https://docs.djangoproject.com/5.0/ref/models/fields/#decimalfield -/
 def decimalFieldAccepts (maxDigits decimalPlaces : Nat)
-    (totalDigits fractionalDigits : Nat) : Prop :=
-  fractionalDigits ≤ decimalPlaces ∧ totalDigits ≤ maxDigits
+    (totalDigits fractionalDigits integerDigits : Nat) : Prop :=
+  fractionalDigits ≤ decimalPlaces ∧
+  totalDigits ≤ maxDigits ∧
+  integerDigits ≤ maxDigits - decimalPlaces
 
 /-- A field with null=False rejects None values.
     Django source: django/db/models/fields/__init__.py, Field.validate()
@@ -818,7 +827,8 @@ def split_energy(total: Decimal, off_peak: Decimal) -> tuple[Decimal, Decimal]:
     )
 ```
 
-The body analyzer detects `quantize(Decimal('0.000001'))` on both return values and infers `precision(result) <= 6`. The model requires `precision <= 3`. **Inconsistent.**
+The body analyzer detects `quantize(Decimal('0.000001'))` on both return values and infers `precision(result) <= 6`. Both tuple elements are quantized to 6dp, so the per-element analysis (see Section 2.5, "Tuple returns") yields a uniform `precision(result) <= 6` postcondition.
+The model requires `precision <= 3`. **Inconsistent.**
 
 This fixture demonstrates that the tool catches the field report bug without any docstring annotations — purely from body analysis + model extraction.
 
