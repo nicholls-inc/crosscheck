@@ -50,7 +50,6 @@ cd ../layer2 && lake build
 # Run the full pipeline
 cd ..
 ./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --overrides test_fixtures/bug1/overrides.toml \
   --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
 ```
 
@@ -92,7 +91,7 @@ test_fixtures/
 
 ## Test fixtures
 
-**Bug 1** (`test_fixtures/bug1/`): `split_energy` quantizes to 6 decimal places, but `EnergyRecord.energy` is `DecimalField(decimal_places=3)`. The tool detects `6 > 3` purely from body analysis.
+**Bug 1** (`test_fixtures/bug1/`): `split_energy` writes to `EnergyRecord` via `objects.create()`, quantizing values to 6 decimal places. But `EnergyRecord.energy` is `DecimalField(decimal_places=3)`. The tool discovers the edges from the ORM write pattern and detects `6 > 3` from body analysis — no manual overrides needed.
 
 **Transitive** (`test_fixtures/transitive/`): `compute_offpeak` guarantees precision ≤ 4. `split_energy` has postcondition `max(input_precision, 3)`. Pairwise, each edge is consistent. But composed: `max(4, 3) = 4 > 3` violates the model. Only graph-level checking catches this.
 

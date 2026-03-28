@@ -12,7 +12,7 @@ namespace ContractGraphTest.TransitiveDemo
 
 open ContractGraph
 
-/-- compute_offpeak: body analysis → precision ≤ 4 -/
+/-- compute_offpeak: docstring ensures → precision ≤ 4 -/
 def computeOffpeakNode : Node :=
   { id := 1
     name := "compute_offpeak"
@@ -23,7 +23,7 @@ def computeOffpeakNode : Node :=
         staticBound := some 4
         sourceFile := "billing/utils.py"
         sourceLine := 20
-        verificationLevel := .extracted }
+        verificationLevel := .assumed }
     ] }
 
 /-- split_energy: dependent postcondition max(input_precision, 3) -/

@@ -1005,9 +1005,9 @@ def compute_offpeak(total: Decimal) -> Decimal:
     result = total * ratio
     return result.quantize(Decimal('0.0001'))  # body analysis → precision ≤ 4
 
-def split_energy(offpeak: Decimal) -> Decimal:
+def split_energy(offpeak: Decimal) -> EnergyRecord:
     """Split energy applying a minimum precision floor.
-    
+
     requires: precision(offpeak) <= 10
     ensures: precision(result) <= max(input_precision, 3)
     """
@@ -1016,24 +1016,15 @@ def split_energy(offpeak: Decimal) -> Decimal:
     # This is the case where the developer must state the contract explicitly.
     floor = Decimal('0.001')  # 3dp floor
     if offpeak.as_tuple().exponent > floor.as_tuple().exponent:
-        return offpeak.quantize(floor)
-    return offpeak
+        energy_val = offpeak.quantize(floor)
+    else:
+        energy_val = offpeak
+    return EnergyRecord.objects.create(energy=energy_val)
 ```
 
 Function A's contract comes from body analysis (`quantize` to 4dp). Function B's dependent postcondition requires a docstring annotation because the `max(input_precision, 3)` relationship between input and output precision is not recognizable from AST pattern matching alone.
 
-```toml
-# test_fixtures/transitive/overrides.toml
-[[edges]]
-source = "transitive.utils.compute_offpeak"
-target = "transitive.utils.split_energy"
-relationship = "calls"
-
-[[edges]]
-source = "transitive.utils.split_energy"
-target = "transitive.models.EnergyRecord.energy"
-relationship = "writes_to"
-```
+Both edges (`calls` and `writes_to`) are auto-discovered by AST pattern matching — `compute_offpeak` calls `split_energy` (function call pattern), and `split_energy` writes to `EnergyRecord.energy` via `objects.create()` (ORM write pattern).
 
 **Why pairwise checking misses this:**
 
@@ -1049,7 +1040,7 @@ relationship = "writes_to"
 
 - **Rust stable** (latest, via `rustup`)
 - **`ruff_python_parser`** + **`ruff_python_ast`**: Python AST parsing (from the Ruff monorepo crates)
-- **`ruff_python_semantic`**: import resolution for cross-file edge discovery. **PoC note:** The PoC test fixtures (`bug1`, `transitive`) both use manual override files for edge declarations, meaning `ruff_python_semantic` is not exercised by the core demo paths. This dependency is included for the AST-based edge discovery path (Section 2.3), but if compilation time or dependency weight becomes an issue, edge discovery can be deferred to post-PoC with all edges provided via `overrides.toml`. Contract extraction (model fields, function signatures, body analysis) does NOT require this crate — only cross-file name resolution for edge discovery does.
+- **`ruff_python_semantic`**: import resolution for cross-file edge discovery. **PoC note:** The PoC test fixtures (`bug1`, `transitive`) both use AST-discovered edges (via `Model.objects.create()` patterns), meaning `ruff_python_semantic` is not exercised by the core demo paths. This dependency is included for the AST-based edge discovery path (Section 2.3), but if compilation time or dependency weight becomes an issue, edge discovery can be deferred to post-PoC with all edges provided via `overrides.toml`. Contract extraction (model fields, function signatures, body analysis) does NOT require this crate — only cross-file name resolution for edge discovery does.
 - **`rusqlite`** (with `bundled` feature): SQLite output, bundles the amalgamation
 - **`toml`**: config and defaults table parsing
 - **`clap`**: CLI argument parsing
@@ -1113,7 +1104,7 @@ Subsequent runs use cached binaries for both Rust and Lean.
 
 **Risk:** AST-based ORM write detection will miss indirect writes and may produce false positives.
 
-**Mitigation:** The override file corrects discovery errors. Every edge is tagged with its `discovery` method for auditability. The transitive demo (Story 4.3) uses manual overrides, establishing the pattern.
+**Mitigation:** The override file corrects discovery errors. Every edge is tagged with its `discovery` method for auditability. The PoC demo fixtures use AST-discovered edges (`Model.objects.create()` pattern), with manual overrides available as a fallback for indirect write patterns.
 
 ### 8.5 Function body analysis accuracy
 

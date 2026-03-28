@@ -12,6 +12,8 @@ pub struct FunctionInfo {
     pub name: String,
     pub return_type: Option<String>,
     pub is_return_optional: bool,
+    /// For `tuple[T, T, ...]` returns with uniform element types, the element type.
+    pub tuple_element_type: Option<String>,
     pub source_file: String,
     pub source_line: u32,
     pub body: Vec<Stmt>,
@@ -57,12 +59,18 @@ fn extract_function_info(func_def: &ast::StmtFunctionDef, source_file: &str) -> 
         .map(|ret| is_optional_type(ret))
         .unwrap_or(false);
 
+    let tuple_element_type = func_def
+        .returns
+        .as_ref()
+        .and_then(|ret| uniform_tuple_element_type(ret));
+
     let docstring = extract_docstring(&func_def.body);
 
     FunctionInfo {
         name: func_def.name.to_string(),
         return_type,
         is_return_optional,
+        tuple_element_type,
         source_file: source_file.to_string(),
         source_line: func_def.range.start().to_u32(),
         body: func_def.body.clone(),
@@ -108,6 +116,26 @@ fn is_none_type(expr: &Expr) -> bool {
     matches_name_str(expr, "None")
 }
 
+/// If the return annotation is `tuple[T, T, ...]` with all element types identical,
+/// return the element type name. This handles the common pattern where a function
+/// returns a tuple of values that get written individually to model fields.
+fn uniform_tuple_element_type(expr: &Expr) -> Option<String> {
+    if let Expr::Subscript(sub) = expr {
+        if matches_name_str(&sub.value, "tuple") {
+            if let Expr::Tuple(tuple) = sub.slice.as_ref() {
+                if tuple.elts.is_empty() {
+                    return None;
+                }
+                let first = format_type_annotation(&tuple.elts[0]);
+                if tuple.elts[1..].iter().all(|e| format_type_annotation(e) == first) {
+                    return Some(first);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Check if an expression is a name matching a string.
 fn matches_name_str(expr: &Expr, name: &str) -> bool {
     matches!(expr, Expr::Name(n) if n.id.as_str() == name)
@@ -144,13 +172,25 @@ pub fn write_functions(
 
         // Type annotation contracts
         if let Some(ref return_type) = func.return_type {
-            // Type constraint from return annotation
-            let base_type = return_type
-                .split('[')
-                .next()
-                .unwrap_or(return_type)
-                .trim();
-            if base_type != "unknown" {
+            // For tuple[T, T, ...] with uniform element types, use the element
+            // type as the postcondition — individual elements flow through
+            // writes_to edges, not the tuple itself.
+            let effective_type = if let Some(ref elem_type) = func.tuple_element_type {
+                elem_type.as_str()
+            } else {
+                return_type
+                    .split('[')
+                    .next()
+                    .unwrap_or(return_type)
+                    .trim()
+            };
+            // Only emit type postconditions for value types that are
+            // meaningful to compare against model field types. Model class
+            // names (e.g. EnergyRecord) aren't comparable to field value
+            // types (e.g. Decimal) — for writes_to edges, the field values
+            // are the ORM call arguments, not the returned model instance.
+            let value_types = ["Decimal", "int", "str", "float", "bool"];
+            if effective_type != "unknown" && value_types.contains(&effective_type) {
                 db.insert_contract(&ContractRecord {
                     node_id,
                     constraint_type: ConstraintType::Type,
@@ -158,7 +198,7 @@ pub fn write_functions(
                     param_decimal_places: None,
                     param_max_length: None,
                     param_nullable: None,
-                    param_type_name: Some(base_type.to_string()),
+                    param_type_name: Some(effective_type.to_string()),
                     param_min_value: None,
                     param_max_value: None,
                     param_choices: None,

@@ -1,9 +1,0 @@
-[[edges]]
-source = "transitive.utils.compute_offpeak"
-target = "transitive.utils.split_energy"
-relationship = "calls"
-
-[[edges]]
-source = "transitive.utils.split_energy"
-target = "transitive.models.EnergyRecord.energy"
-relationship = "writes_to"

@@ -35,8 +35,7 @@ It should show the `app_path`, `--overrides`, `--django-version`, and `--lean-ch
 ### S4. Extract Bug 1 fixture (Layer 1 only, no Lean checker)
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --overrides test_fixtures/bug1/overrides.toml
+./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/
 ```
 
 Without `--lean-checker`, it should either: (a) produce the SQLite database and then fail with a clear error saying the Lean checker binary wasn't found, or (b) produce the SQLite database and skip the Lean phase. Either way, it should not crash during extraction.
@@ -47,21 +46,20 @@ After S4, a `.db` or `.sqlite` file should exist (check `/tmp` or the working di
 
 - `nodes` table exists and has rows for `EnergyRecord`, `energy`, `off_peak_energy`, `split_energy`
 - `contracts` table exists and has rows with constraint types like `precision`, `nullability`
-- `edges` table exists and has the two `writes_to` edges from the overrides file
+- `edges` table exists and has the two `writes_to` edges from AST discovery
 - The `split_energy` function has a precision contract derived from body analysis (the `quantize(0.000001)` → 6dp)
 
 ### S6. Extract transitive fixture
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
-  --overrides test_fixtures/transitive/overrides.toml
+./layer1/target/release/crosscheck-contracts contracts check test_fixtures/transitive/
 ```
 
 Same as S4 — extraction should succeed. The SQLite database should contain:
 
 - Nodes for `compute_offpeak`, `split_energy`, `EnergyRecord.energy`
 - A precision contract on `compute_offpeak` from body analysis (quantize to 4dp)
-- A `calls` edge and a `writes_to` edge from the overrides
+- A `calls` edge and a `writes_to` edge from AST discovery
 - Docstring-derived contracts on `split_energy` (the `requires`/`ensures` clauses)
 
 ### S7. Run against an empty directory
@@ -121,7 +119,6 @@ Clear error message, not a crash.
 
 ```
 ./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --overrides test_fixtures/bug1/overrides.toml \
   --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
 ```
 
@@ -136,7 +133,6 @@ Expected:
 
 ```
 ./layer1/target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
-  --overrides test_fixtures/transitive/overrides.toml \
   --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
 ```
 
@@ -185,7 +181,6 @@ Clear error about the overrides file being invalid. Not a panic.
 
 ```
 ./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --overrides test_fixtures/bug1/overrides.toml \
   --lean-checker /tmp/nonexistent_binary
 ```
 

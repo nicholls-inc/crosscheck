@@ -52,6 +52,21 @@ def checkTypeConsistency (sourceType targetType : String)
       suggestion := s!"Source produces type '{sourceType}', target expects '{targetType}'."
     }
 
+/-- Check choices consistency: source choices must be a subset of target choices. -/
+def checkChoicesSubset (sourceChoices targetChoices : List String)
+    (source target : Constraint) : CheckResult :=
+  if sourceChoices.all (fun s => targetChoices.contains s) then
+    .consistent
+  else
+    .inconsistent {
+      severity := .error
+      sourceConstraint := source
+      targetConstraint := target
+      path := []
+      suggestion := s!"Source may produce choices not accepted by target. " ++
+                    s!"Ensure source choices are a subset of target choices."
+    }
+
 /-- Check a single constraint pair for consistency. -/
 def checkConstraintPair (source target : Constraint) : CheckResult :=
   if source.kind != target.kind then
@@ -72,8 +87,9 @@ def checkConstraintPair (source target : Constraint) : CheckResult :=
       | some st, some tt => checkTypeConsistency st tt source target
       | _, _ => .consistent
     | .choices =>
-      -- Choices consistency: source choices must be subset of target choices
-      .consistent  -- simplified for PoC
+      match source.choicesList, target.choicesList with
+      | some sc, some tc => checkChoicesSubset sc tc source target
+      | _, _ => .consistent
 
 /-- Check all matching constraint pairs between source postconditions
     and target preconditions. Returns first inconsistency found. -/
@@ -107,7 +123,10 @@ def constraintImplies (c d : Constraint) : Prop :=
     match c.typeName, d.typeName with
     | some st, some tt => st = tt
     | _, _ => True
-  | .choices => True
+  | .choices =>
+    match c.choicesList, d.choicesList with
+    | some sc, some tc => ∀ x ∈ sc, x ∈ tc
+    | _, _ => True
 
 private theorem kind_bne_false {a b : ConstraintKind} (h : a = b) :
     (a != b) = false := by subst h; cases a <;> rfl
@@ -131,8 +150,8 @@ theorem pair_sound (c d : Constraint) (hk : c.kind = d.kind)
   unfold constraintImplies checkConstraintPair at *
   simp only [kind_bne_false hk, Bool.false_eq_true, ↓reduceIte] at h
   intro hk'
-  rcases c with ⟨ck, csb, _, ctn, _, _, _, _⟩
-  rcases d with ⟨dk, dsb, _, dtn, _, _, _, _⟩
+  rcases c with ⟨ck, csb, _, ctn, ccl, _, _, _⟩
+  rcases d with ⟨dk, dsb, _, dtn, dcl, _, _, _⟩
   simp only at hk hk' ⊢ h
   subst hk
   cases ck <;> simp_all
@@ -153,6 +172,8 @@ theorem pair_sound (c d : Constraint) (hk : c.kind = d.kind)
     cases csb <;> cases dsb <;> simp_all [checkStaticBounds]
   · -- length
     cases csb <;> cases dsb <;> simp_all [checkStaticBounds]
+  · -- choices
+    cases ccl <;> cases dcl <;> simp_all [checkChoicesSubset]
 
 theorem foldl_consistent (pairs : List (Constraint × Constraint))
     (h : pairs.foldl (fun (acc : CheckResult) (post, pre) =>

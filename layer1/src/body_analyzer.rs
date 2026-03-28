@@ -173,7 +173,24 @@ fn analyze_call_precision(call: &ast::ExprCall) -> Option<i64> {
                 None
             }
         }
-        _ => None,
+        // For other calls (e.g. Model.objects.create(field=val.quantize(...))),
+        // analyze keyword argument values for precision patterns.
+        _ => {
+            let kwarg_precisions: Vec<i64> = call
+                .arguments
+                .keywords
+                .iter()
+                .filter_map(|kw| {
+                    kw.arg.as_ref()?; // skip **kwargs
+                    analyze_precision(&kw.value)
+                })
+                .collect();
+            if kwarg_precisions.is_empty() {
+                None
+            } else {
+                kwarg_precisions.into_iter().max()
+            }
+        }
     }
 }
 

@@ -204,17 +204,17 @@ fn write_discovered_edges(
             .get(&edge.source_function)
             .or_else(|| find_by_suffix(func_node_ids, &edge.source_function));
         let target_id = if let Some(field) = &edge.target_field {
-            let key = format!("{}.{}", edge.target_model, field);
+            let key = format!("{}.{}", edge.target_name, field);
             model_node_ids
                 .get(&key)
                 .or_else(|| find_by_suffix(model_node_ids, &key))
         } else {
             // Try to find by full qualified name
             model_node_ids
-                .get(&edge.target_model)
-                .or_else(|| find_by_suffix(model_node_ids, &edge.target_model))
-                .or_else(|| func_node_ids.get(&edge.target_model))
-                .or_else(|| find_by_suffix(func_node_ids, &edge.target_model))
+                .get(&edge.target_name)
+                .or_else(|| find_by_suffix(model_node_ids, &edge.target_name))
+                .or_else(|| func_node_ids.get(&edge.target_name))
+                .or_else(|| find_by_suffix(func_node_ids, &edge.target_name))
         };
 
         if let (Some(&src_id), Some(&tgt_id)) = (source_id, target_id) {

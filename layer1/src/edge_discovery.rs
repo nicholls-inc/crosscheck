@@ -1,17 +1,17 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use serde::Deserialize;
 
-/// A discovered edge between a function and a model.
+/// A discovered edge between two nodes in the contract graph.
 #[derive(Debug)]
 pub struct DiscoveredEdge {
     pub source_function: String,
-    pub target_model: String,
+    pub target_name: String,
     pub target_field: Option<String>,
     pub relationship: String,
     pub discovery: String,
 }
 
-/// Discover edges from Django ORM write patterns in function bodies.
+/// Discover edges from Django ORM write patterns and function calls in function bodies.
 pub fn discover_edges(stmts: &[Stmt]) -> Vec<DiscoveredEdge> {
     let mut edges = Vec::new();
 
@@ -98,7 +98,7 @@ fn discover_edges_in_expr(expr: &Expr, func_name: &str, edges: &mut Vec<Discover
                     if let Some(field_name) = &keyword.arg {
                         edges.push(DiscoveredEdge {
                             source_function: func_name.to_string(),
-                            target_model: model_name.clone(),
+                            target_name: model_name.clone(),
                             target_field: Some(field_name.to_string()),
                             relationship: "writes_to".to_string(),
                             discovery: "ast_pattern".to_string(),
@@ -112,7 +112,7 @@ fn discover_edges_in_expr(expr: &Expr, func_name: &str, edges: &mut Vec<Discover
                     if let Some(field_name) = &keyword.arg {
                         edges.push(DiscoveredEdge {
                             source_function: func_name.to_string(),
-                            target_model: model_name.clone(),
+                            target_name: model_name.clone(),
                             target_field: Some(field_name.to_string()),
                             relationship: "writes_to".to_string(),
                             discovery: "ast_pattern".to_string(),
@@ -120,9 +120,22 @@ fn discover_edges_in_expr(expr: &Expr, func_name: &str, edges: &mut Vec<Discover
                     }
                 }
             }
+            // Pattern 3: function_call(args) -- function-to-function call
+            else if let Some(callee_name) = is_function_call(&call.func) {
+                edges.push(DiscoveredEdge {
+                    source_function: func_name.to_string(),
+                    target_name: callee_name,
+                    target_field: None,
+                    relationship: "calls".to_string(),
+                    discovery: "ast_pattern".to_string(),
+                });
+            }
             // Recurse into call arguments
             for arg in &call.arguments.args {
                 discover_edges_in_expr(arg, func_name, edges);
+            }
+            for keyword in &call.arguments.keywords {
+                discover_edges_in_expr(&keyword.value, func_name, edges);
             }
         }
         _ => {}
@@ -156,6 +169,20 @@ fn is_model_constructor(expr: &Expr) -> Option<String> {
     None
 }
 
+/// Check if expression is a function call (lowercase or underscore name).
+/// Complement of `is_model_constructor`: lowercase = function, uppercase = model.
+/// Calls to builtins like `len()`, `print()` are emitted but silently dropped
+/// during edge resolution when they don't match any extracted function name.
+fn is_function_call(expr: &Expr) -> Option<String> {
+    if let Expr::Name(name) = expr {
+        let first = name.id.chars().next()?;
+        if first.is_lowercase() || first == '_' {
+            return Some(name.id.to_string());
+        }
+    }
+    None
+}
+
 // --- Override loading ---
 
 /// Override edge from TOML config.
@@ -183,7 +210,7 @@ pub fn load_overrides(path: &std::path::Path) -> anyhow::Result<Vec<DiscoveredEd
         .into_iter()
         .map(|e| DiscoveredEdge {
             source_function: e.source,
-            target_model: e.target,
+            target_name: e.target,
             target_field: None,
             relationship: e.relationship,
             discovery: "manual".to_string(),
