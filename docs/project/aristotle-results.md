@@ -102,16 +102,59 @@ Aristotle provided two corrected alternatives that ARE provable:
    assumptions. This is the strongest universally-true statement derivable from
    `checkPath`'s all-consistent result.
 
-## Implications
+## Multi-hop soundness theorem (second submission)
 
-The `checkPath_sound` falsity means the multi-hop soundness story needs rethinking.
-The per-edge soundness (`checkEdge_sound`) is solid — the gap is in how contract
-composition propagates guarantees across multiple hops. A correct multi-hop theorem
-would need to reason about the composed postconditions at each intermediate node,
-not the original source's raw postconditions.
+Submission date: 2026-03-28
+Project ID: `fbaa3d79-53df-4d90-880f-50115c89a305`
+Duration: ~25 minutes
+Prompt used: Targeted prompt for single sorry in `checkPath_sound`
+
+### 6. `checkPath_sound` (Composition.lean) — Proved
+
+The correct multi-hop soundness theorem. Introduces `stepwiseSound`, a recursive
+predicate that mirrors `checkPath`'s exact structure: at each hop, the current
+source's postconditions (after composition from prior steps) imply the current
+target's preconditions.
+
+In plain terms: if every hop in a data pipeline passes verification, then at every
+step the data flowing into that step (after any transformations from prior steps)
+satisfies that step's requirements. The whole chain is verifiably correct because
+every link is verified, accounting for how data transforms as it flows through.
+
+Aristotle's approach:
+- Match on `path, hne` for single-edge and multi-hop cases
+- Single edge: unfold `stepwiseSound` and `checkPath`, apply `checkEdge_sound`
+- Multi-hop: unfold `checkPath`, apply `forall_consistent_of_cons_append` to decompose
+  the result list, then `And.intro` with `checkEdge_sound` for the first conjunct and
+  a recursive call to `checkPath_sound` for the second
+- Termination by `path.length` (decreasing because the recursive path is one edge shorter)
+- Required `maxHeartbeats 400000`
+
+Also introduced:
+- `stepwiseSound` predicate — mirrors `checkPath` with identical field construction
+  for `composedNode` and `updatedEdge` so they unify definitionally
+- `forall_consistent_of_cons_append` helper — extracts membership facts from
+  `a :: (bs ++ cs)` structure that `checkPath` produces
+
+## Current status
+
+**All soundness theorems are now proved.** The project builds with zero `sorry`
+warnings and zero errors. The full theorem inventory:
+
+| Theorem | File | Status |
+|---|---|---|
+| `pair_sound` | Checker.lean | Proved |
+| `foldl_consistent` | Checker.lean | Proved |
+| `mem_pairs` | Checker.lean | Proved |
+| `checkEdge_sound` | Checker.lean | Proved |
+| `checkPath_sound_single` | Composition.lean | Proved |
+| `checkPath_sound_first_edge` | Composition.lean | Proved |
+| `stepwiseSound` | Composition.lean | Definition |
+| `checkPath_sound` | Composition.lean | Proved |
 
 ## Files modified
 
 - `layer2/ContractGraph/Checker.lean` — 4 `sorry` stubs replaced with verified proofs
 - `layer2/ContractGraph/Composition.lean` — original `checkPath_sound` commented out
-  with counterexample documentation, 2 corrected theorems added with proofs
+  with counterexample documentation; `stepwiseSound` predicate, helper lemma, and
+  correct `checkPath_sound` theorem added with verified proofs

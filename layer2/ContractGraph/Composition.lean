@@ -169,4 +169,110 @@ theorem checkPath_sound_first_edge (path : List Edge) (hne : path ≠ [])
       apply h; simp [checkPath]
     exact checkEdge_sound edge.source edge.target h1
 
+/-- Stepwise soundness predicate for multi-hop paths.
+    Mirrors checkPath's recursive structure exactly: at each step, the current
+    source's postconditions imply the current target's preconditions, and the
+    remaining path is stepwise-sound with the composed intermediate node. -/
+def stepwiseSound (path : List Edge) : Prop :=
+  match path with
+  | [] => True
+  | [edge] => composedGuaranteeImplies edge.source edge.target
+  | edge :: nextEdge :: remainingEdges =>
+    composedGuaranteeImplies edge.source edge.target ∧
+    let composedPostconditions := composeContracts edge.source edge.target
+    let composedNode : Node := {
+      id := edge.target.id
+      name := edge.target.name
+      kind := edge.target.kind
+      preconditions := edge.target.preconditions
+      postconditions := composedPostconditions
+    }
+    let updatedEdge : Edge := {
+      source := composedNode
+      target := nextEdge.target
+      relationship := nextEdge.relationship
+    }
+    stepwiseSound (updatedEdge :: remainingEdges)
+termination_by path.length
+decreasing_by simp_wf
+
+/-- Helper: if all elements of a :: (bs ++ cs) satisfy a predicate,
+    then a satisfies it and all elements of cs satisfy it. -/
+private theorem forall_consistent_of_cons_append
+    (a : CheckResult) (bs cs : List CheckResult)
+    (h : ∀ r ∈ (a :: (bs ++ cs)), r = CheckResult.consistent) :
+    a = CheckResult.consistent ∧ ∀ r ∈ cs, r = CheckResult.consistent := by
+  constructor
+  · apply h; simp
+  · intro r hr; apply h; simp [List.mem_append]; right; right; exact hr
+
+set_option maxHeartbeats 400000 in
+/--
+SOUNDNESS THEOREM (multi-hop stepwise composition).
+If checkPath returns all consistent, then stepwiseSound holds for the path:
+at every step in the chain, the data flowing into that step (after any
+transformations from prior steps) satisfies that step's requirements.
+
+This is the correct replacement for the original checkPath_sound which was
+proved FALSE by Aristotle: composedGuaranteeImplies between the original
+source and the final target does not follow from checkPath's all-consistent
+result. Instead, stepwiseSound captures what checkPath actually verifies:
+each hop is sound with respect to the composed intermediate postconditions.
+
+PROVIDED SOLUTION
+Match on path, hne for three cases with termination_by path.length.
+
+Case [] (empty path): contradiction with hne.
+
+Case [edge] (single edge): Unfold checkPath to get [checkEdgeFull edge].
+  The hypothesis gives checkEdgeFull edge = .consistent (by List.mem_singleton
+  or simp [checkPath] at h). Then unfold checkEdgeFull (or simp [checkEdgeFull])
+  to get checkEdge edge.source edge.target = .consistent. Apply checkEdge_sound.
+
+Case edge :: nextEdge :: rest (multi-hop): checkPath produces
+  edgeResult :: (unresolvedWarnings ++ restPath) where
+  restPath = checkPath (updatedEdge :: rest).
+
+  Step 1: Apply forall_consistent_of_cons_append to h to extract:
+    h1 : checkEdgeFull edge = .consistent
+    h2 : ∀ r ∈ checkPath (updatedEdge :: rest), r = .consistent
+
+  Step 2 (first conjunct): simp [checkEdgeFull] at h1 gives
+    checkEdge edge.source edge.target = .consistent. Apply checkEdge_sound
+    to get composedGuaranteeImplies edge.source edge.target.
+
+  Step 3 (second conjunct): Apply checkPath_sound recursively on
+    (updatedEdge :: rest) with h2. The termination obligation is
+    (updatedEdge :: rest).length < (edge :: nextEdge :: rest).length,
+    which is rest.length + 1 < rest.length + 2, discharged by omega.
+
+  CRITICAL: stepwiseSound and checkPath construct composedNode and
+  updatedEdge with identical field expressions — they unify definitionally.
+  If unification fails, try unfold stepwiseSound.
+-/
+theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
+    (h : ∀ r ∈ checkPath path, r = CheckResult.consistent) :
+    stepwiseSound path := by
+  match path, hne with
+  | [edge], _ =>
+    unfold stepwiseSound
+    unfold checkPath at h
+    simp at h
+    exact checkEdge_sound edge.source edge.target h
+  | edge :: nextEdge :: rest, _ =>
+    unfold checkPath at h
+    have ⟨h1, h2⟩ := forall_consistent_of_cons_append
+      (checkEdgeFull edge)
+      (collectUnresolvedWarnings (composeContracts edge.source edge.target) edge.target.name)
+      (checkPath
+        ({ source := { id := edge.target.id, name := edge.target.name, kind := edge.target.kind,
+                       preconditions := edge.target.preconditions,
+                       postconditions := composeContracts edge.source edge.target },
+           target := nextEdge.target, relationship := nextEdge.relationship } :: rest))
+      h
+    unfold stepwiseSound
+    exact ⟨checkEdge_sound _ _ h1,
+           checkPath_sound _ (List.cons_ne_nil _ _) h2⟩
+termination_by path.length
+
 end ContractGraph
