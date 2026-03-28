@@ -6,6 +6,7 @@ import ContractGraph.Checker
 import ContractGraph.Composition
 import ContractGraph.DependentExpr
 import ContractGraph.Diagnostics
+import ContractGraph.Main
 
 namespace ContractGraphTest.TransitiveDemo
 
@@ -76,7 +77,7 @@ def transitiveGraph : ContractGraph :=
   { nodes := [computeOffpeakNode, splitEnergyNode, energyFieldNode]
     edges := [edge1, edge2] }
 
-/-- Test: pairwise check of compute_offpeak → split_energy is consistent. -/
+-- Test: pairwise check of compute_offpeak → split_energy is consistent.
 #eval do
   let result := checkEdgeFull edge1
   match result with
@@ -85,13 +86,13 @@ def transitiveGraph : ContractGraph :=
   | .inconsistent _ =>
     IO.println "Pairwise A→B: UNEXPECTED - Should be consistent"
 
-/-- Test: composition reveals transitive inconsistency. -/
+-- Test: composition reveals transitive inconsistency.
 #eval do
   -- Step 1: Compose compute_offpeak through split_energy
   let composed := composeContracts computeOffpeakNode splitEnergyNode
   IO.println s!"Composed postconditions: {composed.length}"
   for c in composed do
-    IO.println s!"  kind={c.kind}, staticBound={c.staticBound}, depExpr={c.depExpr}"
+    IO.println s!"  kind={c.kind}, staticBound={c.staticBound}, depExpr={repr c.depExpr}"
 
   -- Step 2: Check composed guarantee against model
   let composedNode : Node := {
@@ -114,7 +115,7 @@ def transitiveGraph : ContractGraph :=
   | .consistent =>
     IO.println "Transitive check: FAIL - Should have detected inconsistency"
 
-/-- Test: full pipeline detects transitive inconsistency. -/
+-- Test: full pipeline detects transitive inconsistency.
 #eval do
   let output := runChecker transitiveGraph
   IO.println s!"TransitiveDemo full pipeline:"

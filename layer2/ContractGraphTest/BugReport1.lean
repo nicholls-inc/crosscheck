@@ -5,6 +5,7 @@ import ContractGraph.Types
 import ContractGraph.Checker
 import ContractGraph.Composition
 import ContractGraph.Diagnostics
+import ContractGraph.Main
 
 namespace ContractGraphTest.BugReport1
 
@@ -51,7 +52,7 @@ def bug1Graph : ContractGraph :=
   { nodes := [splitEnergyNode, energyFieldNode]
     edges := [edge] }
 
-/-- Test: checkEdge detects the precision mismatch. -/
+-- Test: checkEdge detects the precision mismatch.
 #eval do
   let result := checkEdgeFull edge
   match result with
@@ -61,7 +62,7 @@ def bug1Graph : ContractGraph :=
   | .consistent =>
     IO.println "BugReport1: FAIL - Should have detected precision mismatch"
 
-/-- Test: full pipeline detects Bug 1. -/
+-- Test: full pipeline detects Bug 1.
 #eval do
   let output := runChecker bug1Graph
   IO.println s!"BugReport1 full pipeline:"
