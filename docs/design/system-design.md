@@ -70,16 +70,15 @@ Layer 1 is a single Rust binary that handles extraction, edge discovery, and CLI
 The Python AST is parsed via `ruff_python_parser`, the same parser powering Ruff (hand-written recursive descent, tested against millions of Python files in production). `ruff_python_ast` provides typed AST node representations. Import resolution uses `ruff_python_semantic` where needed for cross-file name binding (e.g., tracing `EnergyRecord` in a `Model.objects.create()` call back to its class definition).
 
 ```
-layer1/
-├── Cargo.toml                # Depends on ruff_python_parser, rusqlite, toml
-├── src/
-│   ├── main.rs               # CLI entry point: extract → invoke Lean → report
-│   ├── extractor.rs          # Top-level: walk app directory, coordinate extractors
-│   ├── model_extractor.rs    # Django model field constraint extraction
-│   ├── function_extractor.rs # Function signature + type hint extraction
-│   ├── body_analyzer.rs      # Function body analysis for precision/nullability
-│   ├── docstring_parser.rs   # requires/ensures clause extraction (if present)
-│   ├── edge_discovery.rs     # Django ORM write pattern detection
+Cargo.toml                    # Depends on ruff_python_parser, rusqlite, toml
+src/
+├── main.rs                   # CLI entry point: extract → invoke Lean → report
+├── extractor.rs              # Top-level: walk app directory, coordinate extractors
+├── model_extractor.rs        # Django model field constraint extraction
+├── function_extractor.rs     # Function signature + type hint extraction
+├── body_analyzer.rs          # Function body analysis for precision/nullability
+├── docstring_parser.rs       # requires/ensures clause extraction (if present)
+├── edge_discovery.rs         # Django ORM write pattern detection
 │   ├── defaults.rs           # Loads generated defaults table
 │   └── db.rs                 # SQLite schema creation + write logic (via rusqlite)
 ├── defaults/
@@ -351,7 +350,7 @@ The priority order means: docstring contracts override body-inferred contracts, 
 ### 3.1 Project structure
 
 ```
-layer2/
+prover/
 ├── lakefile.toml              # Lake build config, depends on leansqlite
 ├── ContractGraph/
 │   ├── Types.lean             # Inductive types mirroring SQLite schema
@@ -1063,17 +1062,16 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Install Lean via elan
 curl https://elan-init.tryclimbers.com -sSf | sh
 
-# Build Layer 1 (Rust extractor + CLI)
-cd layer1/
+# Build the Rust extractor + CLI
 cargo build --release
 
-# Build Layers 2-3 (Lean checker — first build: ~2-5 min)
-cd ../layer2/
+# Build the Lean checker + proofs (first build: ~2-5 min)
+cd prover/
 lake build
 
 # Run the full pipeline
 cd ..
-./layer1/target/release/crosscheck contracts check path/to/django/app/
+./target/release/crosscheck contracts check path/to/django/app/
 ```
 
 Subsequent runs use cached binaries for both Rust and Lean.

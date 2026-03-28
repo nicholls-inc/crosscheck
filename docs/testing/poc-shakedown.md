@@ -4,14 +4,14 @@ Smoke scenarios for verifying the contract graph verifier PoC works end-to-end. 
 
 ---
 
-## Layer 1: Rust extractor
+## Rust extractor
 
-### S1. Build Layer 1
+### S1. Build the extractor
 
 Build the Rust extractor from a clean state.
 
 ```
-cd layer1 && cargo build --release
+cargo build --release
 ```
 
 It should compile without errors and produce `target/release/crosscheck-contracts`.
@@ -19,7 +19,7 @@ It should compile without errors and produce `target/release/crosscheck-contract
 ### S2. Run help
 
 ```
-./layer1/target/release/crosscheck-contracts --help
+./target/release/crosscheck-contracts --help
 ```
 
 It should print usage info showing the `contracts` subcommand. Not a crash, not an empty string.
@@ -27,7 +27,7 @@ It should print usage info showing the `contracts` subcommand. Not a crash, not 
 ### S3. Run `contracts check --help`
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check --help
+./target/release/crosscheck-contracts contracts check --help
 ```
 
 It should show the `app_path`, `--overrides`, `--django-version`, and `--lean-checker` arguments.
@@ -35,7 +35,7 @@ It should show the `app_path`, `--overrides`, `--django-version`, and `--lean-ch
 ### S4. Extract Bug 1 fixture (Layer 1 only, no Lean checker)
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/
+./target/release/crosscheck-contracts contracts check test_fixtures/bug1/
 ```
 
 Without `--lean-checker`, it should either: (a) produce the SQLite database and then fail with a clear error saying the Lean checker binary wasn't found, or (b) produce the SQLite database and skip the Lean phase. Either way, it should not crash during extraction.
@@ -52,7 +52,7 @@ After S4, a `.db` or `.sqlite` file should exist (check `/tmp` or the working di
 ### S6. Extract transitive fixture
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/transitive/
+./target/release/crosscheck-contracts contracts check test_fixtures/transitive/
 ```
 
 Same as S4 — extraction should succeed. The SQLite database should contain:
@@ -66,7 +66,7 @@ Same as S4 — extraction should succeed. The SQLite database should contain:
 
 ```
 mkdir -p /tmp/empty_app
-./layer1/target/release/crosscheck-contracts contracts check /tmp/empty_app/
+./target/release/crosscheck-contracts contracts check /tmp/empty_app/
 ```
 
 It should give a clear message (no models found, no contracts extracted), not a panic or segfault.
@@ -74,31 +74,31 @@ It should give a clear message (no models found, no contracts extracted), not a 
 ### S8. Run against a non-existent path
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check /tmp/does_not_exist/
+./target/release/crosscheck-contracts contracts check /tmp/does_not_exist/
 ```
 
 It should give a clear error about the path not existing. Not a stack trace.
 
 ---
 
-## Layer 2: Lean checker
+## Lean checker
 
-### S9. Build Layer 2
+### S9. Build the checker
 
 ```
-cd layer2 && lake build
+cd prover && lake build
 ```
 
 It should compile without errors. This also means all Lean proofs type-check — including the soundness theorems (`checkEdge_sound`, `checkPath_sound`).
 
 ### S10. Lean checker binary exists
 
-After S9, the binary should exist at `layer2/.lake/build/bin/contract-graph-checker`.
+After S9, the binary should exist at `prover/.lake/build/bin/contract-graph-checker`.
 
 ### S11. Run Lean checker with no arguments
 
 ```
-./layer2/.lake/build/bin/contract-graph-checker
+./prover/.lake/build/bin/contract-graph-checker
 ```
 
 It should print usage info or a clear error about the missing database path. Not a Lean runtime panic.
@@ -106,7 +106,7 @@ It should print usage info or a clear error about the missing database path. Not
 ### S12. Run Lean checker on a non-existent database
 
 ```
-./layer2/.lake/build/bin/contract-graph-checker /tmp/nonexistent.db
+./prover/.lake/build/bin/contract-graph-checker /tmp/nonexistent.db
 ```
 
 Clear error message, not a crash.
@@ -118,8 +118,8 @@ Clear error message, not a crash.
 ### S13. Bug 1 end-to-end — the proof-of-value scenario
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
+./target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
+  --lean-checker ./prover/.lake/build/bin/contract-graph-checker
 ```
 
 Expected:
@@ -132,8 +132,8 @@ Expected:
 ### S14. Transitive inconsistency end-to-end — the thesis scenario
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
-  --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
+./target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
+  --lean-checker ./prover/.lake/build/bin/contract-graph-checker
 ```
 
 Expected:
@@ -162,7 +162,7 @@ Create a `.py` file with a syntax error and point the tool at it.
 
 ```
 echo "def broken(" > /tmp/bad_app/models.py
-./layer1/target/release/crosscheck-contracts contracts check /tmp/bad_app/
+./target/release/crosscheck-contracts contracts check /tmp/bad_app/
 ```
 
 It should report a parse error with the filename, not crash.
@@ -171,7 +171,7 @@ It should report a parse error with the filename, not crash.
 
 ```
 echo "not valid toml [[[" > /tmp/bad_overrides.toml
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
+./target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
   --overrides /tmp/bad_overrides.toml
 ```
 
@@ -180,7 +180,7 @@ Clear error about the overrides file being invalid. Not a panic.
 ### S19. Lean checker binary that doesn't exist
 
 ```
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
+./target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
   --lean-checker /tmp/nonexistent_binary
 ```
 

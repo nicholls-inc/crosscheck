@@ -46,7 +46,7 @@
 
   File Locations
 
-  - layer2/ContractGraph/Checker.lean — main file being edited (currently broken)
-  - layer2/ContractGraph/Composition.lean — updated, builds with sorry
-  - layer2/ContractGraph/Types.lean — defines all types (unchanged)
+  - prover/ContractGraph/Checker.lean — main file being edited (currently broken)
+  - prover/ContractGraph/Composition.lean — updated, builds with sorry
+  - prover/ContractGraph/Types.lean — defines all types (unchanged)
   - Build command: ~/.elan/bin/lake build ContractGraph (lake not on PATH, use full path)

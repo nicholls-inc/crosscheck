@@ -1,12 +1,12 @@
 # Aristotle Submission Prompts
 
-Prompts for submitting `layer2/` to [Aristotle](https://aristotle.harmonic.fun) to fill the 5 `sorry` stubs with verified proofs.
+Prompts for submitting `prover/` to [Aristotle](https://aristotle.harmonic.fun) to fill the 5 `sorry` stubs with verified proofs.
 
 ## Project submission
 
 All prompts use:
 ```bash
-aristotle submit "<PROMPT>" --project-dir ./layer2 --wait
+aristotle submit "<PROMPT>" --project-dir ./prover --wait
 ```
 
 ## Prompt 1 — Primary (full project, all sorrys)

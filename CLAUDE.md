@@ -9,32 +9,32 @@ A three-layer pipeline that extracts implicit contracts from Django code, transl
 ## Build commands
 
 ```bash
-# Layer 1 (Rust extractor + CLI)
-cd layer1 && cargo build --release
+# Rust extractor + CLI
+cargo build --release
 
-# Layer 2+3 (Lean checker + proofs)
-cd layer2 && lake build
+# Lean checker + proofs
+cd prover && lake build
 
 # Run full pipeline on a test fixture
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
+./target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
+  --lean-checker ./prover/.lake/build/bin/contract-graph-checker
 
 # Run Lean checker directly on a SQLite database
-./layer2/.lake/build/bin/contract-graph-checker /path/to/contracts.sqlite
+./prover/.lake/build/bin/contract-graph-checker /path/to/contracts.sqlite
 
 # Check Lean proofs only (no executable build)
-cd layer2 && lake build ContractGraph
+cd prover && lake build ContractGraph
 ```
 
 There are no automated test suites. Verification is done via `lake build` (type-checks all proofs) and running the pipeline against test fixtures.
 
 ## Architecture
 
-**Layer 1 (Rust, `layer1/src/`):** Parses Django Python files, extracts model field constraints and function contracts, discovers edges via ORM write pattern detection, writes everything to a SQLite database. CLI binary is `crosscheck-contracts`.
+**Extractor (Rust, `src/`):** Parses Django Python files, extracts model field constraints and function contracts, discovers edges via ORM write pattern detection, writes everything to a SQLite database. CLI binary is `crosscheck-contracts`.
 
-**Layer 2 (Lean, `layer2/ContractGraph/`):** Reads the SQLite database, translates rows into typed Lean structures, checks constraint consistency. The checker operates on a `ContractGraph` of `Node`s and `Edge`s.
+**Checker (Lean, `prover/ContractGraph/`):** Reads the SQLite database, translates rows into typed Lean structures, checks constraint consistency. The checker operates on a `ContractGraph` of `Node`s and `Edge`s.
 
-**Layer 3 (Lean, same files):** Machine-checked soundness proofs live alongside the checker code. Key theorems:
+**Proofs (Lean, same files):** Machine-checked soundness proofs live alongside the checker code. Key theorems:
 - `checkEdge_sound` (Checker.lean): single-edge soundness -- if `checkEdge` returns consistent, source postconditions logically imply target preconditions
 - `checkPath_sound` (Composition.lean): multi-hop stepwise soundness -- proves `stepwiseSound` (each hop is sound w.r.t. composed intermediate postconditions)
 
@@ -46,7 +46,7 @@ The trust boundary matters for correctness claims:
 - **Proved (Lean kernel verifies):** Checker logic, composition, soundness theorems
 - **Proved relative to behavior model:** Translation from SQLite to Lean propositions
 - **Trusted-not-proved:** `BehaviorModel.lean` (~45 lines of Django field semantics axioms, version-pinned to Django 4.2/5.x)
-- **Untrusted but auditable:** Layer 1 Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
+- **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
 
 ## Key design patterns
 
@@ -58,7 +58,7 @@ The trust boundary matters for correctness claims:
 
 ## Lean-specific notes
 
-- Lean 4 v4.28.0 (pinned in `layer2/lean-toolchain`)
+- Lean 4 v4.28.0 (pinned in `prover/lean-toolchain`)
 - Uses `leansqlite` package for SQLite FFI
 - Proofs use `simp`, `grind`, `omega`, and case-splitting tactics
 - `maxHeartbeats` is bumped for complex theorems (400k-800k)

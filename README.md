@@ -10,13 +10,13 @@ A three-layer pipeline that extracts implicit contracts from Django application 
 Django project (.py files)
         │
         ▼
-  Layer 1 (Rust)         AST extraction, edge discovery, body analysis
+  Extractor (Rust)       AST extraction, edge discovery, body analysis
         │ SQLite
         ▼
-  Layer 2 (Lean)         Contract translation, Django behavior model
+  Checker (Lean)         Contract translation, Django behavior model
         │
         ▼
-  Layer 3 (Lean)         Consistency checker, soundness proofs
+  Prover (Lean)          Consistency checker, soundness proofs
         │
         ▼
   CLI results            Diagnostics + exit code
@@ -24,13 +24,13 @@ Django project (.py files)
 
 ### Trust model
 
-| Layer | Trust level |
-|-------|------------|
+| Component | Trust level |
+|-----------|------------|
 | Lean kernel | Absolute — accepts or rejects the proof |
-| Layer 3 checker | Proved — soundness theorems are machine-checked |
-| Layer 2 translation | Proved relative to the Django behavior model |
+| Checker + proofs | Proved — soundness theorems are machine-checked |
+| Translation | Proved relative to the Django behavior model |
 | Django behavior model | Trusted-not-proved — ~200 lines, auditable, version-pinned |
-| Layer 1 extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
+| Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
 
 ## Quick start
 
@@ -41,36 +41,35 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Install Lean 4 via elan (https://github.com/leanprover/elan)
 curl https://elan-init.tryclimbers.com -sSf | sh
 
-# Build Layer 1
-cd layer1 && cargo build --release
+# Build the Rust extractor + CLI
+cargo build --release
 
-# Build Layers 2-3
-cd ../layer2 && lake build
+# Build the Lean checker + proofs
+cd prover && lake build && cd ..
 
 # Run the full pipeline
-cd ..
-./layer1/target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
-  --lean-checker ./layer2/.lake/build/bin/contract-graph-checker
+./target/release/crosscheck-contracts contracts check test_fixtures/bug1/ \
+  --lean-checker ./prover/.lake/build/bin/contract-graph-checker
 ```
 
 ## Project structure
 
 ```
-layer1/                     Rust extractor + CLI
-├── src/
-│   ├── main.rs             CLI: crosscheck contracts check|generate-defaults
-│   ├── extractor.rs        Top-level pipeline coordinator
-│   ├── model_extractor.rs  Django model field constraint extraction
-│   ├── function_extractor.rs  Function signature + type hint extraction
-│   ├── body_analyzer.rs    Precision/nullability inference from function bodies
-│   ├── docstring_parser.rs requires/ensures clause extraction
-│   ├── edge_discovery.rs   ORM write pattern detection + override loading
-│   ├── defaults.rs         Django field defaults table
-│   └── db.rs               SQLite schema + write logic
-└── defaults/
-    └── django_4_2.toml     Pre-built Django 4.2 field defaults
+src/                        Rust extractor + CLI
+├── main.rs                 CLI: crosscheck contracts check|generate-defaults
+├── extractor.rs            Top-level pipeline coordinator
+├── model_extractor.rs      Django model field constraint extraction
+├── function_extractor.rs   Function signature + type hint extraction
+├── body_analyzer.rs        Precision/nullability inference from function bodies
+├── docstring_parser.rs     requires/ensures clause extraction
+├── edge_discovery.rs       ORM write pattern detection + override loading
+├── defaults.rs             Django field defaults table
+└── db.rs                   SQLite schema + write logic
 
-layer2/                     Lean checker
+defaults/
+└── django_4_2.toml         Pre-built Django 4.2 field defaults
+
+prover/                     Lean checker + proofs
 ├── ContractGraph/
 │   ├── Types.lean          Inductive types mirroring the SQLite schema
 │   ├── BehaviorModel.lean  Django field semantics (trusted axioms)

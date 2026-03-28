@@ -8,7 +8,7 @@ Lean toolchain: 4.28.0
 
 ## Summary
 
-Aristotle was submitted the full `layer2/` project with 5 `sorry` stubs to fill.
+Aristotle was submitted the full `prover/` project with 5 `sorry` stubs to fill.
 It **proved 4 of 5 theorems** and **discovered the 5th is false**, providing a
 counterexample and two corrected alternatives. The project now builds with
 **zero `sorry` warnings and zero errors**.
@@ -154,7 +154,7 @@ warnings and zero errors. The full theorem inventory:
 
 ## Files modified
 
-- `layer2/ContractGraph/Checker.lean` — 4 `sorry` stubs replaced with verified proofs
-- `layer2/ContractGraph/Composition.lean` — original `checkPath_sound` commented out
+- `prover/ContractGraph/Checker.lean` — 4 `sorry` stubs replaced with verified proofs
+- `prover/ContractGraph/Composition.lean` — original `checkPath_sound` commented out
   with counterexample documentation; `stepwiseSound` predicate, helper lemma, and
   correct `checkPath_sound` theorem added with verified proofs
