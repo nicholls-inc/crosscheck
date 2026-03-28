@@ -75,4 +75,17 @@ def unresolvedDepWarning (constraint : Constraint) (nodeName : String) : Diagnos
     suggestion := s!"Dependent expression on {nodeName} could not be resolved. " ++
                   s!"Check that upstream postconditions provide the required input bindings." }
 
+/-- Generate a warning for a constraint kind required downstream but missing
+    from intermediate composed postconditions. -/
+def missingPostconditionWarning (pre : Constraint) (intermediateNodeName : String)
+    : DiagnosticInfo :=
+  { severity := .warning
+    sourceConstraint := pre
+    targetConstraint := pre
+    path := [intermediateNodeName]
+    suggestion := s!"Intermediate node '{intermediateNodeName}' has no " ++
+                  s!"{formatConstraintKind pre.kind} postcondition after composition. " ++
+                  s!"Downstream {formatConstraintKind pre.kind} requirements pass " ++
+                  s!"vacuously — this may hide real inconsistencies." }
+
 end ContractGraph

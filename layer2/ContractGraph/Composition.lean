@@ -55,6 +55,16 @@ def collectUnresolvedWarnings (composed : List Constraint) (nodeName : String)
       some (.inconsistent (unresolvedDepWarning c nodeName))
     | _, _ => none
 
+/-- Collect warnings for constraint kinds required by the next target but absent
+    from the composed postconditions. When an intermediate node has no postcondition
+    for a required kind, the downstream check passes vacuously — this warns about that. -/
+def collectMissingPostconditionWarnings (composedPostconditions : List Constraint)
+    (nextTarget : Node) (intermediateNodeName : String) : List CheckResult :=
+  let composedKinds := composedPostconditions.map (·.kind)
+  nextTarget.preconditions.filterMap fun pre =>
+    if composedKinds.contains pre.kind then none
+    else some (.inconsistent (missingPostconditionWarning pre intermediateNodeName))
+
 /-- Check consistency across a multi-hop path by composing
     contracts at each step. Non-partial: terminates by decreasing path length. -/
 def checkPath (path : List Edge) : List CheckResult :=
@@ -72,8 +82,10 @@ def checkPath (path : List Edge) : List CheckResult :=
       preconditions := edge.target.preconditions
       postconditions := composedPostconditions
     }
-    -- Emit warnings for any unresolved dependent expressions after composition
+    -- Emit warnings for unresolved dependent expressions and missing postconditions
     let unresolvedWarnings := collectUnresolvedWarnings composedPostconditions edge.target.name
+    let missingWarnings := collectMissingPostconditionWarnings composedPostconditions nextEdge.target edge.target.name
+    let allWarnings := unresolvedWarnings ++ missingWarnings
     -- Continue checking with composed node as source
     let updatedEdge : Edge := {
       source := composedNode
@@ -81,7 +93,7 @@ def checkPath (path : List Edge) : List CheckResult :=
       relationship := nextEdge.relationship
     }
     let restPath := checkPath (updatedEdge :: remainingEdges)
-    edgeResult :: (unresolvedWarnings ++ restPath)
+    edgeResult :: (allWarnings ++ restPath)
 termination_by path.length
 decreasing_by simp_wf
 
@@ -263,7 +275,8 @@ theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
     unfold checkPath at h
     have ⟨h1, h2⟩ := forall_consistent_of_cons_append
       (checkEdgeFull edge)
-      (collectUnresolvedWarnings (composeContracts edge.source edge.target) edge.target.name)
+      (collectUnresolvedWarnings (composeContracts edge.source edge.target) edge.target.name ++
+       collectMissingPostconditionWarnings (composeContracts edge.source edge.target) nextEdge.target edge.target.name)
       (checkPath
         ({ source := { id := edge.target.id, name := edge.target.name, kind := edge.target.kind,
                        preconditions := edge.target.preconditions,
