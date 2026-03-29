@@ -94,6 +94,40 @@ test_fixtures/
 
 **Transitive** (`test_fixtures/transitive/`): `compute_offpeak` guarantees precision ≤ 4. `split_energy` has postcondition `max(input_precision, 3)`. Pairwise, each edge is consistent. But composed: `max(4, 3) = 4 > 3` violates the model. Only graph-level checking catches this.
 
+## Running tests
+
+### Rust tests
+
+```bash
+# Run all Rust tests (e2e + property-based)
+cargo test
+
+# Run only the e2e tests against test fixtures
+cargo test --test e2e_bug1
+cargo test --test e2e_transitive
+cargo test --test e2e_synthetic
+
+# Run only the property-based tests
+cargo test --test prop_docstring_parser
+cargo test --test prop_model_extractor
+cargo test --test prop_body_analyzer
+cargo test --test prop_edge_discovery
+```
+
+E2e tests run the Rust extractor against the test fixtures and verify the SQLite output. Property-based tests (via `proptest`) fuzz individual modules — docstring parsing, model extraction, body analysis, and edge discovery.
+
+### Lean proof checking
+
+```bash
+# Type-check all proofs and build the checker
+cd prover && lake build
+
+# Type-check proofs only (no executable)
+cd prover && lake build ContractGraph
+```
+
+`lake build` verifies the soundness theorems (`checkEdge_sound`, `checkPath_sound`) and the test modules in `ContractGraphTest/` (BugReport1, TransitiveDemo, SoundnessDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
+
 ## Exit codes
 
 | Code | Meaning |
