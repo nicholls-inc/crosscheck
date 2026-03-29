@@ -2,14 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-mod body_analyzer;
-mod db;
-mod defaults;
-mod docstring_parser;
-mod edge_discovery;
-mod extractor;
-mod function_extractor;
-mod model_extractor;
+use crosscheck_contracts::{defaults, extractor};
 
 #[derive(Parser)]
 #[command(name = "crosscheck")]
@@ -71,7 +64,7 @@ fn main() -> Result<()> {
             lean_checker,
         } => {
             // Layer 1: extract contracts to SQLite
-            let db_path = extractor::extract(&app_path, overrides.as_deref(), &django_version)?;
+            let db_path = extractor::extract(&app_path, overrides.as_deref(), &django_version, None)?;
 
             // Layer 2+3: invoke Lean checker
             let lean_binary = lean_checker

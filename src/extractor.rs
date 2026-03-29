@@ -11,19 +11,33 @@ use crate::function_extractor;
 use crate::model_extractor;
 
 /// Run the full extraction pipeline on a Django app directory.
+///
+/// If `output_db` is `Some(path)`, the SQLite database is written there.
+/// If `None`, a default temp path is used.
 pub fn extract(
     app_path: &Path,
     overrides_path: Option<&Path>,
     django_version: &str,
+    output_db: Option<&Path>,
 ) -> Result<std::path::PathBuf> {
     if !app_path.exists() {
         anyhow::bail!("Application path does not exist: {}", app_path.display());
     }
 
-    // Create temp database
-    let db_dir = std::env::temp_dir().join("crosscheck");
-    std::fs::create_dir_all(&db_dir)?;
-    let db_path = db_dir.join("contracts.sqlite");
+    // Determine database path
+    let db_path = match output_db {
+        Some(path) => {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            path.to_path_buf()
+        }
+        None => {
+            let db_dir = std::env::temp_dir().join("crosscheck");
+            std::fs::create_dir_all(&db_dir)?;
+            db_dir.join("contracts.sqlite")
+        }
+    };
 
     // Remove existing database
     if db_path.exists() {

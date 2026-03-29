@@ -95,3 +95,67 @@ fn parse_clause(clause: &str, role: ContractRole) -> Option<DocstringContract> {
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_clause_range_min() {
+        let result = parse_clause("result >= 0", ContractRole::Precondition);
+        assert!(result.is_some());
+        let c = result.unwrap();
+        assert_eq!(c.constraint_type.as_str(), "range");
+        assert_eq!(c.param_value, Some(0));
+    }
+
+    #[test]
+    fn test_parse_clause_range_positive() {
+        let result = parse_clause("value >= 42", ContractRole::Precondition);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().param_value, Some(42));
+    }
+
+    #[test]
+    fn test_parse_clause_input_precision() {
+        let result = parse_clause("precision(offpeak) <= 10", ContractRole::Precondition);
+        assert!(result.is_some());
+        let c = result.unwrap();
+        assert_eq!(c.constraint_type.as_str(), "precision");
+        assert_eq!(c.param_value, Some(10));
+    }
+
+    /// nullable(result) must match exactly — no trailing whitespace.
+    #[test]
+    fn test_nullable_exact_match() {
+        let result = parse_clause("nullable(result)", ContractRole::Postcondition);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().constraint_type.as_str(), "nullability");
+    }
+
+    #[test]
+    fn test_nullable_with_trailing_space_no_match() {
+        // The implementation uses exact equality: clause == "nullable(result)"
+        // Trailing space should not match
+        let result = parse_clause("nullable(result) ", ContractRole::Postcondition);
+        // This will fall through to the >= check, which won't match either
+        // So it returns None — no false positive from the >= branch
+        assert!(result.is_none(), "trailing space should prevent nullable match");
+    }
+
+    #[test]
+    fn test_unrecognized_clause() {
+        let result = parse_clause("something else entirely", ContractRole::Precondition);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_dependent_expr_with_max() {
+        let result =
+            parse_clause("precision(result) <= max(input_a, 3)", ContractRole::Postcondition);
+        assert!(result.is_some());
+        let c = result.unwrap();
+        assert_eq!(c.dependent_expr.as_deref(), Some("max(input_a, 3)"));
+        assert!(c.param_value.is_none());
+    }
+}

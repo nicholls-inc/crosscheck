@@ -241,3 +241,140 @@ fn analyze_binop_precision(binop: &ast::ExprBinOp) -> Option<i64> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: parse a Python expression and return the first Expr from the module.
+    fn parse_expr(source: &str) -> Expr {
+        let parsed = ruff_python_parser::parse_unchecked(
+            source,
+            ruff_python_parser::Mode::Module.into(),
+        );
+        match parsed.into_syntax() {
+            ruff_python_ast::Mod::Module(module) => {
+                if let Stmt::Expr(expr_stmt) = &module.body[0] {
+                    (*expr_stmt.value).clone()
+                } else {
+                    panic!("expected expression statement");
+                }
+            }
+            _ => panic!("expected module"),
+        }
+    }
+
+    /// Helper: parse a function and run analyze_body on it.
+    fn analyze_function(source: &str) -> Vec<BodyContract> {
+        let parsed = ruff_python_parser::parse_unchecked(
+            source,
+            ruff_python_parser::Mode::Module.into(),
+        );
+        match parsed.into_syntax() {
+            ruff_python_ast::Mod::Module(module) => {
+                if let Stmt::FunctionDef(func) = &module.body[0] {
+                    analyze_body(&func.body)
+                } else {
+                    panic!("expected function def");
+                }
+            }
+            _ => panic!("expected module"),
+        }
+    }
+
+    // -- extract_decimal_precision tests --
+
+    #[test]
+    fn test_decimal_precision_standard() {
+        // Decimal('0.001') → 3 decimal places
+        let expr = parse_expr("Decimal('0.001')");
+        assert_eq!(extract_decimal_precision(&expr), Some(3));
+    }
+
+    #[test]
+    fn test_decimal_precision_six_places() {
+        let expr = parse_expr("Decimal('0.000001')");
+        assert_eq!(extract_decimal_precision(&expr), Some(6));
+    }
+
+    #[test]
+    fn test_decimal_precision_one_place() {
+        let expr = parse_expr("Decimal('0.1')");
+        assert_eq!(extract_decimal_precision(&expr), Some(1));
+    }
+
+    #[test]
+    fn test_decimal_precision_integer() {
+        let expr = parse_expr("Decimal('1')");
+        assert_eq!(extract_decimal_precision(&expr), Some(0));
+    }
+
+    /// Documents the known dead code issue: trim_end_matches('0') is neutralized by .max().
+    /// '0.0010' has 4 chars after the dot, and the function returns 4 (not 3).
+    /// In Python, Decimal('0.001') and Decimal('0.0010') quantize identically to 3dp,
+    /// so reporting 4 is technically over-counting. This test documents current behavior.
+    #[test]
+    fn test_decimal_precision_trailing_zeros_current_behavior() {
+        let expr = parse_expr("Decimal('0.0010')");
+        // Current behavior: returns 4 (counts all digits including trailing zero)
+        // Correct behavior would be 3 (trailing zeros don't affect quantize precision)
+        assert_eq!(extract_decimal_precision(&expr), Some(4));
+    }
+
+    // -- is_none_return tests --
+
+    #[test]
+    fn test_is_none_return_none_literal() {
+        let expr = parse_expr("None");
+        assert!(is_none_return(&Some(&expr)));
+    }
+
+    #[test]
+    fn test_is_none_return_bare() {
+        // bare return has no expression
+        assert!(is_none_return(&None));
+    }
+
+    #[test]
+    fn test_is_none_return_value() {
+        let expr = parse_expr("42");
+        assert!(!is_none_return(&Some(&expr)));
+    }
+
+    // -- collect_returns in nested control flow --
+
+    #[test]
+    fn test_returns_in_try_except() {
+        let contracts = analyze_function(
+            "def f(x):\n    try:\n        return round(x, 3)\n    except:\n        return round(x, 5)",
+        );
+        let precision = contracts
+            .iter()
+            .find(|c| c.constraint_type.as_str() == "precision");
+        assert!(precision.is_some(), "should find precision in try/except");
+        // Weakest branch: max(3, 5) = 5
+        assert_eq!(precision.unwrap().param_value, Some(5));
+    }
+
+    #[test]
+    fn test_returns_in_for_loop() {
+        let contracts = analyze_function(
+            "def f(items):\n    for x in items:\n        return round(x, 2)\n    return round(0, 4)",
+        );
+        let precision = contracts
+            .iter()
+            .find(|c| c.constraint_type.as_str() == "precision");
+        assert!(precision.is_some());
+        assert_eq!(precision.unwrap().param_value, Some(4));
+    }
+
+    #[test]
+    fn test_returns_in_while() {
+        let contracts =
+            analyze_function("def f(x):\n    while x > 0:\n        return round(x, 7)");
+        let precision = contracts
+            .iter()
+            .find(|c| c.constraint_type.as_str() == "precision");
+        assert_eq!(precision.unwrap().param_value, Some(7));
+    }
+}

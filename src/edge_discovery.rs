@@ -217,3 +217,99 @@ pub fn load_overrides(path: &std::path::Path) -> anyhow::Result<Vec<DiscoveredEd
         })
         .collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: parse a Python expression and return it.
+    fn parse_expr(source: &str) -> Expr {
+        let parsed = ruff_python_parser::parse_unchecked(
+            source,
+            ruff_python_parser::Mode::Module.into(),
+        );
+        match parsed.into_syntax() {
+            ruff_python_ast::Mod::Module(module) => {
+                if let Stmt::Expr(expr_stmt) = &module.body[0] {
+                    (*expr_stmt.value).clone()
+                } else {
+                    panic!("expected expression statement");
+                }
+            }
+            _ => panic!("expected module"),
+        }
+    }
+
+    // -- is_objects_create tests --
+
+    #[test]
+    fn test_objects_create_match() {
+        let expr = parse_expr("Model.objects.create(a=1)");
+        if let Expr::Call(call) = &expr {
+            assert_eq!(is_objects_create(&call.func), Some("Model".to_string()));
+        } else {
+            panic!("expected call");
+        }
+    }
+
+    #[test]
+    fn test_objects_filter_no_match() {
+        let expr = parse_expr("Model.objects.filter(a=1)");
+        if let Expr::Call(call) = &expr {
+            assert_eq!(is_objects_create(&call.func), None);
+        } else {
+            panic!("expected call");
+        }
+    }
+
+    #[test]
+    fn test_plain_create_no_match() {
+        // obj.create() without .objects. should not match
+        let expr = parse_expr("obj.create(a=1)");
+        if let Expr::Call(call) = &expr {
+            assert_eq!(is_objects_create(&call.func), None);
+        } else {
+            panic!("expected call");
+        }
+    }
+
+    // -- is_model_constructor tests --
+
+    #[test]
+    fn test_uppercase_is_model() {
+        let expr = parse_expr("Model");
+        assert_eq!(is_model_constructor(&expr), Some("Model".to_string()));
+    }
+
+    #[test]
+    fn test_lowercase_not_model() {
+        let expr = parse_expr("helper");
+        assert_eq!(is_model_constructor(&expr), None);
+    }
+
+    #[test]
+    fn test_underscore_not_model() {
+        let expr = parse_expr("_Foo");
+        assert_eq!(is_model_constructor(&expr), None);
+    }
+
+    // -- is_function_call tests --
+
+    #[test]
+    fn test_lowercase_is_function() {
+        let expr = parse_expr("helper");
+        assert_eq!(is_function_call(&expr), Some("helper".to_string()));
+    }
+
+    #[test]
+    fn test_underscore_prefix_is_function() {
+        let expr = parse_expr("_private");
+        assert_eq!(is_function_call(&expr), Some("_private".to_string()));
+    }
+
+    #[test]
+    fn test_uppercase_not_function() {
+        let expr = parse_expr("Model");
+        assert_eq!(is_function_call(&expr), None);
+    }
+}
