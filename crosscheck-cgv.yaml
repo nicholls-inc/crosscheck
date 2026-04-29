@@ -1,0 +1,45 @@
+# crosscheck-cgv.yaml
+# Contract graph for the 2-hop crosscheck plugin integration chain.
+# Verified by: cgv verify --graph crosscheck-cgv.yaml
+#
+# Chain: MCP client → dafnyVerify → runDafny
+#
+# Compatibility invariant:
+#   edge(mcp_client → dafny_verify).outputType == edge(dafny_verify → run_dafny).inputType
+#   Both are "VerifyInput" — the struct passed from the MCP handler into the core verify function.
+#
+# Source contracts derived from crosscheck MCP server source:
+#   mcp-server/src/tools/verify.ts (dafnyVerify function signature)
+#   mcp-server/src/lib/dafny.ts    (runDafny function signature)
+
+nodes:
+  - id: 0
+    name: mcp_client
+  - id: 1
+    name: dafny_verify
+  - id: 2
+    name: run_dafny
+
+edges:
+  # Hop 0: MCP tool call enters dafnyVerify
+  # inputType  = MCPToolCall      (the raw tool invocation from the MCP client)
+  # outputType = VerifyInput      (the typed argument forwarded to runDafny)
+  - from: 0
+    to: 1
+    contract:
+      inputType: MCPToolCall
+      outputType: VerifyInput
+
+  # Hop 1: dafnyVerify passes VerifyInput into runDafny
+  # inputType  = VerifyInput      (must match hop 0 outputType — this is the compatibility check)
+  # outputType = DockerResult     (raw result from the Docker subprocess)
+  - from: 1
+    to: 2
+    contract:
+      inputType: VerifyInput
+      outputType: DockerResult
+
+# Paths to verify end-to-end.
+# Each path is a sequence of node IDs tracing the data flow.
+paths:
+  - [0, 1, 2]

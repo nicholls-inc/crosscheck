@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-and-verify:
+    name: Test and contract verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build CGV binary
+        run: go build -o cgv ./cmd/cgv
+
+      - name: Verify crosscheck contract graph
+        run: go run ./cmd/cgv verify --graph crosscheck-cgv.yaml
+
+  dafny-syntax:
+    name: Dafny spec syntax check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dafny
+        run: |
+          wget -q https://github.com/dafny-lang/dafny/releases/download/v4.6.0/dafny-4.6.0-x64-ubuntu-20.04.zip
+          unzip -q dafny-4.6.0-x64-ubuntu-20.04.zip -d dafny-bin
+          echo "$GITHUB_WORKSPACE/dafny-bin" >> $GITHUB_PATH
+
+      - name: Verify CGVCore.dfy (syntax + proof)
+        run: dafny verify specs/CGVCore.dfy

@@ -1,0 +1,4 @@
+gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c h1:Hei/4ADfdWqiVTY2NwFe/utAStrILt+Go7/V65ruEDLA=
+gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:Em2nu1fOnoaMnh3sfZfQt/HAvOzN+9Tvl0+zcr2Qz7/k=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJE68+0=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
