@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "price_for -> Invoice.total",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ]
+}

@@ -40,20 +40,35 @@ try:
 except json.JSONDecodeError:
     print(f"FAIL {name}: checker output is not JSON")
     sys.exit(1)
-key = lambda e: (e["path"], e["source_guarantee"], e["target_requirement"])
+# An expected error may also name the node whose requirement failed ("target").
+key = lambda e: (e["path"], e["source_guarantee"], e["target_requirement"], e.get("target"))
+errors = [r for r in actual["results"] if r["severity"] == "error"]
+targets_wanted = any("target" in e for e in expected["errors"])
 want = sorted(key(e) for e in expected["errors"])
 got = sorted(
-    (" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"])
-    for r in actual["results"] if r["severity"] == "error"
+    (" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"],
+     r["target"]["name"] if any(" -> ".join(r["path"]) == e["path"] and "target" in e
+                                for e in expected["errors"]) else None)
+    for r in errors
 )
-warnings = sum(1 for r in actual["results"] if r["severity"] != "error")
-ok = want == got and code == expected["exit_code"]
+warning_results = [r for r in actual["results"] if r["severity"] != "error"]
+warnings = len(warning_results)
+# Required warnings: each must match some warning's path and contain the text.
+missing_warnings = [
+    w for w in expected.get("warnings", [])
+    if not any(" -> ".join(r["path"]) == w["path"] and w["contains"] in r["suggestion"]
+               for r in warning_results)
+]
+got = [g for g in got]
+ok = want == got and code == expected["exit_code"] and not missing_warnings
 print(f"{'ok  ' if ok else 'FAIL'} {name}: {len(got)} errors, {warnings} warnings, exit {code}")
 if not ok:
     for e in sorted(set(want) - set(got)):
-        print("  missing:   ", " | ".join(e))
+        print("  missing:   ", " | ".join(str(x) for x in e if x is not None))
     for e in sorted(set(got) - set(want)):
-        print("  unexpected:", " | ".join(e))
+        print("  unexpected:", " | ".join(str(x) for x in e if x is not None))
+    for w in missing_warnings:
+        print("  missing warning:", w["path"], "|", w["contains"])
     if code != expected["exit_code"]:
         print(f"  exit code {code}, expected {expected['exit_code']}")
 sys.exit(0 if ok else 1)

@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "adjust -> Stock.qty",
+      "source_guarantee": "range ≥ -50",
+      "target_requirement": "range ≥ 0"
+    }
+  ]
+}
