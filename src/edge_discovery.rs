@@ -488,10 +488,6 @@ impl<'a> Visitor<'a> for Children<'a> {
     }
 }
 
-fn target_names(expr: &Expr) -> Vec<String> {
-    flow::bound_names_in_expr(expr).into_iter().collect()
-}
-
 impl<'a, 's> EdgeWalker<'a, 's> {
     fn line_at(&self, offset: u32) -> u32 {
         self.lines.line(offset)
@@ -566,7 +562,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             Expr::ListComp(_) | Expr::SetComp(_) | Expr::Generator(_) | Expr::DictComp(_) => {
                 // Comprehension variables shadow the function's names.
-                let c = ctx.shadow(target_names(expr));
+                let c = self.scope.comprehension_ctx(expr, ctx);
                 let mut children = Children(Vec::new());
                 visitor::walk_expr(&mut children, expr);
                 for child in children.0 {

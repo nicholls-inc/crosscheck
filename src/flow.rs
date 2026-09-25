@@ -655,6 +655,22 @@ pub fn bound_names_in_expr(expr: &Expr) -> HashSet<String> {
     c.names
 }
 
+/// Every name read in `expr` (at any depth, lambdas and comprehensions included).
+pub fn names_in_expr(expr: &Expr) -> HashSet<String> {
+    struct N(HashSet<String>);
+    impl<'a> Visitor<'a> for N {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Name(n) = expr {
+                self.0.insert(n.id.to_string());
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut n = N(HashSet::new());
+    n.visit_expr(expr);
+    n.0
+}
+
 struct Binders {
     names: HashSet<String>,
     /// Names bound by `import` statements.

@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "label -> Span.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Span.name"
+    },
+    {
+      "path": "default_attributes -> Span.attributes",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Span.attributes"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "lookup_attributes -> Span.attributes",
+      "contains": "nullability"
+    }
+  ]
+}

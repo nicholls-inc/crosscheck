@@ -117,10 +117,21 @@ impl Project {
             .map(|m| (m.module.clone(), m.stmts.as_slice()))
             .collect();
         let project_aliases = resolve::project_aliases(&module_stmts, &index);
+        let mut mutated = std::collections::HashSet::new();
         for m in &modules {
             index
                 .stored_attributes
                 .extend(resolve::stored_attribute_names(&m.stmts));
+            mutated.extend(resolve::mutated_container_names(&m.stmts));
+        }
+        for m in &modules {
+            for (name, value) in resolve::module_const_dicts(&m.stmts) {
+                let defined = index.modules[&m.module].defs.contains_key(&name)
+                    || index.modules[&m.module].imports.contains_key(&name);
+                if !mutated.contains(&name) && !defined {
+                    index.const_dicts.insert(resolve::qualify(&m.module, &name), value);
+                }
+            }
         }
         for m in &modules {
             for name in resolve::module_patterns(&m.stmts) {
@@ -139,6 +150,7 @@ impl Project {
                 function_extractor::module_function(&m.stmts, &m.relative_path, &m.module);
             let no_aliases = HashMap::new();
             let aliases = project_aliases.get(&m.module).unwrap_or(&no_aliases);
+            let external_types = resolve::external_type_names(&index, &m.module, aliases);
             for mut func in
                 function_extractor::extract_functions(&m.stmts, &m.relative_path, &m.module)
                     .into_iter()
@@ -147,6 +159,7 @@ impl Project {
                 func.source_line = m.lines.line(func.source_line);
                 func.return_line = m.lines.line(func.return_line);
                 function_extractor::apply_aliases(&mut func, aliases);
+                function_extractor::apply_external_types(&mut func, &external_types);
                 match index.function_ids.get(&func.qualified_name) {
                     Some(&i) => index.functions[i] = func,
                     None => {
@@ -174,12 +187,14 @@ impl Project {
                 }
             }
 
-            candidates.extend(dataclass_extractor::collect_classes_with(
-                &m.stmts,
-                &m.source,
-                &m.relative_path,
-                aliases,
-            ));
+            candidates.extend(
+                dataclass_extractor::collect_classes_with(&m.stmts, &m.source, &m.relative_path, aliases)
+                    .into_iter()
+                    .map(|mut c| {
+                        c.external_types = external_types.clone();
+                        c
+                    }),
+            );
         }
 
         for func in &index.functions {
@@ -225,7 +240,18 @@ impl Project {
                     c.field_facts = dc
                         .fields
                         .iter()
-                        .map(|f| (f.field_name.clone(), dataclass_extractor::requirement_facts(dc, f)))
+                        .map(|f| {
+                            let mut facts = dataclass_extractor::requirement_facts(dc, f);
+                            // A lax pydantic numeric field accepts other numbers
+                            // but stores the declared type (it converts).
+                            if facts.type_name.is_none() && dc.lax_numeric(f) {
+                                facts.type_name = f
+                                    .type_name
+                                    .clone()
+                                    .filter(|t| matches!(t.as_str(), "Decimal" | "int" | "float"));
+                            }
+                            (f.field_name.clone(), facts)
+                        })
                         .collect();
                 }
             }

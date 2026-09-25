@@ -222,6 +222,9 @@ impl ValueFacts {
 pub struct Ctx {
     pub narrowed: Narrowed,
     pub shadowed: HashSet<String>,
+    /// Comprehension variables (shadowed) known to be elements of a
+    /// collection of a project class: name -> qualified class name.
+    pub elements: HashMap<String, String>,
 }
 
 impl Ctx {
@@ -229,6 +232,7 @@ impl Ctx {
         Ctx {
             narrowed: narrowed.clone(),
             shadowed: HashSet::new(),
+            elements: HashMap::new(),
         }
     }
 
@@ -243,6 +247,7 @@ impl Ctx {
         let mut c = self.clone();
         for n in names {
             c.narrowed.remove(&n);
+            c.elements.remove(&n);
             c.shadowed.insert(n);
         }
         c
@@ -552,11 +557,10 @@ impl<'a> Scope<'a> {
                         ValueFacts::default()
                     };
                 }
-                if class.stored_attrs.contains(name) {
-                    return ValueFacts::default();
-                }
-                return match self.index.class_constant(&class.qualified, name) {
-                    Some(q) => self.constant_facts(&q),
+                // Every value the class constant has in `class` or in a
+                // project subclass overriding it: their join.
+                return match self.self_constant_values(class, name) {
+                    Some(values) => ValueFacts::join_all(values).unwrap_or_default(),
                     None => ValueFacts::default(),
                 };
             }
@@ -566,6 +570,11 @@ impl<'a> Scope<'a> {
             if let Some((class, true)) = self.receiver_class(&attr.value, ctx) {
                 let name = attr.attr.as_str();
                 if class.fields.iter().any(|f| f == name) {
+                    // A comprehension variable: an element of the collection,
+                    // not the function's own `obj`.
+                    if ctx.elements.contains_key(n.id.as_str()) {
+                        return declared_field_facts(class, name);
+                    }
                     return self.field_read_facts(n.id.as_str(), class, name, ctx);
                 }
             }
@@ -578,7 +587,11 @@ impl<'a> Scope<'a> {
             let Some(class) = self.class else {
                 return ValueFacts::default();
             };
-            if class.fields.contains(&parts[1]) || class.stored_attrs.contains(&parts[1]) {
+            // A subclass may bind its own `Status` (or assign it on instances).
+            if class.fields.contains(&parts[1])
+                || class.stored_attrs.contains(&parts[1])
+                || self.index.overridden_in_subclass(&class.qualified, &parts[1])
+            {
                 return ValueFacts::default();
             }
             let sym = Symbol::Class(class.qualified.clone());
@@ -596,21 +609,39 @@ impl<'a> Scope<'a> {
         }
     }
 
+    /// The facts of each value class constant `name` may have when read as
+    /// `self.name` / `cls.name` in a method of `class` (the receiver may be
+    /// an instance of a project subclass that overrides it): at most
+    /// `MAX_ALTERNATIVES`, else unknown (`None`).
+    fn self_constant_values(&self, class: &ClassInfo, name: &str) -> Option<Vec<ValueFacts>> {
+        let values = self
+            .index
+            .class_constant_values(&class.qualified, name, MAX_ALTERNATIVES)?;
+        Some(values.iter().map(|q| self.constant_facts(q)).collect())
+    }
+
+    /// `self.name` / `cls.name` for a class constant with several values
+    /// (overridden in project subclasses): the facts of each.
+    fn self_constant_alternatives(&self, expr: &Expr, ctx: &Ctx) -> Option<Vec<ValueFacts>> {
+        let Expr::Attribute(attr) = expr else { return None };
+        let Expr::Name(n) = attr.value.as_ref() else { return None };
+        if !self.is_self(n.id.as_str()) || ctx.shadowed.contains(n.id.as_str()) {
+            return None;
+        }
+        let class = self.class?;
+        let name = attr.attr.as_str();
+        if class.fields.iter().any(|f| f == name) {
+            return None;
+        }
+        self.self_constant_values(class, name).filter(|v| v.len() > 1)
+    }
+
     /// A read of field `field` of `obj` (an instance of `class`): the values
     /// assigned to `obj.f` in this function that reach here, or, when the
     /// function does not assign it, the field's declared nullability.
     fn field_read_facts(&self, obj: &str, class: &ClassInfo, field: &str, ctx: &Ctx) -> ValueFacts {
         let name = format!("{obj}.{field}");
-        // The field's declared contracts (every write to it is checked
-        // against them), else its declared nullability.
-        let declared = || match class.field_facts.get(field) {
-            Some(f) => f.clone(),
-            None => match class.field_nullable.get(field) {
-                Some(false) => ValueFacts::non_null(),
-                Some(true) => ValueFacts::nullable(),
-                None => ValueFacts::default(),
-            },
-        };
+        let declared = || declared_field_facts(class, field);
         let facts = if self.flow.opaque.contains(&name) {
             ValueFacts::default()
         } else if let Some(assigns) = self.flow.attr_assignments.get(&name) {
@@ -1164,6 +1195,18 @@ impl<'a> Scope<'a> {
                 .iter()
                 .any(|k| k.arg.as_deref() == Some(name) && matches!(k.value, Expr::NoneLiteral(_)))
         };
+        // `.get(k, default)` on a module-level dict of non-None literals: one
+        // of its values or the default (`None` when not given).
+        if method == "get" && matches!(args.len(), 1 | 2) && call.arguments.keywords.is_empty() {
+            let dict = dotted_parts(&attr.value)
+                .filter(|p| !self.is_local(&p[0], ctx))
+                .and_then(|p| self.index.const_dict(self.module, &p));
+            if let Some(Expr::Dict(d)) = dict {
+                let values = d.items.iter().map(|item| self.facts(&item.value, &Ctx::default()));
+                let default = args.get(1).map_or_else(ValueFacts::none_value, |d| self.facts(d, ctx));
+                return ValueFacts::join_all(values.chain(std::iter::once(default))).unwrap_or_default();
+            }
+        }
         match method {
             "quantize" => {
                 let precision = args
@@ -1247,9 +1290,19 @@ impl<'a> Scope<'a> {
             Expr::Attribute(a) => {
                 let attr = a.attr.as_str();
                 match a.value.as_ref() {
-                    Expr::Name(n) if self.is_self(n.id.as_str()) => self
-                        .class
-                        .is_some_and(|c| c.patterns.contains(attr) && !c.stored_attrs.contains(attr)),
+                    // (Every subclass overriding it binds a pattern too.)
+                    Expr::Name(n) if self.is_self(n.id.as_str()) => self.class.is_some_and(|c| {
+                        c.patterns.contains(attr)
+                            && !c.stored_attrs.contains(attr)
+                            && self.index.all_subclasses(&c.qualified).is_some_and(|subs| {
+                                subs.iter().all(|s| {
+                                    self.index.class(s).is_none_or(|sc| {
+                                        !sc.stored_attrs.contains(attr)
+                                            && (!sc.body_names.contains(attr) || sc.patterns.contains(attr))
+                                    })
+                                })
+                            })
+                    }),
                     other => match dotted_parts(other)
                         .filter(|p| !self.is_local(&p[0], ctx))
                         .and_then(|p| self.index.resolve_dotted(self.module, &p))
@@ -1269,7 +1322,8 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// `sum(xs)`: never None; for a generator, list or tuple display of
+    /// `sum(xs)`: never None; for a generator, list or set comprehension, or
+    /// a list or tuple display of
     /// Decimal elements (or of ints), the elements' precision. A start value
     /// joins in.
     fn sum_facts(&self, call: &ast::ExprCall, ctx: &Ctx) -> ValueFacts {
@@ -1277,16 +1331,9 @@ impl<'a> Scope<'a> {
         let mut out = ValueFacts::non_null();
         let Some(first) = args.first() else { return out };
         let elements = match first {
-            Expr::Generator(g) => {
-                let names: Vec<String> = flow::bound_names_in_expr(first).into_iter().collect();
-                let c = ctx.shadow(names);
-                Some(self.facts(&g.elt, &c))
-            }
-            Expr::ListComp(g) => {
-                let names: Vec<String> = flow::bound_names_in_expr(first).into_iter().collect();
-                let c = ctx.shadow(names);
-                Some(self.facts(&g.elt, &c))
-            }
+            Expr::Generator(g) => Some(self.facts(&g.elt, &self.comprehension_ctx(first, ctx))),
+            Expr::ListComp(g) => Some(self.facts(&g.elt, &self.comprehension_ctx(first, ctx))),
+            Expr::SetComp(g) => Some(self.facts(&g.elt, &self.comprehension_ctx(first, ctx))),
             Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })
                 if !elts.is_empty() && !elts.iter().any(|e| matches!(e, Expr::Starred(_))) =>
             {
@@ -1357,8 +1404,7 @@ impl<'a> Scope<'a> {
                 Expr::Generator(ast::ExprGenerator { elt, .. })
                 | Expr::ListComp(ast::ExprListComp { elt, .. })
                 | Expr::SetComp(ast::ExprSetComp { elt, .. }) => {
-                    let names: Vec<String> = flow::bound_names_in_expr(only).into_iter().collect();
-                    Some(self.facts(elt, &ctx.shadow(names)))
+                    Some(self.facts(elt, &self.comprehension_ctx(only, ctx)))
                 }
                 Expr::List(ast::ExprList { elts, .. })
                 | Expr::Tuple(ast::ExprTuple { elts, .. })
@@ -1547,6 +1593,9 @@ impl<'a> Scope<'a> {
         }
         let Expr::Name(n) = expr else { return None };
         let name = n.id.as_str();
+        if let Some(q) = ctx.elements.get(name) {
+            return self.index.class(q).map(|c| (c, true));
+        }
         if ctx.shadowed.contains(name) {
             return None;
         }
@@ -1618,10 +1667,48 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// `list[C]`, `QuerySet[C]`, `Iterable[C]`, ... (also `Optional[...]`): `C`.
+    /// Where the element expression of comprehension `comp` is evaluated:
+    /// its variables shadow the function's names; a variable bound by
+    /// `for x in xs` over a collection of a project class (see
+    /// `element_class`: `xs: list[Line]`, a queryset) is an element of it.
+    pub fn comprehension_ctx(&self, comp: &Expr, ctx: &Ctx) -> Ctx {
+        let names = flow::bound_names_in_expr(comp);
+        let mut c = ctx.shadow(names.iter().cloned());
+        let generators = match comp {
+            Expr::ListComp(g) => &g.generators[..],
+            Expr::SetComp(g) => &g.generators[..],
+            Expr::Generator(g) => &g.generators[..],
+            Expr::DictComp(g) => &g.generators[..],
+            _ => return c,
+        };
+        for g in generators {
+            let Expr::Name(target) = &g.target else { continue };
+            // An iterable naming a comprehension variable is not the function's.
+            let mentions_bound = flow::names_in_expr(&g.iter).iter().any(|n| names.contains(n));
+            if mentions_bound {
+                continue;
+            }
+            if let Some(class) = self.element_class(&g.iter, ctx) {
+                c.elements.insert(target.id.to_string(), class.qualified.clone());
+            }
+        }
+        c
+    }
+
+    /// `list[C]`, `QuerySet[C]`, `Iterable[C]`, `tuple[C, ...]` ... (also
+    /// `Optional[...]`): `C`.
     fn collection_class(&self, annotation: &Expr) -> Option<&'a ClassInfo> {
         let Expr::Subscript(s) = strip_optional(annotation) else { return None };
         let head = dotted_parts(&s.value)?;
+        if matches!(head.last().map(String::as_str), Some("tuple" | "Tuple")) {
+            return match s.slice.as_ref() {
+                Expr::Tuple(t) => match &t.elts[..] {
+                    [elem, Expr::EllipsisLiteral(_)] => self.annotation_class(self.module, elem),
+                    _ => None,
+                },
+                _ => None,
+            };
+        }
         let collection = matches!(
             head.last().map(String::as_str),
             Some(
@@ -1885,6 +1972,13 @@ impl<'a> Scope<'a> {
                         }
                         Def::Augmented => out.push(Alt::Facts(ValueFacts::non_null())),
                     }
+                }
+                true
+            }
+            // `self.CODE` overridden in project subclasses: one alternative per value.
+            Expr::Attribute(_) if self.self_constant_alternatives(expr, ctx).is_some() => {
+                for f in self.self_constant_alternatives(expr, ctx).unwrap_or_default() {
+                    out.push(Alt::Facts(if non_none { f.non_none_part() } else { f }));
                 }
                 true
             }
@@ -2172,6 +2266,20 @@ impl<'a> Scope<'a> {
         facts.type_name = annotated.filter(|t| VALUE_TYPES.contains(&t.as_str()));
         facts.weak_type = false;
         facts
+    }
+}
+
+/// What a read of field `field` of an instance of `class` gives when nothing
+/// else is known: the field's declared contracts (every write to it is
+/// checked against them), else its declared nullability.
+fn declared_field_facts(class: &ClassInfo, field: &str) -> ValueFacts {
+    match class.field_facts.get(field) {
+        Some(f) => f.clone(),
+        None => match class.field_nullable.get(field) {
+            Some(false) => ValueFacts::non_null(),
+            Some(true) => ValueFacts::nullable(),
+            None => ValueFacts::default(),
+        },
     }
 }
 
@@ -2966,6 +3074,99 @@ mod tests {
         assert_eq!(facts_of(&files, "code.h").nullable, Some(false));
         assert_eq!(facts_of(&files, "code.i").nullable, Some(true));
         assert_eq!(facts_of(&files, "code.j").max_length, Some(3));
+    }
+
+    /// Round 7: class constants read through `self` / `cls` take every
+    /// override in project subclasses.
+    #[test]
+    fn test_round7_class_constant_overrides() {
+        let base = "class B:\n    C = 'ab'\n    def f(self):\n        self.C\n";
+        let f = |subs: &str| facts_of(&[("code.py", &format!("{base}{subs}"))], "code.B.f");
+        assert_eq!(f("").max_length, Some(2));
+        assert_eq!(f("class S(B):\n    C = 'abcde'\nclass T(S):\n    pass\n").max_length, Some(5));
+        assert_eq!(
+            f("class S(B):\n    C = 'abcde'\n").choices,
+            Some(vec!["ab".to_string(), "abcde".to_string()])
+        );
+        // A computed override, an instance store in a subclass, or more than
+        // four values: unknown.
+        assert_eq!(f("class S(B):\n    C = str(1)\n").max_length, None);
+        assert_eq!(f("class S(B):\n    def g(self):\n        self.C = 'x'\n").max_length, None);
+        let five: String = (0..5).map(|i| format!("class S{i}(B):\n    C = '{}'\n", "x".repeat(i + 3))).collect();
+        assert_eq!(f(&five).max_length, None);
+        // A method of the subclass named like the constant: unknown.
+        assert_eq!(f("class S(B):\n    def C(self):\n        return 1\n").max_length, None);
+    }
+
+    /// Round 7: stubs and abstract methods are no dispatch targets; module
+    /// constant dicts; annotations naming external types.
+    #[test]
+    fn test_round7_stubs_dicts_external() {
+        let p = project(&[(
+            "code.py",
+            "from abc import ABC, abstractmethod\nfrom typing import Protocol\n\
+             class A(ABC):\n    @abstractmethod\n    def m(self) -> int: ...\n\
+             class B(A):\n    def m(self) -> int:\n        return 1\n\
+             class C:\n    def m(self) -> int:\n        raise NotImplementedError()\n    def n(self) -> None:\n        pass\n\
+             class D(C):\n    def m(self) -> int:\n        return 2\n    def n(self) -> None:\n        print(1)\n\
+             class P(Protocol):\n    def m(self) -> int: ...\n\
+             class Q(P):\n    def m(self) -> int:\n        return 3\n",
+        )]);
+        assert_eq!(p.index.dispatch_targets("code.A", "m"), Some(vec!["code.B.m".to_string()]));
+        assert_eq!(p.index.dispatch_targets("code.C", "m"), Some(vec!["code.D.m".to_string()]));
+        // `pass` under `-> None` is a real no-op, kept.
+        assert_eq!(p.index.dispatch_targets("code.C", "n").map(|t| t.len()), Some(2));
+        // A Protocol receiver keeps its declaration (structural implementations).
+        assert_eq!(p.index.dispatch_targets("code.P", "m").map(|t| t.len()), Some(2));
+        assert_eq!(p.index.dispatch_targets("code.Q", "m"), Some(vec!["code.Q.m".to_string()]));
+
+        let dict = "from decimal import Decimal\nR = {'a': Decimal('1.5'), 'b': Decimal('2.25')}\nM = {'a': 1}\n";
+        let g = |body: &str| facts_of(&[("code.py", &format!("{dict}{body}"))], "code.f");
+        let f = g("def f(k):\n    R.get(k, Decimal('1'))\n");
+        assert_eq!((f.nullable, f.precision), (Some(false), Some(Dep::Lit(2))));
+        assert_eq!(g("def f(k):\n    R.get(k)\n").nullable, Some(true));
+        assert_eq!(g("def f(k):\n    R.get(k, None)\n").nullable, Some(true));
+        // Mutated somewhere: not a constant.
+        assert_eq!(g("def f(k):\n    M.get(k, 0)\ndef h():\n    M['b'] = None\n").nullable, None);
+        // A local shadowing the name.
+        assert_eq!(g("def f(k, R):\n    R.get(k, 1)\n").nullable, None);
+
+        let p = project(&[(
+            "code.py",
+            "from typing import Optional\nfrom ext.types import Attributes\nimport ext.mod as em\nfrom decimal import Decimal\n\
+             def f(a: Attributes, b: em.Thing, c: Decimal, d: Optional[Attributes], e: 'Attributes', g: Attributes | int) -> Attributes:\n    return a\n\
+             def h() -> Decimal:\n    return Decimal(1)\n",
+        )]);
+        let f = p.index.function("code.f").unwrap();
+        let nullable: Vec<Option<bool>> = f.params.iter().map(|p| p.nullable).collect();
+        assert_eq!(nullable, vec![None, None, Some(false), Some(true), None, None]);
+        assert_eq!(f.return_nullable, None);
+        assert_eq!(p.index.function("code.h").unwrap().return_nullable, Some(false));
+    }
+
+    /// Round 7: elements of collection-annotated parameters in comprehensions.
+    #[test]
+    fn test_round7_element_classes() {
+        let m = "from decimal import Decimal\nfrom typing import Sequence\nfrom pydantic import BaseModel, Field\n\
+                 class Line(BaseModel):\n    net: Decimal = Field(decimal_places=2)\n";
+        let src = |body: &str| format!("{m}{body}");
+        let f = |body: &str| facts_of(&[("code.py", &src(body))], "code.f");
+        let p = |body: &str| f(body).precision.and_then(|d| d.as_static());
+        assert_eq!(p("def f(lines: list[Line]):\n    sum(ln.net for ln in lines)\n"), Some(2));
+        assert_eq!(
+            p("def f(lines: Sequence[Line]):\n    sum((ln.net for ln in lines), Decimal('0.00'))\n"),
+            Some(2)
+        );
+        assert_eq!(p("def f(lines: tuple[Line, ...]):\n    max([ln.net for ln in lines])\n"), Some(2));
+        assert_eq!(p("def f(lines: set[Line]):\n    sum(ln.net * 2 for ln in lines)\n"), Some(2));
+        assert_eq!(p("def f(lines: list[Line]):\n    sum(ln.net * Decimal('0.1') for ln in lines)\n"), Some(3));
+        // A comprehension variable shadows the function's own local.
+        assert_eq!(
+            p("def f(lines: list[Line], ln: Line):\n    ln.net = Decimal('0.001')\n    sum(ln.net for ln in lines)\n"),
+            Some(2)
+        );
+        // Unknown collections give nothing.
+        assert_eq!(p("def f(lines):\n    sum(ln.net for ln in lines)\n"), None);
     }
 
     /// Round 6 value facts: exact float places, interval arithmetic, `max`

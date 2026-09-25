@@ -161,10 +161,11 @@ fn test_limits_dict_get() {
     let edges = query_edges(&conn);
     let e = the_edge(&edges, "price_for", "Invoice.total", "writes_to", None);
     assert!(!e.source_override);
-    // `PRICES.get(sku)` is a None producer; price_for has no return annotation.
+    // `PRICES.get(sku)` is a None producer (or one of the constant dict's
+    // values); price_for has no return annotation.
     assert_eq!(
         node_rows(&conn, "price_for", "postcondition"),
-        ["nullability=1"]
+        ["nullability=1", "precision=2", "range=1..1", "type=Decimal"]
     );
     assert!(
         node_rows(&conn, "Invoice.total", "precondition").contains(&"nullability=0".to_string())
@@ -374,10 +375,13 @@ fn test_limits_interprocedural_none() {
     // p = price(sku); Invoice(total=p)
     assert!(!the_edge(&edges, "price", "Invoice.total", "writes_to", None).source_override);
     // find returns PRICES.get(...); price returns find(...): nullable by the fixpoint.
-    assert_eq!(node_rows(&conn, "find", "postcondition"), ["nullability=1"]);
+    assert_eq!(
+        node_rows(&conn, "find", "postcondition"),
+        ["nullability=1", "precision=2", "range=1..1", "type=Decimal"]
+    );
     assert_eq!(
         node_rows(&conn, "price", "postcondition"),
-        ["nullability=1"]
+        ["nullability=1", "precision=2", "range=1..1", "type=Decimal"]
     );
     assert_eq!(
         override_rows(&conn, &edges, "make", "price", "flows_to", Some("sku")),

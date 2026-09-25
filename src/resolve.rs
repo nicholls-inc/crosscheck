@@ -311,6 +311,94 @@ pub fn project_aliases(
     out
 }
 
+/// Top-level packages whose exported types are what their names say (not
+/// aliases that include `None`): the standard library, `typing_extensions`,
+/// the frameworks whose classes the extractor models, and widely used
+/// frameworks whose annotated names are classes (`sqlalchemy.orm.Session`,
+/// `fastapi.Request`, ...). A name imported
+/// from any other package outside the project may be an alias of an
+/// `Optional[...]` type (`opentelemetry.util.types.Attributes`).
+const KNOWN_TYPE_PACKAGES: &[&str] = &[
+    "abc", "argparse", "array", "ast", "asyncio", "base64", "builtins", "calendar", "collections",
+    "concurrent", "configparser", "contextlib", "contextvars", "copy", "csv", "ctypes", "dataclasses",
+    "datetime", "decimal", "email", "enum", "fractions", "functools", "hashlib", "hmac", "html",
+    "http", "importlib", "inspect", "io", "ipaddress", "itertools", "json", "logging", "math",
+    "numbers", "operator", "os", "pathlib", "pickle", "queue", "random", "re", "secrets",
+    "socket", "sqlite3", "ssl", "statistics", "string", "struct", "subprocess", "sys", "tempfile",
+    "threading", "time", "tomllib", "traceback", "types", "typing", "typing_extensions", "unittest",
+    "urllib", "uuid", "warnings", "weakref", "xml", "zipfile", "zoneinfo",
+    "django", "pydantic", "pydantic_core", "attr", "attrs", "sqlmodel",
+    "sqlalchemy", "fastapi", "starlette", "rest_framework", "graphene", "celery", "requests", "httpx",
+    "flask", "werkzeug", "marshmallow",
+];
+
+/// Local names of `module` imported from a package outside the project
+/// that is not in `KNOWN_TYPE_PACKAGES` (and not a project annotation
+/// alias): as annotations, they say nothing about `None`.
+pub fn external_type_names(
+    index: &ProjectIndex,
+    module: &str,
+    aliases: &HashMap<String, Expr>,
+) -> HashSet<String> {
+    let Some(info) = index.modules.get(module) else { return HashSet::new() };
+    let known_package = |path: &str| {
+        let root = path.split('.').next().unwrap_or(path);
+        KNOWN_TYPE_PACKAGES.contains(&root)
+    };
+    info.imports
+        .iter()
+        .filter(|(local, _)| !aliases.contains_key(local.as_str()))
+        .filter(|(_, imp)| match imp {
+            Import::Module(path) => index.find_module(path, module).is_none() && !known_package(path),
+            Import::Symbol { module: m, name } => {
+                // A relative import stays in the project.
+                !m.is_empty()
+                    && index.find_module(m, module).is_none()
+                    && index.find_module(&qualify(m, name), module).is_none()
+                    && !known_package(m)
+            }
+        })
+        .map(|(local, _)| local.clone())
+        .collect()
+}
+
+/// Whether the type an annotation states (its members, for a union; the
+/// base type of `Annotated[...]`, `Final[...]`, ...) is named by one of
+/// `external` (see `external_type_names`), directly (`Attributes`), as a
+/// generic (`ext.Maybe[int]`) or through a module (`types.Attributes`).
+pub fn annotation_is_external(annotation: &Expr, external: &HashSet<String>) -> bool {
+    if external.is_empty() {
+        return false;
+    }
+    let head = |e: &Expr| dotted_parts(e).and_then(|p| p.first().cloned());
+    match annotation {
+        Expr::Name(_) | Expr::Attribute(_) => head(annotation).is_some_and(|h| external.contains(&h)),
+        Expr::Subscript(s) => {
+            let last = dotted_parts(&s.value).and_then(|p| p.last().cloned()).unwrap_or_default();
+            match last.as_str() {
+                "Optional" | "Final" | "Required" | "NotRequired" | "ReadOnly" | "ClassVar" => {
+                    annotation_is_external(&s.slice, external)
+                }
+                "Annotated" => match s.slice.as_ref() {
+                    Expr::Tuple(t) => t.elts.first().is_some_and(|b| annotation_is_external(b, external)),
+                    other => annotation_is_external(other, external),
+                },
+                "Union" => match s.slice.as_ref() {
+                    Expr::Tuple(t) => t.elts.iter().any(|m| annotation_is_external(m, external)),
+                    other => annotation_is_external(other, external),
+                },
+                _ => head(&s.value).is_some_and(|h| external.contains(&h)),
+            }
+        }
+        Expr::BinOp(b) if matches!(b.op, ruff_python_ast::Operator::BitOr) => {
+            annotation_is_external(&b.left, external) || annotation_is_external(&b.right, external)
+        }
+        Expr::StringLiteral(s) => ruff_python_parser::parse_expression(s.value.to_str().trim())
+            .is_ok_and(|p| annotation_is_external(p.expr(), external)),
+        _ => false,
+    }
+}
+
 /// Whether `expr` is `re.compile(...)` (a compiled regular expression).
 pub fn is_re_compile(expr: &Expr) -> bool {
     matches!(expr, Expr::Call(c)
@@ -335,6 +423,81 @@ pub fn module_constants(stmts: &[Stmt]) -> HashMap<String, Expr> {
         .into_iter()
         .filter(|(_, v)| is_constant_literal(v))
         .collect()
+}
+
+/// Names bound exactly once in `stmts` (as for `module_constants`) to a dict
+/// display whose keys and values are all literals and whose values are not
+/// `None` (`RATES = {"EUR": Decimal("1.08")}`): name -> the dict.
+pub fn module_const_dicts(stmts: &[Stmt]) -> HashMap<String, Expr> {
+    single_assignments(stmts)
+        .into_iter()
+        .filter(|(_, v)| match v {
+            Expr::Dict(d) => {
+                !d.items.is_empty()
+                    && d.items.iter().all(|item| {
+                        item.key.as_ref().is_some_and(is_constant_literal)
+                            && is_constant_literal(&item.value)
+                            && !matches!(item.value, Expr::NoneLiteral(_))
+                    })
+            }
+            _ => false,
+        })
+        .collect()
+}
+
+/// Names of containers mutated anywhere in `stmts` (`X[k] = v`, `del X[k]`,
+/// `X |= ...`, `X.update(...)`, `X.setdefault(...)`, ...; also as the last
+/// segment of `mod.X`): such a dict is not a constant.
+pub fn mutated_container_names(stmts: &[Stmt]) -> HashSet<String> {
+    use ruff_python_ast::visitor::{self, Visitor};
+    use ruff_python_ast::ExprContext;
+    fn tail(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Name(n) => Some(n.id.to_string()),
+            Expr::Attribute(a) => Some(a.attr.to_string()),
+            _ => None,
+        }
+    }
+    struct M(HashSet<String>);
+    impl<'a> Visitor<'a> for M {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if let Stmt::AugAssign(a) = stmt {
+                if let Some(n) = tail(&a.target) {
+                    self.0.insert(n);
+                }
+            }
+            visitor::walk_stmt(self, stmt);
+        }
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            match expr {
+                Expr::Subscript(s) if matches!(s.ctx, ExprContext::Store | ExprContext::Del) => {
+                    if let Some(n) = tail(&s.value) {
+                        self.0.insert(n);
+                    }
+                }
+                Expr::Call(c) => {
+                    if let Expr::Attribute(a) = c.func.as_ref() {
+                        let mutating = matches!(
+                            a.attr.as_str(),
+                            "update" | "setdefault" | "pop" | "popitem" | "clear" | "__setitem__" | "__delitem__"
+                        );
+                        if mutating {
+                            if let Some(n) = tail(&a.value) {
+                                self.0.insert(n);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut m = M(HashSet::new());
+    for s in stmts {
+        m.visit_stmt(s);
+    }
+    m.0
 }
 
 /// Names bound exactly once in `stmts` by a simple assignment (and in no
@@ -507,6 +670,9 @@ pub struct ClassInfo {
     /// Attributes the class's own methods assign through `self` (instance
     /// state that may shadow a class constant).
     pub stored_attrs: HashSet<String>,
+    /// Every name the class body binds (assignments, `def`, nested `class`,
+    /// imports), constant or not: a binding here overrides one in a base.
+    pub body_names: HashSet<String>,
     /// For enum-like classes (Django `TextChoices` / `IntegerChoices`, `enum.Enum`):
     /// how member values are read.
     pub enum_kind: Option<EnumKind>,
@@ -550,6 +716,7 @@ impl ClassInfo {
             methods: HashMap::new(),
             constants: HashMap::new(),
             stored_attrs: HashSet::new(),
+            body_names: HashSet::new(),
             enum_kind: None,
             strict: false,
             constant_order: Vec::new(),
@@ -562,6 +729,7 @@ impl ClassInfo {
     /// Record the class body: constants, `self.x = ...` stores, enum kind.
     pub fn with_body(mut self, body: &[Stmt]) -> Self {
         self.stored_attrs = self_stores(body);
+        self.body_names = body_bindings(body);
         self.enum_kind = self.bases.iter().find_map(|b| {
             let parts = dotted_parts(b)?;
             match parts.last()?.as_str() {
@@ -622,6 +790,88 @@ pub fn literal_choice(expr: &Expr) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// Names a class body binds at its own level (not inside methods): simple
+/// and annotated assignments with a value, augmented assignments, `def`,
+/// nested `class`, imports, `for` / `with` targets, inside `if` / `try` too.
+fn body_bindings(body: &[Stmt]) -> HashSet<String> {
+    fn targets(expr: &Expr, out: &mut HashSet<String>) {
+        match expr {
+            Expr::Name(n) => {
+                out.insert(n.id.to_string());
+            }
+            Expr::Tuple(t) => t.elts.iter().for_each(|e| targets(e, out)),
+            Expr::List(l) => l.elts.iter().for_each(|e| targets(e, out)),
+            Expr::Starred(s) => targets(&s.value, out),
+            _ => {}
+        }
+    }
+    fn walk(stmts: &[Stmt], out: &mut HashSet<String>) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Assign(a) => a.targets.iter().for_each(|t| targets(t, out)),
+                Stmt::AnnAssign(a) if a.value.is_some() => targets(&a.target, out),
+                Stmt::AugAssign(a) => targets(&a.target, out),
+                Stmt::FunctionDef(f) => {
+                    out.insert(f.name.to_string());
+                }
+                Stmt::ClassDef(c) => {
+                    out.insert(c.name.to_string());
+                }
+                Stmt::Import(i) => {
+                    for alias in &i.names {
+                        let local = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
+                        out.insert(local.split('.').next().unwrap_or(&local).to_string());
+                    }
+                }
+                Stmt::ImportFrom(i) => {
+                    for alias in &i.names {
+                        out.insert(alias.asname.as_ref().unwrap_or(&alias.name).to_string());
+                    }
+                }
+                Stmt::For(f) => {
+                    targets(&f.target, out);
+                    walk(&f.body, out);
+                    walk(&f.orelse, out);
+                }
+                Stmt::While(w) => {
+                    walk(&w.body, out);
+                    walk(&w.orelse, out);
+                }
+                Stmt::With(w) => {
+                    for item in &w.items {
+                        if let Some(v) = &item.optional_vars {
+                            targets(v, out);
+                        }
+                    }
+                    walk(&w.body, out);
+                }
+                Stmt::If(s) => {
+                    walk(&s.body, out);
+                    for clause in &s.elif_else_clauses {
+                        walk(&clause.body, out);
+                    }
+                }
+                Stmt::Try(t) => {
+                    walk(&t.body, out);
+                    for handler in &t.handlers {
+                        let ruff_python_ast::ExceptHandler::ExceptHandler(h) = handler;
+                        if let Some(n) = &h.name {
+                            out.insert(n.to_string());
+                        }
+                        walk(&h.body, out);
+                    }
+                    walk(&t.orelse, out);
+                    walk(&t.finalbody, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = HashSet::new();
+    walk(body, &mut out);
+    out
 }
 
 /// Attributes assigned as `<first param>.attr = ...` in the methods of a class body.
@@ -686,6 +936,9 @@ pub struct ProjectIndex {
     pub constants: HashMap<String, Expr>,
     /// Module-level names bound once to `re.compile(...)`, qualified.
     pub patterns: HashSet<String>,
+    /// Module-level dicts of non-None literals never mutated in the project
+    /// (`module_const_dicts`), by qualified name.
+    pub const_dicts: HashMap<String, Expr>,
     /// Modules by last dotted segment, for suffix matching (built on first use).
     by_last_segment: OnceCell<HashMap<String, Vec<String>>>,
     /// Direct project subclasses per class (`index_subclasses`).
@@ -912,6 +1165,37 @@ impl ProjectIndex {
         }
     }
 
+    /// The constant dict (see `const_dicts`) a name refers to in `module`:
+    /// defined there, imported by name, or `module_alias.NAME`.
+    pub fn const_dict(&self, module: &str, parts: &[String]) -> Option<&Expr> {
+        match parts {
+            [name] => {
+                if let Some(d) = self.const_dicts.get(&qualify(module, name)) {
+                    return Some(d);
+                }
+                let info = self.modules.get(module)?;
+                if info.defs.contains_key(name.as_str()) {
+                    return None;
+                }
+                match info.imports.get(name.as_str())? {
+                    Import::Symbol { module: m, name: n } => {
+                        let found = self.find_module(m, module)?;
+                        self.const_dicts.get(&qualify(found, n))
+                    }
+                    Import::Module(_) => None,
+                }
+            }
+            [head @ .., name] => match self.resolve_dotted(module, head)? {
+                Symbol::Module(m) => {
+                    let found = self.find_module(&m, module)?;
+                    self.const_dicts.get(&qualify(found, name))
+                }
+                _ => None,
+            },
+            [] => None,
+        }
+    }
+
     /// The literal a constant symbol is bound to.
     pub fn constant(&self, qualified: &str) -> Option<&Expr> {
         if let Some(e) = self.constants.get(qualified) {
@@ -937,6 +1221,11 @@ impl ProjectIndex {
             if class.constants.contains_key(name) {
                 return Some(qualify(&q, name));
             }
+            // Bound in this class body to something that is not a literal
+            // (`code = compute()`): it overrides the bases; unknown.
+            if class.body_names.contains(name) {
+                return None;
+            }
             for base in class.bases.iter().rev() {
                 if let Some(Symbol::Class(bq)) = self.resolve_expr(&class.module, base) {
                     stack.push(bq);
@@ -944,6 +1233,69 @@ impl ProjectIndex {
             }
         }
         None
+    }
+
+    /// Every class constant `self.name` / `cls.name` may be in a method of
+    /// `class_q`, whose receiver is an instance of `class_q` or of any
+    /// project subclass: `name` resolved from `class_q` and from each
+    /// subclass (class hierarchy, as for method dispatch), as qualified
+    /// constant names. `None` (unknown) when the name is not a class
+    /// constant from some class, is assigned on instances (`self.name = ...`)
+    /// by one of them, or has more than `max` values.
+    pub fn class_constant_values(&self, class_q: &str, name: &str, max: usize) -> Option<Vec<String>> {
+        let own = self.classes.get(class_q)?;
+        if own.stored_attrs.contains(name) {
+            return None;
+        }
+        let mut out = vec![self.class_constant(class_q, name)?];
+        for sub in self.all_subclasses(class_q)? {
+            let class = self.classes.get(&sub)?;
+            if class.stored_attrs.contains(name) {
+                return None;
+            }
+            let q = self.class_constant(&sub, name)?;
+            if !out.contains(&q) {
+                out.push(q);
+            }
+            if out.len() > max {
+                return None;
+            }
+        }
+        Some(out)
+    }
+
+    /// Every project subclass of `class_q` (transitively), in a stable
+    /// order; `None` when there are more than `4 * MAX_DISPATCH` of them.
+    pub fn all_subclasses(&self, class_q: &str) -> Option<Vec<String>> {
+        let mut seen: HashSet<String> = HashSet::from([class_q.to_string()]);
+        let mut out = Vec::new();
+        let mut queue = vec![class_q.to_string()];
+        while let Some(q) = queue.pop() {
+            for sub in self.subclasses.get(&q).into_iter().flatten() {
+                if !seen.insert(sub.clone()) {
+                    continue;
+                }
+                out.push(sub.clone());
+                if out.len() > 4 * MAX_DISPATCH {
+                    return None;
+                }
+                queue.push(sub.clone());
+            }
+        }
+        Some(out)
+    }
+
+    /// Whether some project subclass of `class_q` binds `name` in its class
+    /// body or assigns it on its instances (so `self.name` read in a method
+    /// of `class_q` may not be what `class_q` defines). Unknown subclasses
+    /// (too many) count as overriding.
+    pub fn overridden_in_subclass(&self, class_q: &str, name: &str) -> bool {
+        let Some(subs) = self.all_subclasses(class_q) else { return true };
+        subs.iter().any(|s| {
+            self.classes
+                .get(s)
+                .is_some_and(|c| c.body_names.contains(name) || c.stored_attrs.contains(name))
+        })
     }
 
     /// Class `name` nested in the body of class `class_q` (or of a
@@ -994,6 +1346,44 @@ impl ProjectIndex {
     /// analysis): `name` resolved from `class_q` and from each subclass.
     /// `None` when there are more than `MAX_DISPATCH` targets (unknown).
     pub fn dispatch_targets(&self, class_q: &str, name: &str) -> Option<Vec<String>> {
+        let targets = self.dispatch_targets_all(class_q, name)?;
+        // A `Protocol` receiver may be any structurally matching class, not
+        // only project subclasses: its declaration stays a target (unknown).
+        if self.classes.get(class_q).is_some_and(|c| self.is_protocol(c)) {
+            return Some(targets);
+        }
+        let implemented: Vec<String> = targets.iter().filter(|q| !self.is_declaration_only(q)).cloned().collect();
+        // Only declarations (a `Protocol`, an interface without project
+        // implementations): their annotations are all that is known.
+        Some(if implemented.is_empty() { targets } else { implemented })
+    }
+
+    /// Whether method `qualified` only declares an interface: a stub (see
+    /// `FunctionInfo::is_stub`) or a method of a `Protocol` class. Calls never
+    /// run it on an instance of a class that implements the method.
+    pub fn is_declaration_only(&self, qualified: &str) -> bool {
+        let Some(f) = self.function(qualified) else { return false };
+        if f.is_stub() {
+            return true;
+        }
+        let Some(class) = f.class_name.as_ref().and_then(|c| self.classes.get(&qualify(&f.module, c))) else {
+            return false;
+        };
+        self.is_protocol(class)
+    }
+
+    /// Whether `class` is a `typing.Protocol` (lists `Protocol` as a base).
+    fn is_protocol(&self, class: &ClassInfo) -> bool {
+        class.bases.iter().any(|b| {
+            let head = match b {
+                Expr::Subscript(s) => s.value.as_ref(),
+                other => other,
+            };
+            dotted_parts(head).is_some_and(|p| p.last().is_some_and(|l| l == "Protocol"))
+        })
+    }
+
+    fn dispatch_targets_all(&self, class_q: &str, name: &str) -> Option<Vec<String>> {
         let mut out: Vec<String> = self.method(class_q, name).into_iter().collect();
         let mut seen: HashSet<String> = HashSet::from([class_q.to_string()]);
         let mut queue: Vec<String> = vec![class_q.to_string()];

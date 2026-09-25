@@ -74,6 +74,10 @@ pub struct ClassCandidate {
     /// Annotation aliases of the module and the class's type parameters
     /// (see `resolve::annotation_aliases`).
     pub aliases: HashMap<String, Expr>,
+    /// Names imported from outside the project that may alias an Optional
+    /// type (see `resolve::external_type_names`): fields annotated with one
+    /// have unknown nullability and type.
+    pub external_types: std::collections::HashSet<String>,
 }
 
 /// One annotated field of a recognised data class.
@@ -175,6 +179,7 @@ pub fn collect_classes_with(
     crate::resolve::module_classes(stmts)
         .map(|class_def| ClassCandidate {
             aliases: with_type_params(aliases, class_def.type_params.as_deref()),
+            external_types: Default::default(),
             class_def: class_def.clone(),
             module: module.clone(),
             source_file: source_file.to_string(),
@@ -599,12 +604,14 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
         let Some(info) = analyze_annotation(unalias(&ann.annotation, &candidate.aliases)) else {
             continue; // ClassVar and similar: not an instance field
         };
+        // A type imported from an unmodelled package may include None.
+        let external = crate::resolve::annotation_is_external(&ann.annotation, &candidate.external_types);
         let mut field = DataClassField {
             class_name: class_name.clone(),
             class_qualified: candidate_qualified(candidate),
             field_name,
-            type_name: info.type_name,
-            nullable: info.nullable,
+            type_name: if external { None } else { info.type_name },
+            nullable: if external && info.nullable == Some(false) { None } else { info.nullable },
             max_digits: None,
             decimal_places: None,
             max_length: None,

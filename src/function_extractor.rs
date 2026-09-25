@@ -127,6 +127,46 @@ impl FunctionInfo {
             && !self.is_overload
             && !self.is_generator
     }
+    /// Whether the method is only a declaration that a subclass implements:
+    /// `@abstractmethod`, or a body that is `...`, `pass` or a docstring alone
+    /// under a return annotation other than `None` / `Optional` (so it does
+    /// not mean "returns None"), or that only raises `NotImplementedError`.
+    /// Such a method is no dispatch target (see `ProjectIndex::dispatch_targets`).
+    pub fn is_stub(&self) -> bool {
+        if self
+            .decorators
+            .iter()
+            .any(|d| d.last().is_some_and(|l| l == "abstractmethod"))
+        {
+            return true;
+        }
+        let body: Vec<&Stmt> = self
+            .body
+            .iter()
+            .filter(|s| !matches!(s, Stmt::Expr(e) if matches!(e.value.as_ref(), Expr::StringLiteral(_))))
+            .collect();
+        let raises_not_implemented = |s: &Stmt| match s {
+            Stmt::Raise(r) => r.exc.as_deref().is_some_and(|e| {
+                let target = match e {
+                    Expr::Call(c) => c.func.as_ref(),
+                    other => other,
+                };
+                matches!(target, Expr::Name(n) if n.id.as_str() == "NotImplementedError")
+            }),
+            _ => false,
+        };
+        match body.as_slice() {
+            [only] if raises_not_implemented(only) => true,
+            [] => self.return_nullable == Some(false),
+            [only] => {
+                let empty = matches!(only, Stmt::Pass(_))
+                    || matches!(only, Stmt::Expr(e) if matches!(e.value.as_ref(), Expr::EllipsisLiteral(_)));
+                empty && self.return_nullable == Some(false)
+            }
+            _ => false,
+        }
+    }
+
     /// Number of leading parameters bound implicitly when called through an
     /// instance or class (`self` / `cls`).
     pub fn implicit_params(&self) -> usize {
@@ -470,6 +510,29 @@ pub fn apply_aliases(func: &mut FunctionInfo, aliases: &std::collections::HashMa
         p.type_name = type_name;
         // A `= None` default keeps the parameter nullable.
         p.nullable = if p.nullable == Some(true) { Some(true) } else { nullable };
+    }
+}
+
+/// Forget what annotations naming a type from an unmodelled package (see
+/// `resolve::external_type_names`) say about `None`: such a type may be an
+/// alias of an `Optional[...]` type. Parameters and the return get unknown
+/// nullability (no contract) unless the annotation itself allows `None`.
+pub fn apply_external_types(func: &mut FunctionInfo, external: &std::collections::HashSet<String>) {
+    if external.is_empty() {
+        return;
+    }
+    if let Some(ret) = &func.return_annotation {
+        if func.return_nullable == Some(false) && crate::resolve::annotation_is_external(ret, external) {
+            func.return_nullable = None;
+            func.return_type = None;
+        }
+    }
+    for p in &mut func.params {
+        let Some(a) = &p.annotation else { continue };
+        if p.nullable == Some(false) && crate::resolve::annotation_is_external(a, external) {
+            p.nullable = None;
+            p.type_name = None;
+        }
     }
 }
 

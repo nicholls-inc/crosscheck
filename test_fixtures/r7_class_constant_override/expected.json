@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Bank.settle -> Settlement.code",
+      "source_guarantee": "length ≤ 11",
+      "target_requirement": "length ≤ 4",
+      "target": "Settlement.code"
+    },
+    {
+      "path": "Rounder.settle -> Settlement.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Settlement.amount"
+    },
+    {
+      "path": "Rounder.settle_cls -> Settlement.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Settlement.amount"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "Computed.settle -> Settlement.code",
+      "contains": "length"
+    }
+  ]
+}
