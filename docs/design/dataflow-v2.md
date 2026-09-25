@@ -292,3 +292,75 @@ make the run incomplete (exit 2) unless `--allow-parse-errors`.
 - `--exclude GLOB` (repeatable) skips matching files; the README recommends
   `--exclude '**/tests/**'` for Django projects whose tests build invalid
   unsaved instances on purpose.
+
+## Round 6 (final verification pass)
+
+### Return annotations are contracts (assume-guarantee)
+
+A non-Optional return annotation (and its type, for strict value types) is a
+requirement on the function's own return values and the guarantee callers
+rely on. The extractor adds a target node `f.<return>` (kind `model`, name
+`<f display name>.<return>`, location of the annotation) with the
+annotation's preconditions, and an edge from each `return` expression's site
+(override with that expression's contracts, or from the producer's call-site
+node) to it. The function's postconditions for callers come from the
+annotation (plus any static precision/length/range the body proves). A body
+that can return None under a non-Optional annotation is reported once, at the
+return statement, instead of at every caller.
+
+### Narrowing by dereference
+
+After `x.attr`, `x.method(...)`, `x[i]` or `len(x)` executes, `x` is non-None
+for the rest of that straight-line block (the program would have raised
+otherwise).
+
+### Decorator-injected parameters
+
+A parameter that has default `None`, an `Optional` annotation, and belongs to
+a function with a project-defined decorator (anything other than
+`staticmethod`, `classmethod`, `property`, `functools.wraps`, `lru_cache`,
+`cache`, `cached_property`, `overload`) has unknown nullability inside the
+function (a warning where it matters, never an error).
+
+### Alternatives instead of joins
+
+At a write or argument site, a value with up to 4 distinct alternatives (the
+branches of `a if c else b`, and the reaching definitions of a local) is
+emitted as one override edge per alternative, all with the same site, so a
+branch that certainly violates is an error even when another branch is
+unknown. Function results keep a join.
+
+### Dynamic writes warn
+
+A write whose fields cannot be determined (`setattr(obj, name, v)` with a
+non-literal name, `obj.__dict__.update(...)`, `Cls(**d)` / `create(**d)` with
+`d` not a known dict) on an object of a known class becomes an edge with an
+empty override to every field of that class, so each field with a
+requirement gets a warning.
+
+### More coverage
+
+- Method calls dispatch to every override in project subclasses of the
+  receiver's static class (class hierarchy analysis), including `self.m()`
+  inside an inherited method; `super().m()` resolves to the parent's method.
+- `Cls().m(...)` resolves on the constructed class.
+- A dict bound to a local (`data = {...}` or `dict(k=v)`), or returned by a
+  function whose return is a dict literal, carries its keys to `**` splats,
+  including through a forwarding function.
+- Queryset iteration (`for p in Model.objects.filter(...)`) types the loop
+  variable, so attribute writes followed by `bulk_update` are writes.
+- `Annotated` type aliases (`Percent = Annotated[int, Field(ge=0, le=100)]`)
+  keep their constraints. `pydantic_settings.BaseSettings` and SQLModel
+  classes are pydantic classes.
+- Reads of a known class's field (`obj.total`, `obj.name[:3]`) carry the
+  field's declared contracts; any slice `s[:n]` has length ≤ n; `max`/`min`
+  over a generator carry the elements' facts; `len(x) - k` has lower bound -k;
+  `Decimal(<float literal>)` has the exact places of the binary expansion.
+- A literal `None` written into a field that accepts None satisfies all of
+  that field's other requirements (no warning).
+
+### Checker
+
+`guarantee_at` for a bound produced by a dependent expression is the location
+of the input constraint whose value the result equals (e.g. `five()` for
+`max(input_precision, 2)` resolved to 5), else the expression's own location.
