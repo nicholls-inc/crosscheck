@@ -54,19 +54,35 @@ fn test_nullable_function_precision_from_docstring() {
     assert_eq!(post[0].verification_level, "ASSUMED");
 }
 
+/// Round 6: the non-Optional return annotation (`-> Invoice`) is the
+/// guarantee callers rely on; the body's `return None` is checked at the
+/// return site instead (an edge into `apply_discount.<return>`, which
+/// requires non-null).
 #[test]
-fn test_nullable_function_nullability_from_body() {
+fn test_nullable_function_nullability_from_annotation() {
     let (_tmp, conn) = nullable_db();
 
     let null = query_contract_by_type(&conn, "apply_discount", "nullability");
     let post = postconditions(&null);
     assert_eq!(post.len(), 1, "expected exactly 1 nullability postcondition");
-    assert_eq!(
-        post[0].param_nullable,
-        Some(1),
-        "body analyzer should mark result nullable from `return None`"
-    );
+    assert_eq!(post[0].param_nullable, Some(0), "the annotation excludes None");
     assert_eq!(post[0].verification_level, "EXTRACTED");
+
+    let ret = query_contract_by_type(&conn, "apply_discount.<return>", "nullability");
+    assert_eq!(ret.len(), 1);
+    assert_eq!(ret[0].contract_role.as_deref(), Some("precondition"));
+    assert_eq!(ret[0].param_nullable, Some(0));
+    let edges = query_edges(&conn);
+    let returns: Vec<&EdgeRow> = edges
+        .iter()
+        .filter(|e| e.target_name == "apply_discount.<return>")
+        .collect();
+    assert_eq!(returns.len(), 2, "two return statements");
+    let rows: Vec<String> = returns
+        .iter()
+        .flat_map(|e| render_rows(&query_edge_contracts(&conn, e.id)))
+        .collect();
+    assert!(rows.iter().any(|r| r == "nullability=1"), "the `return None` site: {rows:?}");
 }
 
 #[test]
@@ -76,7 +92,7 @@ fn test_nullable_writes_to_edges() {
     let edges = query_edges(&conn);
     let writes_to: Vec<&EdgeRow> = edges
         .iter()
-        .filter(|e| e.relationship == "writes_to")
+        .filter(|e| e.relationship == "writes_to" && !e.target_name.ends_with(".<return>"))
         .collect();
     assert_eq!(writes_to.len(), 2, "expected 2 writes_to edges");
 

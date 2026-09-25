@@ -111,6 +111,18 @@ impl Project {
                 m.module.clone(),
                 ModuleInfo::from_stmts(&m.module, m.is_package, &m.stmts),
             );
+        }
+        let module_stmts: Vec<(String, &[Stmt])> = modules
+            .iter()
+            .map(|m| (m.module.clone(), m.stmts.as_slice()))
+            .collect();
+        let project_aliases = resolve::project_aliases(&module_stmts, &index);
+        for m in &modules {
+            index
+                .stored_attributes
+                .extend(resolve::stored_attribute_names(&m.stmts));
+        }
+        for m in &modules {
             for name in resolve::module_patterns(&m.stmts) {
                 index.patterns.insert(resolve::qualify(&m.module, &name));
             }
@@ -125,14 +137,16 @@ impl Project {
             // Functions (a later definition with the same qualified name replaces an earlier one)
             let module_fn =
                 function_extractor::module_function(&m.stmts, &m.relative_path, &m.module);
-            let aliases = resolve::annotation_aliases(&m.stmts);
+            let no_aliases = HashMap::new();
+            let aliases = project_aliases.get(&m.module).unwrap_or(&no_aliases);
             for mut func in
                 function_extractor::extract_functions(&m.stmts, &m.relative_path, &m.module)
                     .into_iter()
                     .chain(module_fn)
             {
                 func.source_line = m.lines.line(func.source_line);
-                function_extractor::apply_aliases(&mut func, &aliases);
+                func.return_line = m.lines.line(func.return_line);
+                function_extractor::apply_aliases(&mut func, aliases);
                 match index.function_ids.get(&func.qualified_name) {
                     Some(&i) => index.functions[i] = func,
                     None => {
@@ -160,10 +174,11 @@ impl Project {
                 }
             }
 
-            candidates.extend(dataclass_extractor::collect_classes(
+            candidates.extend(dataclass_extractor::collect_classes_with(
                 &m.stmts,
                 &m.source,
                 &m.relative_path,
+                aliases,
             ));
         }
 
@@ -182,6 +197,7 @@ impl Project {
             }
         }
 
+        index.index_subclasses();
         let model_fields = django_models(&modules, &mut index, field_defaults);
 
         let mut data_classes = {
@@ -206,6 +222,11 @@ impl Project {
                         .collect();
                     c.positional = dc.positional.clone();
                     c.strict = dc.strict;
+                    c.field_facts = dc
+                        .fields
+                        .iter()
+                        .map(|f| (f.field_name.clone(), dataclass_extractor::requirement_facts(dc, f)))
+                        .collect();
                 }
             }
         }
@@ -277,6 +298,9 @@ impl Project {
         }
         for f in &self.index.functions {
             add(f.qualified_name.clone(), f.name.clone());
+        }
+        for f in self.index.functions.iter().filter(|f| f.has_return_contract()) {
+            add(f.return_node_name(), format!("{}.<return>", f.name));
         }
         names
     }
@@ -402,6 +426,10 @@ fn django_models(
             info.field_nullable = fields
                 .iter()
                 .filter_map(|f| Some((f.field_name.clone(), f.null?)))
+                .collect();
+            info.field_facts = fields
+                .iter()
+                .map(|f| (f.field_name.clone(), model_extractor::requirement_facts(f)))
                 .collect();
         }
         all.extend(fields);
@@ -709,6 +737,9 @@ pub fn extract_with(
         model_node_ids.entry(q).or_insert(id);
     }
     let (func_node_ids, func_rows) = write_functions(&db, &project, &names)?;
+    for (q, id) in write_return_nodes(&db, &project, &names)? {
+        model_node_ids.entry(q).or_insert(id);
+    }
 
     // Edges, and the call-site nodes they use
     let discovered = edge_discovery::discover(&project);
@@ -804,6 +835,61 @@ fn write_functions(
         all_rows.insert(func.qualified_name.clone(), rows);
     }
     Ok((ids, all_rows))
+}
+
+/// Write the return contract node `f.<return>` of every function whose
+/// return annotation excludes None (kind `model`, located at the
+/// annotation): preconditions non-null and, for `Decimal` / `str` / `bool`,
+/// the type. Every `return` of `f` is an edge into it, so callers relying
+/// on the annotation is assume-guarantee. Returns qualified name → node ID.
+fn write_return_nodes(
+    db: &ContractDb,
+    project: &Project,
+    names: &HashMap<String, String>,
+) -> Result<HashMap<String, i64>> {
+    use crate::db::{ConstraintType, ContractRole, VerificationLevel};
+    let mut ids = HashMap::new();
+    for func in project.index.functions.iter().filter(|f| f.has_return_contract()) {
+        let q = func.return_node_name();
+        let node_id = db.insert_node(&NodeRecord {
+            name: names
+                .get(&q)
+                .cloned()
+                .unwrap_or_else(|| format!("{}.<return>", func.name)),
+            qualified_name: Some(q.clone()),
+            kind: NodeKind::Model,
+            source_file: func.source_file.clone(),
+            source_line: func.return_line,
+            is_call_site: false,
+        })?;
+        let base = |kind: ConstraintType| {
+            ContractRecord::new(
+                node_id,
+                kind,
+                ContractRole::Precondition,
+                VerificationLevel::Extracted,
+                &func.source_file,
+                func.return_line,
+            )
+        };
+        db.insert_contract(&ContractRecord {
+            param_nullable: Some(0),
+            ..base(ConstraintType::Nullability)
+        })?;
+        let type_name = func
+            .return_type
+            .as_deref()
+            .filter(|t| !t.contains('['))
+            .map(|t| t.rsplit('.').next().unwrap_or(t));
+        if let Some(t) = type_name.filter(|t| function_extractor::RETURN_TYPE_CONTRACTS.contains(t)) {
+            db.insert_contract(&ContractRecord {
+                param_type_name: Some(t.to_string()),
+                ..base(ConstraintType::Type)
+            })?;
+        }
+        ids.insert(q, node_id);
+    }
+    Ok(ids)
 }
 
 /// Write one node per consumed call site (kind `function`, the callee's
@@ -1203,6 +1289,38 @@ mod tests {
         // but through the base's nested class it does here.
         let other = p.model_fields.iter().find(|f| f.field_name == "other").unwrap();
         assert_eq!(other.choices, Some(vec!["draft".to_string(), "paid".to_string()]));
+    }
+
+    /// Round 6: `Annotated` aliases (local, imported, PEP 695), and
+    /// `BaseSettings` / `SQLModel` classes as pydantic.
+    #[test]
+    fn test_annotated_aliases_and_pydantic_bases() {
+        let p = project(&[
+            ("types_.py", "from typing import Annotated\nfrom pydantic import Field\nPercent = Annotated[int, Field(ge=0, le=100)]\n"),
+            (
+                "schemas.py",
+                "from typing import Annotated\nfrom pydantic import BaseModel, Field\nfrom pydantic_settings import BaseSettings\nfrom sqlmodel import SQLModel\nfrom types_ import Percent\n\
+                 type Code = Annotated[str, Field(max_length=4)]\n\
+                 class B(BaseModel):\n    level: Percent\n    code: Code\n\
+                 class S(BaseSettings):\n    workers: int = Field(ge=1)\n\
+                 class H(SQLModel, table=True):\n    name: str = Field(max_length=8)\n",
+            ),
+        ]);
+        let f = |c: &str, n: &str| {
+            p.data_classes
+                .iter()
+                .find(|d| d.name == c)
+                .unwrap_or_else(|| panic!("{c}"))
+                .fields
+                .iter()
+                .find(|x| x.field_name == n)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!((f("B", "level").min_value, f("B", "level").max_value), (mu(0), mu(100_000_000)));
+        assert_eq!(f("B", "code").max_length, Some(4));
+        assert_eq!(f("S", "workers").min_value, mu(1_000_000));
+        assert_eq!(f("H", "name").max_length, Some(8));
     }
 
     /// Annotations naming a module-level union alias or a type variable.

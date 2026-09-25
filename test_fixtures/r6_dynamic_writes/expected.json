@@ -1,0 +1,27 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "by_dict_update -> Payment.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Payment.amount"
+    },
+    {
+      "path": "via_forwarder -> Payment.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Payment.amount"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "by_setattr -> Payment.amount",
+      "contains": "precision"
+    },
+    {
+      "path": "by_unknown_dict -> Payment.amount",
+      "contains": "precision"
+    }
+  ]
+}

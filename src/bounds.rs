@@ -119,6 +119,16 @@ impl Dec {
         Some(if exact || !kind.rounds_up() { q } else { q + 1 })
     }
 
+    /// The largest integer at most `self`, when it fits an `i64`.
+    pub fn to_i64(self) -> Option<i64> {
+        i64::try_from(self.split().0).ok()
+    }
+
+    /// `m × 10^-s`, when `s` is at most `MAX_SCALE`.
+    pub fn from_scaled(m: i128, s: u32) -> Option<Dec> {
+        (s <= MAX_SCALE).then(|| Dec::new(m, s))
+    }
+
     /// Nearest `f64` (for the legacy REAL columns).
     pub fn to_f64(self) -> f64 {
         // Via the decimal string: exact parsing, correctly rounded.
@@ -259,6 +269,11 @@ pub fn literal_bound(expr: &ruff_python_ast::Expr) -> Option<Dec> {
             }
             match &c.arguments.args[0] {
                 Expr::StringLiteral(s) => parse_decimal(s.value.to_str()),
+                // `Decimal(0.5)` is the float's exact binary value.
+                Expr::NumberLiteral(n) if matches!(n.value, Number::Float(_)) => {
+                    let Number::Float(f) = n.value else { return None };
+                    crate::value_analysis::float_exact(f).and_then(|(_, v)| v)
+                }
                 other => literal_bound(other),
             }
         }

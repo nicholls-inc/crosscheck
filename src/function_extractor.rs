@@ -27,6 +27,8 @@ pub struct ParamInfo {
     /// From the annotation (`Optional` → true, other types → false, `Any`/none → unknown);
     /// a `= None` default makes it true.
     pub nullable: Option<bool>,
+    /// The default is `None`.
+    pub default_none: bool,
 }
 
 /// Whether and how a function is bound to a class.
@@ -66,9 +68,65 @@ pub struct FunctionInfo {
     /// `None` (`-> T` for some arguments, `-> T | None` for others): which
     /// one applies at a call is not decided, so the result's nullability is unknown.
     pub overloads_differ_on_none: bool,
+    /// What the return annotation says about `None`: `Some(false)` excludes it
+    /// (a contract on the function's return values, see `return_contract`),
+    /// `Some(true)` allows it, `None` unknown (no annotation, `Any`, `object`,
+    /// a type variable).
+    pub return_nullable: Option<bool>,
+    /// Decorators as dotted names (`background_task`, `app.task`; a call
+    /// `@d(...)` gives `d`).
+    pub decorators: Vec<Vec<String>>,
+    /// The body yields: calling the function returns a generator.
+    pub is_generator: bool,
+    /// Byte offset of the return annotation (a line after `Project::build`).
+    pub return_line: u32,
 }
 
+/// Decorators that neither inject arguments nor change what a parameter
+/// receives (matched on the last dotted segment).
+const PLAIN_DECORATORS: [&str; 13] = [
+    "staticmethod",
+    "classmethod",
+    "property",
+    "wraps",
+    "lru_cache",
+    "cache",
+    "cached_property",
+    "overload",
+    "abstractmethod",
+    "override",
+    "setter",
+    "getter",
+    "deleter",
+];
+
+/// Value types whose return annotation is also a type requirement on the
+/// function's return values (`float` accepts `int`, `int` accepts `bool`,
+/// so they are not compared by equality).
+pub const RETURN_TYPE_CONTRACTS: [&str; 3] = ["Decimal", "str", "bool"];
+
 impl FunctionInfo {
+    /// Decorators other than the plain ones (`PLAIN_DECORATORS`); the caller
+    /// decides which of them are project-defined.
+    pub fn wrapping_decorators(&self) -> impl Iterator<Item = &Vec<String>> {
+        self.decorators.iter().filter(|d| {
+            d.last().is_none_or(|last| !PLAIN_DECORATORS.contains(&last.as_str()))
+        })
+    }
+
+    /// Qualified name of the return contract node `f.<return>`.
+    pub fn return_node_name(&self) -> String {
+        format!("{}.<return>", self.qualified_name)
+    }
+
+    /// Whether the return annotation is a contract on the function's own
+    /// return values (assume-guarantee): it excludes `None`, and the function
+    /// returns values (not a generator, not an overload stub).
+    pub fn has_return_contract(&self) -> bool {
+        self.return_nullable == Some(false)
+            && !self.is_overload
+            && !self.is_generator
+    }
     /// Number of leading parameters bound implicitly when called through an
     /// instance or class (`self` / `cls`).
     pub fn implicit_params(&self) -> usize {
@@ -211,7 +269,50 @@ pub fn module_function(stmts: &[Stmt], source_file: &str, module: &str) -> Optio
         docstring: None,
         is_overload: false,
         overloads_differ_on_none: false,
+        return_nullable: None,
+        decorators: Vec::new(),
+        return_line: 0,
+        is_generator: false,
     })
+}
+
+/// Whether a name in an annotation looks like a type variable (`T`,
+/// `_T`, `TModel`, `T_co`, `KT_contra`): it may stand for a type that
+/// includes `None`.
+fn looks_like_type_var(name: &str) -> bool {
+    let n = name.trim_start_matches('_');
+    let mut chars = n.chars();
+    let first = chars.next();
+    let second = chars.next();
+    n.ends_with("_co")
+        || n.ends_with("_contra")
+        || (first.is_some_and(|c| c.is_ascii_uppercase()) && second.is_none())
+        || (first == Some('T') && second.is_some_and(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit()))
+}
+
+/// What a return annotation says about `None` (see `FunctionInfo::return_nullable`).
+/// `type_params` are the function's own (PEP 695) type parameters.
+pub fn annotation_nullability(annotation: &Expr, type_params: &[String]) -> Option<bool> {
+    let head = match annotation {
+        Expr::Name(n) => Some(n.id.as_str()),
+        Expr::Attribute(a) => Some(a.attr.as_str()),
+        _ => None,
+    };
+    if let Some(h) = head {
+        if matches!(h, "object" | "NoReturn" | "Never" | "Any")
+            || type_params.iter().any(|p| p == h)
+            || looks_like_type_var(h)
+        {
+            return None;
+        }
+    }
+    if let Expr::StringLiteral(s) = annotation {
+        let text = s.value.to_str().trim().to_string();
+        let parsed = ruff_python_parser::parse_expression(&text).ok()?;
+        return annotation_nullability(parsed.expr(), type_params);
+    }
+    let (_, nullable) = annotation_facts(annotation)?;
+    nullable
 }
 
 /// Extract info from a single function definition.
@@ -279,7 +380,46 @@ fn extract_function_info(
                 || matches!(&d.expression, Expr::Attribute(a) if a.attr.as_str() == "overload")
         }),
         overloads_differ_on_none: false,
+        return_nullable: func_def
+            .returns
+            .as_deref()
+            .and_then(|r| annotation_nullability(r, &type_param_names(func_def))),
+        decorators: func_def
+            .decorator_list
+            .iter()
+            .filter_map(|d| {
+                let target = match &d.expression {
+                    Expr::Call(c) => c.func.as_ref(),
+                    other => other,
+                };
+                crate::resolve::dotted_parts(target)
+            })
+            .collect(),
+        is_generator: crate::flow::is_generator_body(&func_def.body),
+        return_line: func_def
+            .returns
+            .as_deref()
+            .map_or(func_def.range.start().to_u32(), |r| {
+                ruff_text_size::Ranged::range(r).start().to_u32()
+            }),
     }
+}
+
+/// PEP 695 type parameter names of a function (`def f[T](x: T) -> T`).
+fn type_param_names(func_def: &ast::StmtFunctionDef) -> Vec<String> {
+    func_def
+        .type_params
+        .as_deref()
+        .map(|tp| {
+            tp.type_params
+                .iter()
+                .filter_map(|p| match p {
+                    ast::TypeParam::TypeVar(t) => Some(t.name.to_string()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn extract_params(params: &ast::Parameters) -> Vec<ParamInfo> {
@@ -288,6 +428,7 @@ fn extract_params(params: &ast::Parameters) -> Vec<ParamInfo> {
         let mut info = param_info(&p.parameter, kind);
         if matches!(p.default.as_deref(), Some(Expr::NoneLiteral(_))) {
             info.nullable = Some(true);
+            info.default_none = true;
         }
         info
     };
@@ -312,6 +453,13 @@ fn extract_params(params: &ast::Parameters) -> Vec<ParamInfo> {
 /// Re-read parameter annotations that name a module-level alias or type
 /// variable (see `resolve::annotation_aliases`).
 pub fn apply_aliases(func: &mut FunctionInfo, aliases: &std::collections::HashMap<String, Expr>) {
+    if let Some(Expr::Name(n)) = &func.return_annotation {
+        if let Some(alias) = aliases.get(n.id.as_str()) {
+            func.return_nullable = annotation_nullability(alias, &[]);
+            func.is_return_optional = func.return_nullable == Some(true);
+            func.return_type = Some(format_type_annotation(strip_optional(alias)));
+        }
+    }
     for p in &mut func.params {
         let Some(Expr::Name(n)) = &p.annotation else { continue };
         let Some(alias) = aliases.get(n.id.as_str()) else { continue };
@@ -336,6 +484,7 @@ fn param_info(p: &ast::Parameter, kind: ParamKind) -> ParamInfo {
         annotation: p.annotation.as_deref().cloned(),
         type_name,
         nullable,
+        default_none: false,
     }
 }
 
@@ -616,6 +765,54 @@ mod tests {
             (fs[3].method_kind, fs[3].self_name()),
             (MethodKind::ClassMethod, Some("cls"))
         );
+    }
+
+    /// Round 6: which return annotations are contracts (exclude None).
+    #[test]
+    fn test_return_nullability() {
+        let fs = funcs(
+            "def a() -> int: ...\n\
+             def b() -> Optional[int]: ...\n\
+             def c() -> 'Optional[Foo]': ...\n\
+             def d() -> Union[int, None]: ...\n\
+             def e() -> Any: ...\n\
+             def f() -> object: ...\n\
+             def g() -> T: ...\n\
+             def h[X](x: X) -> X: ...\n\
+             def i() -> TModel: ...\n\
+             def j() -> 'Invoice': ...\n\
+             def k(): ...\n\
+             def l() -> Iterator[int]:\n    yield 1\n\
+             def m() -> NoReturn: ...\n",
+        );
+        let n: Vec<(&str, Option<bool>)> = fs
+            .iter()
+            .map(|f| (f.name.as_str(), f.return_nullable))
+            .collect();
+        assert_eq!(
+            n,
+            [
+                ("a", Some(false)),
+                ("b", Some(true)),
+                ("c", Some(true)),
+                ("d", Some(true)),
+                ("e", None),
+                ("f", None),
+                ("g", None),
+                ("h", None),
+                ("i", None),
+                ("j", Some(false)),
+                ("k", None),
+                ("l", Some(false)),
+                ("m", None),
+            ]
+        );
+        let contract: Vec<&str> = fs
+            .iter()
+            .filter(|f| f.has_return_contract())
+            .map(|f| f.name.as_str())
+            .collect();
+        assert_eq!(contract, ["a", "j"], "a generator has no return contract");
     }
 
     #[test]

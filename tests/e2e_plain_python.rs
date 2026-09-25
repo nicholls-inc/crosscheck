@@ -49,6 +49,12 @@ fn test_data_class_fields_are_model_nodes() {
             "LineItem.quantity",
             "LineItem.sku",
             "LineItem.unit_price",
+            // round 6: return contract nodes of functions annotated non-Optional
+            "build_line_item.<return>",
+            "customer_label.<return>",
+            "normalise.<return>",
+            "record_invoice.<return>",
+            "with_tax.<return>",
         ]
     );
 }
@@ -130,9 +136,11 @@ fn test_data_flow_edges() {
     }
     // Builtins and methods (DISCOUNT_CODES.get, str.upper) produce no edges
     assert!(edges.iter().all(|e| e.discovery == "ast_pattern"));
-    // 17 edges into own nodes, plus 6 argument edges into call-site nodes.
-    assert_eq!(edges.len(), 23, "{edges:#?}");
-    assert_eq!(edges.iter().filter(|e| !e.target_is_site).count(), 17);
+    // 17 edges into own nodes, 6 return sites into return contract nodes,
+    // plus 6 argument edges into call-site nodes.
+    assert_eq!(edges.len(), 29, "{edges:#?}");
+    assert_eq!(edges.iter().filter(|e| !e.target_is_site).count(), 23);
+    assert_eq!(edges.iter().filter(|e| e.target_name.ends_with(".<return>")).count(), 6);
 }
 
 #[test]

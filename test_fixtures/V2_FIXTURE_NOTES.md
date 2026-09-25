@@ -102,3 +102,29 @@ form, so an error on correct code fails the fixture.
   an unknown string into a field with choices.
 - Range bounds display as decimals (`range ≤ 0.7`); choices as
   `choices in [a, x]`.
+
+## Round 6 fixtures (`r6_*`)
+
+One fixture per item of `docs/design/dataflow-v2.md` "Round 6" and per
+final-pass repro: `r6_return_contract`, `r6_deref_narrowing` (min/fp1),
+`r6_decorator_injected`, `r6_alternatives` (n12, f15), `r6_dynamic_writes`
+(min/u2 b, d), `r6_dispatch` (min/f13a, f13b, f13), `r6_dict_splats`
+(min/f10a-g, u2 a, e), `r6_queryset_loops` (u2 c), `r6_pydantic_forms`
+(min/f19a, f06a, SQLModel), `r6_field_reads` (f02, f08), `r6_value_bounds`
+(f18, f20, q03). Most include correct code (`ok.py` or `*_ok` functions).
+`tests/e2e_round6.rs` checks what `expected.json` cannot (no edge for
+`None` into a None-accepting field, no nullability row for an injected
+parameter, empty-override dynamic edges, one call-site node per dispatch
+target).
+
+Existing expectations changed by round 6:
+
+- `nullable`: `apply_discount` (annotated `-> Invoice`) returns None; the
+  error is now reported once, at that `return` (`apply_discount ->
+  apply_discount.<return>`), and callers rely on the annotation. The two
+  precision errors are unchanged.
+- `limits_per_argument`, `v2_per_param_requires`, `r5_classmethod`: the same
+  finding (same failing hop, guarantee and requirement), but its shortest
+  witness path now ends at the callee's return contract node
+  (`combine.<return>`, `Refund.make.<return>`), which is as short as the
+  path to the field and is the one the checker keeps.

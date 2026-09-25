@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "summarise_bad -> ExportSummary.line_count",
+      "source_guarantee": "range ≥ -1",
+      "target_requirement": "range ≥ 1",
+      "target": "ExportSummary.line_count"
+    },
+    {
+      "path": "from_float -> ExportSummary.total",
+      "source_guarantee": "precision ≤ 55",
+      "target_requirement": "precision ≤ 2",
+      "target": "ExportSummary.total"
+    }
+  ]
+}

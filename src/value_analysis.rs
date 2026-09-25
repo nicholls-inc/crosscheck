@@ -20,6 +20,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
+use ruff_python_ast::visitor;
 use ruff_python_ast::{self as ast, BoolOp, Expr, Number, Operator, UnaryOp};
 
 use crate::bounds::{self, Dec};
@@ -248,6 +249,40 @@ impl Ctx {
     }
 }
 
+/// Most alternatives a value is split into at a write or argument site.
+pub const MAX_ALTERNATIVES: usize = 4;
+
+/// One alternative of a value (see `Scope::alternatives`).
+#[derive(Debug, Clone)]
+pub enum Alt<'e> {
+    /// An expression evaluated with this context; `true`: known non-None
+    /// where the value is used.
+    Expr(&'e Expr, Ctx, bool),
+    /// A value with these facts (a parameter's argument, an augmented assignment).
+    Facts(ValueFacts),
+}
+
+/// The string-keyed entries of a dict, with each value's context.
+pub type DictEntries<'e> = Vec<(String, &'e Expr, Ctx)>;
+
+/// What a `**d` splat (or a dict argument) supplies (see `Scope::splat`).
+#[derive(Debug, Clone)]
+pub struct Splat<'e> {
+    pub entries: Vec<(String, SplatValue<'e>)>,
+    /// No keys other than `entries` (else unknown ones may be present).
+    pub complete: bool,
+}
+
+/// The value of one known key of a splatted dict.
+#[derive(Debug, Clone)]
+pub enum SplatValue<'e> {
+    /// An expression of the enclosing function, with its context.
+    Expr(&'e Expr, Ctx),
+    /// Facts of a value computed in another function (a returned dict),
+    /// located at `file` / byte offset.
+    Facts(ValueFacts, String, u32),
+}
+
 /// A resolved call target.
 #[derive(Debug, Clone)]
 pub enum Callee<'a> {
@@ -323,6 +358,12 @@ pub struct Scope<'a> {
     /// Nesting depth of `facts` / `receiver_class`; past `MAX_EVAL_DEPTH`
     /// the value is unknown.
     depth: Cell<usize>,
+    /// Parameters with a `None` default have unknown nullability: a
+    /// project-defined decorator may inject their argument.
+    injected: bool,
+    /// Dict forwarder parameters (`edge_discovery::dict_param_key`), whose
+    /// argument dicts are only splatted by the callee.
+    pub dict_forwarders: Option<&'a HashSet<String>>,
 }
 
 /// Recursion bound of the value analysis: deeper values are unknown.
@@ -361,7 +402,15 @@ impl<'a> Scope<'a> {
             def_visiting: RefCell::new(HashSet::new()),
             receiving: RefCell::new(HashSet::new()),
             depth: Cell::new(0),
+            injected: func.is_some_and(|f| injecting_decorator(index, f)),
+            dict_forwarders: None,
         }
+    }
+
+    /// The same scope, knowing the project's dict forwarder parameters.
+    pub fn with_dict_forwarders(mut self, forwarders: &'a HashSet<String>) -> Self {
+        self.dict_forwarders = Some(forwarders);
+        self
     }
 
     /// Enter one level of recursive evaluation; `None` past the bound.
@@ -552,10 +601,15 @@ impl<'a> Scope<'a> {
     /// function does not assign it, the field's declared nullability.
     fn field_read_facts(&self, obj: &str, class: &ClassInfo, field: &str, ctx: &Ctx) -> ValueFacts {
         let name = format!("{obj}.{field}");
-        let declared = || match class.field_nullable.get(field) {
-            Some(false) => ValueFacts::non_null(),
-            Some(true) => ValueFacts::nullable(),
-            None => ValueFacts::default(),
+        // The field's declared contracts (every write to it is checked
+        // against them), else its declared nullability.
+        let declared = || match class.field_facts.get(field) {
+            Some(f) => f.clone(),
+            None => match class.field_nullable.get(field) {
+                Some(false) => ValueFacts::non_null(),
+                Some(true) => ValueFacts::nullable(),
+                None => ValueFacts::default(),
+            },
         };
         let facts = if self.flow.opaque.contains(&name) {
             ValueFacts::default()
@@ -629,16 +683,29 @@ impl<'a> Scope<'a> {
                     },
                 }
             }
-            None => match self.index.constant(qualified) {
-                Some(e) => self.facts(e, &ctx),
-                None => ValueFacts::default(),
-            },
+            None => {
+                // A class-body name that code elsewhere assigns on an object
+                // (`plugin.configuration = ...`) is not a constant.
+                let (owner, name) = qualified.rsplit_once('.').unwrap_or(("", qualified));
+                if self.index.class(owner).is_some() && self.index.stored_attributes.contains(name) {
+                    return ValueFacts::default();
+                }
+                match self.index.constant(qualified) {
+                    Some(e) => self.facts(e, &ctx),
+                    None => ValueFacts::default(),
+                }
+            }
         }
     }
 
     fn name_facts(&self, name: &str, ctx: &Ctx) -> ValueFacts {
         if ctx.shadowed.contains(name) {
             return ValueFacts::default();
+        }
+        // A loop variable over instances of a known class (a queryset, a
+        // typed collection): an instance, not None.
+        if self.flow.loop_vars.contains_key(name) && self.loop_var_class(name, ctx).is_some() {
+            return ValueFacts::non_null();
         }
         // Reaching definitions are exact for names bound only by simple and
         // augmented assignments.
@@ -761,8 +828,11 @@ impl<'a> Scope<'a> {
             }
             _ => None,
         };
+        // A decorator may inject the argument of a `None`-default parameter:
+        // whether it is None inside the function is not known.
+        let nullable = if self.injected && p.default_none { None } else { p.nullable };
         ValueFacts {
-            nullable: p.nullable,
+            nullable,
             type_name: p.type_name.clone(),
             precision,
             ..Default::default()
@@ -834,23 +904,47 @@ impl<'a> Scope<'a> {
         let Expr::Slice(slice) = s.slice.as_ref() else {
             return ValueFacts::default();
         };
+        // Any slice `s[a:b]` (a string, list, tuple, ...) is a part of `s`: at
+        // most `s`'s length, and at most `b` when `b >= 0` whatever `a` is
+        // (it lies within `s[:b]`); with a positive step or none. A slice is
+        // a new sequence, never None (slicing None raises).
         let base = self.facts(&s.value, ctx);
-        if base.type_name.as_deref() != Some("str") || slice.step.is_some() {
-            return ValueFacts::default();
-        }
-        let nonneg = |e: &Option<Box<Expr>>| e.as_deref().and_then(int_literal).filter(|v| *v >= 0);
-        let bound = match (&slice.lower, nonneg(&slice.upper)) {
-            (None, Some(u)) => Some(u),
-            (Some(_), Some(u)) => nonneg(&slice.lower).map(|l| (u - l).max(0)),
+        let step_ok = match slice.step.as_deref() {
+            None => true,
+            Some(step) => int_literal(step).is_some_and(|v| v > 0),
+        };
+        // An exact non-negative integer (a literal or a constant).
+        let exact = |e: &Option<Box<Expr>>| -> Option<i64> {
+            let e = e.as_deref()?;
+            if let Some(v) = int_literal(e) {
+                return (v >= 0).then_some(v);
+            }
+            let f = self.facts(e, ctx);
+            if f.type_name.as_deref() != Some("int") {
+                return None;
+            }
+            match (f.min_value, f.max_value) {
+                (Some(lo), Some(hi)) if lo >= Dec::ZERO => hi.to_i64(),
+                _ => None,
+            }
+        };
+        let upper = exact(&slice.upper).filter(|_| step_ok);
+        let bound = match (upper, int_literal_opt(&slice.lower)) {
+            (Some(u), Some(l)) if l >= 0 => Some((u - l).max(0)),
+            (Some(u), _) => Some(u),
             _ => None,
         };
         let max_length = match (bound, base.max_length) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        let type_name = base
+            .type_name
+            .filter(|t| matches!(t.as_str(), "str"));
         ValueFacts {
             max_length,
-            ..ValueFacts::typed("str")
+            type_name,
+            ..ValueFacts::non_null()
         }
     }
 
@@ -886,12 +980,33 @@ impl<'a> Scope<'a> {
             (Some("str"), Operator::Mult, _, _) => repeat(&r, &b.left),
             _ => None,
         };
+        // Interval arithmetic on exact (int, Decimal) sums and differences:
+        // `len(x) - 1 >= -1`, `a + b >= 0` for non-negative `a`, `b`.
+        // Also for operands of unknown type with known bounds (a numeric
+        // field read): numbers, not strings (a string has no range).
+        let exact = matches!(result_type, Some("int" | "Decimal"))
+            || (result_type.is_none()
+                && [&l, &r].iter().all(|f| {
+                    f.type_name.as_deref().is_none_or(|t| matches!(t, "int" | "Decimal"))
+                        && (f.min_value.is_some() || f.max_value.is_some())
+                }));
+        let add = |a: Option<Dec>, b: Option<Dec>| a?.checked_add(b?);
+        let (min_value, max_value) = match b.op {
+            Operator::Add if exact => (add(l.min_value, r.min_value), add(l.max_value, r.max_value)),
+            Operator::Sub if exact => (
+                add(l.min_value, r.max_value.map(|v| -v)),
+                add(l.max_value, r.min_value.map(|v| -v)),
+            ),
+            _ => (None, None),
+        };
         ValueFacts {
             nullable,
             weak_type: result_type.is_some() && l.weak_type && r.weak_type,
             type_name: result_type.map(str::to_string),
             precision,
             max_length,
+            min_value,
+            max_value,
             ..Default::default()
         }
     }
@@ -942,20 +1057,83 @@ impl<'a> Scope<'a> {
                 }
             }
         }
-        match self.callee(func, ctx) {
-            Callee::Function { qualified, .. } => {
-                let mut f = self.summaries.get(&qualified).cloned().unwrap_or_default();
-                // A bound over the callee's own input means nothing here.
-                if f.precision
-                    .as_ref()
-                    .is_some_and(|p| p.as_static().is_none())
-                {
-                    f.precision = None;
+        // `Model.objects.<...>.<method>(...)`: an instance (`get`, `create`,
+        // `latest`: they raise rather than return None), a queryset, a
+        // tuple, a count; `first()` / `last()` below are nullable.
+        if let Some((_, method)) = self.objects_call(call, ctx) {
+            let m = method.strip_prefix('a').filter(|m| {
+                matches!(*m, "get" | "create" | "get_or_create" | "update_or_create" | "latest" | "earliest"
+                    | "update" | "count" | "exists" | "bulk_create" | "bulk_update" | "first" | "last")
+            }).unwrap_or(method);
+            match m {
+                "get" | "create" | "latest" | "earliest" | "get_or_create" | "update_or_create"
+                | "bulk_create" | "in_bulk" | "values" | "values_list" | "iterator" | "aggregate" => {
+                    return ValueFacts::non_null()
                 }
-                return f;
+                "update" | "count" | "bulk_update" => {
+                    return ValueFacts {
+                        precision: Some(Dep::Lit(0)),
+                        min_value: Some(Dec::ZERO),
+                        ..ValueFacts::typed("int")
+                    }
+                }
+                "exists" => return ValueFacts::typed("bool"),
+                m if QUERYSET_METHODS.contains(&m) => return ValueFacts::non_null(),
+                _ => {}
             }
-            Callee::Class(_) => return ValueFacts::non_null(),
-            Callee::Unknown => {}
+        }
+        // pydantic constructors and copies: `Cls.model_validate(...)`,
+        // `obj.model_copy(...)` return an instance (or raise).
+        if let Expr::Attribute(a) = func {
+            let pydantic = |c: &ClassInfo| {
+                c.kind == ClassKind::Data(crate::dataclass_extractor::DataClassKind::Pydantic)
+            };
+            let constructor = matches!(
+                a.attr.as_str(),
+                "model_validate" | "model_validate_json" | "model_validate_strings" | "model_construct"
+                    | "parse_obj" | "parse_raw" | "construct"
+            );
+            let copy = matches!(a.attr.as_str(), "model_copy" | "copy");
+            match self.receiver_class(&a.value, ctx) {
+                Some((c, true)) if copy && pydantic(c) => return ValueFacts::non_null(),
+                Some((c, false)) if constructor && pydantic(c) => return ValueFacts::non_null(),
+                _ => {}
+            }
+            if constructor {
+                let class = dotted_parts(&a.value)
+                    .filter(|p| !self.is_local(&p[0], ctx))
+                    .and_then(|p| self.index.resolve_dotted(self.module, &p));
+                if let Some(Symbol::Class(q)) = class {
+                    if self.index.class(&q).is_some_and(pydantic) {
+                        return ValueFacts::non_null();
+                    }
+                }
+            }
+        }
+        let callees = self.callees(func, ctx);
+        match callees.as_slice() {
+            [Callee::Class(_)] => return ValueFacts::non_null(),
+            [Callee::Unknown] => {}
+            targets => {
+                // The join over every target the call may dispatch to.
+                let facts = targets.iter().map(|t| match t {
+                    Callee::Function { qualified, .. } => {
+                        let mut f = self.summaries.get(qualified).cloned().unwrap_or_default();
+                        // A bound over the callee's own input means nothing here.
+                        if f.precision
+                            .as_ref()
+                            .is_some_and(|p| p.as_static().is_none())
+                        {
+                            f.precision = None;
+                        }
+                        f
+                    }
+                    _ => ValueFacts::default(),
+                });
+                if let Some(f) = ValueFacts::join_all(facts) {
+                    return f;
+                }
+            }
         }
         let Expr::Attribute(attr) = func else {
             return ValueFacts::default();
@@ -1172,6 +1350,44 @@ impl<'a> Scope<'a> {
                 ..joined
             };
         }
+        // `max(<generator>)` / `max([a, b])`: one of the elements (an empty
+        // iterable raises, unless a `default=` is given, which joins in).
+        if let [only] = &args[..] {
+            let elements = match only {
+                Expr::Generator(ast::ExprGenerator { elt, .. })
+                | Expr::ListComp(ast::ExprListComp { elt, .. })
+                | Expr::SetComp(ast::ExprSetComp { elt, .. }) => {
+                    let names: Vec<String> = flow::bound_names_in_expr(only).into_iter().collect();
+                    Some(self.facts(elt, &ctx.shadow(names)))
+                }
+                Expr::List(ast::ExprList { elts, .. })
+                | Expr::Tuple(ast::ExprTuple { elts, .. })
+                | Expr::Set(ast::ExprSet { elts, .. })
+                    if !elts.iter().any(|e| matches!(e, Expr::Starred(_))) =>
+                {
+                    ValueFacts::join_all(elts.iter().map(|e| self.facts(e, ctx)))
+                }
+                _ => None,
+            };
+            if let Some(e) = elements {
+                let default = call
+                    .arguments
+                    .keywords
+                    .iter()
+                    .find(|k| k.arg.as_deref() == Some("default"))
+                    .map(|k| self.facts(&k.value, ctx));
+                let mut f = match default {
+                    Some(d) => ValueFacts::join(e, d),
+                    None => e,
+                };
+                // Elements of unknown nullability: as for `max(xs)` (None does
+                // not compare with other values).
+                if f.nullable.is_none() {
+                    f.nullable = Some(false);
+                }
+                return f;
+            }
+        }
         ValueFacts::non_null()
     }
 
@@ -1207,21 +1423,16 @@ impl<'a> Scope<'a> {
                 self.symbol_callee(self.index.lookup(self.module, n.id.as_str()))
             }
             Expr::Attribute(attr) => {
+                if self.is_super_call(&attr.value, ctx) {
+                    let q = self
+                        .class
+                        .and_then(|c| self.index.super_method(&c.qualified, attr.attr.as_str()));
+                    let instance = self.func.is_some_and(|f| f.method_kind == MethodKind::Instance);
+                    return q.map_or(Callee::Unknown, |q| self.method_callee(q, instance));
+                }
                 if let Some((class, instance)) = self.receiver_class(&attr.value, ctx) {
                     return match self.index.method(&class.qualified, attr.attr.as_str()) {
-                        Some(q) => {
-                            let implicit = self.index.function(&q).map_or(0, |f| {
-                                if instance || f.method_kind == MethodKind::ClassMethod {
-                                    f.implicit_params()
-                                } else {
-                                    0
-                                }
-                            });
-                            Callee::Function {
-                                qualified: q,
-                                implicit,
-                            }
-                        }
+                        Some(q) => self.method_callee(q, instance),
                         None => Callee::Unknown,
                     };
                 }
@@ -1235,6 +1446,71 @@ impl<'a> Scope<'a> {
             }
             _ => Callee::Unknown,
         }
+    }
+
+    /// Every target a call may run: for a method call on an instance (or
+    /// class) of a known class, the method as resolved from that class and
+    /// from each project subclass that overrides it (class hierarchy
+    /// analysis; `self.m()` in an inherited method included); on a freshly
+    /// constructed object (`Cls().m()`) only `Cls`'s method; `super().m()`
+    /// the parent's method. Otherwise the one target of `callee`.
+    /// `[Callee::Unknown]` when the targets are not known.
+    pub fn callees(&self, func: &Expr, ctx: &Ctx) -> Vec<Callee<'a>> {
+        if let Expr::Attribute(attr) = func {
+            let name = attr.attr.as_str();
+            if self.is_super_call(&attr.value, ctx) {
+                let Some(class) = self.class else { return vec![Callee::Unknown] };
+                let Some(q) = self.index.super_method(&class.qualified, name) else {
+                    return vec![Callee::Unknown];
+                };
+                let instance = self.func.is_some_and(|f| f.method_kind == MethodKind::Instance);
+                return vec![self.method_callee(q, instance)];
+            }
+            if let Some((class, instance)) = self.receiver_class(&attr.value, ctx) {
+                // A freshly constructed object (`Cls(...)`, `Model.objects.create(...)`)
+                // is exactly of its class; a function's result may be a subclass.
+                let exact = match strip_await(&attr.value) {
+                    Expr::Call(c) => {
+                        self.objects_call(c, ctx).is_some()
+                            || matches!(self.callee(&c.func, ctx), Callee::Class(_))
+                    }
+                    _ => false,
+                };
+                let targets = if exact {
+                    Some(self.index.method(&class.qualified, name).into_iter().collect())
+                } else {
+                    self.index.dispatch_targets(&class.qualified, name)
+                };
+                return match targets {
+                    Some(ts) if !ts.is_empty() => {
+                        ts.into_iter().map(|q| self.method_callee(q, instance)).collect()
+                    }
+                    _ => vec![Callee::Unknown],
+                };
+            }
+        }
+        vec![self.callee(func, ctx)]
+    }
+
+    /// `method` called through an instance (`instance`) or through the class.
+    fn method_callee(&self, qualified: String, instance: bool) -> Callee<'a> {
+        let implicit = self.index.function(&qualified).map_or(0, |f| {
+            if instance || f.method_kind == MethodKind::ClassMethod {
+                f.implicit_params()
+            } else {
+                0
+            }
+        });
+        Callee::Function {
+            qualified,
+            implicit,
+        }
+    }
+
+    /// `super()` / `super(Cls, self)` inside a method.
+    fn is_super_call(&self, expr: &Expr, ctx: &Ctx) -> bool {
+        matches!(expr, Expr::Call(c)
+            if matches!(c.func.as_ref(), Expr::Name(n) if n.id.as_str() == "super" && self.is_external("super", ctx)))
     }
 
     /// The enclosing class, when `name` is the `cls` parameter of a classmethod.
@@ -1264,6 +1540,11 @@ impl<'a> Scope<'a> {
     /// The class of the object `expr` names, and whether it is an instance
     /// (rather than the class itself, as `cls` in a classmethod).
     pub fn receiver_class(&self, expr: &Expr, ctx: &Ctx) -> Option<(&'a ClassInfo, bool)> {
+        if let Expr::Call(_) = strip_await(expr) {
+            // `Cls(...).m()`, `Model.objects.get(...).m()`, `make().m()`
+            let _guard = self.enter()?;
+            return self.class_of_value(expr, ctx).map(|c| (c, true));
+        }
         let Expr::Name(n) = expr else { return None };
         let name = n.id.as_str();
         if ctx.shadowed.contains(name) {
@@ -1272,6 +1553,9 @@ impl<'a> Scope<'a> {
         if self.is_self(name) {
             let instance = self.func?.method_kind == MethodKind::Instance;
             return self.class.map(|c| (c, instance));
+        }
+        if self.flow.loop_vars.contains_key(name) {
+            return self.loop_var_class(name, ctx).map(|c| (c, true));
         }
         if self.flow.opaque.contains(name) {
             return None;
@@ -1284,6 +1568,106 @@ impl<'a> Scope<'a> {
         let result = self.receiver_class_of_local(name);
         self.receiving.borrow_mut().remove(name);
         result
+    }
+
+    /// The class of loop variable `name` (bound only by `for name in ...`),
+    /// when every loop iterates over instances of one known class.
+    fn loop_var_class(&self, name: &str, ctx: &Ctx) -> Option<&'a ClassInfo> {
+        let iters = self.flow.loop_vars.get(name)?;
+        if ctx.shadowed.contains(name) || self.param(name).is_some() || self.flow.unstable.contains(name) {
+            return None;
+        }
+        let _guard = self.enter()?;
+        let first = self.element_class(iters.first()?, ctx)?;
+        iters
+            .iter()
+            .all(|it| self.element_class(it, ctx).is_some_and(|c| c.qualified == first.qualified))
+            .then_some(first)
+    }
+
+    /// The class of the elements an iterable yields, when known: a queryset
+    /// (`Model.objects.filter(...)`, `.all()`, `.iterator()`, or a local bound
+    /// to one), a parameter annotated as a collection of a class
+    /// (`list[Model]`, `QuerySet[Model]`, `Iterable[Model]`), or a local the
+    /// function passes to `Model.objects.bulk_update(xs, ...)` /
+    /// `bulk_create(xs)` (its elements are instances of the model).
+    fn element_class(&self, iter: &Expr, ctx: &Ctx) -> Option<&'a ClassInfo> {
+        match iter {
+            Expr::Call(c) => {
+                let (class, method) = self.objects_call(c, ctx)?;
+                (QUERYSET_METHODS.contains(&method) || method == "iterator").then_some(class)
+            }
+            Expr::Name(n) => {
+                let name = n.id.as_str();
+                if let Some(p) = self.param(name) {
+                    if let Some(c) = p.annotation.as_ref().and_then(|a| self.collection_class(a)) {
+                        return Some(c);
+                    }
+                } else if let Some(a) = self.single_def(name, ctx) {
+                    if let Expr::Call(c) = a.value {
+                        if let Some((class, method)) = self.objects_call(c, &Ctx::new(&a.narrowed)) {
+                            if QUERYSET_METHODS.contains(&method) {
+                                return Some(class);
+                            }
+                        }
+                    }
+                }
+                self.bulk_written_class(name)
+            }
+            _ => None,
+        }
+    }
+
+    /// `list[C]`, `QuerySet[C]`, `Iterable[C]`, ... (also `Optional[...]`): `C`.
+    fn collection_class(&self, annotation: &Expr) -> Option<&'a ClassInfo> {
+        let Expr::Subscript(s) = strip_optional(annotation) else { return None };
+        let head = dotted_parts(&s.value)?;
+        let collection = matches!(
+            head.last().map(String::as_str),
+            Some(
+                "list" | "List" | "Sequence" | "Iterable" | "Iterator" | "Collection" | "QuerySet"
+                    | "set" | "Set" | "frozenset" | "FrozenSet" | "MutableSequence" | "AbstractSet"
+            )
+        );
+        if !collection {
+            return None;
+        }
+        self.annotation_class(self.module, &s.slice)
+    }
+
+    /// The model whose `objects.bulk_update(name, ...)` / `bulk_create(name)`
+    /// (or async form) this function calls with local `name`.
+    fn bulk_written_class(&self, name: &str) -> Option<&'a ClassInfo> {
+        struct Bulk<'n, 'b>(&'n str, Vec<&'b ast::ExprCall>);
+        impl<'b> visitor::Visitor<'b> for Bulk<'_, 'b> {
+            fn visit_expr(&mut self, expr: &'b Expr) {
+                if let Expr::Call(c) = expr {
+                    let bulk = matches!(c.func.as_ref(), Expr::Attribute(a)
+                        if matches!(a.attr.as_str(), "bulk_update" | "abulk_update" | "bulk_create" | "abulk_create"));
+                    if bulk && matches!(c.arguments.args.first(), Some(Expr::Name(n)) if n.id.as_str() == self.0) {
+                        self.1.push(c);
+                    }
+                }
+                visitor::walk_expr(self, expr);
+            }
+            fn visit_stmt(&mut self, stmt: &'b ruff_python_ast::Stmt) {
+                if !matches!(stmt, ruff_python_ast::Stmt::FunctionDef(_) | ruff_python_ast::Stmt::ClassDef(_)) {
+                    visitor::walk_stmt(self, stmt);
+                }
+            }
+        }
+        let func = self.func?;
+        let mut b = Bulk(name, Vec::new());
+        for s in &func.body {
+            visitor::Visitor::visit_stmt(&mut b, s);
+        }
+        let classes: Vec<&'a ClassInfo> = b
+            .1
+            .iter()
+            .filter_map(|c| self.objects_call(c, &Ctx::default()).map(|(class, _)| class))
+            .collect();
+        let first = *classes.first()?;
+        classes.iter().all(|c| c.qualified == first.qualified).then_some(first)
     }
 
     fn receiver_class_of_local(&self, name: &str) -> Option<(&'a ClassInfo, bool)> {
@@ -1400,23 +1784,114 @@ impl<'a> Scope<'a> {
     where
         'a: 'e,
     {
-        match expr {
-            Expr::Await(a) => self.producer_of(&a.value, ctx),
-            Expr::Call(c) => match self.callee(&c.func, ctx) {
-                Callee::Function { qualified, .. } => Some((qualified, c)),
-                _ => None,
-            },
+        self.producers_of(expr, ctx).into_iter().next()
+    }
+
+    /// The extracted functions whose result `expr` is (every dispatch target
+    /// of the call), with the call: a direct call, or a local whose one
+    /// reaching definition is such a call. Empty when `expr` is not such a
+    /// result (or a target is unknown).
+    pub fn producers_of<'e>(&self, expr: &'e Expr, ctx: &Ctx) -> Vec<(String, &'e ast::ExprCall)>
+    where
+        'a: 'e,
+    {
+        let (call, c) = match expr {
+            Expr::Await(a) => return self.producers_of(&a.value, ctx),
+            Expr::Call(c) => (c, ctx.clone()),
             Expr::Name(n) => {
-                let a = self.single_def(n.id.as_str(), ctx)?;
+                let Some(a) = self.single_def(n.id.as_str(), ctx) else { return Vec::new() };
                 match strip_await(a.value) {
-                    Expr::Call(c) => match self.callee(&c.func, &Ctx::new(&a.narrowed)) {
-                        Callee::Function { qualified, .. } => Some((qualified, c)),
-                        _ => None,
-                    },
-                    _ => None,
+                    Expr::Call(c) => (c, Ctx::new(&a.narrowed)),
+                    _ => return Vec::new(),
                 }
             }
-            _ => None,
+            _ => return Vec::new(),
+        };
+        let targets = self.callees(&call.func, &c);
+        if !targets.iter().all(|t| matches!(t, Callee::Function { .. })) {
+            return Vec::new();
+        }
+        targets
+            .into_iter()
+            .filter_map(|t| match t {
+                Callee::Function { qualified, .. } => Some((qualified, call)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The possible values of `expr` as separate alternatives (their union is
+    /// every value `expr` can have): the branches of `a if c else b` and the
+    /// reaching definitions of a local, expanded recursively. More than
+    /// `MAX_ALTERNATIVES` give the single alternative `expr` itself (a join).
+    pub fn alternatives<'e>(&self, expr: &'e Expr, ctx: &Ctx) -> Vec<Alt<'e>>
+    where
+        'a: 'e,
+    {
+        let mut out = Vec::new();
+        if self.expand(expr, ctx, false, 0, &mut out) && out.len() <= MAX_ALTERNATIVES {
+            out
+        } else {
+            vec![Alt::Expr(expr, ctx.clone(), false)]
+        }
+    }
+
+    /// Append the alternatives of `expr`; false when there are too many.
+    fn expand<'e>(&self, expr: &'e Expr, ctx: &Ctx, non_none: bool, depth: usize, out: &mut Vec<Alt<'e>>) -> bool
+    where
+        'a: 'e,
+    {
+        if out.len() > MAX_ALTERNATIVES {
+            return false;
+        }
+        if depth > 4 {
+            out.push(Alt::Expr(expr, ctx.clone(), non_none));
+            return true;
+        }
+        match expr {
+            Expr::If(i) => {
+                self.expand(&i.body, &ctx.narrow(flow::positive(&i.test)), non_none, depth + 1, out)
+                    && self.expand(&i.orelse, &ctx.narrow(flow::negative(&i.test)), non_none, depth + 1, out)
+            }
+            Expr::Name(n) => {
+                let name = n.id.as_str();
+                let reaching = ctx.narrowed.defs(name).filter(|d| {
+                    !d.is_empty()
+                        && !ctx.shadowed.contains(name)
+                        && !self.is_self(name)
+                        && !self.flow.opaque.contains(name)
+                        && !self.flow.unstable.contains(name)
+                });
+                let Some(defs) = reaching else {
+                    out.push(Alt::Expr(expr, ctx.clone(), non_none));
+                    return true;
+                };
+                let here = non_none || (ctx.narrowed.contains(name) && !self.flow.unstable.contains(name));
+                for &(d, nn) in defs {
+                    let nn = here || nn;
+                    match d {
+                        Def::Assign(i) => {
+                            let Some(a) = self.flow.assignments.get(name).and_then(|v| v.get(i)) else {
+                                out.push(Alt::Facts(ValueFacts::default()));
+                                continue;
+                            };
+                            if !self.expand(a.value, &Ctx::new(&a.narrowed), nn, depth + 1, out) {
+                                return false;
+                            }
+                        }
+                        Def::Param => {
+                            let f = self.param(name).map(|p| self.param_facts(p)).unwrap_or_default();
+                            out.push(Alt::Facts(if nn { f.non_none_part() } else { f }));
+                        }
+                        Def::Augmented => out.push(Alt::Facts(ValueFacts::non_null())),
+                    }
+                }
+                true
+            }
+            _ => {
+                out.push(Alt::Expr(expr, ctx.clone(), non_none));
+                true
+            }
         }
     }
 
@@ -1445,45 +1920,198 @@ impl<'a> Scope<'a> {
     /// The string-keyed entries of a dict literal, or of a local bound once to
     /// one and never mutated or passed on, with the context of each value.
     pub fn dict_items(&self, expr: &'a Expr, ctx: &Ctx) -> Option<Vec<(String, &'a Expr, Ctx)>> {
+        self.dict_entries(expr, ctx).map(|(entries, _)| entries)
+    }
+
+    /// `dict_items`, and whether the entries are all the dict's keys (no
+    /// unknown `**spread` or computed key could add others).
+    pub fn dict_entries(&self, expr: &'a Expr, ctx: &Ctx) -> Option<(DictEntries<'a>, bool)> {
+        let _guard = self.enter()?;
+        let add = |out: &mut Vec<(String, &'a Expr, Ctx)>, e: (String, &'a Expr, Ctx)| {
+            out.retain(|(k, _, _)| *k != e.0);
+            out.push(e);
+        };
         match expr {
             // Later entries override earlier ones. A `**spread` of a known dict
             // adds its entries; any other spread, or a non-literal key, may
             // override every earlier entry, so only the later ones are known.
             Expr::Dict(d) => {
                 let mut out: Vec<(String, &'a Expr, Ctx)> = Vec::new();
+                let mut complete = true;
                 for item in d.items.iter() {
                     let entries = match &item.key {
                         Some(Expr::StringLiteral(k)) => {
-                            Some(vec![(k.value.to_string(), &item.value, ctx.clone())])
+                            Some((vec![(k.value.to_string(), &item.value, ctx.clone())], true))
                         }
                         Some(_) => None,
-                        None => self.dict_items(&item.value, ctx),
+                        None => self.dict_entries(&item.value, ctx),
                     };
                     match entries {
-                        Some(entries) => {
+                        Some((entries, c)) => {
+                            complete &= c;
                             for e in entries {
-                                out.retain(|(k, _, _)| *k != e.0);
-                                out.push(e);
+                                add(&mut out, e);
                             }
                         }
-                        None => out.clear(),
+                        None => {
+                            out.clear();
+                            complete = false;
+                        }
                     }
                 }
-                Some(out)
+                Some((out, complete))
+            }
+            // `dict(k=v, ...)`, `dict(other, k=v)`, `dict(**other, k=v)`
+            Expr::Call(c)
+                if matches!(c.func.as_ref(), Expr::Name(n) if n.id.as_str() == "dict" && self.is_external("dict", ctx))
+                    && c.arguments.args.len() <= 1 =>
+            {
+                let (mut out, mut complete) = match c.arguments.args.first() {
+                    Some(base) => self.dict_entries(base, ctx).unwrap_or_default(),
+                    None => (Vec::new(), true),
+                };
+                for kw in c.arguments.keywords.iter() {
+                    match &kw.arg {
+                        Some(k) => add(&mut out, (k.to_string(), &kw.value, ctx.clone())),
+                        None => match self.dict_entries(&kw.value, ctx) {
+                            Some((entries, c)) => {
+                                complete &= c;
+                                for e in entries {
+                                    add(&mut out, e);
+                                }
+                            }
+                            None => {
+                                out.clear();
+                                complete = false;
+                            }
+                        },
+                    }
+                }
+                Some((out, complete))
             }
             Expr::Name(n) => {
                 let name = n.id.as_str();
-                if self.flow.escaping.contains(name) {
+                if self.flow.escaping.contains(name) && !self.passed_to_forwarders(name) {
                     return None;
                 }
                 let a = self.single_def(name, ctx)?;
                 match a.value {
-                    Expr::Dict(_) => self.dict_items(a.value, &Ctx::new(&a.narrowed)),
+                    Expr::Dict(_) | Expr::Call(_) => self.dict_entries(a.value, &Ctx::new(&a.narrowed)),
                     _ => None,
                 }
             }
             _ => None,
         }
+    }
+
+    /// Whether every escaping use of local `name` passes it directly to a
+    /// dict forwarder parameter (a parameter the callee only splats), so the
+    /// dict is not mutated.
+    fn passed_to_forwarders(&self, name: &str) -> bool {
+        let (Some(forwarders), Some(passes)) = (self.dict_forwarders, self.flow.passed.get(name)) else {
+            return false;
+        };
+        passes.iter().all(|(call, pos)| {
+            let targets = self.callees(&call.func, &Ctx::default());
+            !targets.is_empty()
+                && targets.iter().all(|t| {
+                    let Callee::Function { qualified, implicit } = t else { return false };
+                    let Some(f) = self.index.function(qualified) else { return false };
+                    let param = match pos {
+                        flow::ArgPos::Positional(i) => f
+                            .params
+                            .get(implicit + i)
+                            .filter(|p| matches!(p.kind, ParamKind::PositionalOnly | ParamKind::Normal)),
+                        flow::ArgPos::Keyword(k) => f
+                            .params
+                            .iter()
+                            .find(|p| &p.name == k && matches!(p.kind, ParamKind::Normal | ParamKind::KeywordOnly)),
+                    };
+                    param.is_some_and(|p| forwarders.contains(&format!("{qualified}({})", p.name)))
+                })
+        })
+    }
+
+    /// What `**expr` supplies: known entries (expressions here, or facts of a
+    /// dict a called function returns) and whether they are all its keys.
+    pub fn splat(&self, expr: &'a Expr, ctx: &Ctx) -> Splat<'a> {
+        if let Some((entries, complete)) = self.dict_entries(expr, ctx) {
+            return Splat {
+                entries: entries
+                    .into_iter()
+                    .map(|(k, e, c)| (k, SplatValue::Expr(e, c)))
+                    .collect(),
+                complete,
+            };
+        }
+        if let Expr::Call(call) = strip_await(expr) {
+            if let Some(s) = self.returned_dict(call, ctx) {
+                return s;
+            }
+        }
+        // `data = payload(x); Cls(**data)`
+        if let Expr::Name(n) = expr {
+            let name = n.id.as_str();
+            if !self.flow.escaping.contains(name) || self.passed_to_forwarders(name) {
+                if let Some(a) = self.single_def(name, ctx) {
+                    if let Expr::Call(call) = strip_await(a.value) {
+                        if let Some(s) = self.returned_dict(call, &Ctx::new(&a.narrowed)) {
+                            return s;
+                        }
+                    }
+                }
+            }
+        }
+        Splat {
+            entries: Vec::new(),
+            complete: false,
+        }
+    }
+
+    /// The dict a call returns, when every target returns a dict display
+    /// (or `dict(...)`) on every `return`: each key's facts, computed in the
+    /// callee (a bound over the callee's own input is dropped).
+    fn returned_dict(&self, call: &ast::ExprCall, ctx: &Ctx) -> Option<Splat<'a>> {
+        let targets = self.callees(&call.func, ctx);
+        let mut by_key: Vec<(String, ValueFacts, String, u32)> = Vec::new();
+        let mut complete = true;
+        for t in &targets {
+            let Callee::Function { qualified, .. } = t else { return None };
+            let g = self.index.function(qualified)?;
+            if g.is_generator {
+                return None;
+            }
+            let flow = FunctionFlow::of_info(g);
+            if flow.returns.is_empty() {
+                return None;
+            }
+            let scope = Scope::new(self.index, self.summaries, Some(g), &flow);
+            for (ret, narrowed) in &flow.returns {
+                // A bare `return` / `return None`: `**None` raises, nothing is written.
+                let Some(ret) = ret.filter(|e| !matches!(e, Expr::NoneLiteral(_))) else { continue };
+                let (entries, c) = scope.dict_entries(ret, &Ctx::new(narrowed))?;
+                complete &= c;
+                for (k, e, ectx) in entries {
+                    use ruff_text_size::Ranged;
+                    let mut f = scope.facts(e, &ectx);
+                    if f.precision.as_ref().is_some_and(|p| p.as_static().is_none()) {
+                        f.precision = None;
+                    }
+                    let offset = e.range().start().to_u32();
+                    match by_key.iter_mut().find(|(key, ..)| *key == k) {
+                        Some(entry) => entry.1 = ValueFacts::join(entry.1.clone(), f),
+                        None => by_key.push((k, f, g.source_file.clone(), offset)),
+                    }
+                }
+            }
+        }
+        Some(Splat {
+            entries: by_key
+                .into_iter()
+                .map(|(k, f, file, offset)| (k, SplatValue::Facts(f, file, offset)))
+                .collect(),
+            complete,
+        })
     }
 
     /// Facts about the function's return value: body `return` expressions
@@ -1528,11 +2156,13 @@ impl<'a> Scope<'a> {
         if is_named(annotation, "Any") || is_none_annotation(annotation) {
             return facts;
         }
-        if func.is_return_optional {
-            facts.nullable = Some(true);
-        } else if facts.nullable != Some(true) {
-            // The annotation excludes None and the body shows no None.
-            facts.nullable = Some(false);
+        match func.return_nullable {
+            Some(true) => facts.nullable = Some(true),
+            // The annotation excludes None: a contract on the function's own
+            // return values (checked at every `return`, see
+            // `edge_discovery`), so callers rely on it (assume-guarantee).
+            Some(false) if func.has_return_contract() => facts.nullable = Some(false),
+            _ => {}
         }
         let annotated = func.tuple_element_type.clone().or_else(|| {
             func.return_type
@@ -1595,6 +2225,19 @@ fn case_mapped(method: &str, values: &[String]) -> Option<Vec<String>> {
     )
 }
 
+/// Whether `func` has a project-defined decorator (a function or class of
+/// the project, other than the plain ones in `function_extractor`), which
+/// may supply arguments the caller leaves out (`@background_task` passing
+/// `db_session`).
+pub fn injecting_decorator(index: &ProjectIndex, func: &FunctionInfo) -> bool {
+    func.wrapping_decorators().any(|parts| {
+        matches!(
+            index.resolve_dotted(&func.module, parts),
+            Some(Symbol::Function(_) | Symbol::Class(_))
+        )
+    })
+}
+
 /// `await e` → `e` (the awaited call's result stands for the call's).
 pub fn strip_await(expr: &Expr) -> &Expr {
     match expr {
@@ -1633,6 +2276,14 @@ fn decimal_ctor_facts(call: &ast::ExprCall, scope: &Scope, ctx: &Ctx) -> ValueFa
             facts.min_value = bounds::parse_decimal(text);
             facts.max_value = bounds::parse_decimal(text);
         }
+        arg if float_literal(arg).is_some() => {
+            // `Decimal(0.1)` is the float's exact binary value: 55 places.
+            if let Some((places, value)) = float_literal(arg).and_then(float_exact) {
+                facts.precision = Some(Dep::Lit(places));
+                facts.min_value = value;
+                facts.max_value = value;
+            }
+        }
         arg => {
             let f = scope.facts(arg, ctx);
             if f.type_name.as_deref() == Some("int") {
@@ -1664,6 +2315,66 @@ pub fn decimal_literal_places(text: &str) -> Option<i64> {
     }
     let places = frac.chars().filter(|c| c.is_ascii_digit()).count() as i64;
     Some(places.saturating_sub(exp).max(0))
+}
+
+/// A float literal, including a negated one.
+fn float_literal(expr: &Expr) -> Option<f64> {
+    match expr {
+        Expr::NumberLiteral(n) => match &n.value {
+            Number::Float(f) => Some(*f),
+            _ => None,
+        },
+        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::USub) => float_literal(&u.operand).map(|v| -v),
+        _ => None,
+    }
+}
+
+/// `int_literal` of an optional expression.
+fn int_literal_opt(expr: &Option<Box<Expr>>) -> Option<i64> {
+    expr.as_deref().and_then(int_literal)
+}
+
+/// Exact decimal places of a binary float (`0.1` is
+/// `0.1000000000000000055511151231257827021181583404541015625`: 55 places)
+/// and, when it has at most 30 places, its exact value.
+pub fn float_exact(v: f64) -> Option<(i64, Option<Dec>)> {
+    if !v.is_finite() {
+        return None;
+    }
+    if v == 0.0 {
+        return Some((0, Some(Dec::ZERO)));
+    }
+    let bits = v.to_bits();
+    let negative = bits >> 63 == 1;
+    let exp_bits = ((bits >> 52) & 0x7ff) as i64;
+    let frac = bits & ((1u64 << 52) - 1);
+    // v = m × 2^e
+    let (mut m, mut e) = if exp_bits == 0 {
+        (frac, -1074)
+    } else {
+        (frac | (1u64 << 52), exp_bits - 1075)
+    };
+    while m % 2 == 0 && e < 0 {
+        m /= 2;
+        e += 1;
+    }
+    let sign: i128 = if negative { -1 } else { 1 };
+    if e >= 0 {
+        // An integer.
+        let value = (e < 64)
+            .then(|| (m as i128).checked_mul(1i128.checked_shl(e as u32)?))
+            .flatten()
+            .and_then(|x| Dec::from_scaled(sign * x, 0));
+        return Some((0, value));
+    }
+    // m / 2^k = m × 5^k / 10^k with m odd: exactly k places.
+    let k = -e;
+    let value = u32::try_from(k)
+        .ok()
+        .filter(|k| *k <= 30)
+        .and_then(|k| 5i128.checked_pow(k).and_then(|p| (m as i128).checked_mul(p)).map(|x| (x, k)))
+        .and_then(|(x, k)| Dec::from_scaled(sign * x, k));
+    Some((k, value))
 }
 
 /// An integer literal, including a negated one.
@@ -1967,11 +2678,12 @@ mod tests {
             one("def f(a: str):\n    a.upper()\n").type_name.as_deref(),
             Some("str")
         );
-        assert_eq!(
-            one("def f(a):\n    a[:5]\n").max_length,
-            None,
-            "unknown type"
-        );
+        // Any slice is bounded by its upper index, whatever the type.
+        let f = one("def f(a):\n    a[:5]\n");
+        assert_eq!((f.max_length, f.nullable, f.type_name), (Some(5), Some(false), None));
+        assert_eq!(one("def f(a):\n    a[-3:4]\n").max_length, Some(4));
+        assert_eq!(one("def f(a):\n    a[:4:-1]\n").max_length, None, "a negative step");
+        assert_eq!(one("def f(a):\n    a[:-1]\n").max_length, None);
     }
 
     #[test]
@@ -2254,6 +2966,129 @@ mod tests {
         assert_eq!(facts_of(&files, "code.h").nullable, Some(false));
         assert_eq!(facts_of(&files, "code.i").nullable, Some(true));
         assert_eq!(facts_of(&files, "code.j").max_length, Some(3));
+    }
+
+    /// Round 6 value facts: exact float places, interval arithmetic, `max`
+    /// over a generator, field reads with declared contracts.
+    #[test]
+    fn test_round6_value_facts() {
+        let (p, v) = float_exact(0.1).unwrap();
+        assert_eq!((p, v), (55, None), "0.1 has 55 exact places");
+        assert_eq!(float_exact(0.5), Some((1, Dec::from_scaled(5, 1))));
+        assert_eq!(float_exact(-2.0), Some((0, Some(Dec::from_int(-2)))));
+        assert_eq!(float_exact(0.375).unwrap().0, 3);
+        let f = one("def f():\n    Decimal(0.25)\n");
+        assert_eq!((f.precision, f.min_value), (Some(Dep::Lit(2)), Dec::from_scaled(25, 2)));
+        // len(x) - 1 >= -1; a + b for non-negative bounds; float: none.
+        assert_eq!(one("def f(x):\n    len(x) - 1\n").min_value, Some(Dec::from_int(-1)));
+        let f = one("def f(x):\n    len(x) + 2\n");
+        assert_eq!((f.min_value, f.max_value), (Some(Dec::from_int(2)), None));
+        assert_eq!(one("def f(x: float):\n    x + 1\n").min_value, None);
+        // max / min over a generator: the elements' facts.
+        let f = one("def f(xs):\n    max(x.quantize(Decimal('0.01')) for x in xs)\n");
+        assert_eq!((f.precision, f.nullable), (Some(Dep::Lit(2)), Some(false)));
+        let f = one("def f(xs):\n    min((len(x) for x in xs), default=0)\n");
+        assert_eq!(f.min_value, Some(Dec::ZERO));
+        // Field reads carry the declared contracts.
+        let files = [(
+            "code.py",
+            "from django.db import models\n\
+             class Inv(models.Model):\n    number = models.CharField(max_length=12)\n    total = models.DecimalField(max_digits=9, decimal_places=2)\n    n = models.PositiveIntegerField()\n\
+             def f(i: Inv):\n    i.number\n\
+             def g(i: Inv):\n    i.total\n\
+             def h(i: Inv):\n    i.n - 1\n",
+        )];
+        let f = facts_of(&files, "code.f");
+        assert_eq!((f.max_length, f.type_name.as_deref(), f.nullable), (Some(12), Some("str"), Some(false)));
+        assert_eq!(facts_of(&files, "code.g").precision, Some(Dep::Lit(2)));
+        assert_eq!(facts_of(&files, "code.h").min_value, Some(Dec::from_int(-1)));
+    }
+
+    /// Round 6: alternatives of a value at a use.
+    #[test]
+    fn test_alternatives() {
+        let alts = |src: &str| {
+            let p = project(&[("code.py", src)]);
+            let f = p.index.function("code.f").unwrap();
+            let flow = FunctionFlow::of_info(f);
+            let scope = Scope::new(&p.index, &p.summaries, Some(f), &flow);
+            struct Last<'a>(Option<(&'a Expr, Narrowed)>);
+            impl<'a> flow::FlowVisitor<'a> for Last<'a> {
+                fn simple(&mut self, stmt: &'a ruff_python_ast::Stmt, n: &Narrowed) {
+                    if let ruff_python_ast::Stmt::Expr(e) = stmt {
+                        self.0 = Some((&e.value, n.clone()));
+                    }
+                }
+                fn header(&mut self, _: &'a Expr, _: &Narrowed) {}
+            }
+            let mut last = Last(None);
+            flow::walk_block(&f.body, &flow.entry, &mut last);
+            let (expr, n) = last.0.unwrap();
+            let out: Vec<Option<i64>> = scope
+                .alternatives(expr, &Ctx::new(&n))
+                .into_iter()
+                .map(|a| match a {
+                    Alt::Expr(e, c, nn) => {
+                        let f = scope.facts(e, &c);
+                        let f = if nn { f.non_none_part() } else { f };
+                        f.max_length
+                    }
+                    Alt::Facts(f) => f.max_length,
+                })
+                .collect();
+            let mut out = out;
+            out.sort();
+            out
+        };
+        assert_eq!(alts("def f(c):\n    'ab' if c else 'abcd'\n"), [Some(2), Some(4)]);
+        assert_eq!(
+            alts("def f(c, d):\n    v = 'a'\n    if c:\n        v = 'abc'\n    if d:\n        v = d\n    v\n"),
+            [None, Some(1), Some(3)]
+        );
+        // More than four: one joined alternative.
+        assert_eq!(
+            alts("def f(c):\n    ('a' if c else 'bb') if c else ('ccc' if c else ('dddd' if c else 'eeeee'))\n"),
+            [Some(5)]
+        );
+    }
+
+    /// Round 6: class hierarchy analysis and `super()`.
+    #[test]
+    fn test_dispatch_callees() {
+        let files = [(
+            "code.py",
+            "class A:\n    def m(self):\n        return 1\n    def run(self):\n        return self.m()\n\
+             class B(A):\n    def m(self):\n        return 2\n    def up(self):\n        return super().m()\n\
+             class C(B):\n    pass\n\
+             def f(a: A):\n    a.m()\n\
+             def g():\n    B().m()\n",
+        )];
+        let p = project(&files);
+        let targets = |func: &str| {
+            let f = p.index.function(func).unwrap();
+            let flow = FunctionFlow::of_info(f);
+            let scope = Scope::new(&p.index, &p.summaries, Some(f), &flow);
+            let call = match &f.body[0] {
+                ruff_python_ast::Stmt::Expr(e) => e.value.clone(),
+                ruff_python_ast::Stmt::Return(r) => r.value.clone().unwrap(),
+                _ => unreachable!(),
+            };
+            let Expr::Call(c) = call.as_ref() else { unreachable!() };
+            let mut qs: Vec<String> = scope
+                .callees(&c.func, &Ctx::default())
+                .into_iter()
+                .filter_map(|t| match t {
+                    Callee::Function { qualified, .. } => Some(qualified),
+                    _ => None,
+                })
+                .collect();
+            qs.sort();
+            qs
+        };
+        assert_eq!(targets("code.f"), ["code.A.m", "code.B.m"]);
+        assert_eq!(targets("code.A.run"), ["code.A.m", "code.B.m"], "self.m() in an inherited method");
+        assert_eq!(targets("code.B.up"), ["code.A.m"], "super().m()");
+        assert_eq!(targets("code.g"), ["code.B.m"], "B().m() on B only");
     }
 
     /// Overloads that disagree on `None`: the result's nullability is unknown.

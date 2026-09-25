@@ -182,6 +182,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
         match stmt {
             Stmt::If(s) => {
                 v.header(&s.test, &n);
+                n.extend(dereferenced(&s.test));
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
                 body_n.extend(positive(&s.test));
@@ -231,6 +232,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             Stmt::For(f) => {
                 v.header(&f.iter, &n);
+                n.extend(dereferenced(&f.iter));
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 walk(&f.body, &n, v, counts);
                 walk(&f.orelse, &n, v, counts);
@@ -246,6 +248,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::With(w) => {
                 for item in &w.items {
                     v.header(&item.context_expr, &n);
+                    n.extend(dereferenced(&item.context_expr));
                     if let Some(target) = &item.optional_vars {
                         remove_all(&mut n, bound_names_in_expr(target));
                     }
@@ -276,6 +279,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             Stmt::Match(m) => {
                 v.header(&m.subject, &n);
+                n.extend(dereferenced(&m.subject));
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 for case in &m.cases {
                     walk(&case.body, &n, v, counts);
@@ -289,6 +293,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             _ => {
                 v.simple(stmt, &n);
+                n.extend(stmt_dereferences(stmt));
                 let simple: Vec<String> = match stmt {
                     Stmt::Assign(a) => simple_assign_targets(a)
                         .or_else(|| simple_attr_targets(a))
@@ -319,6 +324,146 @@ fn walk<'a, V: FlowVisitor<'a>>(
         }
     }
     n
+}
+
+/// Names (and attributes of variables, as `obj.f`) that evaluating `expr`
+/// certainly dereferences: `x.attr` (not a dunder, which `None` has),
+/// `x.method(...)`, `x[i]`, `len(x)`. Evaluating them with `x` None raises,
+/// so afterwards `x` is not None. Only unconditionally evaluated parts
+/// count (the first operand of `and` / `or`, the test of `a if c else b`,
+/// the first iterable of a comprehension; not lambda bodies).
+pub fn dereferenced(expr: &Expr) -> Vec<String> {
+    let mut out = Vec::new();
+    deref_walk(expr, &mut out);
+    out
+}
+
+fn deref_target(expr: &Expr, out: &mut Vec<String>) {
+    match expr {
+        Expr::Name(n) => out.push(n.id.to_string()),
+        Expr::Attribute(_) => out.extend(attr_name(expr)),
+        _ => {}
+    }
+}
+
+fn deref_walk(expr: &Expr, out: &mut Vec<String>) {
+    match expr {
+        Expr::Attribute(a) => {
+            let dunder = a.attr.starts_with("__") && a.attr.ends_with("__");
+            if !dunder {
+                deref_target(&a.value, out);
+            }
+            deref_walk(&a.value, out);
+        }
+        Expr::Subscript(s) => {
+            deref_target(&s.value, out);
+            deref_walk(&s.value, out);
+            deref_walk(&s.slice, out);
+        }
+        Expr::Call(c) => {
+            if let (Expr::Name(f), [arg]) = (c.func.as_ref(), &c.arguments.args[..]) {
+                if f.id.as_str() == "len" && c.arguments.keywords.is_empty() {
+                    deref_target(arg, out);
+                }
+            }
+            deref_walk(&c.func, out);
+            for arg in c.arguments.args.iter() {
+                deref_walk(arg, out);
+            }
+            for kw in c.arguments.keywords.iter() {
+                deref_walk(&kw.value, out);
+            }
+        }
+        Expr::BoolOp(b) => {
+            if let Some(first) = b.values.first() {
+                deref_walk(first, out);
+            }
+        }
+        Expr::If(i) => deref_walk(&i.test, out),
+        Expr::Compare(c) => {
+            deref_walk(&c.left, out);
+            if let Some(first) = c.comparators.first() {
+                deref_walk(first, out);
+            }
+        }
+        Expr::ListComp(ast::ExprListComp { generators, .. })
+        | Expr::SetComp(ast::ExprSetComp { generators, .. })
+        | Expr::Generator(ast::ExprGenerator { generators, .. })
+        | Expr::DictComp(ast::ExprDictComp { generators, .. }) => {
+            if let Some(g) = generators.first() {
+                deref_walk(&g.iter, out);
+            }
+        }
+        Expr::Named(n) => deref_walk(&n.value, out),
+        Expr::BinOp(b) => {
+            deref_walk(&b.left, out);
+            deref_walk(&b.right, out);
+        }
+        Expr::UnaryOp(u) => deref_walk(&u.operand, out),
+        Expr::Await(a) => deref_walk(&a.value, out),
+        Expr::Starred(s) => deref_walk(&s.value, out),
+        Expr::Tuple(t) => t.elts.iter().for_each(|e| deref_walk(e, out)),
+        Expr::List(l) => l.elts.iter().for_each(|e| deref_walk(e, out)),
+        Expr::Set(s) => s.elts.iter().for_each(|e| deref_walk(e, out)),
+        Expr::Dict(d) => {
+            for item in d.items.iter() {
+                if let Some(k) = &item.key {
+                    deref_walk(k, out);
+                }
+                deref_walk(&item.value, out);
+            }
+        }
+        Expr::Slice(s) => {
+            for e in [&s.lower, &s.upper, &s.step].into_iter().flatten() {
+                deref_walk(e, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// What executing a simple statement certainly dereferences (see
+/// `dereferenced`): its evaluated expressions and the objects of attribute
+/// and subscript targets. `assert` does not count (it may be compiled out).
+fn stmt_dereferences(stmt: &Stmt) -> Vec<String> {
+    fn target(t: &Expr, out: &mut Vec<String>) {
+        match t {
+            Expr::Attribute(a) => {
+                deref_target(&a.value, out);
+                deref_walk(&a.value, out);
+            }
+            Expr::Subscript(s) => {
+                deref_target(&s.value, out);
+                deref_walk(&s.value, out);
+                deref_walk(&s.slice, out);
+            }
+            Expr::Tuple(tt) => tt.elts.iter().for_each(|e| target(e, out)),
+            Expr::List(l) => l.elts.iter().for_each(|e| target(e, out)),
+            Expr::Starred(s) => target(&s.value, out),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    match stmt {
+        Stmt::Expr(e) => deref_walk(&e.value, &mut out),
+        Stmt::Assign(a) => {
+            deref_walk(&a.value, &mut out);
+            a.targets.iter().for_each(|t| target(t, &mut out));
+        }
+        Stmt::AnnAssign(a) => {
+            if let Some(v) = &a.value {
+                deref_walk(v, &mut out);
+                target(&a.target, &mut out);
+            }
+        }
+        Stmt::AugAssign(a) => {
+            deref_walk(&a.value, &mut out);
+            target(&a.target, &mut out);
+        }
+        Stmt::Delete(d) => d.targets.iter().for_each(|t| target(t, &mut out)),
+        _ => {}
+    }
+    out
 }
 
 fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
@@ -488,6 +633,7 @@ pub fn bound_names(stmts: &[Stmt]) -> HashSet<String> {
         imports: HashSet::new(),
         skip_simple: false,
         skip_aug: false,
+        skip_for: false,
     };
     for s in stmts {
         c.visit_stmt(s);
@@ -503,6 +649,7 @@ pub fn bound_names_in_expr(expr: &Expr) -> HashSet<String> {
         imports: HashSet::new(),
         skip_simple: false,
         skip_aug: false,
+        skip_for: false,
     };
     c.visit_expr(expr);
     c.names
@@ -516,6 +663,8 @@ struct Binders {
     skip_simple: bool,
     /// Skip `name op= value` targets.
     skip_aug: bool,
+    /// Skip `for name in ...` targets (a plain name).
+    skip_for: bool,
 }
 
 impl<'a> Visitor<'a> for Binders {
@@ -548,6 +697,12 @@ impl<'a> Visitor<'a> for Binders {
                     && (simple_assign_targets(a).is_some() || simple_attr_targets(a).is_some()) =>
             {
                 self.visit_expr(&a.value);
+            }
+            Stmt::For(f) if self.skip_for && matches!(f.target.as_ref(), Expr::Name(_)) => {
+                self.visit_expr(&f.iter);
+                for s in f.body.iter().chain(f.orelse.iter()) {
+                    self.visit_stmt(s);
+                }
             }
             Stmt::AugAssign(a) if self.skip_aug && matches!(a.target.as_ref(), Expr::Name(_)) => {
                 self.visit_expr(&a.value);
@@ -670,6 +825,12 @@ pub struct FunctionFlow<'a> {
     /// Locals used other than as `**name`, `name[...]` reads or read-only
     /// dict methods; a dict bound to such a name may be mutated.
     pub escaping: HashSet<String>,
+    /// Escaping locals whose every escaping use is as a direct call
+    /// argument: the calls and positions (a dict passed to a function that
+    /// only splats it is not mutated).
+    pub passed: HashMap<String, Vec<(&'a ast::ExprCall, ArgPos)>>,
+    /// Names bound only by `for name in <iterable>` loops, with the iterables.
+    pub loop_vars: HashMap<String, Vec<&'a Expr>>,
     /// The state at the start of the body (walks of the body start here).
     pub entry: Narrowed,
     /// The body contains `yield` / `yield from` (outside nested definitions):
@@ -756,12 +917,14 @@ impl<'a> FunctionFlow<'a> {
             imports: HashSet::new(),
             skip_simple: true,
             skip_aug: false,
+            skip_for: false,
         };
         let mut non_aug = Binders {
             names: HashSet::new(),
             imports: HashSet::new(),
             skip_simple: true,
             skip_aug: true,
+            skip_for: false,
         };
         for s in body {
             binders.visit_stmt(s);
@@ -778,16 +941,38 @@ impl<'a> FunctionFlow<'a> {
             .difference(&binders.names)
             .cloned()
             .collect();
+        // Names bound only as `for name in <iterable>` targets.
+        let mut non_for = Binders {
+            names: HashSet::new(),
+            imports: HashSet::new(),
+            skip_simple: false,
+            skip_aug: false,
+            skip_for: true,
+        };
+        let mut loops = ForLoops(HashMap::new());
+        for s in body {
+            non_for.visit_stmt(s);
+            loops.visit_stmt(s);
+        }
+        flow.loop_vars = loops
+            .0
+            .into_iter()
+            .filter(|(n, _)| !non_for.names.contains(n) && !non_for.imports.contains(n))
+            .collect();
         flow.opaque = binders.names;
         flow.opaque.extend(binders.imports);
         walk_block(body, &entry, &mut flow);
         let mut uses = Uses {
             escaping: HashSet::new(),
+            passes: HashMap::new(),
+            other: HashSet::new(),
         };
         for s in body {
             uses.visit_stmt(s);
         }
         flow.escaping = uses.escaping;
+        flow.passed = uses.passes;
+        flow.passed.retain(|name, _| !uses.other.contains(name));
         let mut shared = SharedNames::default();
         for s in body {
             shared.visit_stmt(s);
@@ -845,6 +1030,24 @@ impl<'a> FlowVisitor<'a> for FunctionFlow<'a> {
     fn header(&mut self, _expr: &'a Expr, _narrowed: &Narrowed) {}
 }
 
+/// `for name in <iterable>` loops (not in nested definitions): name -> iterables.
+struct ForLoops<'a>(HashMap<String, Vec<&'a Expr>>);
+
+impl<'a> Visitor<'a> for ForLoops<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            Stmt::For(f) => {
+                if let Expr::Name(n) = f.target.as_ref() {
+                    self.0.entry(n.id.to_string()).or_default().push(&f.iter);
+                }
+                visitor::walk_stmt(self, stmt);
+            }
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+}
+
 /// `global` names of the function, and `nonlocal` names of nested functions.
 #[derive(Default)]
 struct SharedNames {
@@ -871,18 +1074,45 @@ impl<'a> Visitor<'a> for SharedNames {
     }
 }
 
+/// Where a local is passed directly as a call argument.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArgPos {
+    /// The `i`-th positional argument.
+    Positional(usize),
+    /// The keyword argument `name=`.
+    Keyword(String),
+}
+
 /// Collects names used in ways that may mutate or alias a dict.
-struct Uses {
+struct Uses<'a> {
     escaping: HashSet<String>,
+    /// Names passed directly as call arguments, with the calls.
+    passes: HashMap<String, Vec<(&'a ast::ExprCall, ArgPos)>>,
+    /// Names that escape other than by being passed directly as an argument.
+    other: HashSet<String>,
 }
 
 const READ_ONLY_DICT_METHODS: [&str; 5] = ["get", "keys", "values", "items", "copy"];
 
-impl<'a> Visitor<'a> for Uses {
+impl<'a> Uses<'a> {
+    /// `arg` is an argument of `call` at `pos`.
+    fn visit_arg(&mut self, call: &'a ast::ExprCall, arg: &'a Expr, pos: ArgPos) {
+        match arg {
+            Expr::Name(n) if matches!(n.ctx, ExprContext::Load) => {
+                self.escaping.insert(n.id.to_string());
+                self.passes.entry(n.id.to_string()).or_default().push((call, pos));
+            }
+            _ => self.visit_expr(arg),
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for Uses<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Name(n) if matches!(n.ctx, ExprContext::Load) => {
                 self.escaping.insert(n.id.to_string());
+                self.other.insert(n.id.to_string());
             }
             Expr::Call(call) => {
                 if let Expr::Attribute(attr) = call.func.as_ref() {
@@ -900,15 +1130,22 @@ impl<'a> Visitor<'a> for Uses {
                     }
                 }
                 self.visit_expr(&call.func);
-                for arg in call.arguments.args.iter() {
-                    self.visit_expr(arg);
+                let mut positional = true;
+                for (i, arg) in call.arguments.args.iter().enumerate() {
+                    positional &= !matches!(arg, Expr::Starred(_));
+                    if positional {
+                        self.visit_arg(call, arg, ArgPos::Positional(i));
+                    } else {
+                        self.visit_expr(arg);
+                    }
                 }
                 for kw in call.arguments.keywords.iter() {
-                    // `f(**name)` reads the dict.
-                    if kw.arg.is_none() && matches!(kw.value, Expr::Name(_)) {
-                        continue;
+                    match &kw.arg {
+                        // `f(**name)` reads the dict.
+                        None if matches!(kw.value, Expr::Name(_)) => continue,
+                        None => self.visit_expr(&kw.value),
+                        Some(k) => self.visit_arg(call, &kw.value, ArgPos::Keyword(k.to_string())),
                     }
-                    self.visit_expr(&kw.value);
                 }
             }
             Expr::Subscript(s)
@@ -989,6 +1226,32 @@ mod tests {
             uses,
             vec![vec![], vec!["x".to_string()], vec!["x".into()], vec![]]
         );
+    }
+
+    /// Round 6: a dereference that certainly runs narrows for the rest of the block.
+    #[test]
+    fn test_dereference_narrowing() {
+        let uses = narrowing_at_uses(
+            "def f(a, b, c, d, e, g, h, k):\n    a.m()\n    use()\n    b[0]\n    len(c)\n    use()\n    d and d.x\n    e.__class__\n    use()\n    if g.flag:\n        pass\n    use()\n    h.x = 1\n    k = k.strip()\n    use()\n",
+        );
+        assert_eq!(
+            uses,
+            vec![
+                vec!["a".to_string()],
+                vec!["a".into(), "b".into(), "c".into()],
+                // `d and d.x` does not dereference d; `__class__` exists on None.
+                vec!["a".into(), "b".into(), "c".into()],
+                vec!["a".into(), "b".into(), "c".into(), "g".into()],
+                // `k` is rebound by the statement that dereferences it.
+                vec!["a".into(), "b".into(), "c".into(), "g".into(), "h".into()],
+            ]
+        );
+        // On one branch only: not after the `if`.
+        let uses = narrowing_at_uses("def f(x, c):\n    if c:\n        x.m()\n    use()\n");
+        assert_eq!(uses, vec![Vec::<String>::new()]);
+        // `obj.f.g` narrows the attribute `obj.f` and `obj`.
+        let uses = narrowing_at_uses("def f(obj):\n    obj.f.g()\n    use()\n");
+        assert_eq!(uses, vec![vec!["obj".to_string(), "obj.f".into()]]);
     }
 
     #[test]

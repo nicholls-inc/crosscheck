@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bulk -> Payment.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Payment.amount"
+    },
+    {
+      "path": "over_queryset -> Payment.ref",
+      "source_guarantee": "length ≤ 9",
+      "target_requirement": "length ≤ 8",
+      "target": "Payment.ref"
+    },
+    {
+      "path": "over_typed -> Payment.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Payment.amount"
+    }
+  ]
+}

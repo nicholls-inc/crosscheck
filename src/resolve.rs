@@ -223,8 +223,8 @@ fn is_choice_entry(expr: &Expr) -> bool {
 }
 
 /// Module-level names that stand for an annotation: type aliases whose value
-/// is a union or `Optional` (`T_REQUESTOR = App | User | None`,
-/// `Maybe = Optional[int]`), and type variables (`N = TypeVar("N")`, which
+/// is a union, `Optional` or `Annotated` (`T_REQUESTOR = App | User | None`,
+/// `Maybe = Optional[int]`, `Percent = Annotated[int, Field(ge=0)]`), and type variables (`N = TypeVar("N")`, which
 /// stand for any type: `Any`). Name -> the annotation to read instead.
 pub fn annotation_aliases(stmts: &[Stmt]) -> HashMap<String, Expr> {
     let any = || {
@@ -236,15 +236,18 @@ pub fn annotation_aliases(stmts: &[Stmt]) -> HashMap<String, Expr> {
     for (name, value) in single_assignments(stmts) {
         let alias = match &value {
             Expr::BinOp(b) if matches!(b.op, ruff_python_ast::Operator::BitOr) => Some(value.clone()),
+            // `Percent = Annotated[int, Field(ge=0, le=100)]` keeps its constraints.
             Expr::Subscript(s)
-                if dotted_parts(&s.value)
-                    .is_some_and(|p| matches!(p.last().map(String::as_str), Some("Optional" | "Union"))) =>
+                if dotted_parts(&s.value).is_some_and(|p| {
+                    matches!(p.last().map(String::as_str), Some("Optional" | "Union" | "Annotated"))
+                }) =>
             {
                 Some(value.clone())
             }
             Expr::Call(c)
-                if dotted_parts(&c.func)
-                    .is_some_and(|p| p.last().map(String::as_str) == Some("TypeVar")) =>
+                if dotted_parts(&c.func).is_some_and(|p| {
+                    matches!(p.last().map(String::as_str), Some("TypeVar" | "ParamSpec" | "TypeVarTuple"))
+                }) =>
             {
                 any()
             }
@@ -253,6 +256,57 @@ pub fn annotation_aliases(stmts: &[Stmt]) -> HashMap<String, Expr> {
         if let Some(a) = alias {
             out.insert(name, a);
         }
+    }
+    // `type Percent = Annotated[int, Field(ge=0)]` (PEP 695)
+    for stmt in stmts {
+        if let Stmt::TypeAlias(t) = stmt {
+            if let Expr::Name(n) = t.name.as_ref() {
+                if t.type_params.is_none() {
+                    out.insert(n.id.to_string(), t.value.as_ref().clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Annotation aliases of every module, each extended with the aliases it
+/// imports by name from another project module (`from types_ import Percent`).
+pub fn project_aliases(
+    modules: &[(String, &[Stmt])],
+    index: &ProjectIndex,
+) -> HashMap<String, HashMap<String, Expr>> {
+    let own: HashMap<String, HashMap<String, Expr>> = modules
+        .iter()
+        .map(|(m, stmts)| (m.clone(), annotation_aliases(stmts)))
+        .collect();
+    let mut out = HashMap::new();
+    for (m, _) in modules {
+        let mut aliases = own.get(m).cloned().unwrap_or_default();
+        if let Some(info) = index.modules.get(m) {
+            for (local, imp) in &info.imports {
+                let Import::Symbol { module, name } = imp else { continue };
+                if aliases.contains_key(local) {
+                    continue;
+                }
+                // Follow re-exports a few levels (`from .types import Percent` in a package).
+                let mut target = (module.clone(), name.clone(), m.clone());
+                for _ in 0..4 {
+                    let Some(found) = index.find_module(&target.0, &target.2) else { break };
+                    if let Some(a) = own.get(found).and_then(|a| a.get(&target.1)) {
+                        aliases.insert(local.clone(), a.clone());
+                        break;
+                    }
+                    match index.modules.get(found).and_then(|i| i.imports.get(&target.1)) {
+                        Some(Import::Symbol { module, name }) => {
+                            target = (module.clone(), name.clone(), found.to_string())
+                        }
+                        _ => break,
+                    }
+                }
+            }
+        }
+        out.insert(m.clone(), aliases);
     }
     out
 }
@@ -466,6 +520,10 @@ pub struct ClassInfo {
     pub field_nullable: HashMap<String, bool>,
     /// Class-body names bound once to `re.compile(...)`.
     pub patterns: HashSet<String>,
+    /// What every value of an extracted field satisfies: the field's own
+    /// requirements (each write to it is checked against them), as facts
+    /// for reads of the field.
+    pub field_facts: HashMap<String, crate::value_analysis::ValueFacts>,
 }
 
 /// An enum-like class: members are class-body constants.
@@ -497,6 +555,7 @@ impl ClassInfo {
             constant_order: Vec::new(),
             field_nullable: HashMap::new(),
             patterns: HashSet::new(),
+            field_facts: HashMap::new(),
         }
     }
 
@@ -629,9 +688,49 @@ pub struct ProjectIndex {
     pub patterns: HashSet<String>,
     /// Modules by last dotted segment, for suffix matching (built on first use).
     by_last_segment: OnceCell<HashMap<String, Vec<String>>>,
+    /// Direct project subclasses per class (`index_subclasses`).
+    pub subclasses: HashMap<String, Vec<String>>,
+    /// Attribute names assigned anywhere in the project (`x.name = v`,
+    /// `setattr(x, "name", v)`): a class-body constant of such a name may be
+    /// replaced on an instance (or the class) from outside the class.
+    pub stored_attributes: HashSet<String>,
+}
+
+/// Attribute names stored anywhere in `stmts` (at any depth).
+pub fn stored_attribute_names(stmts: &[Stmt]) -> HashSet<String> {
+    use ruff_python_ast::visitor::{self, Visitor};
+    use ruff_python_ast::ExprContext;
+    struct S(HashSet<String>);
+    impl<'a> Visitor<'a> for S {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            match expr {
+                Expr::Attribute(a) if matches!(a.ctx, ExprContext::Store | ExprContext::Del) => {
+                    self.0.insert(a.attr.to_string());
+                }
+                Expr::Call(c) => {
+                    if matches!(c.func.as_ref(), Expr::Name(n) if n.id.as_str() == "setattr") {
+                        // (A computed name is not followed.)
+                        if let Some(Expr::StringLiteral(s)) = c.arguments.args.get(1) {
+                            self.0.insert(s.value.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut s = S(HashSet::new());
+    for stmt in stmts {
+        s.visit_stmt(stmt);
+    }
+    s.0
 }
 
 const MAX_DEPTH: usize = 8;
+
+/// Most methods one call may dispatch to; past it the callee is unknown.
+pub const MAX_DISPATCH: usize = 32;
 
 impl ProjectIndex {
     pub fn function(&self, qualified: &str) -> Option<&FunctionInfo> {
@@ -868,6 +967,63 @@ impl ProjectIndex {
             }
         }
         None
+    }
+
+    /// Record the direct project subclasses of every class (for `dispatch_targets`).
+    pub fn index_subclasses(&mut self) {
+        let mut subs: HashMap<String, Vec<String>> = HashMap::new();
+        let mut classes: Vec<&ClassInfo> = self.classes.values().collect();
+        classes.sort_by(|a, b| a.qualified.cmp(&b.qualified));
+        for class in classes {
+            for base in &class.bases {
+                if let Some(Symbol::Class(bq)) = self.resolve_expr(&class.module, base) {
+                    if bq != class.qualified {
+                        let e = subs.entry(bq).or_default();
+                        if !e.contains(&class.qualified) {
+                            e.push(class.qualified.clone());
+                        }
+                    }
+                }
+            }
+        }
+        self.subclasses = subs;
+    }
+
+    /// Every method a call `obj.name(...)` may run when `obj` is an instance
+    /// of `class_q` or of one of its project subclasses (class hierarchy
+    /// analysis): `name` resolved from `class_q` and from each subclass.
+    /// `None` when there are more than `MAX_DISPATCH` targets (unknown).
+    pub fn dispatch_targets(&self, class_q: &str, name: &str) -> Option<Vec<String>> {
+        let mut out: Vec<String> = self.method(class_q, name).into_iter().collect();
+        let mut seen: HashSet<String> = HashSet::from([class_q.to_string()]);
+        let mut queue: Vec<String> = vec![class_q.to_string()];
+        while let Some(q) = queue.pop() {
+            for sub in self.subclasses.get(&q).into_iter().flatten() {
+                if !seen.insert(sub.clone()) {
+                    continue;
+                }
+                if let Some(m) = self.method(sub, name) {
+                    if !out.contains(&m) {
+                        out.push(m);
+                    }
+                }
+                if out.len() > MAX_DISPATCH || seen.len() > 4 * MAX_DISPATCH {
+                    return None;
+                }
+                queue.push(sub.clone());
+            }
+        }
+        Some(out)
+    }
+
+    /// `super().name` in a method of `class_q`: `name` resolved from the
+    /// class's bases, in order.
+    pub fn super_method(&self, class_q: &str, name: &str) -> Option<String> {
+        let class = self.classes.get(class_q)?;
+        class.bases.iter().find_map(|base| match self.resolve_expr(&class.module, base) {
+            Some(Symbol::Class(bq)) if bq != class_q => self.method(&bq, name),
+            _ => None,
+        })
     }
 
     /// Method `name` of class `class_q`, searching project-local bases.

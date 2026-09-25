@@ -161,11 +161,20 @@ fn config_is_strict(value: &Expr) -> bool {
 /// `if` / `try` / `with` blocks) from a module. The module name is
 /// derived from `source_file` (a path relative to the application root).
 pub fn collect_classes(stmts: &[Stmt], source: &str, source_file: &str) -> Vec<ClassCandidate> {
+    collect_classes_with(stmts, source, source_file, &crate::resolve::annotation_aliases(stmts))
+}
+
+/// `collect_classes` with the module's annotation aliases (including imported ones).
+pub fn collect_classes_with(
+    stmts: &[Stmt],
+    source: &str,
+    source_file: &str,
+    aliases: &HashMap<String, Expr>,
+) -> Vec<ClassCandidate> {
     let module = crate::resolve::module_name(source_file);
-    let aliases = crate::resolve::annotation_aliases(stmts);
     crate::resolve::module_classes(stmts)
         .map(|class_def| ClassCandidate {
-            aliases: with_type_params(&aliases, class_def.type_params.as_deref()),
+            aliases: with_type_params(aliases, class_def.type_params.as_deref()),
             class_def: class_def.clone(),
             module: module.clone(),
             source_file: source_file.to_string(),
@@ -537,7 +546,12 @@ fn direct_kind(class_def: &ast::StmtClassDef) -> Option<DataClassKind> {
     }
     for base in base_names(class_def) {
         match base.as_str() {
-            "BaseModel" | "pydantic.BaseModel" => return Some(DataClassKind::Pydantic),
+            // pydantic models, pydantic-settings `BaseSettings` (v1: `pydantic.BaseSettings`)
+            // and SQLModel classes (pydantic models with a table mapping).
+            "BaseModel" | "pydantic.BaseModel" | "BaseSettings" | "pydantic.BaseSettings"
+            | "pydantic_settings.BaseSettings" | "SQLModel" | "sqlmodel.SQLModel" => {
+                return Some(DataClassKind::Pydantic)
+            }
             "NamedTuple" | "typing.NamedTuple" => return Some(DataClassKind::NamedTuple),
             "TypedDict" | "typing.TypedDict" | "typing_extensions.TypedDict" => {
                 return Some(DataClassKind::TypedDict)
@@ -888,6 +902,27 @@ fn int_literal(expr: &Expr) -> Option<i64> {
         },
         Expr::UnaryOp(u) if matches!(u.op, UnaryOp::USub) => int_literal(&u.operand).map(|v| -v),
         _ => None,
+    }
+}
+
+/// The field's requirements as facts (what `write_data_classes` states as
+/// preconditions): what a read of the field yields, since every write to it
+/// is checked against them.
+pub fn requirement_facts(class: &DataClass, field: &DataClassField) -> crate::value_analysis::ValueFacts {
+    use crate::value_analysis::{Dep, ValueFacts};
+    let type_name = field.type_name.clone().filter(|t| {
+        let numeric = matches!(t.as_str(), "Decimal" | "int" | "float");
+        VALUE_TYPES.contains(&t.as_str()) && !(numeric && class.lax_numeric(field))
+    });
+    ValueFacts {
+        nullable: field.nullable,
+        type_name,
+        precision: field.decimal_places.map(Dep::Lit),
+        max_length: field.max_length,
+        min_value: field.min_value,
+        max_value: field.max_value,
+        choices: field.choices.clone(),
+        ..ValueFacts::default()
     }
 }
 

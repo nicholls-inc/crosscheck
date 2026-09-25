@@ -32,7 +32,7 @@ use crate::flow::{self, FlowVisitor, FunctionFlow, Narrowed};
 use crate::function_extractor::{self, FunctionInfo, ParamKind};
 use crate::resolve::{ClassInfo, ProjectIndex};
 use crate::source::LineIndex;
-use crate::value_analysis::{facts_rows, Callee, Ctx, Scope, ValueFacts};
+use crate::value_analysis::{facts_rows, Alt, Callee, Ctx, Scope, SplatValue, ValueFacts};
 
 /// A call expression: the key of its call-site node.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -40,6 +40,9 @@ pub struct SiteKey {
     pub file: String,
     /// Byte offset of the call expression.
     pub offset: u32,
+    /// Qualified name of the callee (a call that dispatches to several
+    /// methods has one call-site node per target).
+    pub callee: String,
 }
 
 /// A call-site node: the result of `callee` at one call.
@@ -120,14 +123,21 @@ pub fn discover_project_edges(project: &Project) -> Vec<DiscoveredEdge> {
 /// Discover every edge and call-site node of the project.
 pub fn discover(project: &Project) -> Discovered {
     let forwards = kw_forwards(&project.index, &project.summaries);
+    let dict_forwarders: std::collections::HashSet<String> = forwards
+        .keys()
+        .filter(|k| k.ends_with(')'))
+        .cloned()
+        .collect();
     // Measurement knob: without call-site nodes, results leave the callee's
     // own node (the round-2 model), to compare graph sizes and path counts.
     let call_sites = std::env::var_os("CROSSCHECK_NO_CALL_SITES").is_none();
     let mut out = Discovered::default();
+    let mut uncalled_forwarders: Vec<(String, DiscoveredEdge)> = Vec::new();
     let empty = LineIndex::default();
     for func in &project.index.functions {
         let flow = FunctionFlow::of_info(func);
-        let scope = Scope::new(&project.index, &project.summaries, Some(func), &flow);
+        let scope = Scope::new(&project.index, &project.summaries, Some(func), &flow)
+            .with_dict_forwarders(&dict_forwarders);
         let doc = project
             .docstrings
             .get(&func.qualified_name)
@@ -147,13 +157,28 @@ pub fn discover(project: &Project) -> Discovered {
             attr_counts: HashMap::new(),
             pending: Vec::new(),
             observations: Vec::new(),
+            forwarder_edges: Vec::new(),
         };
         let end = flow::walk_block(&func.body, &flow.entry, &mut walker);
         if flow.falls_through {
             walker.observations.push((None, end));
+            // Falling off the end returns None, against a non-Optional
+            // annotation (a stub body of only a docstring, `...` and `pass`
+            // is a declaration, not a return site).
+            let stub = func.body.iter().all(|s| match s {
+                Stmt::Pass(_) => true,
+                Stmt::Expr(e) => matches!(e.value.as_ref(), Expr::StringLiteral(_) | Expr::EllipsisLiteral(_)),
+                _ => false,
+            });
+            if func.has_return_contract() && !stub {
+                if let Some(last) = func.body.last() {
+                    walker.none_return(last.range().end().to_u32().saturating_sub(1));
+                }
+            }
         }
         walker.flush_attribute_writes();
-        let EdgeWalker { edges, used, .. } = walker;
+        let EdgeWalker { edges, used, forwarder_edges, .. } = walker;
+        uncalled_forwarders.extend(forwarder_edges.into_iter().map(|e| (func.qualified_name.clone(), e)));
         // Argument edges into call-site nodes whose result nothing consumes are dropped.
         out.edges.extend(
             edges
@@ -164,6 +189,20 @@ pub fn discover(project: &Project) -> Discovered {
         sites.sort_by(|a, b| a.key.cmp(&b.key));
         out.call_sites.extend(sites);
     }
+    // A forwarder's own `Cls(**kw)` writes whatever its callers pass; with
+    // no call in the project (a framework calls it), its keys are unknown.
+    let called: std::collections::HashSet<&str> = out
+        .edges
+        .iter()
+        .filter(|e| e.relationship == "calls")
+        .map(|e| e.target_name.as_str())
+        .collect();
+    let extra: Vec<DiscoveredEdge> = uncalled_forwarders
+        .into_iter()
+        .filter(|(f, _)| !called.contains(f.as_str()))
+        .map(|(_, e)| e)
+        .collect();
+    out.edges.extend(extra);
     out
 }
 
@@ -264,20 +303,26 @@ fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
     let ctx = Ctx::default();
     let mut targets = Vec::new();
     for call in splats.1 {
-        let target = if let Some((class, method)) = scope.objects_call(call, &ctx) {
+        let found: Vec<Forward> = if let Some((class, method)) = scope.objects_call(call, &ctx) {
             WRITE_METHODS
                 .contains(&method)
                 .then(|| Forward::Class(class.qualified.clone()))
+                .into_iter()
+                .collect()
         } else {
-            match scope.callee(&call.func, &ctx) {
-                Callee::Class(c) if c.kind.has_fields() => Some(Forward::Class(c.qualified.clone())),
-                Callee::Function { qualified, .. } if qualified != func.qualified_name => {
-                    Some(Forward::Function(qualified))
-                }
-                _ => None,
-            }
+            scope
+                .callees(&call.func, &ctx)
+                .into_iter()
+                .filter_map(|c| match c {
+                    Callee::Class(c) if c.kind.has_fields() => Some(Forward::Class(c.qualified.clone())),
+                    Callee::Function { qualified, .. } if qualified != func.qualified_name => {
+                        Some(Forward::Function(qualified))
+                    }
+                    _ => None,
+                })
+                .collect()
         };
-        if let Some(t) = target {
+        for t in found {
             if !targets.contains(&t) {
                 targets.push(t);
             }
@@ -286,11 +331,14 @@ fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
     targets
 }
 
+#[derive(Clone)]
 enum Target<'a> {
     Field(&'a ClassInfo, &'a str),
     /// A callee (qualified name), the parameter the value binds, and the
     /// call-site node (`None`: the callee's own node).
     Function(&'a str, &'a str, Option<SiteKey>),
+    /// The enclosing function's return contract node (`f.<return>`).
+    Return,
 }
 
 struct EdgeWalker<'a, 's> {
@@ -316,6 +364,9 @@ struct EdgeWalker<'a, 's> {
     /// Where written attribute values are observed: `obj.save()` (receiver
     /// `obj`) and the function's exits (`None`), with the state there.
     observations: Vec<(Option<String>, Narrowed)>,
+    /// Dynamic writes of a forwarder's own `Cls(**kw)`: kept only when the
+    /// forwarder has no call in the project (see `discover`).
+    forwarder_edges: Vec<DiscoveredEdge>,
 }
 
 /// A field write `obj.f = value` (a simple attribute assignment).
@@ -368,17 +419,29 @@ impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
             }
             Stmt::Return(r) => {
                 self.observations.push((None, narrowed.clone()));
-                if let Some(value) = &r.value {
-                    self.return_call = match crate::value_analysis::strip_await(value) {
-                        Expr::Call(c) => Some(c as *const _),
-                        _ => None,
-                    };
-                    // The returned result of a call is consumed.
-                    if let Some((producer, call)) = self.scope.producer_of(value, &ctx) {
-                        self.use_site(&producer, call);
+                // A non-Optional return annotation is a requirement on every
+                // returned value (`f -> f.<return>`), which callers rely on.
+                let contract = self.func.has_return_contract();
+                let site = r.range().start().to_u32();
+                match &r.value {
+                    Some(value) => {
+                        self.return_call = match crate::value_analysis::strip_await(value) {
+                            Expr::Call(c) => Some(c as *const _),
+                            _ => None,
+                        };
+                        if contract {
+                            self.emit(Target::Return, value, &ctx, false, site);
+                        } else {
+                            // The returned result of a call is consumed.
+                            for (producer, call) in self.scope.producers_of(value, &ctx) {
+                                self.use_site(&producer, call);
+                            }
+                        }
+                        self.scan(value, &ctx);
+                        self.return_call = None;
                     }
-                    self.scan(value, &ctx);
-                    self.return_call = None;
+                    None if contract => self.none_return(site),
+                    None => {}
                 }
             }
             Stmt::Expr(e) => self.scan(&e.value, &ctx),
@@ -438,10 +501,11 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         self.line_at(expr.range().start().to_u32())
     }
 
-    fn site_key(&self, call: &ast::ExprCall) -> SiteKey {
+    fn site_key(&self, call: &ast::ExprCall, callee: &str) -> SiteKey {
         SiteKey {
             file: self.func.source_file.clone(),
             offset: call.range().start().to_u32(),
+            callee: callee.to_string(),
         }
     }
 
@@ -451,7 +515,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         if !self.call_sites {
             return None;
         }
-        let key = self.site_key(call);
+        let key = self.site_key(call, callee);
         let line = self.line_at(key.offset);
         self.used.entry(key.clone()).or_insert_with(|| CallSite {
             key: key.clone(),
@@ -693,7 +757,20 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         if self.special_writes(call, ctx, is_return) {
             return;
         }
-        match self.scope.callee(&call.func, ctx) {
+        let callees = self.scope.callees(&call.func, ctx);
+        let callee = match callees.as_slice() {
+            [one] => one.clone(),
+            targets => {
+                // A method call that dispatches to several overrides.
+                for t in targets {
+                    if let Callee::Function { qualified, implicit } = t {
+                        self.function_call(qualified, *implicit, call, ctx, true);
+                    }
+                }
+                return;
+            }
+        };
+        match callee {
             // A dataclass / attrs class that defines `__init__` gets no
             // generated constructor: the call binds `__init__`'s parameters.
             Callee::Class(class) if class.kind.has_fields() && !own_init(class) => {
@@ -751,8 +828,12 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             // setattr(obj, "f", v)
             ["setattr"] if external("setattr") && args.len() == 3 => {
-                let Expr::StringLiteral(name) = &args[1] else { return false };
                 let Some(class) = self.instance_class(&args[0], ctx) else { return false };
+                let Expr::StringLiteral(name) = &args[1] else {
+                    // A computed field name: any field may be written.
+                    self.dynamic_writes(class, &[], site);
+                    return true;
+                };
                 let field = name.value.to_str();
                 if let Some(field) = class.fields.iter().find(|f| *f == field) {
                     self.emit(Target::Field(class, field), &args[2], ctx, false, site);
@@ -761,6 +842,23 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             _ => {
                 let Expr::Attribute(attr) = func else { return false };
+                // obj.__dict__.update(f=v, **d) / obj.__dict__.update(d)
+                if attr.attr.as_str() == "update" {
+                    if let Expr::Attribute(inner) = attr.value.as_ref() {
+                        if inner.attr.as_str() == "__dict__" {
+                            let Some(class) = self.instance_class(&inner.value, ctx) else {
+                                return false;
+                            };
+                            self.keyword_writes(class, call, ctx, false);
+                            match args.first() {
+                                Some(d) if args.len() == 1 => self.splat_writes(class, d, ctx, false, site, true),
+                                None => {}
+                                Some(_) => self.dynamic_writes(class, &[], site),
+                            }
+                            return true;
+                        }
+                    }
+                }
                 match attr.attr.as_str() {
                     // obj.model_copy(update={...}) (pydantic v2; v1 `obj.copy(update=...)`)
                     "model_copy" | "copy" => {
@@ -774,14 +872,16 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                         }
                         let update = call.arguments.keywords.iter().find(|k| k.arg.as_deref() == Some("update"));
                         if let Some(update) = update {
-                            self.dict_writes(class, &update.value, ctx, is_return, site);
+                            // Not validated: an unknown dict may write any field.
+                            self.splat_writes(class, &update.value, ctx, is_return, site, true);
                         }
                         true
                     }
                     // Cls.model_validate({...}) (v1 `Cls.parse_obj({...})`)
                     "model_validate" | "parse_obj" if args.len() == 1 => {
                         let Some(class) = self.named_class(&attr.value, ctx) else { return false };
-                        self.dict_writes(class, &args[0], ctx, is_return, site);
+                        // Validation of input data: only the known entries are writes.
+                        self.splat_writes(class, &args[0], ctx, is_return, site, false);
                         true
                     }
                     _ => false,
@@ -790,13 +890,84 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         }
     }
 
-    /// Entries of a dict (display or local) written to fields of `class`.
-    fn dict_writes(&mut self, class: &'a ClassInfo, dict: &'a Expr, ctx: &Ctx, is_return: bool, site: u32) {
-        for (key, value, c) in self.scope.dict_items(dict, ctx).unwrap_or_default() {
-            if let Some(field) = class.fields.iter().find(|f| **f == key) {
-                self.emit(Target::Field(class, field), value, &c, is_return, site);
+    /// Entries of a splatted dict (display, local, `dict(...)`, a returned
+    /// dict) written to fields of `class`. With `dynamic`, a dict whose keys
+    /// are not all known may write any other field: an edge without
+    /// guarantees to each (a warning where the field has a requirement).
+    /// For this function's own forwarded parameter (its entries are written
+    /// at each call, see `kw_forwards`) only when nothing in the project
+    /// calls the function.
+    fn splat_writes(
+        &mut self,
+        class: &'a ClassInfo,
+        dict: &'a Expr,
+        ctx: &Ctx,
+        is_return: bool,
+        site: u32,
+        dynamic: bool,
+    ) {
+        let splat = self.scope.splat(dict, ctx);
+        let mut written: Vec<String> = Vec::new();
+        for (key, value) in &splat.entries {
+            if let Some(field) = class.fields.iter().find(|f| *f == key) {
+                written.push(key.clone());
+                self.emit_splat_value(Target::Field(class, field), value, is_return, site);
             }
         }
+        if dynamic && !splat.complete {
+            if self.forwarded_param(dict) {
+                let before = self.edges.len();
+                self.dynamic_writes(class, &written, site);
+                let deferred: Vec<DiscoveredEdge> = self.edges.drain(before..).collect();
+                self.forwarder_edges.extend(deferred);
+            } else {
+                self.dynamic_writes(class, &written, site);
+            }
+        }
+    }
+
+    /// Whether `expr` names a parameter of this function whose entries are
+    /// forwarded (`**kw`, or a dict parameter it only splats).
+    fn forwarded_param(&self, expr: &Expr) -> bool {
+        let Expr::Name(n) = expr else { return false };
+        let name = n.id.as_str();
+        let Some(p) = self.func.params.iter().find(|p| p.name == name) else { return false };
+        let key = match p.kind {
+            ParamKind::VarKeywords => self.func.qualified_name.clone(),
+            _ => dict_param_key(&self.func.qualified_name, name),
+        };
+        self.forwards.contains_key(&key)
+    }
+
+    /// A write whose fields are not known (`setattr(obj, name, v)`,
+    /// `Cls(**d)` with an unknown `d`): an edge with no guarantees to every
+    /// field of `class` other than `except`.
+    fn dynamic_writes(&mut self, class: &'a ClassInfo, except: &[String], site: u32) {
+        let source = self.func.qualified_name.clone();
+        for field in &class.fields {
+            if !except.contains(field) {
+                self.push(&source, None, Target::Field(class, field), Some(Vec::new()), site);
+            }
+        }
+    }
+
+    /// Emit one known entry of a splatted dict into `target`.
+    fn emit_splat_value(&mut self, target: Target<'a>, value: &SplatValue<'a>, is_return: bool, site: u32) {
+        match value {
+            SplatValue::Expr(e, c) => self.emit(target, e, c, is_return, site),
+            SplatValue::Facts(f, file, offset) => {
+                let line = self.project.lines_of(file).map_or(0, |l| l.line(*offset));
+                self.emit_facts(target, f.clone(), file, line, is_return, site);
+            }
+        }
+    }
+
+    /// A value returned as `None`: a bare `return` (or falling off the end)
+    /// under a non-Optional return annotation.
+    fn none_return(&mut self, site: u32) {
+        let line = self.line_at(site);
+        let file = self.func.source_file.clone();
+        self.emit_facts(Target::Return, ValueFacts::none_value(), &file, line, false, site);
     }
 
     /// The class (with fields) of the instance `expr` names.
@@ -850,26 +1021,14 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                         && matches!(name.as_str(), "defaults" | "create_defaults")
                         && has(name.as_str()).is_none() =>
                 {
-                    for (key, value, c) in self.scope.dict_items(&kw.value, ctx).unwrap_or_default()
-                    {
-                        if let Some(field) = has(&key) {
-                            self.emit(Target::Field(class, field), value, &c, is_return, site);
-                        }
-                    }
+                    self.splat_writes(class, &kw.value, ctx, is_return, site, true);
                 }
                 Some(name) => {
                     if let Some(field) = has(name.as_str()) {
                         self.emit(Target::Field(class, field), &kw.value, ctx, is_return, site);
                     }
                 }
-                None => {
-                    for (key, value, c) in self.scope.dict_items(&kw.value, ctx).unwrap_or_default()
-                    {
-                        if let Some(field) = has(&key) {
-                            self.emit(Target::Field(class, field), value, &c, is_return, site);
-                        }
-                    }
-                }
+                None => self.splat_writes(class, &kw.value, ctx, is_return, site, true),
             }
         }
     }
@@ -894,7 +1053,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         let mut calls = DiscoveredEdge::new(&self.func.qualified_name, callee_q, None, "calls");
         calls.site = Some((self.func.source_file.clone(), self.line_at(site)));
         self.edges.push(calls);
-        let call_site = (result && self.call_sites).then(|| self.site_key(call));
+        let call_site = (result && self.call_sites).then(|| self.site_key(call, callee_q));
         let Some(params) = callee.params.get(implicit..) else {
             return;
         };
@@ -928,7 +1087,8 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
         }
         // Keywords that no named parameter takes, for `**kw` forwarding.
-        let mut extra: Vec<(String, &'a Expr, Ctx)> = Vec::new();
+        let mut extra: Vec<(String, SplatValue<'a>)> = Vec::new();
+        let mut unknown_extra = false;
         for kw in call.arguments.keywords.iter() {
             match &kw.arg {
                 Some(name) => match by_keyword(name.as_str()) {
@@ -936,38 +1096,50 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                         self.emit_flow(callee, param, &kw.value, ctx, &call_site, site);
                         self.forward_dict(callee_q, param, &kw.value, ctx, site);
                     }
-                    None => extra.push((name.to_string(), &kw.value, ctx.clone())),
+                    None => extra.push((name.to_string(), SplatValue::Expr(&kw.value, ctx.clone()))),
                 },
                 None => {
-                    for (key, value, c) in self.scope.dict_items(&kw.value, ctx).unwrap_or_default()
-                    {
+                    let splat = self.scope.splat(&kw.value, ctx);
+                    unknown_extra |= !splat.complete && !self.forwarded_param(&kw.value);
+                    for (key, value) in splat.entries {
                         match by_keyword(&key) {
-                            Some(param) => self.emit_flow(callee, param, value, &c, &call_site, site),
-                            None => extra.push((key, value, c)),
+                            Some(param) => self.emit_flow_value(callee, param, &value, &call_site, site),
+                            None => extra.push((key, value)),
                         }
                     }
                 }
             }
         }
-        if !extra.is_empty() {
-            self.forward(callee_q, &extra, site, 0);
+        if !extra.is_empty() || unknown_extra {
+            self.forward(callee_q, &extra, !unknown_extra, site, 0);
         }
     }
 
-    /// A dict display (or local dict) passed as parameter `param` of a dict
-    /// forwarder: its entries are written where the callee splats it.
+    /// A dict passed as parameter `param` of a dict forwarder: its entries
+    /// are written where the callee splats it (a dict with unknown keys may
+    /// write any field there).
     fn forward_dict(&mut self, callee_q: &str, param: &str, arg: &'a Expr, ctx: &Ctx, site: u32) {
         let key = dict_param_key(callee_q, param);
         if !self.forwards.contains_key(&key) {
             return;
         }
-        if let Some(items) = self.scope.dict_items(arg, ctx) {
-            self.forward(&key, &items, site, 0);
-        }
+        let splat = self.scope.splat(arg, ctx);
+        let complete = splat.complete || self.forwarded_param(arg);
+        self.forward(&key, &splat.entries, complete, site, 0);
     }
 
-    /// Keywords passed to `callee`'s `**kw`, followed to where it forwards them.
-    fn forward(&mut self, callee_q: &str, extra: &[(String, &'a Expr, Ctx)], site: u32, depth: usize) {
+    /// Keywords passed to `callee`'s `**kw` (or a dict passed to a dict
+    /// forwarder), followed to where it forwards them. Unless `complete`,
+    /// other keys may be present: any other field of a target class may be
+    /// written (`dynamic_writes`).
+    fn forward(
+        &mut self,
+        callee_q: &str,
+        extra: &[(String, SplatValue<'a>)],
+        complete: bool,
+        site: u32,
+        depth: usize,
+    ) {
         if depth > 4 {
             return;
         }
@@ -978,28 +1150,33 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             match target {
                 Forward::Class(q) => {
                     let Some(class) = self.project.index.class(&q) else { continue };
-                    for (key, value, c) in extra {
+                    let mut written = Vec::new();
+                    for (key, value) in extra {
                         if let Some(field) = class.fields.iter().find(|f| *f == key) {
-                            self.emit(Target::Field(class, field), value, c, false, site);
+                            written.push(key.clone());
+                            self.emit_splat_value(Target::Field(class, field), value, false, site);
                         }
+                    }
+                    if !complete {
+                        self.dynamic_writes(class, &written, site);
                     }
                 }
                 Forward::Function(g) => {
                     let Some(gf) = self.project.index.function(&g) else { continue };
                     let gf: &'a FunctionInfo = gf;
                     let mut rest = Vec::new();
-                    for (key, value, c) in extra {
+                    for (key, value) in extra {
                         let param = gf.named_value_params().find(|p| {
                             &p.name == key
                                 && matches!(p.kind, ParamKind::Normal | ParamKind::KeywordOnly)
                         });
                         match param {
-                            Some(p) => self.emit_flow(gf, &p.name, value, c, &None, site),
-                            None => rest.push((key.clone(), *value, c.clone())),
+                            Some(p) => self.emit_flow_value(gf, &p.name, value, &None, site),
+                            None => rest.push((key.clone(), value.clone())),
                         }
                     }
-                    if !rest.is_empty() {
-                        self.forward(&g, &rest, site, depth + 1);
+                    if !rest.is_empty() || !complete {
+                        self.forward(&g, &rest, complete, site, depth + 1);
                     }
                 }
             }
@@ -1023,13 +1200,33 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         }
     }
 
+    /// `emit_flow` for an entry of a splatted dict.
+    fn emit_flow_value(
+        &mut self,
+        callee: &'a FunctionInfo,
+        param: &'a str,
+        value: &SplatValue<'a>,
+        call_site: &Option<SiteKey>,
+        site: u32,
+    ) {
+        let q = callee.qualified_name.as_str();
+        self.emit_splat_value(Target::Function(q, param, None), value, false, site);
+        if let Some(key) = call_site {
+            self.emit_splat_value(Target::Function(q, param, Some(key.clone())), value, false, site);
+        }
+    }
+
     /// Emit the edge carrying `value` into `target`; `site` is the offset of
     /// the write or call expression.
     fn emit(&mut self, target: Target<'a>, value: &'a Expr, ctx: &Ctx, is_return: bool, site: u32) {
         self.emit_value(target, value, ctx, is_return, site, false);
     }
 
-    /// `emit`; with `non_none`, the value is known not to be None where it is observed.
+    /// `emit`; with `non_none`, the value is known not to be None where it is
+    /// observed. A value with a few alternatives (`a if c else b`, the
+    /// reaching definitions of a local) gets one edge per alternative, all at
+    /// the same site, so an alternative that certainly violates a
+    /// requirement is an error even when another one is unknown.
     fn emit_value(
         &mut self,
         target: Target<'a>,
@@ -1039,38 +1236,71 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         site: u32,
         non_none: bool,
     ) {
-        if let Some((producer, call)) = self.scope.producer_of(value, ctx) {
-            let key = self.use_site(&producer, call);
+        let line = self.line_of(value);
+        for alt in self.scope.alternatives(value, ctx) {
+            match alt {
+                Alt::Expr(e, c, nn) => {
+                    self.emit_expr(target.clone(), e, &c, is_return, site, non_none || nn)
+                }
+                Alt::Facts(f) => {
+                    let f = if non_none { f.non_none_part() } else { f };
+                    let file = self.func.source_file.clone();
+                    self.emit_facts(target.clone(), f, &file, line, is_return, site);
+                }
+            }
+        }
+    }
+
+    /// One alternative `value` (evaluated with `ctx`) into `target`: from the
+    /// producer's call-site node when it is the result of an extracted
+    /// function (one edge per dispatch target), else from the enclosing
+    /// function with the value's own contracts.
+    fn emit_expr(&mut self, target: Target<'a>, value: &'a Expr, ctx: &Ctx, is_return: bool, site: u32, non_none: bool) {
+        let producers = self.scope.producers_of(value, ctx);
+        if !producers.is_empty() {
             // A local narrowed to non-None here: the producer's postconditions
             // with nullability replaced.
             let narrowed = non_none
                 || matches!(value, Expr::Name(n) if ctx.narrowed.contains(n.id.as_str()));
-            let rows = (narrowed
-                && self
-                    .project
-                    .summaries
-                    .get(&producer)
-                    .and_then(|s| s.nullable)
-                    != Some(false))
-            .then(|| self.narrowed_copy(&producer, value));
-            if key.is_none() && matches!(target, Target::Function(h, _, _) if h == producer) {
-                return; // `h(h(x))` without call-site nodes: no self-loop
+            for (producer, call) in producers {
+                let key = self.use_site(&producer, call);
+                let rows = (narrowed
+                    && self
+                        .project
+                        .summaries
+                        .get(&producer)
+                        .and_then(|s| s.nullable)
+                        != Some(false))
+                .then(|| self.narrowed_copy(&producer, value));
+                if key.is_none() && matches!(&target, Target::Function(h, _, _) if *h == producer) {
+                    continue; // `h(h(x))` without call-site nodes: no self-loop
+                }
+                self.push(&producer, key, target.clone(), rows, site);
             }
-            self.push(&producer, key, target, rows, site);
             return;
         }
-        if matches!(target, Target::Function(h, _, None) if h == self.func.qualified_name) {
+        if matches!(&target, Target::Function(h, _, None) if *h == self.func.qualified_name) {
             return; // recursion: no self-loop on the function's own node
         }
         let facts = self.scope.facts(value, ctx);
         let facts = if non_none { facts.non_none_part() } else { facts };
-        let mut rows = facts_rows(
-            &facts,
-            0,
-            &self.func.source_file,
-            self.line_of(value),
-            VerificationLevel::Extracted,
-        );
+        let file = self.func.source_file.clone();
+        let line = self.line_of(value);
+        self.emit_facts(target, facts, &file, line, is_return, site);
+    }
+
+    /// An edge from the enclosing function into `target` whose source
+    /// guarantees are `facts` (located at `file:line`). `None` written into a
+    /// field that accepts None meets every requirement of the field: no edge.
+    fn emit_facts(&mut self, target: Target<'a>, facts: ValueFacts, file: &str, line: u32, is_return: bool, site: u32) {
+        if facts.always_none {
+            if let Target::Field(class, field) = &target {
+                if class.field_nullable.get(*field) == Some(&true) {
+                    return;
+                }
+            }
+        }
+        let mut rows = facts_rows(&facts, 0, file, line, VerificationLevel::Extracted);
         if is_return && matches!(target, Target::Field(..)) {
             self.add_docstring_rows(&mut rows);
         }
@@ -1150,6 +1380,9 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                 target_site,
                 ..DiscoveredEdge::new(source, h, None, "flows_to")
             },
+            Target::Return => {
+                DiscoveredEdge::new(source, &self.func.return_node_name(), None, "writes_to")
+            }
         };
         edge.source_site = source_site;
         edge.site = Some((self.func.source_file.clone(), self.line_at(site)));
@@ -1323,10 +1556,13 @@ mod tests {
         assert_eq!(targets("code.pos"), ["a", "b"]);
         assert_eq!(targets("code.attr"), ["b"]);
         assert_eq!(targets("code.local"), ["a", "a", "b"]);
-        assert!(
-            targets("code.mutated").is_empty(),
-            "a mutated dict is not expanded"
-        );
+        // A mutated dict is not expanded: its keys are unknown, so every
+        // field gets an edge without guarantees (a dynamic write).
+        assert_eq!(targets("code.mutated"), ["a", "b"]);
+        assert!(es
+            .iter()
+            .filter(|e| e.source_function == "code.mutated" && e.relationship == "writes_to")
+            .all(|e| e.override_rows.as_ref().is_some_and(|r| r.is_empty())));
         let none_write = es
             .iter()
             .find(|e| e.source_function == "code.attr")
@@ -1796,10 +2032,11 @@ mod tests {
         ] {
             assert!(s.contains(&want.to_string()), "missing {want} in {s:#?}");
         }
-        // `{'total': ..., **other}`: `other` may replace total.
+        // `{'total': ..., **other}`: `other` may replace total (a write
+        // without guarantees).
         assert!(
-            !d.edges.iter().any(|e| e.target_field.as_deref() == Some("total")
-                && e.site.as_ref().is_some_and(|s| s.1 == 26)),
+            d.edges.iter().filter(|e| e.target_field.as_deref() == Some("total")
+                && e.site.as_ref().is_some_and(|s| s.1 == 26)).all(|e| e.override_rows.as_ref().is_some_and(|r| r.is_empty())),
             "{s:#?}"
         );
     }

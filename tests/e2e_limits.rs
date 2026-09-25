@@ -63,7 +63,6 @@ fn sorted(v: &[&str]) -> Vec<String> {
     v
 }
 
-const INVOICE_FIELDS: [&str; 3] = ["Invoice.customer", "Invoice.tax", "Invoice.total"];
 
 #[test]
 fn test_limits_attr_assign() {
@@ -106,6 +105,8 @@ fn test_limits_kwargs() {
             "make -writes_to-> Invoice.customer [override]",
             "make -writes_to-> Invoice.tax [override]",
             "make -writes_to-> Invoice.total [override]",
+            // round 6: the `return` into make's return contract node
+            "make -writes_to-> make.<return> [override]",
         ])
     );
     assert_eq!(
@@ -214,7 +215,9 @@ fn test_limits_name_clash() {
     assert_eq!(
         names(&conn, "model"),
         [
+            "billing.code.make.<return>",
             "billing.records.Invoice.total",
+            "shop.code.make.<return>",
             "shop.records.Invoice.total"
         ]
     );
@@ -226,7 +229,9 @@ fn test_limits_name_clash() {
     assert_eq!(
         edge_list(&edges),
         [
+            "billing.code.make -writes_to-> billing.code.make.<return> [override]",
             "billing.code.make -writes_to-> billing.records.Invoice.total [override]",
+            "shop.code.make -writes_to-> shop.code.make.<return> [override]",
             "shop.code.make -writes_to-> shop.records.Invoice.total [override]",
         ]
     );
@@ -267,7 +272,19 @@ fn test_limits_per_field() {
 #[test]
 fn test_limits_per_argument() {
     let (_t, conn) = db("limits_per_argument");
-    assert_eq!(names(&conn, "model"), INVOICE_FIELDS);
+    assert_eq!(
+        names(&conn, "model"),
+        [
+            "Invoice.customer",
+            "Invoice.tax",
+            "Invoice.total",
+            // round 6: return contract nodes of the annotated functions
+            "combine.<return>",
+            "make.<return>",
+            "make_bad.<return>",
+            "with_tax.<return>",
+        ]
+    );
     assert_eq!(
         names(&conn, "function"),
         ["combine", "make", "make_bad", "with_tax"]
@@ -300,6 +317,11 @@ fn test_limits_per_argument() {
             "make_bad -calls-> with_tax",
             "make_bad -flows_to-> with_tax [a] [override]",
             "make_bad -flows_to-> with_tax@ [a] [override]",
+            // round 6: each `return` into the function's return contract node
+            "combine -writes_to-> combine.<return> [override]",
+            "make -writes_to-> make.<return> [override]",
+            "make_bad -writes_to-> make_bad.<return> [override]",
+            "with_tax -writes_to-> with_tax.<return> [override]",
         ])
     );
     assert_eq!(

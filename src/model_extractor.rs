@@ -386,6 +386,28 @@ fn type_contract(field_type: &str) -> Option<&'static str> {
     }
 }
 
+/// The field's requirements as facts (what `write_model_fields` states as
+/// preconditions): what a read of the field yields, since every write to it
+/// is checked against them.
+pub fn requirement_facts(field: &ModelField) -> crate::value_analysis::ValueFacts {
+    use crate::value_analysis::{Dep, ValueFacts};
+    ValueFacts {
+        nullable: field.null,
+        type_name: type_contract(&field.field_type).map(str::to_string),
+        precision: (field.field_type == "DecimalField")
+            .then_some(field.decimal_places)
+            .flatten()
+            .map(Dep::Lit),
+        max_length: matches!(field.field_type.as_str(), "CharField" | "SlugField")
+            .then_some(field.max_length)
+            .flatten(),
+        min_value: field.min_value,
+        max_value: field.max_value,
+        choices: field.choices.clone(),
+        ..ValueFacts::default()
+    }
+}
+
 /// Write extracted model fields to the database. `names` maps a field's
 /// qualified name to its display name. Returns qualified name → node ID.
 pub fn write_model_fields(

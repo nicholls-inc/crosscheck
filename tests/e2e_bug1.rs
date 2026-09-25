@@ -89,9 +89,17 @@ fn test_bug1_writes_to_edges() {
     let (_tmp, conn) = bug1_db();
 
     let edges = query_edges(&conn);
+    // The `return` of split_energy (annotated `-> EnergyRecord`) is a write
+    // to its return contract node (round 6).
+    let returns: Vec<&EdgeRow> = edges
+        .iter()
+        .filter(|e| e.relationship == "writes_to" && e.target_name.ends_with(".<return>"))
+        .collect();
+    assert_eq!(returns.len(), 1, "one return site");
+    assert_eq!(returns[0].target_name, "split_energy.<return>");
     let writes_to: Vec<&EdgeRow> = edges
         .iter()
-        .filter(|e| e.relationship == "writes_to")
+        .filter(|e| e.relationship == "writes_to" && !e.target_name.ends_with(".<return>"))
         .collect();
 
     assert_eq!(writes_to.len(), 2, "expected 2 writes_to edges");

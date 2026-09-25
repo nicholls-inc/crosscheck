@@ -2,7 +2,7 @@
   "exit_code": 1,
   "errors": [
     {
-      "path": "with_tax -> combine -> Invoice.total",
+      "path": "with_tax -> combine -> combine.<return>",
       "source_guarantee": "precision ≤ 4",
       "target_requirement": "precision ≤ 2",
       "target": "combine"

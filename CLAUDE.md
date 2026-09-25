@@ -58,7 +58,7 @@ scripts/check-fixtures.sh
 The trust boundary matters for correctness claims:
 - **Proved (Lean kernel verifies):** Checker logic, composition, soundness theorems
 - **Proved relative to behavior model:** Translation from SQLite to Lean propositions
-- **Trusted-not-proved:** `BehaviorModel.lean` (~75 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program)
+- **Trusted-not-proved:** `BehaviorModel.lean` (~100 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program)
 - **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
 
 ## Key design patterns
