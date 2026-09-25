@@ -66,13 +66,15 @@ def collectMissingPostconditionWarnings (composedPostconditions : List Constrain
     else some (.inconsistent (missingPostconditionWarning pre intermediateNodeName))
 
 /-- Check consistency across a multi-hop path by composing
-    contracts at each step. Non-partial: terminates by decreasing path length. -/
+    contracts at each step. Each hop contributes one result per constraint pair
+    (`checkEdgeAllFull`), so several inconsistencies on the same edge are all
+    reported. Non-partial: terminates by decreasing path length. -/
 def checkPath (path : List Edge) : List CheckResult :=
   match path with
   | [] => [.consistent]
-  | [edge] => [checkEdgeFull edge]
+  | [edge] => checkEdgeAllFull edge
   | edge :: nextEdge :: remainingEdges =>
-    let edgeResult := checkEdgeFull edge
+    let edgeResults := checkEdgeAllFull edge
     -- Compose contracts through the edge
     let composedPostconditions := composeContracts edge.source edge.target
     let composedNode : Node := {
@@ -93,7 +95,7 @@ def checkPath (path : List Edge) : List CheckResult :=
       relationship := nextEdge.relationship
     }
     let restPath := checkPath (updatedEdge :: remainingEdges)
-    edgeResult :: (allWarnings ++ restPath)
+    edgeResults ++ (allWarnings ++ restPath)
 termination_by path.length
 decreasing_by simp_wf
 
@@ -161,8 +163,8 @@ def composedGuaranteeImplies (source target : Node) : Prop :=
 theorem checkPath_sound_single (edge : Edge)
     (h : ∀ r ∈ checkPath [edge], r = CheckResult.consistent) :
     composedGuaranteeImplies edge.source edge.target := by
-  simp [checkPath, checkEdgeFull] at h
-  exact checkEdge_sound edge.source edge.target h
+  unfold checkPath at h
+  exact checkEdgeAll_sound edge.source edge.target h
 
 /-- CORRECTED SOUNDNESS THEOREM (first-edge guarantee).
     For any non-empty path, if checkPath returns all consistent, then the first edge's
@@ -173,13 +175,13 @@ theorem checkPath_sound_first_edge (path : List Edge) (hne : path ≠ [])
     composedGuaranteeImplies (path.head hne).source (path.head hne).target := by
   match path, hne with
   | [edge], _ =>
-    simp [checkPath, checkEdgeFull] at h
-    exact checkEdge_sound edge.source edge.target h
+    unfold checkPath at h
+    exact checkEdgeAll_sound edge.source edge.target h
   | edge :: _ :: _, _ =>
     simp only [List.head_cons]
-    have h1 : checkEdgeFull edge = .consistent := by
-      apply h; simp [checkPath]
-    exact checkEdge_sound edge.source edge.target h1
+    have h1 : ∀ r ∈ checkEdgeAllFull edge, r = .consistent := by
+      intro r hr; apply h; unfold checkPath; exact List.mem_append_left _ hr
+    exact checkEdgeAll_sound edge.source edge.target h1
 
 /-- Stepwise soundness predicate for multi-hop paths.
     Mirrors checkPath's recursive structure exactly: at each step, the current
@@ -208,14 +210,14 @@ def stepwiseSound (path : List Edge) : Prop :=
 termination_by path.length
 decreasing_by simp_wf
 
-/-- Helper: if all elements of a :: (bs ++ cs) satisfy a predicate,
-    then a satisfies it and all elements of cs satisfy it. -/
-private theorem forall_consistent_of_cons_append
-    (a : CheckResult) (bs cs : List CheckResult)
-    (h : ∀ r ∈ (a :: (bs ++ cs)), r = CheckResult.consistent) :
-    a = CheckResult.consistent ∧ ∀ r ∈ cs, r = CheckResult.consistent := by
+/-- Helper: if all elements of as ++ (bs ++ cs) satisfy a predicate,
+    then all elements of as and all elements of cs satisfy it. -/
+private theorem forall_consistent_of_append_append
+    (as bs cs : List CheckResult)
+    (h : ∀ r ∈ (as ++ (bs ++ cs)), r = CheckResult.consistent) :
+    (∀ r ∈ as, r = CheckResult.consistent) ∧ ∀ r ∈ cs, r = CheckResult.consistent := by
   constructor
-  · apply h; simp
+  · intro r hr; apply h; exact List.mem_append_left _ hr
   · intro r hr; apply h; simp [List.mem_append]; right; right; exact hr
 
 set_option maxHeartbeats 400000 in
@@ -236,21 +238,20 @@ Match on path, hne for three cases with termination_by path.length.
 
 Case [] (empty path): contradiction with hne.
 
-Case [edge] (single edge): Unfold checkPath to get [checkEdgeFull edge].
-  The hypothesis gives checkEdgeFull edge = .consistent (by List.mem_singleton
-  or simp [checkPath] at h). Then unfold checkEdgeFull (or simp [checkEdgeFull])
-  to get checkEdge edge.source edge.target = .consistent. Apply checkEdge_sound.
+Case [edge] (single edge): Unfold checkPath to get checkEdgeAllFull edge.
+  The hypothesis gives every per-pair result consistent. Apply
+  checkEdgeAll_sound.
 
 Case edge :: nextEdge :: rest (multi-hop): checkPath produces
-  edgeResult :: (unresolvedWarnings ++ restPath) where
+  edgeResults ++ (warnings ++ restPath) where
+  edgeResults = checkEdgeAllFull edge and
   restPath = checkPath (updatedEdge :: rest).
 
-  Step 1: Apply forall_consistent_of_cons_append to h to extract:
-    h1 : checkEdgeFull edge = .consistent
+  Step 1: Apply forall_consistent_of_append_append to h to extract:
+    h1 : ∀ r ∈ checkEdgeAllFull edge, r = .consistent
     h2 : ∀ r ∈ checkPath (updatedEdge :: rest), r = .consistent
 
-  Step 2 (first conjunct): simp [checkEdgeFull] at h1 gives
-    checkEdge edge.source edge.target = .consistent. Apply checkEdge_sound
+  Step 2 (first conjunct): Apply checkEdgeAll_sound to h1
     to get composedGuaranteeImplies edge.source edge.target.
 
   Step 3 (second conjunct): Apply checkPath_sound recursively on
@@ -269,12 +270,11 @@ theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
   | [edge], _ =>
     unfold stepwiseSound
     unfold checkPath at h
-    simp at h
-    exact checkEdge_sound edge.source edge.target h
+    exact checkEdgeAll_sound edge.source edge.target h
   | edge :: nextEdge :: rest, _ =>
     unfold checkPath at h
-    have ⟨h1, h2⟩ := forall_consistent_of_cons_append
-      (checkEdgeFull edge)
+    have ⟨h1, h2⟩ := forall_consistent_of_append_append
+      (checkEdgeAllFull edge)
       (collectUnresolvedWarnings (composeContracts edge.source edge.target) edge.target.name ++
        collectMissingPostconditionWarnings (composeContracts edge.source edge.target) nextEdge.target edge.target.name)
       (checkPath
@@ -284,7 +284,7 @@ theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
            target := nextEdge.target, relationship := nextEdge.relationship } :: rest))
       h
     unfold stepwiseSound
-    exact ⟨checkEdge_sound _ _ h1,
+    exact ⟨checkEdgeAll_sound _ _ h1,
            checkPath_sound _ (List.cons_ne_nil _ _) h2⟩
 termination_by path.length
 

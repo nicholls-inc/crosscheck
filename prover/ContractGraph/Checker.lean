@@ -107,6 +107,19 @@ def checkEdge (source target : Node) : CheckResult :=
 def checkEdgeFull (edge : Edge) : CheckResult :=
   checkEdge edge.source edge.target
 
+/-- Check every matching constraint pair between source postconditions and
+    target preconditions, returning one result per pair. Unlike `checkEdge`,
+    this does not stop at the first inconsistency, so an edge that violates
+    several constraint kinds (e.g. precision and nullability) reports each one. -/
+def checkEdgeAll (source target : Node) : List CheckResult :=
+  let pairs := source.postconditions.flatMap fun post =>
+    target.preconditions.map fun pre => (post, pre)
+  pairs.map fun (post, pre) => checkConstraintPair post pre
+
+/-- `checkEdgeAll` applied to an edge's source and target. -/
+def checkEdgeAllFull (edge : Edge) : List CheckResult :=
+  checkEdgeAll edge.source edge.target
+
 /-- Predicate: a constraint implies another (source guarantee implies target requirement). -/
 def constraintImplies (c d : Constraint) : Prop :=
   c.kind = d.kind →
@@ -214,6 +227,22 @@ theorem checkEdge_sound (source target : Node) :
     h_check
   have h_mem := mem_pairs source target c d hc hd
   have h_pair := h_all (c, d) h_mem
+  exact pair_sound c d hk h_pair
+
+/-- Soundness of `checkEdgeAll`: if every per-pair result is consistent, the
+    source postconditions imply the target preconditions. Same conclusion as
+    `checkEdge_sound`. -/
+theorem checkEdgeAll_sound (source target : Node)
+    (h : ∀ r ∈ checkEdgeAll source target, r = .consistent) :
+    ∀ c ∈ source.postconditions, ∀ d ∈ target.preconditions,
+      c.kind = d.kind →
+      constraintImplies c d := by
+  intro c hc d hd hk
+  have h_mem := mem_pairs source target c d hc hd
+  have h_pair : checkConstraintPair c d = .consistent := by
+    apply h
+    unfold checkEdgeAll
+    exact List.mem_map.mpr ⟨(c, d), h_mem, rfl⟩
   exact pair_sound c d hk h_pair
 
 end ContractGraph

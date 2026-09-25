@@ -36,6 +36,7 @@ There are no automated test suites. Verification is done via `lake build` (type-
 
 **Proofs (Lean, same files):** Machine-checked soundness proofs live alongside the checker code. Key theorems:
 - `checkEdge_sound` (Checker.lean): single-edge soundness -- if `checkEdge` returns consistent, source postconditions logically imply target preconditions
+- `checkEdgeAll_sound` (Checker.lean): same conclusion for `checkEdgeAll`, which returns one result per constraint pair instead of stopping at the first inconsistency. `checkPath` uses it so every failing constraint kind on a hop is reported.
 - `checkPath_sound` (Composition.lean): multi-hop stepwise soundness -- proves `stepwiseSound` (each hop is sound w.r.t. composed intermediate postconditions)
 
 **Data flow:** Python files -> Rust extractor -> SQLite -> Lean translation (Translation.lean) -> Checker -> JSON output to stdout. Exit codes: 0 = consistent, 1 = inconsistencies found, 2 = extraction/translation failure.
@@ -68,5 +69,6 @@ The trust boundary matters for correctness claims:
 
 - `test_fixtures/bug1/`: Precision mismatch -- quantize(6dp) written to DecimalField(3dp). Single-hop detection.
 - `test_fixtures/transitive/`: Transitive inconsistency -- max(4,3)=4 > 3, invisible to pairwise checking. Multi-hop detection.
+- `test_fixtures/nullable/`: Multi-constraint mismatch -- `return None` path plus 4dp written to DecimalField(2dp, null=False). Two inconsistencies per edge (precision and nullability).
 
 Lean-side test modules (`ContractGraphTest/`) construct graphs directly and verify checker behavior with `#eval` and proof terms.

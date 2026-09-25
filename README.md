@@ -81,10 +81,12 @@ prover/                     Lean checker + proofs
 │   └── Main.lean           Entry point, JSON output
 └── ContractGraphTest/
     ├── BugReport1.lean     Field report Bug 1 reproduction
+    ├── NullableDemo.lean   Precision + nullability on one edge
     └── TransitiveDemo.lean Transitive inconsistency demo
 
 test_fixtures/
 ├── bug1/                   Precision mismatch: quantize(6dp) → DecimalField(3dp)
+├── nullable/               Precision (4dp → 2dp) and nullability (return None → null=False)
 └── transitive/             Graph-level: max(4,3)=4 > 3, invisible to pairwise checking
 ```
 
@@ -93,6 +95,8 @@ test_fixtures/
 **Bug 1** (`test_fixtures/bug1/`): `split_energy` writes to `EnergyRecord` via `objects.create()`, quantizing values to 6 decimal places. But `EnergyRecord.energy` is `DecimalField(decimal_places=3)`. The tool discovers the edges from the ORM write pattern and detects `6 > 3` from body analysis — no manual overrides needed.
 
 **Transitive** (`test_fixtures/transitive/`): `compute_offpeak` guarantees precision ≤ 4. `split_energy` has postcondition `max(input_precision, 3)`. Pairwise, each edge is consistent. But composed: `max(4, 3) = 4 > 3` violates the model. Only graph-level checking catches this.
+
+**Nullable** (`test_fixtures/nullable/`): `apply_discount` has a `return None` path and otherwise writes 4dp values to `Invoice.total` and `Invoice.discount`, which are `DecimalField(decimal_places=2)` with the default `null=False`. The checker reports two inconsistencies per edge, one for precision (`4 > 2`, from the docstring) and one for nullability (from body analysis). Each hop is checked with `checkEdgeAll`, which returns a result for every constraint pair, so one failing kind does not hide another.
 
 ## Running tests
 
@@ -105,6 +109,7 @@ cargo test
 # Run only the e2e tests against test fixtures
 cargo test --test e2e_bug1
 cargo test --test e2e_transitive
+cargo test --test e2e_nullable
 cargo test --test e2e_synthetic
 
 # Run only the property-based tests
@@ -126,7 +131,7 @@ cd prover && lake build
 cd prover && lake build ContractGraph
 ```
 
-`lake build` verifies the soundness theorems (`checkEdge_sound`, `checkPath_sound`) and the test modules in `ContractGraphTest/` (BugReport1, TransitiveDemo, SoundnessDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
+`lake build` verifies the soundness theorems (`checkEdge_sound`, `checkPath_sound`) and the test modules in `ContractGraphTest/` (BugReport1, NullableDemo, TransitiveDemo, SoundnessDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
 
 ## Exit codes
 
