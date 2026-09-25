@@ -43,11 +43,13 @@ scripts/check-fixtures.sh
 **Checker (Lean, `prover/ContractGraph/`):** Reads the SQLite database, translates rows into typed Lean structures, checks constraint consistency. The checker operates on a `ContractGraph` of `Node`s and `Edge`s.
 
 **Proofs (Lean, same files):** Machine-checked soundness proofs live alongside the checker code. Key theorems:
-- `checkEdge_sound` (Checker.lean): single-edge soundness -- if `checkEdge` returns consistent, source postconditions logically imply target preconditions
-- `checkEdgeAll_sound` (Checker.lean): same conclusion for `checkEdgeAll`, which returns one result per constraint pair instead of stopping at the first inconsistency. `checkPath` uses it so every failing constraint kind on a hop is reported.
-- `checkPath_sound` (Composition.lean): multi-hop stepwise soundness -- proves `stepwiseSound` (each hop is sound w.r.t. composed intermediate postconditions)
+- `checkEdge_sound`, `checkEdgeAll_sound(_noErrors)` (Checker.lean): single-edge soundness -- if every per-pair check on an edge passes (warnings allowed), source postconditions imply target preconditions
+- `checkPath_sound(_noErrors)` (Composition.lean): multi-hop stepwise soundness (`stepwiseSound`: each hop is sound w.r.t. the composed intermediate postconditions, composed through the next edge's copy of the node so per-edge overrides apply)
+- `enumeratePaths_complete` (Search.lean): every `IsDataPath` (a simple path over non-`calls` edges from a function node to a model node) is enumerated
+- `closedStates_checkPath` (StateSearch.lean): the explored hop states are closed under successors, so every data path's hop checks occur among the checked states
+- `runChecker_sound_all` (Main.lean): **exit code 0 ⇒ every data path of the translated graph is stepwise sound**. This is the end-to-end guarantee of the executable; it is relative to the translated graph (extraction is untrusted) and the behaviour model.
 
-**Reporting:** `runChecker` (Main.lean) deduplicates findings that differ only in path, keeping the shortest.
+**Checking algorithm:** `runChecker` (StateSearch.lean) explores composed hop states (the composed edge minus source preconditions) breadth-first from every function node over checked edges, checks each distinct state once, and verifies closure before reporting. Budgets: `--max-states` (default 2,000,000; `--max-paths` is an alias) and `--max-states-per-edge` (default 64, stops non-converging cycles); exceeding either gives exit 2 ("incomplete"). The path-based `runCheckerPaths` is kept as a reference. Findings are deduplicated (same finding, shortest witness path). Warnings: an unresolved dependent bound or a missing source guarantee, only where the target requirement could reject a value; none for paths headed by a call-site node that has incoming edges.
 
 **Data flow:** Python files -> Rust extractor -> SQLite -> Lean translation (Translation.lean) -> Checker -> JSON output to stdout. Exit codes: 0 = consistent, 1 = inconsistencies found, 2 = extraction/translation failure.
 
@@ -73,13 +75,19 @@ The trust boundary matters for correctness claims:
 - Uses `leansqlite` package for SQLite FFI
 - Proofs use `simp`, `grind`, `omega`, and case-splitting tactics
 - `maxHeartbeats` is bumped for complex theorems (400k-800k)
-- `checkPath` is structurally recursive with explicit `termination_by path.length`; `findAllSimplePaths` is `partial`
+- `checkPath` uses well-founded recursion (`termination_by path.length`), so the kernel cannot evaluate it: concrete checks in `ContractGraphTest` use `native_decide`; the library itself uses none
+- `findAllSimplePaths` is total (fuel = number of edges + 1)
+- Range bounds are scaled integers: every bound in a run is multiplied by 10^D (D = most decimal places seen, at least 6 when micros/REAL rows exist), read from `param_*_decimal`, then `param_*_micros`, then REAL
 
 ## Test fixtures
 
-- `test_fixtures/bug1/`: Precision mismatch -- quantize(6dp) written to DecimalField(3dp). Single-hop detection.
-- `test_fixtures/transitive/`: Transitive inconsistency -- max(4,3)=4 > 3, invisible to pairwise checking. Multi-hop detection.
-- `test_fixtures/plain_python/`: No Django -- dataclass + pydantic targets, `Optional` return into a non-optional field, `len` contract, and a transitive precision chain through `flows_to`. `plain_python_clean/` is the corrected version and must pass.
-- `test_fixtures/nullable/`: Multi-constraint mismatch -- `return None` path plus 4dp written to DecimalField(2dp, null=False). Two inconsistencies per edge (precision and nullability).
+Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, requirement and optionally the failing hop's target; required warnings). `scripts/check-fixtures.sh` runs the full pipeline on all of them.
+
+- `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path)
+- `plain_python/`, `plain_python_clean/`: no Django (clean version must pass)
+- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`: adversarial findings. Several include an `ok.py` with correct code so a false positive fails the fixture.
+- `V2_FIXTURE_NOTES.md`: how ambiguous verdicts were decided
+
+Design: `docs/design/dataflow-v2.md` (model, SQLite interface, and the round 3/5 addenda). Adversarial reports and repros from each round were kept outside the repo; their findings are recorded in the addenda and as fixtures.
 
 Lean-side test modules (`ContractGraphTest/`) construct graphs directly and verify checker behavior with `#eval` and proof terms.
