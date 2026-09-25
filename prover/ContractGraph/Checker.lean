@@ -287,4 +287,61 @@ theorem checkEdgeAll_sound (source target : Node)
     exact List.mem_map.mpr ⟨(c, d), h_mem, rfl⟩
   exact pair_sound c d hk h_pair
 
+
+/-! ## Severity: every inconsistency found by pair checking is an error -/
+
+/-- Every inconsistent result of `checkConstraintPair` has severity error. -/
+theorem checkConstraintPair_severity (c d : Constraint) (di : DiagnosticInfo)
+    (h : checkConstraintPair c d = .inconsistent di) : di.severity = .error := by
+  unfold checkConstraintPair at h
+  split at h
+  · cases h
+  · split at h <;> split at h <;>
+      first
+      | (cases h; done)
+      | (simp only [checkStaticBounds, checkLowerBounds, checkNullability,
+                    checkTypeConsistency, checkChoicesSubset] at h
+         split at h <;> (cases h <;> rfl))
+
+/-- `tagHop` keeps the severity of an inconsistency. -/
+theorem tagHop_severity (s t : String) (r : CheckResult) (di : DiagnosticInfo)
+    (h : tagHop s t r = .inconsistent di) :
+    ∃ d, r = .inconsistent d ∧ di.severity = d.severity := by
+  cases r with
+  | consistent => cases h
+  | inconsistent d =>
+    simp only [tagHop, CheckResult.inconsistent.injEq] at h
+    exact ⟨d, rfl, by rw [← h]⟩
+
+/-- Every inconsistent result of `checkEdgeAll` (after hop tagging) is an error. -/
+theorem checkEdgeAll_severity (source target : Node) (r : CheckResult)
+    (hr : r ∈ checkEdgeAll source target) (di : DiagnosticInfo)
+    (h : r = .inconsistent di) : di.severity = .error := by
+  unfold checkEdgeAll at hr
+  obtain ⟨⟨post, pre⟩, _, rfl⟩ := List.mem_map.mp hr
+  obtain ⟨d, hd, hsev⟩ := tagHop_severity _ _ _ di h
+  rw [hsev]
+  exact checkConstraintPair_severity post pre d hd
+
+/-- A result that can only be inconsistent with severity error, and is not an
+    error, is consistent. -/
+theorem eq_consistent_of_not_isError (r : CheckResult)
+    (hsev : ∀ di, r = .inconsistent di → di.severity = .error)
+    (h : r.isError = false) : r = .consistent := by
+  cases r with
+  | consistent => rfl
+  | inconsistent di =>
+    have hs := hsev di rfl
+    simp [CheckResult.isError, hs] at h
+
+/-- Soundness of `checkEdgeAll` from the weaker hypothesis that no result is
+    an error. -/
+theorem checkEdgeAll_sound_noErrors (source target : Node)
+    (h : ∀ r ∈ checkEdgeAll source target, r.isError = false) :
+    ∀ c ∈ source.postconditions, ∀ d ∈ target.preconditions,
+      c.kind = d.kind →
+      constraintImplies c d :=
+  checkEdgeAll_sound source target fun r hr =>
+    eq_consistent_of_not_isError r (checkEdgeAll_severity source target r hr) (h r hr)
+
 end ContractGraph

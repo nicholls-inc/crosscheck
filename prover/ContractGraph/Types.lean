@@ -139,6 +139,15 @@ inductive CheckResult where
   | inconsistent : DiagnosticInfo → CheckResult
   deriving Repr
 
+/-- An inconsistency of severity error. Warnings and consistent results are
+    not errors; only errors affect the exit code. -/
+def CheckResult.isError : CheckResult → Bool
+  | .consistent => false
+  | .inconsistent d =>
+    match d.severity with
+    | .error => true
+    | .warning => false
+
 /-- The full contract graph. -/
 structure ContractGraph where
   nodes : List Node

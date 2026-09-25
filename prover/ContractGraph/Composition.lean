@@ -316,4 +316,91 @@ theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
            checkPath_sound _ (List.cons_ne_nil _ _) h2⟩
 termination_by path.length
 
+
+/-! ## Soundness for error-free results
+
+`checkPath_sound` needs every result to be `.consistent`, but every hop may
+add warnings (`.inconsistent` with severity warning), so that hypothesis
+rarely holds on a real run. The theorems below need only that no result is
+an error, which is what exit code 0 reports. -/
+
+/-- Unresolved-dependency warnings have severity warning. -/
+theorem collectUnresolvedWarnings_severity (source target : Node) (r : CheckResult)
+    (hr : r ∈ collectUnresolvedWarnings source target) :
+    ∃ d, r = .inconsistent d ∧ d.severity = .warning := by
+  unfold collectUnresolvedWarnings at hr
+  obtain ⟨c, _, hc⟩ := List.mem_filterMap.mp hr
+  split at hc
+  · cases hc; exact ⟨_, rfl, rfl⟩
+  · cases hc
+
+/-- Missing-postcondition warnings have severity warning. -/
+theorem collectMissingPostconditionWarnings_severity (source target : Node) (r : CheckResult)
+    (hr : r ∈ collectMissingPostconditionWarnings source target) :
+    ∃ d, r = .inconsistent d ∧ d.severity = .warning := by
+  unfold collectMissingPostconditionWarnings at hr
+  obtain ⟨c, _, hc⟩ := List.mem_filterMap.mp hr
+  split at hc
+  · cases hc; exact ⟨_, rfl, rfl⟩
+  · cases hc
+
+/-- Warnings are never errors. -/
+theorem not_isError_of_warning (r : CheckResult)
+    (h : ∃ d, r = .inconsistent d ∧ d.severity = .warning) : r.isError = false := by
+  obtain ⟨d, rfl, hs⟩ := h
+  simp [CheckResult.isError, hs]
+
+/-- The results of `checkHop` beyond the per-pair ones are all warnings. -/
+theorem checkHop_warnings_not_isError (edge : Edge) (r : CheckResult)
+    (hr : r ∈ collectUnresolvedWarnings edge.source edge.target ++
+              collectMissingPostconditionWarnings edge.source edge.target) :
+    r.isError = false := by
+  rcases List.mem_append.mp hr with h | h
+  · exact not_isError_of_warning r (collectUnresolvedWarnings_severity _ _ r h)
+  · exact not_isError_of_warning r (collectMissingPostconditionWarnings_severity _ _ r h)
+
+/-- If no `checkHop` result is an error, no per-pair result is. -/
+theorem checkHop_noErrors (edge : Edge)
+    (h : ∀ r ∈ checkHop edge, r.isError = false) :
+    ∀ r ∈ checkEdgeAllFull edge, r.isError = false := by
+  intro r hr; apply h; unfold checkHop; exact List.mem_append_left _ hr
+
+private theorem forall_noErrors_of_append
+    (as bs : List CheckResult)
+    (h : ∀ r ∈ (as ++ bs), r.isError = false) :
+    (∀ r ∈ as, r.isError = false) ∧ ∀ r ∈ bs, r.isError = false :=
+  ⟨fun r hr => h r (List.mem_append_left _ hr), fun r hr => h r (List.mem_append_right _ hr)⟩
+
+set_option maxHeartbeats 400000 in
+/-- SOUNDNESS THEOREM (error-free results). If no result of `checkPath` is an
+    error (warnings allowed), `stepwiseSound` holds for the path. Same proof
+    shape as `checkPath_sound`, with `checkEdgeAll_sound_noErrors` at each hop. -/
+theorem checkPath_sound_noErrors (path : List Edge) (hne : path ≠ [])
+    (h : ∀ r ∈ checkPath path, r.isError = false) :
+    stepwiseSound path := by
+  match path, hne with
+  | [edge], _ =>
+    unfold stepwiseSound
+    unfold checkPath at h
+    exact checkEdgeAll_sound_noErrors edge.source edge.target (checkHop_noErrors edge h)
+  | edge :: nextEdge :: rest, _ =>
+    unfold checkPath at h
+    have ⟨h1, h2⟩ := forall_noErrors_of_append
+      (checkHop edge)
+      (checkPath
+        ({ source := { id := edge.target.id, name := edge.target.name, kind := edge.target.kind,
+                       preconditions := edge.target.preconditions,
+                       postconditions := composeContracts edge.source nextEdge.source },
+           target := nextEdge.target, relationship := nextEdge.relationship } :: rest))
+      h
+    unfold stepwiseSound
+    exact ⟨checkEdgeAll_sound_noErrors _ _ (checkHop_noErrors edge h1),
+           checkPath_sound_noErrors _ (List.cons_ne_nil _ _) h2⟩
+termination_by path.length
+
+/-- `checkPath_sound` is the special case where every result is consistent. -/
+example (path : List Edge) (hne : path ≠ [])
+    (h : ∀ r ∈ checkPath path, r = CheckResult.consistent) : stepwiseSound path :=
+  checkPath_sound_noErrors path hne fun r hr => by rw [h r hr]; rfl
+
 end ContractGraph
