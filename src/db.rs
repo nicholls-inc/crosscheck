@@ -84,6 +84,7 @@ impl ContractRole {
 pub enum Relationship {
     Calls,
     WritesTo,
+    FlowsTo,
 }
 
 impl Relationship {
@@ -91,6 +92,7 @@ impl Relationship {
         match self {
             Relationship::Calls => "calls",
             Relationship::WritesTo => "writes_to",
+            Relationship::FlowsTo => "flows_to",
         }
     }
 }
@@ -261,7 +263,7 @@ CREATE TABLE edges (
     source_node_id  INTEGER NOT NULL REFERENCES nodes(id),
     target_node_id  INTEGER NOT NULL REFERENCES nodes(id),
     relationship    TEXT NOT NULL CHECK (relationship IN (
-                        'calls', 'writes_to'
+                        'calls', 'writes_to', 'flows_to'
                     )),
     discovery       TEXT NOT NULL CHECK (discovery IN ('ast_pattern', 'manual', 'type_inference'))
 );

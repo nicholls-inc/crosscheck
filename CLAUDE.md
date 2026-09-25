@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A three-layer pipeline that extracts implicit contracts from Django code, translates them into Lean propositions, and checks consistency across component boundaries with machine-checked soundness proofs. PoC stage targeting a three-node graph (function A -> function B -> Django model).
+A three-layer pipeline that extracts implicit contracts from Python code (Django models and plain-Python data classes: dataclass, attrs, pydantic, NamedTuple, TypedDict), translates them into Lean propositions, and checks consistency across component boundaries with machine-checked soundness proofs. PoC stage targeting a three-node graph (function A -> function B -> data model field).
 
 ## Build commands
 
@@ -26,11 +26,19 @@ cd prover && lake build
 cd prover && lake build ContractGraph
 ```
 
-There are no automated test suites. Verification is done via `lake build` (type-checks all proofs) and running the pipeline against test fixtures.
+```bash
+# Rust unit, e2e and property tests
+cargo test
+
+# Full pipeline on every fixture, compared with test_fixtures/*/expected.json
+scripts/check-fixtures.sh
+```
+
+`lake build` type-checks all proofs and the `ContractGraphTest` modules (their `#guard` lines fail the build if checker behaviour changes).
 
 ## Architecture
 
-**Extractor (Rust, `src/`):** Parses Django Python files, extracts model field constraints and function contracts, discovers edges via ORM write pattern detection, writes everything to a SQLite database. CLI binary is `crosscheck-contracts`.
+**Extractor (Rust, `src/`):** Parses Python files, extracts Django model field constraints (`model_extractor.rs`), plain-Python data class fields (`dataclass_extractor.rs`) and function contracts, discovers `writes_to` / `calls` / `flows_to` edges (`edge_discovery.rs`), writes everything to a SQLite database. Data class fields are nodes of kind `model`, so the checker treats them as path targets like Django fields. CLI binary is `crosscheck-contracts`.
 
 **Checker (Lean, `prover/ContractGraph/`):** Reads the SQLite database, translates rows into typed Lean structures, checks constraint consistency. The checker operates on a `ContractGraph` of `Node`s and `Edge`s.
 
@@ -39,6 +47,8 @@ There are no automated test suites. Verification is done via `lake build` (type-
 - `checkEdgeAll_sound` (Checker.lean): same conclusion for `checkEdgeAll`, which returns one result per constraint pair instead of stopping at the first inconsistency. `checkPath` uses it so every failing constraint kind on a hop is reported.
 - `checkPath_sound` (Composition.lean): multi-hop stepwise soundness -- proves `stepwiseSound` (each hop is sound w.r.t. composed intermediate postconditions)
 
+**Reporting:** `runChecker` (Main.lean) deduplicates findings that differ only in path, keeping the shortest.
+
 **Data flow:** Python files -> Rust extractor -> SQLite -> Lean translation (Translation.lean) -> Checker -> JSON output to stdout. Exit codes: 0 = consistent, 1 = inconsistencies found, 2 = extraction/translation failure.
 
 ## Trust model
@@ -46,7 +56,7 @@ There are no automated test suites. Verification is done via `lake build` (type-
 The trust boundary matters for correctness claims:
 - **Proved (Lean kernel verifies):** Checker logic, composition, soundness theorems
 - **Proved relative to behavior model:** Translation from SQLite to Lean propositions
-- **Trusted-not-proved:** `BehaviorModel.lean` (~45 lines of Django field semantics axioms, version-pinned to Django 4.2/5.x)
+- **Trusted-not-proved:** `BehaviorModel.lean` (~75 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program)
 - **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
 
 ## Key design patterns
@@ -69,6 +79,7 @@ The trust boundary matters for correctness claims:
 
 - `test_fixtures/bug1/`: Precision mismatch -- quantize(6dp) written to DecimalField(3dp). Single-hop detection.
 - `test_fixtures/transitive/`: Transitive inconsistency -- max(4,3)=4 > 3, invisible to pairwise checking. Multi-hop detection.
+- `test_fixtures/plain_python/`: No Django -- dataclass + pydantic targets, `Optional` return into a non-optional field, `len` contract, and a transitive precision chain through `flows_to`. `plain_python_clean/` is the corrected version and must pass.
 - `test_fixtures/nullable/`: Multi-constraint mismatch -- `return None` path plus 4dp written to DecimalField(2dp, null=False). Two inconsistencies per edge (precision and nullability).
 
 Lean-side test modules (`ContractGraphTest/`) construct graphs directly and verify checker behavior with `#eval` and proof terms.

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Run the full pipeline (Rust extractor + Lean checker) on every fixture under
+# test_fixtures/ that has an expected.json, and compare the reported errors and
+# exit code with it. Warnings are printed but not compared.
+#
+# Usage: scripts/check-fixtures.sh [--release|--debug]
+# Requires: cargo build (--release by default), cd prover && lake build, python3.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+profile="${1:---release}"
+case "$profile" in
+  --release) cli=./target/release/crosscheck-contracts ;;
+  --debug) cli=./target/debug/crosscheck-contracts ;;
+  *) echo "usage: $0 [--release|--debug]" >&2; exit 2 ;;
+esac
+checker=./prover/.lake/build/bin/contract-graph-checker
+for bin in "$cli" "$checker"; do
+  [ -x "$bin" ] || { echo "missing $bin (build it first)" >&2; exit 2; }
+done
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+failed=0
+
+for expected in test_fixtures/*/expected.json; do
+  dir=$(dirname "$expected")
+  name=$(basename "$dir")
+  set +e
+  "$cli" contracts check "$dir/" --lean-checker "$checker" \
+    --output-db "$tmp/$name.sqlite" >"$tmp/$name.json" 2>"$tmp/$name.err"
+  code=$?
+  set -e
+  if python3 - "$expected" "$tmp/$name.json" "$code" "$name" <<'PY'
+import json, sys
+expected_path, actual_path, code, name = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+expected = json.load(open(expected_path))
+try:
+    actual = json.load(open(actual_path))
+except json.JSONDecodeError:
+    print(f"FAIL {name}: checker output is not JSON")
+    sys.exit(1)
+key = lambda e: (e["path"], e["source_guarantee"], e["target_requirement"])
+want = sorted(key(e) for e in expected["errors"])
+got = sorted(
+    (" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"])
+    for r in actual["results"] if r["severity"] == "error"
+)
+warnings = sum(1 for r in actual["results"] if r["severity"] != "error")
+ok = want == got and code == expected["exit_code"]
+print(f"{'ok  ' if ok else 'FAIL'} {name}: {len(got)} errors, {warnings} warnings, exit {code}")
+if not ok:
+    for e in sorted(set(want) - set(got)):
+        print("  missing:   ", " | ".join(e))
+    for e in sorted(set(got) - set(want)):
+        print("  unexpected:", " | ".join(e))
+    if code != expected["exit_code"]:
+        print(f"  exit code {code}, expected {expected['exit_code']}")
+sys.exit(0 if ok else 1)
+PY
+  then :; else failed=1; cat "$tmp/$name.err" >&2; fi
+done
+
+exit "$failed"

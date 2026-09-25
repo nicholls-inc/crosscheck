@@ -3,14 +3,16 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::body_analyzer;
+use crate::dataclass_extractor;
 use crate::db::{ContractDb, Discovery, EdgeRecord, Relationship};
 use crate::defaults;
 use crate::docstring_parser;
 use crate::edge_discovery;
 use crate::function_extractor;
 use crate::model_extractor;
+use crate::source;
 
-/// Run the full extraction pipeline on a Django app directory.
+/// Run the full extraction pipeline on a Python project directory (or a single .py file).
 ///
 /// If `output_db` is `Some(path)`, the SQLite database is written there.
 /// If `None`, a default temp path is used.
@@ -57,6 +59,7 @@ pub fn extract(
     let mut all_body_contracts = Vec::new();
     let mut all_docstring_contracts = Vec::new();
     let mut all_discovered_edges = Vec::new();
+    let mut all_class_candidates = Vec::new();
 
     // Parse each file
     for py_file in &py_files {
@@ -84,12 +87,25 @@ pub fn extract(
         };
 
         // Extract models
-        let model_fields =
+        let mut model_fields =
             model_extractor::extract_models(stmts, &relative_path, &field_defaults);
+        for field in &mut model_fields {
+            field.source_line = source::line_of(&source, field.source_line);
+        }
         all_model_fields.extend(model_fields);
 
+        // Collect class definitions; data classes are resolved project-wide below
+        all_class_candidates.extend(dataclass_extractor::collect_classes(
+            stmts,
+            &source,
+            &relative_path,
+        ));
+
         // Extract functions
-        let functions = function_extractor::extract_functions(stmts, &relative_path);
+        let mut functions = function_extractor::extract_functions(stmts, &relative_path);
+        for func in &mut functions {
+            func.source_line = source::line_of(&source, func.source_line);
+        }
 
         // Analyze function bodies
         for func in &functions {
@@ -138,6 +154,15 @@ pub fn extract(
         }
     }
 
+    // Resolve and write plain-Python data classes (dataclass, attrs, pydantic, ...)
+    let data_classes = dataclass_extractor::resolve_data_classes(&all_class_candidates);
+    let data_class_ids = dataclass_extractor::write_data_classes(&db, &data_classes)?;
+    let data_class_field_count = data_class_ids.len();
+    model_node_ids.extend(data_class_ids);
+
+    // Map positional constructor arguments (`#<index>`) to declared field names
+    resolve_positional_fields(&mut all_discovered_edges, &data_classes);
+
     // Write AST-discovered edges
     write_discovered_edges(&db, &all_discovered_edges, &node_ids, &model_node_ids)?;
 
@@ -156,14 +181,42 @@ pub fn extract(
     };
 
     eprintln!(
-        "Extracted {} model fields, {} functions, {} edges to {}",
+        "Extracted {} model fields, {} data class fields, {} functions, {} edges to {}",
         all_model_fields.len(),
+        data_class_field_count,
         all_functions.len(),
         edge_count,
         db_path.display()
     );
 
     Ok(db_path)
+}
+
+/// Replace `#<index>` placeholder fields on constructor edges with the
+/// declared field at that position, for data classes whose constructors take
+/// fields positionally. Placeholders that cannot be mapped are left as-is and
+/// are dropped at edge resolution.
+fn resolve_positional_fields(
+    edges: &mut [edge_discovery::DiscoveredEdge],
+    classes: &[dataclass_extractor::DataClass],
+) {
+    for edge in edges.iter_mut() {
+        let Some(index) = edge
+            .target_field
+            .as_deref()
+            .and_then(|f| f.strip_prefix('#'))
+            .and_then(|i| i.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let field = classes
+            .iter()
+            .find(|c| c.name == edge.target_name && c.kind.positional_fields())
+            .and_then(|c| c.fields.get(index));
+        if let Some(field) = field {
+            edge.target_field = Some(field.field_name.clone());
+        }
+    }
 }
 
 /// Find all .py files in a directory recursively.
@@ -235,6 +288,7 @@ fn write_discovered_edges(
             let relationship = match edge.relationship.as_str() {
                 "calls" => Relationship::Calls,
                 "writes_to" => Relationship::WritesTo,
+                "flows_to" => Relationship::FlowsTo,
                 _ => continue,
             };
             let discovery = match edge.discovery.as_str() {

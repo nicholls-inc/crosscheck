@@ -62,6 +62,28 @@ def collectResults (pathResults : List (List Edge × List CheckResult))
       | .inconsistent diag =>
         some (buildResultEntry { diag with path := pathNames } pathNames verLevel)
 
+/-- Two entries report the same inconsistency when everything except the
+    path matches: the same source constraint against the same target
+    constraint on the same target node. -/
+def sameFinding (a b : ResultEntry) : Bool :=
+  a.severity == b.severity &&
+  a.source.file == b.source.file && a.source.line == b.source.line &&
+  a.target.file == b.target.file && a.target.line == b.target.line &&
+  a.target.name == b.target.name &&
+  a.sourceGuarantee == b.sourceGuarantee &&
+  a.targetRequirement == b.targetRequirement &&
+  a.suggestion == b.suggestion
+
+/-- Report each inconsistency once. When several paths reach the same finding
+    (e.g. a caller's `calls` edge prefixed to the path from the function that
+    owns the constraint), keep the shortest path, which starts at the owner. -/
+def dedupeResults (results : List ResultEntry) : List ResultEntry :=
+  results.foldl (fun acc r =>
+    if acc.any (sameFinding · r) then
+      acc.map fun e => if sameFinding e r && r.path.length < e.path.length then r else e
+    else
+      acc ++ [r]) []
+
 /-- Count total contracts across all nodes. -/
 def countContracts (nodes : List Node) : Nat :=
   nodes.foldl (fun acc n => acc + n.preconditions.length + n.postconditions.length) 0
@@ -69,7 +91,7 @@ def countContracts (nodes : List Node) : Nat :=
 /-- Run the full checking pipeline on a contract graph. -/
 def runChecker (graph : ContractGraph) : CheckOutput :=
   let pathResults := checkAllPaths graph
-  let results := collectResults pathResults
+  let results := dedupeResults (collectResults pathResults)
   let hasErrors := results.any (·.severity == "error")
   { summary := {
       contractsChecked := countContracts graph.nodes

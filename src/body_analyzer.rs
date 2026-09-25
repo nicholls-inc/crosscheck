@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::db::{ContractRole, ConstraintType};
@@ -33,11 +35,17 @@ pub fn analyze_body(body: &[Stmt]) -> Vec<BodyContract> {
         });
     }
 
-    // Check for precision patterns across all return expressions
+    // Precision of local variables, so `x = v.quantize(...); return f(field=x)` is seen.
+    let env = local_precisions(body);
+
+    // Check for precision patterns across all non-None return expressions.
+    // A None return has no decimal places; it is covered by the nullability
+    // contract above.
     let precisions: Vec<Option<i64>> = returns
         .iter()
+        .filter(|r| !is_none_return(r))
         .filter_map(|r| r.as_ref())
-        .map(|expr| analyze_precision(expr))
+        .map(|expr| analyze_precision(expr, &env))
         .collect();
 
     // Take the weakest (largest) precision bound
@@ -115,6 +123,126 @@ fn collect_returns_from_stmt<'a>(stmt: &'a Stmt, returns: &mut Vec<Option<&'a Ex
     }
 }
 
+/// Known decimal places of local variables.
+type Env = HashMap<String, i64>;
+
+/// Upper bound on the decimal places of each local variable, taken over every
+/// assignment to it in the body (flow-insensitive). A variable is left out if
+/// any assignment to it has unknown precision, if it is rebound by a
+/// for-loop, augmented assignment, tuple unpacking or `with ... as`, or if its
+/// bound does not settle (e.g. `x = x * r` in a loop).
+fn local_precisions(body: &[Stmt]) -> Env {
+    let mut assignments: Vec<(String, &Expr)> = Vec::new();
+    let mut opaque: HashSet<String> = HashSet::new();
+    collect_assignments(body, &mut assignments, &mut opaque);
+
+    let mut env = Env::new();
+    const MAX_PASSES: usize = 4;
+    for pass in 0..=MAX_PASSES {
+        let mut next = Env::new();
+        let mut unknown: HashSet<String> = opaque.clone();
+        for (name, value) in &assignments {
+            if unknown.contains(name) {
+                continue;
+            }
+            match analyze_precision(value, &env) {
+                Some(p) => {
+                    let entry = next.entry(name.clone()).or_insert(p);
+                    *entry = (*entry).max(p);
+                }
+                None => {
+                    unknown.insert(name.clone());
+                    next.remove(name);
+                }
+            }
+        }
+        if next == env {
+            return env;
+        }
+        if pass == MAX_PASSES {
+            // Still growing: drop the variables whose bound changed.
+            next.retain(|k, v| env.get(k) == Some(v));
+            return next;
+        }
+        env = next;
+    }
+    env
+}
+
+/// Collect `name = expr` assignments; names bound any other way are opaque.
+fn collect_assignments<'a>(
+    stmts: &'a [Stmt],
+    out: &mut Vec<(String, &'a Expr)>,
+    opaque: &mut HashSet<String>,
+) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Assign(assign) => {
+                for target in &assign.targets {
+                    match target {
+                        Expr::Name(n) => out.push((n.id.to_string(), &assign.value)),
+                        other => mark_opaque(other, opaque),
+                    }
+                }
+            }
+            Stmt::AnnAssign(ann) => {
+                if let (Expr::Name(n), Some(value)) = (ann.target.as_ref(), &ann.value) {
+                    out.push((n.id.to_string(), value));
+                }
+            }
+            Stmt::AugAssign(aug) => mark_opaque(&aug.target, opaque),
+            Stmt::If(if_stmt) => {
+                collect_assignments(&if_stmt.body, out, opaque);
+                for clause in &if_stmt.elif_else_clauses {
+                    collect_assignments(&clause.body, out, opaque);
+                }
+            }
+            Stmt::For(for_stmt) => {
+                mark_opaque(&for_stmt.target, opaque);
+                collect_assignments(&for_stmt.body, out, opaque);
+                collect_assignments(&for_stmt.orelse, out, opaque);
+            }
+            Stmt::While(while_stmt) => {
+                collect_assignments(&while_stmt.body, out, opaque);
+                collect_assignments(&while_stmt.orelse, out, opaque);
+            }
+            Stmt::With(with_stmt) => {
+                for item in &with_stmt.items {
+                    if let Some(vars) = &item.optional_vars {
+                        mark_opaque(vars, opaque);
+                    }
+                }
+                collect_assignments(&with_stmt.body, out, opaque);
+            }
+            Stmt::Try(try_stmt) => {
+                collect_assignments(&try_stmt.body, out, opaque);
+                for handler in &try_stmt.handlers {
+                    let ast::ExceptHandler::ExceptHandler(h) = handler;
+                    if let Some(name) = &h.name {
+                        opaque.insert(name.to_string());
+                    }
+                    collect_assignments(&h.body, out, opaque);
+                }
+                collect_assignments(&try_stmt.orelse, out, opaque);
+                collect_assignments(&try_stmt.finalbody, out, opaque);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn mark_opaque(target: &Expr, opaque: &mut HashSet<String>) {
+    match target {
+        Expr::Name(n) => {
+            opaque.insert(n.id.to_string());
+        }
+        Expr::Tuple(t) => t.elts.iter().for_each(|e| mark_opaque(e, opaque)),
+        Expr::List(l) => l.elts.iter().for_each(|e| mark_opaque(e, opaque)),
+        Expr::Starred(st) => mark_opaque(&st.value, opaque),
+        _ => {}
+    }
+}
+
 /// Check if a return expression is None.
 fn is_none_return(expr: &Option<&Expr>) -> bool {
     match expr {
@@ -126,12 +254,12 @@ fn is_none_return(expr: &Option<&Expr>) -> bool {
 
 /// Analyze an expression for precision patterns.
 /// Returns the number of decimal places if a precision pattern is detected.
-fn analyze_precision(expr: &Expr) -> Option<i64> {
+fn analyze_precision(expr: &Expr, env: &Env) -> Option<i64> {
     match expr {
         // Tuple return: analyze each element and take the max
         Expr::Tuple(tuple) => {
             let precisions: Vec<Option<i64>> =
-                tuple.elts.iter().map(analyze_precision).collect();
+                tuple.elts.iter().map(|e| analyze_precision(e, env)).collect();
             if precisions.iter().all(|p| p.is_some()) {
                 precisions.into_iter().flatten().max()
             } else {
@@ -139,23 +267,32 @@ fn analyze_precision(expr: &Expr) -> Option<i64> {
             }
         }
         // Method call: check for .quantize() or round()
-        Expr::Call(call) => analyze_call_precision(call),
+        Expr::Call(call) => analyze_call_precision(call, env),
         // Binary operation: precision widening
-        Expr::BinOp(binop) => analyze_binop_precision(binop),
-        // Name reference: no precision info
+        Expr::BinOp(binop) => analyze_binop_precision(binop, env),
+        // Name reference: a local variable with known precision
+        Expr::Name(name) => env.get(name.id.as_str()).copied(),
         _ => None,
     }
 }
 
 /// Analyze a call expression for precision patterns.
-fn analyze_call_precision(call: &ast::ExprCall) -> Option<i64> {
+fn analyze_call_precision(call: &ast::ExprCall, env: &Env) -> Option<i64> {
     match call.func.as_ref() {
-        // value.quantize(Decimal('0.001'))
+        // value.quantize(Decimal('0.001')) or value.quantize(step) with a known step
         Expr::Attribute(attr) if attr.attr.as_str() == "quantize" => {
             if let Some(arg) = call.arguments.args.first() {
-                extract_decimal_precision(arg)
+                extract_decimal_precision(arg).or_else(|| analyze_precision(arg, env))
             } else {
                 None
+            }
+        }
+        // Decimal('0.25') literal: its own number of decimal places
+        Expr::Name(name) if name.id.as_str() == "Decimal" && call.arguments.keywords.is_empty() => {
+            match call.arguments.args.first() {
+                Some(Expr::StringLiteral(_)) => extract_decimal_precision(&Expr::Call(call.clone())),
+                Some(Expr::NumberLiteral(n)) if matches!(n.value, ast::Number::Int(_)) => Some(0),
+                _ => None,
             }
         }
         // round(value, n)
@@ -182,7 +319,7 @@ fn analyze_call_precision(call: &ast::ExprCall) -> Option<i64> {
                 .iter()
                 .filter_map(|kw| {
                     kw.arg.as_ref()?; // skip **kwargs
-                    analyze_precision(&kw.value)
+                    analyze_precision(&kw.value, env)
                 })
                 .collect();
             if kwarg_precisions.is_empty() {
@@ -227,9 +364,9 @@ fn extract_decimal_precision(expr: &Expr) -> Option<i64> {
 }
 
 /// Analyze binary operation for precision widening.
-fn analyze_binop_precision(binop: &ast::ExprBinOp) -> Option<i64> {
-    let left_prec = analyze_precision(&binop.left);
-    let right_prec = analyze_precision(&binop.right);
+fn analyze_binop_precision(binop: &ast::ExprBinOp, env: &Env) -> Option<i64> {
+    let left_prec = analyze_precision(&binop.left, env);
+    let right_prec = analyze_precision(&binop.right, env);
 
     match (left_prec, right_prec) {
         (Some(l), Some(r)) => match binop.op {
@@ -376,5 +513,61 @@ mod tests {
             .iter()
             .find(|c| c.constraint_type.as_str() == "precision");
         assert_eq!(precision.unwrap().param_value, Some(7));
+    }
+
+    fn precision_of(contracts: &[BodyContract]) -> Option<i64> {
+        contracts
+            .iter()
+            .find(|c| c.constraint_type.as_str() == "precision")
+            .and_then(|c| c.param_value)
+    }
+
+    #[test]
+    fn test_precision_traced_through_local_variable() {
+        let cs = analyze_function(
+            "def f(a):\n    x = a.quantize(Decimal('0.0001'))\n    return Invoice(total=x)\n",
+        );
+        assert_eq!(precision_of(&cs), Some(4));
+    }
+
+    #[test]
+    fn test_none_return_does_not_hide_precision() {
+        let cs = analyze_function(
+            "def f(a):\n    if a is None:\n        return None\n    return a.quantize(Decimal('0.01'))\n",
+        );
+        assert_eq!(precision_of(&cs), Some(2));
+        assert!(cs.iter().any(|c| c.constraint_type.as_str() == "nullability"));
+    }
+
+    #[test]
+    fn test_quantize_with_named_step() {
+        let cs = analyze_function(
+            "def f(a):\n    step = Decimal('0.001')\n    return a.quantize(step)\n",
+        );
+        assert_eq!(precision_of(&cs), Some(3));
+    }
+
+    #[test]
+    fn test_reassignment_takes_max_and_unknown_poisons() {
+        let cs = analyze_function(
+            "def f(a, b):\n    x = a.quantize(Decimal('0.1'))\n    if b:\n        x = a.quantize(Decimal('0.001'))\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), Some(3));
+        let cs = analyze_function(
+            "def f(a, b):\n    x = a.quantize(Decimal('0.1'))\n    if b:\n        x = a\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), None);
+    }
+
+    #[test]
+    fn test_loop_growth_is_not_bounded() {
+        let cs = analyze_function(
+            "def f(a, n):\n    x = Decimal('0.1')\n    while n:\n        x = x * Decimal('0.1')\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), None);
+        let cs = analyze_function(
+            "def f(xs):\n    x = Decimal('0.1')\n    for x in xs:\n        pass\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), None);
     }
 }

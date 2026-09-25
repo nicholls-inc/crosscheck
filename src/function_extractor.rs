@@ -48,10 +48,12 @@ pub fn extract_functions(stmts: &[Stmt], source_file: &str) -> Vec<FunctionInfo>
 
 /// Extract info from a single function definition.
 fn extract_function_info(func_def: &ast::StmtFunctionDef, source_file: &str) -> FunctionInfo {
+    // For Optional[T] / T | None, the type postcondition is T; nullability is
+    // recorded separately via `is_return_optional`.
     let return_type = func_def
         .returns
         .as_ref()
-        .map(|ret| format_type_annotation(ret));
+        .map(|ret| format_type_annotation(strip_optional(ret)));
 
     let is_return_optional = func_def
         .returns
@@ -111,9 +113,26 @@ fn is_optional_type(expr: &Expr) -> bool {
     }
 }
 
+/// `Optional[T]`, `T | None` and `None | T` → `T`; anything else unchanged.
+fn strip_optional(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::Subscript(sub) if matches_name_str(&sub.value, "Optional") => &sub.slice,
+        Expr::BinOp(binop) if matches!(binop.op, ast::Operator::BitOr) => {
+            if is_none_type(&binop.right) {
+                &binop.left
+            } else if is_none_type(&binop.left) {
+                &binop.right
+            } else {
+                expr
+            }
+        }
+        _ => expr,
+    }
+}
+
 /// Check if an expression is the None type.
 fn is_none_type(expr: &Expr) -> bool {
-    matches_name_str(expr, "None")
+    matches_name_str(expr, "None") || matches!(expr, Expr::NoneLiteral(_))
 }
 
 /// If the return annotation is `tuple[T, T, ...]` with all element types identical,
@@ -238,16 +257,25 @@ pub fn write_functions(
         if let Some((_, doc_contracts)) = docstring_contracts.iter().find(|(n, _)| n == &func.name)
         {
             for dc in doc_contracts {
+                // Put the clause's bound in the column the checker reads for its kind.
+                let value = |kind: ConstraintType| {
+                    if dc.constraint_type.as_str() == kind.as_str() {
+                        dc.param_value
+                    } else {
+                        None
+                    }
+                };
+                let range_bound = value(ConstraintType::Range).map(|v| v as f64);
                 db.insert_contract(&ContractRecord {
                     node_id,
                     constraint_type: dc.constraint_type.clone(),
                     param_max_digits: None,
-                    param_decimal_places: dc.param_value,
-                    param_max_length: None,
-                    param_nullable: None,
+                    param_decimal_places: value(ConstraintType::Precision),
+                    param_max_length: value(ConstraintType::Length),
+                    param_nullable: value(ConstraintType::Nullability),
                     param_type_name: None,
-                    param_min_value: None,
-                    param_max_value: None,
+                    param_min_value: range_bound.filter(|_| dc.is_lower_bound),
+                    param_max_value: range_bound.filter(|_| !dc.is_lower_bound),
                     param_choices: None,
                     source_file: func.source_file.clone(),
                     source_line: func.source_line,
@@ -273,8 +301,11 @@ pub fn write_functions(
                         })
                     })
                     .unwrap_or(false);
+                // An Optional return annotation already gave a nullability postcondition.
+                let duplicate = func.is_return_optional
+                    && bc.constraint_type.as_str() == ConstraintType::Nullability.as_str();
 
-                if !dominated {
+                if !dominated && !duplicate {
                     db.insert_contract(&ContractRecord {
                         node_id,
                         constraint_type: bc.constraint_type.clone(),

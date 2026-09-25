@@ -85,18 +85,23 @@ def compute(x: Decimal) -> Optional[Decimal]:
         "Optional[Decimal] return should produce nullability postcondition"
     );
 
-    // Optional[Decimal] does NOT produce a Decimal type postcondition — the effective
-    // type from split('[') is "Optional", which isn't in the value_types list.
-    // Only bare Decimal or tuple[Decimal, ...] produce type postconditions.
+    // Optional[Decimal] produces a Decimal type postcondition for the non-None
+    // value; the None case is carried by the nullability postcondition above.
     let type_contracts = query_contract_by_type(&conn, "compute", "type");
     let decimal_post: Vec<_> = type_contracts
         .iter()
+        .filter(|c| c.contract_role.as_deref() == Some("postcondition"))
         .filter(|c| c.param_type_name.as_deref() == Some("Decimal"))
         .collect();
-    assert!(
-        decimal_post.is_empty(),
-        "Optional[Decimal] should not produce Decimal type postcondition (effective type is Optional)"
+    assert_eq!(
+        decimal_post.len(),
+        1,
+        "Optional[Decimal] should produce one Decimal type postcondition"
     );
+
+    // The `return None` path and the Optional annotation give one nullability
+    // postcondition, not two.
+    assert_eq!(postconditions.len(), 1, "expected a single nullability postcondition");
 }
 
 #[test]

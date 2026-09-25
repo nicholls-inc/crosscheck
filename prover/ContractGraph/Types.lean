@@ -92,6 +92,7 @@ structure Node where
 inductive Relationship where
   | calls
   | writesTo
+  | flowsTo  -- the source function's result is passed as an argument to the target
   deriving Repr, BEq
 
 /-- An edge in the contract graph. -/

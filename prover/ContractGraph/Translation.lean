@@ -44,6 +44,7 @@ def parseRelationship (s : String) : Relationship :=
   match s with
   | "calls"     => .calls
   | "writes_to" => .writesTo
+  | "flows_to"  => .flowsTo
   | _           => .calls  -- fallback
 
 /-- Helper to read an optional integer column (returns none if NULL). -/

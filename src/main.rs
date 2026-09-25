@@ -6,7 +6,7 @@ use crosscheck_contracts::{defaults, extractor};
 
 #[derive(Parser)]
 #[command(name = "crosscheck")]
-#[command(about = "Contract graph verifier for Django applications")]
+#[command(about = "Contract graph verifier for Python applications (Django models, dataclasses, attrs, pydantic)")]
 struct Cli {
     #[command(subcommand)]
     command: TopCommands,
@@ -23,9 +23,9 @@ enum TopCommands {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Check contracts in a Django application
+    /// Check contracts in a Python application
     Check {
-        /// Path to the Django application directory
+        /// Path to the application directory (or a single .py file)
         app_path: PathBuf,
 
         /// Path to manual edge overrides file
@@ -39,6 +39,10 @@ enum Commands {
         /// Path to the Lean checker binary
         #[arg(long)]
         lean_checker: Option<PathBuf>,
+
+        /// Where to write the SQLite contract database (default: <tmp>/crosscheck/contracts.sqlite)
+        #[arg(long)]
+        output_db: Option<PathBuf>,
     },
     /// Generate defaults table from Django source
     GenerateDefaults {
@@ -62,9 +66,15 @@ fn main() -> Result<()> {
             overrides,
             django_version,
             lean_checker,
+            output_db,
         } => {
             // Layer 1: extract contracts to SQLite
-            let db_path = extractor::extract(&app_path, overrides.as_deref(), &django_version, None)?;
+            let db_path = extractor::extract(
+                &app_path,
+                overrides.as_deref(),
+                &django_version,
+                output_db.as_deref(),
+            )?;
 
             // Layer 2+3: invoke Lean checker
             let lean_binary = lean_checker
