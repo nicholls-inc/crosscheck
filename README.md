@@ -196,6 +196,36 @@ Each inconsistency is reported once: when several paths reach the same pair of c
 
 **Not covered:** per-argument contracts (a function's preconditions apply to all of its parameters together), attribute assignment (`obj.field = v`), `**kwargs` construction, methods on data class instances, and cross-module name resolution beyond simple names.
 
+## Output
+
+`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead; `--no-warnings` then hides WARNING blocks from the body (they're still counted in the final `RESULT:` line). Both formats exit with the checker's semantic exit code.
+
+```
+$ ./target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
+    --lean-checker ./prover/.lake/build/bin/contract-graph-checker --format text
+CONTRACTS CHECKED: 12
+EDGES CHECKED: 3
+PATHS CHECKED: 2
+
+ERROR  utils.py:27 → models.py:5
+       compute_offpeak guarantees precision ≤ 4
+       EnergyRecord.energy requires precision ≤ 3
+       Path: compute_offpeak → split_energy → EnergyRecord.energy
+       Failing hop: split_energy → EnergyRecord.energy
+       Path verification level: ASSUMED
+       Note: invisible to pairwise checking.
+       Suggestion: Source guarantees ≤ 4, target requires ≤ 3. Either tighten the source or widen the target.
+
+WARNING  utils.py:27 → utils.py:27
+       split_energy guarantees precision (dependent)
+       EnergyRecord.energy requires precision (dependent)
+       Path: split_energy → EnergyRecord.energy
+       Path verification level: EXTRACTED
+       Suggestion: Dependent expression on split_energy could not be resolved. Check that upstream postconditions provide the required input bindings.
+
+RESULT: 1 error, 1 warning. Exit code 1.
+```
+
 ## Exit codes
 
 | Code | Meaning |

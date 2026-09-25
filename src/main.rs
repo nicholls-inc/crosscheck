@@ -1,8 +1,14 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use crosscheck_contracts::{defaults, extractor};
+use crosscheck_contracts::{defaults, extractor, report};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum OutputFormat {
+    Json,
+    Text,
+}
 
 #[derive(Parser)]
 #[command(name = "crosscheck")]
@@ -43,6 +49,14 @@ enum Commands {
         /// Where to write the SQLite contract database (default: <tmp>/crosscheck/contracts.sqlite)
         #[arg(long)]
         output_db: Option<PathBuf>,
+
+        /// Output format: JSON (machine-readable, default) or text (human-readable)
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
+
+        /// Text format only: omit WARNING blocks from the body (still counted in the RESULT line)
+        #[arg(long)]
+        no_warnings: bool,
     },
     /// Generate defaults table from Django source
     GenerateDefaults {
@@ -67,6 +81,8 @@ fn main() -> Result<()> {
             django_version,
             lean_checker,
             output_db,
+            format,
+            no_warnings,
         } => {
             // Layer 1: extract contracts to SQLite
             let db_path = extractor::extract(
@@ -97,13 +113,31 @@ fn main() -> Result<()> {
                 })?;
 
             // Report results
-            std::io::Write::write_all(&mut std::io::stdout(), &output.stdout)?;
             if !output.stderr.is_empty() {
                 std::io::Write::write_all(&mut std::io::stderr(), &output.stderr)?;
             }
 
-            let exit_code = output.status.code().unwrap_or(2);
-            std::process::exit(exit_code);
+            match format {
+                OutputFormat::Json => {
+                    std::io::Write::write_all(&mut std::io::stdout(), &output.stdout)?;
+                    let exit_code = output.status.code().unwrap_or(2);
+                    std::process::exit(exit_code);
+                }
+                OutputFormat::Text => {
+                    let stdout_str = String::from_utf8_lossy(&output.stdout);
+                    match report::parse(&stdout_str) {
+                        Ok(checker_output) => {
+                            let text = report::render_text(&checker_output, no_warnings);
+                            print!("{text}");
+                            std::process::exit(checker_output.exit_code);
+                        }
+                        Err(_) => {
+                            std::io::Write::write_all(&mut std::io::stderr(), &output.stdout)?;
+                            std::process::exit(2);
+                        }
+                    }
+                }
+            }
         }
         Commands::GenerateDefaults {
             django_source,
