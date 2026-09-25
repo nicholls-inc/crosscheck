@@ -30,10 +30,12 @@ private def stringListToJson (xs : List String) : String :=
   s!"[{", ".intercalate items}]"
 
 /-- Where the violating guarantee comes from (`"guarantee_at"`): for an
-    error, the source constraint's own location; for a warning, the target's
-    requirement location (a warning has no violating guarantee). -/
+    error, the source constraint's origin (for a bound composed from a
+    dependent expression, the input constraint whose value it equals), else
+    its own location; for a warning, the target's requirement location (a
+    warning has no violating guarantee). -/
 def guaranteeAt (r : ResultEntry) : SiteLocation :=
-  if r.severity == "error" then { file := r.guaranteeFile, line := r.guaranteeLine }
+  if r.severity == "error" then { file := r.guaranteeAtFile, line := r.guaranteeAtLine }
   else { file := r.target.file, line := r.target.line }
 
 /-- Format a ResultEntry as JSON. -/

@@ -104,6 +104,12 @@ structure Constraint where
       literals) are value × 10^scale. Every range constraint of a graph read
       from a database has the same scale (`rangeScale`). -/
   scale             : Nat := 6
+  /-- Where the bound comes from, for display (`"guarantee_at"`): for a bound
+      produced by composing a dependent expression, the input constraint
+      whose value the result equals. Empty: the constraint's own location.
+      Checking never reads it (`checkConstraintPair_withOrigin`). -/
+  originFile        : String := ""
+  originLine        : Nat := 0
   deriving Repr
 
 /-- Contract role: precondition or postcondition. -/
@@ -231,6 +237,11 @@ structure ResultEntry where
       by deduplication, which must not depend on the path head. -/
   guaranteeFile : String := ""
   guaranteeLine : Nat := 0
+  /-- Where the violating guarantee comes from (the origin of a composed
+      bound, else the source constraint's location). Printed as
+      `"guarantee_at"` for errors; not used by deduplication. -/
+  guaranteeAtFile : String := ""
+  guaranteeAtLine : Nat := 0
   sourceGuarantee : String
   targetRequirement : String
   verificationLevel : String

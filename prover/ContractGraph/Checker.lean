@@ -155,6 +155,20 @@ def checkEdgeAll (source target : Node) : List CheckResult :=
 def checkEdgeAllFull (edge : Edge) : List CheckResult :=
   checkEdgeAll edge.source edge.target
 
+/-- A constraint with its display origin replaced. -/
+def Constraint.withOrigin (c : Constraint) (f : String) (l : Nat) : Constraint :=
+  { c with originFile := f, originLine := l }
+
+/-- The display origin does not affect checking: a pair is consistent with
+    one origin iff with any other. -/
+theorem checkConstraintPair_withOrigin (c d : Constraint) (f : String) (l : Nat) :
+    checkConstraintPair (c.withOrigin f l) d = .consistent ↔ checkConstraintPair c d = .consistent := by
+  unfold checkConstraintPair Constraint.withOrigin checkStaticBounds checkLowerBounds
+    checkNullability checkTypeConsistency checkChoicesSubset
+  simp only
+  repeat' split
+  all_goals simp_all
+
 /-- Predicate: a constraint implies another (source guarantee implies target requirement). -/
 def constraintImplies (c d : Constraint) : Prop :=
   c.kind = d.kind →
@@ -179,6 +193,10 @@ def constraintImplies (c d : Constraint) : Prop :=
     match c.choicesList, d.choicesList with
     | some sc, some tc => ∀ x ∈ sc, x ∈ tc
     | _, _ => True
+
+/-- Nor does it affect the soundness predicate. -/
+theorem constraintImplies_withOrigin (c d : Constraint) (f : String) (l : Nat) :
+    constraintImplies (c.withOrigin f l) d ↔ constraintImplies c d := Iff.rfl
 
 private theorem kind_bne_false {a b : ConstraintKind} (h : a = b) :
     (a != b) = false := by subst h; cases a <;> rfl

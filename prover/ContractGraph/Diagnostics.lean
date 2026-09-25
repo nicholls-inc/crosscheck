@@ -4,6 +4,11 @@ import ContractGraph.Types
 
 namespace ContractGraph
 
+/-- A constraint's display origin: `originFile/originLine` when set, else
+    its own location. -/
+def Constraint.originOrOwn (c : Constraint) : String × Nat :=
+  if c.originFile.isEmpty then (c.sourceFile, c.sourceLine) else (c.originFile, c.originLine)
+
 /-- Format a verification level for display. -/
 def formatVerificationLevel : VerificationLevel → String
   | .proved => "PROVED"
@@ -97,6 +102,8 @@ def buildResultEntry (diag : DiagnosticInfo) (pathNames : List String)
     site := { file := diag.siteFile, line := diag.siteLine }
     guaranteeFile := diag.sourceConstraint.sourceFile
     guaranteeLine := diag.sourceConstraint.sourceLine
+    guaranteeAtFile := diag.sourceConstraint.originOrOwn.1
+    guaranteeAtLine := diag.sourceConstraint.originOrOwn.2
     sourceGuarantee := formatBound diag.sourceConstraint
     targetRequirement := formatBound diag.targetConstraint
     verificationLevel := formatVerificationLevel verLevel

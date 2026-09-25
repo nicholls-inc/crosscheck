@@ -22,6 +22,23 @@ def pathVerificationLevel (path : List Edge) : VerificationLevel :=
              (weakestIn edge.target.preconditions)
   ) .proved
 
+/-- The input names (`input_<kind>`) a dependent expression reads. -/
+def DepExpr.inputNames : DepExpr → List String
+  | .lit _ => []
+  | .input s => [s]
+  | .max a b | .min a b | .add a b | .sub a b => a.inputNames ++ b.inputNames
+
+/-- Display origin of a composed bound `result`: the first upstream
+    postcondition read by `expr` whose static bound equals `result` (its own
+    origin if it has one, else its location), or empty (the dependent
+    postcondition's own location). -/
+def depOrigin (expr : DepExpr) (sourcePosts : List Constraint) (result : Int) : String × Nat :=
+  let names := expr.inputNames
+  match sourcePosts.find? (fun c => c.staticBound == some result &&
+      names.contains s!"input_{c.kind}") with
+  | some c => if c.originFile.isEmpty then (c.sourceFile, c.sourceLine) else (c.originFile, c.originLine)
+  | none => ("", 0)
+
 /-- Compose a source node's guarantees through a target node's
     dependent postconditions, producing the composed guarantee. -/
 def composeContracts (source target : Node) : List Constraint :=
@@ -35,11 +52,14 @@ def composeContracts (source target : Node) : List Constraint :=
         | none => none
       match evalDepExpr expr inputs with
       | some result =>
+        let origin := depOrigin expr source.postconditions result
         { postcon with
           staticBound := some result
           depExpr := none
           verificationLevel :=
-            weakerOf postcon.verificationLevel (weakestIn source.postconditions) }
+            weakerOf postcon.verificationLevel (weakestIn source.postconditions)
+          originFile := origin.1
+          originLine := origin.2 }
       | none =>
         -- Evaluation failed: unresolved input binding or malformed expression.
         -- Preserve the unresolved postcondition and downgrade verification level.
