@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "lookup -> Card.card_type",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Card.card_type"
+    },
+    {
+      "path": "lookup -> Card.card_type",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Card.card_type"
+    },
+    {
+      "path": "lookup -> Card.card_type",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Card.card_type"
+    },
+    {
+      "path": "Card.long_label -> Card.label",
+      "source_guarantee": "length ≤ 7",
+      "target_requirement": "length ≤ 5",
+      "target": "Card.label"
+    },
+    {
+      "path": "rename_bad -> Tag.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Tag.name"
+    }
+  ]
+}

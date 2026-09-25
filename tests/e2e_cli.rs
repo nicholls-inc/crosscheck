@@ -1,5 +1,5 @@
 //! CLI behaviour around the checker process (round 3): parse errors, the
-//! checker's output validation and exit codes, `--max-paths`, and killing
+//! checker's output validation and exit codes, `--max-states` / `--max-paths`, and killing
 //! the checker when the CLI is interrupted. A stand-in checker (a shell
 //! script) replaces the Lean binary, so these tests need no Lean build.
 
@@ -82,7 +82,7 @@ fn invalid_checker_output_exits_2_in_both_formats() {
 }
 
 #[test]
-fn max_paths_is_passed_after_the_database() {
+fn state_budgets_are_passed_after_the_database() {
     let tmp = TempDir::new().unwrap();
     let args_file = tmp.path().join("args.txt");
     let checker = fake_checker(
@@ -94,7 +94,14 @@ fn max_paths_is_passed_after_the_database() {
     let out = run(&app, &checker, &db, &["--max-paths", "1234"]);
     assert_eq!(out.status.code(), Some(0));
     let args = std::fs::read_to_string(&args_file).unwrap();
-    assert_eq!(args.trim(), format!("{} --max-paths 1234", db.display()));
+    // `--max-paths` is an alias of `--max-states`.
+    assert_eq!(args.trim(), format!("{} --max-states 1234", db.display()));
+    run(&app, &checker, &db, &["--max-states", "7", "--max-states-per-edge", "3"]);
+    let args = std::fs::read_to_string(&args_file).unwrap();
+    assert_eq!(
+        args.trim(),
+        format!("{} --max-states 7 --max-states-per-edge 3", db.display())
+    );
     // Without the flag, only the database.
     run(&app, &checker, &db, &[]);
     let args = std::fs::read_to_string(&args_file).unwrap();

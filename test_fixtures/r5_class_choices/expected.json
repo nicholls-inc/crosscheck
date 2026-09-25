@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Basket.bad -> Basket.status",
+      "source_guarantee": "choices in [Closed]",
+      "target_requirement": "choices in [Open, Frozen]",
+      "target": "Basket.status"
+    }
+  ]
+}

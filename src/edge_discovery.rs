@@ -144,8 +144,15 @@ pub fn discover(project: &Project) -> Discovered {
             edges: Vec::new(),
             used: HashMap::new(),
             call_sites,
+            attr_counts: HashMap::new(),
+            pending: Vec::new(),
+            observations: Vec::new(),
         };
-        flow::walk_block(&func.body, &flow.entry, &mut walker);
+        let end = flow::walk_block(&func.body, &flow.entry, &mut walker);
+        if flow.falls_through {
+            walker.observations.push((None, end));
+        }
+        walker.flush_attribute_writes();
         let EdgeWalker { edges, used, .. } = walker;
         // Argument edges into call-site nodes whose result nothing consumes are dropped.
         out.edges.extend(
@@ -170,80 +177,113 @@ pub enum Forward {
     Function(String),
 }
 
-/// Model manager methods whose keyword arguments are field values.
-const WRITE_METHODS: [&str; 4] = ["create", "update", "get_or_create", "update_or_create"];
+/// Model manager methods whose keyword arguments are field values (and
+/// their async forms; `abulk_create`, like `bulk_create`, takes instances
+/// whose constructor calls are the writes).
+const WRITE_METHODS: [&str; 8] = [
+    "create",
+    "update",
+    "get_or_create",
+    "update_or_create",
+    "acreate",
+    "aupdate",
+    "aget_or_create",
+    "aupdate_or_create",
+];
 
-/// For each function with a `**kw` parameter that it only reads and passes
-/// on as `**kw`: where the keywords go.
+/// The key of a dict parameter's forwards in `kw_forwards`: `func(param)`.
+pub fn dict_param_key(func: &str, param: &str) -> String {
+    format!("{func}({param})")
+}
+
+/// Where keyword arguments and dicts passed to a function go. For a
+/// function with a `**kw` parameter that it only reads and passes on as
+/// `**kw` (key: the function), and for a named parameter it only passes on
+/// as `**param` (a dict forwarder, `def create(self, data): return
+/// Model.objects.create(**data)`; key: `dict_param_key`): the constructor,
+/// model write or function the entries go to.
 pub fn kw_forwards(
     index: &ProjectIndex,
     summaries: &HashMap<String, ValueFacts>,
 ) -> HashMap<String, Vec<Forward>> {
     let mut out = HashMap::new();
     for func in &index.functions {
-        let Some(kw) = func
+        let kw = func
             .params
             .iter()
             .find(|p| p.kind == ParamKind::VarKeywords)
-            .map(|p| p.name.as_str())
-        else {
+            .map(|p| (p.name.as_str(), func.qualified_name.clone()));
+        let dicts = func
+            .named_value_params()
+            .map(|p| (p.name.as_str(), dict_param_key(&func.qualified_name, &p.name)));
+        let candidates: Vec<(&str, String)> = kw.into_iter().chain(dicts).collect();
+        if candidates.is_empty() {
             continue;
-        };
+        }
         let flow = FunctionFlow::of_info(func);
-        if flow.escaping.contains(kw) || flow.binds(kw) {
-            continue;
-        }
         let scope = Scope::new(index, summaries, Some(func), &flow);
-        struct Splats<'k, 'a>(&'k str, Vec<&'a ast::ExprCall>);
-        impl<'a> Visitor<'a> for Splats<'_, 'a> {
-            fn visit_expr(&mut self, expr: &'a Expr) {
-                if let Expr::Call(c) = expr {
-                    if c.arguments.keywords.iter().any(|k| {
-                        k.arg.is_none() && matches!(&k.value, Expr::Name(n) if n.id.as_str() == self.0)
-                    }) {
-                        self.1.push(c);
-                    }
-                }
-                visitor::walk_expr(self, expr);
+        for (name, key) in candidates {
+            if flow.escaping.contains(name) || flow.binds(name) {
+                continue;
             }
-            fn visit_stmt(&mut self, stmt: &'a Stmt) {
-                // Nested definitions have their own scope.
-                if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-                    visitor::walk_stmt(self, stmt);
-                }
+            let targets = splat_targets(func, name, &scope);
+            if !targets.is_empty() {
+                out.insert(key, targets);
             }
-        }
-        let mut splats = Splats(kw, Vec::new());
-        for s in &func.body {
-            splats.visit_stmt(s);
-        }
-        let ctx = Ctx::default();
-        let mut targets = Vec::new();
-        for call in splats.1 {
-            let target = if let Some((class, method)) = scope.objects_call(call, &ctx) {
-                WRITE_METHODS
-                    .contains(&method)
-                    .then(|| Forward::Class(class.qualified.clone()))
-            } else {
-                match scope.callee(&call.func, &ctx) {
-                    Callee::Class(c) if c.kind.has_fields() => Some(Forward::Class(c.qualified.clone())),
-                    Callee::Function { qualified, .. } if qualified != func.qualified_name => {
-                        Some(Forward::Function(qualified))
-                    }
-                    _ => None,
-                }
-            };
-            if let Some(t) = target {
-                if !targets.contains(&t) {
-                    targets.push(t);
-                }
-            }
-        }
-        if !targets.is_empty() {
-            out.insert(func.qualified_name.clone(), targets);
         }
     }
     out
+}
+
+/// Where `func` passes `**name`: constructors of data classes and models,
+/// model write methods, other extracted functions.
+fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
+    struct Splats<'k, 'a>(&'k str, Vec<&'a ast::ExprCall>);
+    impl<'a> Visitor<'a> for Splats<'_, 'a> {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Call(c) = expr {
+                if c.arguments.keywords.iter().any(|k| {
+                    k.arg.is_none() && matches!(&k.value, Expr::Name(n) if n.id.as_str() == self.0)
+                }) {
+                    self.1.push(c);
+                }
+            }
+            visitor::walk_expr(self, expr);
+        }
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            // Nested definitions have their own scope.
+            if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+                visitor::walk_stmt(self, stmt);
+            }
+        }
+    }
+    let mut splats = Splats(kw, Vec::new());
+    for s in &func.body {
+        splats.visit_stmt(s);
+    }
+    let ctx = Ctx::default();
+    let mut targets = Vec::new();
+    for call in splats.1 {
+        let target = if let Some((class, method)) = scope.objects_call(call, &ctx) {
+            WRITE_METHODS
+                .contains(&method)
+                .then(|| Forward::Class(class.qualified.clone()))
+        } else {
+            match scope.callee(&call.func, &ctx) {
+                Callee::Class(c) if c.kind.has_fields() => Some(Forward::Class(c.qualified.clone())),
+                Callee::Function { qualified, .. } if qualified != func.qualified_name => {
+                    Some(Forward::Function(qualified))
+                }
+                _ => None,
+            }
+        };
+        if let Some(t) = target {
+            if !targets.contains(&t) {
+                targets.push(t);
+            }
+        }
+    }
+    targets
 }
 
 enum Target<'a> {
@@ -268,6 +308,27 @@ struct EdgeWalker<'a, 's> {
     used: HashMap<SiteKey, CallSite>,
     /// Whether consumed results get call-site nodes (see `discover`).
     call_sites: bool,
+    /// Simple attribute assignments seen per `obj.f` (the next `Def::Assign`
+    /// index, counted as `flow::walk` counts them).
+    attr_counts: HashMap<String, usize>,
+    /// Field writes `obj.f = v` awaiting the points that observe them.
+    pending: Vec<PendingWrite<'a>>,
+    /// Where written attribute values are observed: `obj.save()` (receiver
+    /// `obj`) and the function's exits (`None`), with the state there.
+    observations: Vec<(Option<String>, Narrowed)>,
+}
+
+/// A field write `obj.f = value` (a simple attribute assignment).
+struct PendingWrite<'a> {
+    /// `obj.f` (the flow name) and the assignment's `Def::Assign` index.
+    name: String,
+    index: usize,
+    receiver: String,
+    class: &'a ClassInfo,
+    field: &'a str,
+    value: &'a Expr,
+    ctx: Ctx,
+    site: u32,
 }
 
 impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
@@ -276,6 +337,17 @@ impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
         match stmt {
             Stmt::Assign(a) => {
                 self.scan(&a.value, &ctx);
+                if let Some(pairs) = flow::simple_attr_targets(a) {
+                    // Flow-sensitive: written when observed (see `flush_attribute_writes`).
+                    for (target, (name, _)) in a.targets.iter().zip(pairs) {
+                        self.scan_target(target, &ctx);
+                        let count = self.attr_counts.entry(name.clone()).or_default();
+                        let index = *count;
+                        *count += 1;
+                        self.defer_write(target, name, index, &a.value, &ctx);
+                    }
+                    return;
+                }
                 for target in &a.targets {
                     self.scan_target(target, &ctx);
                     self.assign(target, Some(&a.value), &ctx);
@@ -295,8 +367,9 @@ impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
                 self.assign(&a.target, None, &ctx);
             }
             Stmt::Return(r) => {
+                self.observations.push((None, narrowed.clone()));
                 if let Some(value) = &r.value {
-                    self.return_call = match value.as_ref() {
+                    self.return_call = match crate::value_analysis::strip_await(value) {
                         Expr::Call(c) => Some(c as *const _),
                         _ => None,
                     };
@@ -332,6 +405,15 @@ impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
     fn header(&mut self, expr: &'a Expr, narrowed: &Narrowed) {
         self.scan(expr, &Ctx::new(narrowed));
     }
+}
+
+/// Whether `class` is a dataclass or attrs class with its own `__init__`.
+fn own_init(class: &ClassInfo) -> bool {
+    use crate::dataclass_extractor::DataClassKind;
+    matches!(
+        class.kind,
+        crate::resolve::ClassKind::Data(DataClassKind::Dataclass | DataClassKind::Attrs)
+    ) && class.methods.contains_key("__init__")
 }
 
 /// Immediate child expressions of an expression.
@@ -383,6 +465,9 @@ impl<'a, 's> EdgeWalker<'a, 's> {
     fn scan(&mut self, expr: &'a Expr, ctx: &Ctx) {
         match expr {
             Expr::Call(call) => {
+                if let Some(receiver) = self.saved_receiver(call) {
+                    self.observations.push((Some(receiver), ctx.narrowed.clone()));
+                }
                 self.handle_call(call, ctx);
                 self.scan(&call.func, ctx);
                 for arg in call.arguments.args.iter() {
@@ -449,6 +534,108 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         }
     }
 
+    /// The variable whose instance `call` saves: `obj.save(...)`, or
+    /// `super().save(...)` (the method's `self`).
+    fn saved_receiver(&self, call: &ast::ExprCall) -> Option<String> {
+        let Expr::Attribute(attr) = call.func.as_ref() else {
+            return None;
+        };
+        if !matches!(attr.attr.as_str(), "save" | "asave") {
+            return None;
+        }
+        match attr.value.as_ref() {
+            Expr::Name(n) => Some(n.id.to_string()),
+            Expr::Call(c) if matches!(c.func.as_ref(), Expr::Name(n) if n.id.as_str() == "super") => {
+                self.func.self_name().map(str::to_string)
+            }
+            _ => None,
+        }
+    }
+
+    /// Record `obj.f = value` (a field of a known class) for
+    /// `flush_attribute_writes`.
+    fn defer_write(&mut self, target: &'a Expr, name: String, index: usize, value: &'a Expr, ctx: &Ctx) {
+        let Expr::Attribute(attr) = target else { return };
+        let Expr::Name(receiver) = attr.value.as_ref() else { return };
+        let Some((class, true)) = self.scope.receiver_class(&attr.value, ctx) else {
+            return;
+        };
+        if !class.kind.has_fields() {
+            return;
+        }
+        let field = attr.attr.as_str();
+        let Some(field) = class.fields.iter().find(|f| *f == field) else {
+            return;
+        };
+        self.pending.push(PendingWrite {
+            name,
+            index,
+            receiver: receiver.id.to_string(),
+            class,
+            field,
+            value,
+            ctx: ctx.clone(),
+            site: target.range().start().to_u32(),
+        });
+    }
+
+    /// Emit the field writes that are observed: the values of `obj.f` that
+    /// reach an `obj.save()` (or, when the function never saves `obj`, one of
+    /// its exits), each non-None when `obj.f` is narrowed there. A value
+    /// overwritten before every observation is not written.
+    fn flush_attribute_writes(&mut self) {
+        let pending = std::mem::take(&mut self.pending);
+        // (name, index) -> non-None at every observation it reaches
+        let mut reached: HashMap<(String, usize), bool> = HashMap::new();
+        let mut done: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for w in &pending {
+            if !done.insert(w.name.as_str()) {
+                continue;
+            }
+            let saves: Vec<&Narrowed> = self
+                .observations
+                .iter()
+                .filter(|(r, _)| r.as_deref() == Some(w.receiver.as_str()))
+                .map(|(_, n)| n)
+                .collect();
+            let points: Vec<&Narrowed> = if saves.is_empty() {
+                self.observations
+                    .iter()
+                    .filter(|(r, _)| r.is_none())
+                    .map(|(_, n)| n)
+                    .collect()
+            } else {
+                saves
+            };
+            let count = self.attr_counts.get(&w.name).copied().unwrap_or(0);
+            for n in points {
+                let narrowed = n.names().any(|x| *x == w.name);
+                let mut mark = |i: usize, nn: bool| {
+                    let e = reached.entry((w.name.clone(), i)).or_insert(true);
+                    *e &= nn || narrowed;
+                };
+                match n.defs(&w.name) {
+                    Some(defs) => {
+                        for &(d, nn) in defs {
+                            if let flow::Def::Assign(i) = d {
+                                mark(i, nn);
+                            }
+                        }
+                    }
+                    // Not known here (rebound in a loop, joined with a path
+                    // that does not assign it): any assignment may reach.
+                    None => (0..count).for_each(|i| mark(i, false)),
+                }
+            }
+        }
+        for w in pending {
+            let Some(&non_none) = reached.get(&(w.name.clone(), w.index)) else {
+                continue;
+            };
+            self.emit_value(Target::Field(w.class, w.field), w.value, &w.ctx, false, w.site, non_none);
+        }
+    }
+
     /// Attribute assignment `obj.f = value` to a field of a known class.
     /// `value` is `None` when the stored value is not derivable.
     fn assign(&mut self, target: &'a Expr, value: Option<&'a Expr>, ctx: &Ctx) {
@@ -503,8 +690,13 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             return;
         }
+        if self.special_writes(call, ctx, is_return) {
+            return;
+        }
         match self.scope.callee(&call.func, ctx) {
-            Callee::Class(class) if class.kind.has_fields() => {
+            // A dataclass / attrs class that defines `__init__` gets no
+            // generated constructor: the call binds `__init__`'s parameters.
+            Callee::Class(class) if class.kind.has_fields() && !own_init(class) => {
                 // Positional arguments bind the constructor's positional
                 // parameters, when their order is known (dataclass, attrs, NamedTuple).
                 let site = call.range().start().to_u32();
@@ -538,6 +730,100 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         }
     }
 
+    /// Writes that are not constructor calls: `dataclasses.replace(obj, f=v)`,
+    /// `obj.model_copy(update={...})`, `Cls.model_validate({...})`,
+    /// `setattr(obj, "f", v)`. Returns whether `call` was one.
+    fn special_writes(&mut self, call: &'a ast::ExprCall, ctx: &Ctx, is_return: bool) -> bool {
+        let args = &call.arguments.args;
+        let site = call.range().start().to_u32();
+        let func = call.func.as_ref();
+        let external = |name: &str| self.scope.is_external(name, ctx);
+        let parts = crate::resolve::dotted_parts(func).unwrap_or_default();
+        let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
+        match parts.as_slice() {
+            // replace(obj, f=v) / dataclasses.replace(obj, f=v)
+            ["replace"] | ["dataclasses", "replace"]
+                if external(parts[0]) && args.len() == 1 =>
+            {
+                let Some(class) = self.instance_class(&args[0], ctx) else { return false };
+                self.keyword_writes(class, call, ctx, is_return);
+                true
+            }
+            // setattr(obj, "f", v)
+            ["setattr"] if external("setattr") && args.len() == 3 => {
+                let Expr::StringLiteral(name) = &args[1] else { return false };
+                let Some(class) = self.instance_class(&args[0], ctx) else { return false };
+                let field = name.value.to_str();
+                if let Some(field) = class.fields.iter().find(|f| *f == field) {
+                    self.emit(Target::Field(class, field), &args[2], ctx, false, site);
+                }
+                true
+            }
+            _ => {
+                let Expr::Attribute(attr) = func else { return false };
+                match attr.attr.as_str() {
+                    // obj.model_copy(update={...}) (pydantic v2; v1 `obj.copy(update=...)`)
+                    "model_copy" | "copy" => {
+                        let Some(class) = self.instance_class(&attr.value, ctx) else {
+                            return false;
+                        };
+                        let pydantic = class.kind
+                            == crate::resolve::ClassKind::Data(crate::dataclass_extractor::DataClassKind::Pydantic);
+                        if !pydantic {
+                            return false;
+                        }
+                        let update = call.arguments.keywords.iter().find(|k| k.arg.as_deref() == Some("update"));
+                        if let Some(update) = update {
+                            self.dict_writes(class, &update.value, ctx, is_return, site);
+                        }
+                        true
+                    }
+                    // Cls.model_validate({...}) (v1 `Cls.parse_obj({...})`)
+                    "model_validate" | "parse_obj" if args.len() == 1 => {
+                        let Some(class) = self.named_class(&attr.value, ctx) else { return false };
+                        self.dict_writes(class, &args[0], ctx, is_return, site);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+        }
+    }
+
+    /// Entries of a dict (display or local) written to fields of `class`.
+    fn dict_writes(&mut self, class: &'a ClassInfo, dict: &'a Expr, ctx: &Ctx, is_return: bool, site: u32) {
+        for (key, value, c) in self.scope.dict_items(dict, ctx).unwrap_or_default() {
+            if let Some(field) = class.fields.iter().find(|f| **f == key) {
+                self.emit(Target::Field(class, field), value, &c, is_return, site);
+            }
+        }
+    }
+
+    /// The class (with fields) of the instance `expr` names.
+    fn instance_class(&self, expr: &Expr, ctx: &Ctx) -> Option<&'a ClassInfo> {
+        match self.scope.receiver_class(expr, ctx) {
+            Some((class, true)) if class.kind.has_fields() => Some(class),
+            _ => None,
+        }
+    }
+
+    /// The class (with fields) `expr` names (`Invoice`, `cls` in a classmethod).
+    fn named_class(&self, expr: &Expr, ctx: &Ctx) -> Option<&'a ClassInfo> {
+        if let Some((class, false)) = self.scope.receiver_class(expr, ctx) {
+            return class.kind.has_fields().then_some(class);
+        }
+        let parts = crate::resolve::dotted_parts(expr)?;
+        if self.scope.is_local(&parts[0], ctx) {
+            return None;
+        }
+        match self.project.index.resolve_dotted(&self.func.module, &parts)? {
+            crate::resolve::Symbol::Class(q) => {
+                self.project.index.class(&q).filter(|c| c.kind.has_fields())
+            }
+            _ => None,
+        }
+    }
+
     /// Keyword arguments (and `**{...}` expansions, and the `defaults=` /
     /// `create_defaults=` dicts of `get_or_create` / `update_or_create`) of a
     /// constructor-like call.
@@ -551,7 +837,10 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         let site = call.range().start().to_u32();
         let defaults_dicts = matches!(
             call.func.as_ref(),
-            Expr::Attribute(a) if matches!(a.attr.as_str(), "get_or_create" | "update_or_create")
+            Expr::Attribute(a) if matches!(
+                a.attr.as_str(),
+                "get_or_create" | "update_or_create" | "aget_or_create" | "aupdate_or_create"
+            )
         );
         let has = |f: &str| class.fields.iter().find(|x| *x == f);
         for kw in call.arguments.keywords.iter() {
@@ -635,6 +924,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             if let Some(param) = positional.get(i).filter(|p| Some(**p) != self_param) {
                 self.emit_flow(callee, param, arg, ctx, &call_site, site);
+                self.forward_dict(callee_q, param, arg, ctx, site);
             }
         }
         // Keywords that no named parameter takes, for `**kw` forwarding.
@@ -642,7 +932,10 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         for kw in call.arguments.keywords.iter() {
             match &kw.arg {
                 Some(name) => match by_keyword(name.as_str()) {
-                    Some(param) => self.emit_flow(callee, param, &kw.value, ctx, &call_site, site),
+                    Some(param) => {
+                        self.emit_flow(callee, param, &kw.value, ctx, &call_site, site);
+                        self.forward_dict(callee_q, param, &kw.value, ctx, site);
+                    }
                     None => extra.push((name.to_string(), &kw.value, ctx.clone())),
                 },
                 None => {
@@ -658,6 +951,18 @@ impl<'a, 's> EdgeWalker<'a, 's> {
         }
         if !extra.is_empty() {
             self.forward(callee_q, &extra, site, 0);
+        }
+    }
+
+    /// A dict display (or local dict) passed as parameter `param` of a dict
+    /// forwarder: its entries are written where the callee splats it.
+    fn forward_dict(&mut self, callee_q: &str, param: &str, arg: &'a Expr, ctx: &Ctx, site: u32) {
+        let key = dict_param_key(callee_q, param);
+        if !self.forwards.contains_key(&key) {
+            return;
+        }
+        if let Some(items) = self.scope.dict_items(arg, ctx) {
+            self.forward(&key, &items, site, 0);
         }
     }
 
@@ -721,11 +1026,25 @@ impl<'a, 's> EdgeWalker<'a, 's> {
     /// Emit the edge carrying `value` into `target`; `site` is the offset of
     /// the write or call expression.
     fn emit(&mut self, target: Target<'a>, value: &'a Expr, ctx: &Ctx, is_return: bool, site: u32) {
+        self.emit_value(target, value, ctx, is_return, site, false);
+    }
+
+    /// `emit`; with `non_none`, the value is known not to be None where it is observed.
+    fn emit_value(
+        &mut self,
+        target: Target<'a>,
+        value: &'a Expr,
+        ctx: &Ctx,
+        is_return: bool,
+        site: u32,
+        non_none: bool,
+    ) {
         if let Some((producer, call)) = self.scope.producer_of(value, ctx) {
             let key = self.use_site(&producer, call);
             // A local narrowed to non-None here: the producer's postconditions
             // with nullability replaced.
-            let narrowed = matches!(value, Expr::Name(n) if ctx.narrowed.contains(n.id.as_str()));
+            let narrowed = non_none
+                || matches!(value, Expr::Name(n) if ctx.narrowed.contains(n.id.as_str()));
             let rows = (narrowed
                 && self
                     .project
@@ -744,6 +1063,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             return; // recursion: no self-loop on the function's own node
         }
         let facts = self.scope.facts(value, ctx);
+        let facts = if non_none { facts.non_none_part() } else { facts };
         let mut rows = facts_rows(
             &facts,
             0,
@@ -1380,5 +1700,126 @@ mod tests {
         assert!(!s.iter().any(|e| e.starts_with("code.four@21 -writes_to")), "{s:#?}");
         // `pk` is not a field: no write.
         assert!(!s.iter().any(|e| e.contains("Price.pk")));
+    }
+
+    /// `(target field, nullability of the override rows)` of every write
+    /// from `source` (override edges only).
+    fn writes_from(d: &Discovered, source: &str) -> Vec<(String, Option<i64>)> {
+        let mut v: Vec<(String, Option<i64>)> = d
+            .edges
+            .iter()
+            .filter(|e| e.relationship == "writes_to" && e.source_function == source)
+            .map(|e| {
+                let n = e.override_rows.as_ref().and_then(|rows| {
+                    rows.iter()
+                        .find(|r| r.constraint_type == ConstraintType::Nullability)
+                        .and_then(|r| r.param_nullable)
+                });
+                (format!("{}.{}", e.target_name, e.target_field.clone().unwrap()), n)
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Round 5 N2: `obj.f = v` is written as the values of `obj.f` that reach
+    /// the save (or the exit when there is none), narrowed there.
+    #[test]
+    fn test_flow_sensitive_attribute_writes() {
+        let d = discovered(&[(
+            "models.py",
+            "from django.db import models\n\
+             class C(models.Model):\n    t = models.CharField(max_length=5)\n\
+             \x20   def a(self, d):\n        self.t = d.get('k')\n        if self.t is None:\n            self.t = 'x'\n        self.save()\n\
+             \x20   def b(self, d):\n        self.t = d.get('k')\n        self.save()\n\
+             \x20   def c(self):\n        self.t = None\n        self.t = 'y'\n        self.save()\n\
+             \x20   def e(self, d):\n        self.t = d.get('k')\n        self.save()\n        self.t = None\n\
+             \x20   def g(self, d, xs):\n        for x in xs:\n            self.t = d.get(x)\n        self.save()\n\
+             \x20   def h(self, d):\n        self.t = d.get('k')\n        if not self.t:\n            raise ValueError()\n        super().save()\n\
+             def nosave(c: C, d):\n    c.t = d.get('k')\n    if c.t is None:\n        return\n\
+             def other(c: C, k: C, d):\n    c.t = d.get('k')\n    k.save()\n",
+        )]);
+        // a: the lookup narrowed non-None at the save, and 'x'
+        assert_eq!(writes_from(&d, "models.C.a"), [("models.C.t".into(), Some(0)), ("models.C.t".into(), Some(0))]);
+        assert_eq!(writes_from(&d, "models.C.b"), [("models.C.t".into(), Some(1))]);
+        // c: `None` is overwritten before the save
+        assert_eq!(writes_from(&d, "models.C.c"), [("models.C.t".into(), Some(0))]);
+        // e: the None after the save is not saved here
+        assert_eq!(writes_from(&d, "models.C.e"), [("models.C.t".into(), Some(1))]);
+        // g: rebound in a loop: every assignment
+        assert_eq!(writes_from(&d, "models.C.g"), [("models.C.t".into(), Some(1))]);
+        // h: `super().save()` observes self
+        assert_eq!(writes_from(&d, "models.C.h"), [("models.C.t".into(), Some(0))]);
+        // nosave: observed at the exits (the early return sees the None)
+        assert_eq!(writes_from(&d, "models.nosave"), [("models.C.t".into(), Some(1))]);
+        // other: `k.save()` does not save `c`: observed at the exit
+        assert_eq!(writes_from(&d, "models.other"), [("models.C.t".into(), Some(1))]);
+    }
+
+    /// Round 5 N4 / N7 / N12: `cls(...)`, awaited producers and async ORM
+    /// writes, `replace` / `model_copy` / `model_validate` / `setattr`, dict
+    /// forwarders, dict spreads.
+    #[test]
+    fn test_round5_write_patterns() {
+        let d = discovered(&[
+            ("records.py", INV),
+            (
+                "models.py",
+                "from django.db import models\nclass M(models.Model):\n    v = models.DecimalField(max_digits=5, decimal_places=2)\n",
+            ),
+            (
+                "code.py",
+                "import dataclasses\nfrom records import Inv\nfrom models import M\n\
+                 def four(x):\n    return x\n\
+                 async def afour(x):\n    return x\n\
+                 class Ser:\n    def create(self, data):\n        return M.objects.create(**data)\n\
+                 class Inv2(Inv):\n    @classmethod\n    def make(cls, x):\n        return cls(total=four(x))\n\
+                 async def a(x):\n    return await M.objects.acreate(v=await afour(x))\n\
+                 def b(i: Inv, x):\n    return i.model_copy(update={'wide': four(x)})\n\
+                 def c(x):\n    return Inv.model_validate({'total': four(x)})\n\
+                 def e(i: Inv, x):\n    setattr(i, 'wide', four(x))\n\
+                 def f(x):\n    return Ser().create({'v': x}), Ser.create(Ser(), {'v': four(x)})\n\
+                 def g(x, other):\n    return Inv(**{'total': four(x), **other, 'wide': four(x)})\n\
+                 def h(i: Inv, x):\n    return dataclasses.replace(i, total=four(x))\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        for want in [
+            "code.four@14 -writes_to-> code.Inv2.total",
+            "code.afour@16 -writes_to-> models.M.v",
+            "code.four@18 -writes_to-> records.Inv.wide",
+            "code.four@20 -writes_to-> records.Inv.total",
+            "code.four@22 -writes_to-> records.Inv.wide",
+            "code.four@24 -writes_to-> models.M.v",
+            "code.four@26 -writes_to-> records.Inv.wide",
+            "code.four@28 -writes_to-> records.Inv.total",
+        ] {
+            assert!(s.contains(&want.to_string()), "missing {want} in {s:#?}");
+        }
+        // `{'total': ..., **other}`: `other` may replace total.
+        assert!(
+            !d.edges.iter().any(|e| e.target_field.as_deref() == Some("total")
+                && e.site.as_ref().is_some_and(|s| s.1 == 26)),
+            "{s:#?}"
+        );
+    }
+
+    /// A dataclass with its own `__init__` binds that method's parameters,
+    /// and a generic base (`Base[T]`) is resolved to its class.
+    #[test]
+    fn test_own_init_and_generic_bases() {
+        let d = discovered(&[(
+            "code.py",
+            "from dataclasses import dataclass\n\
+             @dataclass\nclass Base[N]:\n    node: object\n\
+             @dataclass\nclass Ctx(Base[N]):\n    flag: bool = True\n    def __init__(self, node, flag: bool = True):\n        self.node = node\n        self.flag = flag\n\
+             @dataclass\nclass Plain(Base[N]):\n    extra: str = ''\n\
+             def f(x):\n    return Ctx(x), Plain(node=x, extra=None)\n",
+        )]);
+        let s = site_summary(&d);
+        assert!(s.contains(&"code.f -flows_to-> code.Ctx.__init__ [node]".to_string()), "{s:#?}");
+        assert!(!s.iter().any(|e| e.contains("Ctx.flag") && e.starts_with("code.f ")), "{s:#?}");
+        // Plain inherits `node` through the generic base.
+        assert!(s.contains(&"code.f -writes_to-> code.Plain.node".to_string()), "{s:#?}");
     }
 }

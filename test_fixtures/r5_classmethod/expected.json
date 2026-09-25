@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Invoice.from_raw -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Invoice.total"
+    },
+    {
+      "path": "Invoice.blank -> Invoice.number",
+      "source_guarantee": "length ≤ 11",
+      "target_requirement": "length ≤ 8",
+      "target": "Invoice.number"
+    },
+    {
+      "path": "Refund.none_reason -> Refund.reason",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Refund.reason"
+    },
+    {
+      "path": "direct -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Invoice.total"
+    },
+    {
+      "path": "maybe_reason -> Refund.make -> Refund.reason",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Refund.make"
+    }
+  ]
+}

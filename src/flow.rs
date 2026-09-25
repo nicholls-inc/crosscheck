@@ -16,8 +16,9 @@
 //!
 //! A narrowing (and the definition set) is dropped when the name is rebound
 //! other than by a simple assignment; entering a loop drops every name the
-//! loop rebinds, and after `with` / `try` / `match` blocks only narrowings
-//! from before the block that the block does not rebind survive. A name
+//! loop rebinds, and after `try` / `match` blocks only narrowings from
+//! before the block that the block does not rebind survive. A `with` body is
+//! walked like straight-line code. A name
 //! whose definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
@@ -28,11 +29,15 @@ use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, ExprContext, Pattern, St
 /// Where a local's value can come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Def {
-    /// The parameter's argument (the name was not rebound on this path).
+    /// The parameter's argument (the name was not rebound on this path); for
+    /// an attribute `obj.f`, a value not assigned as `obj.f = ...` here (from
+    /// before the function, or from the construction of a rebound `obj`).
     Param,
     /// The `i`-th simple assignment to the name, in walk order
     /// (`FunctionFlow::assignments[name][i]`).
     Assign(usize),
+    /// An augmented assignment (`x += v`): some value, never None.
+    Augmented,
 }
 
 /// What is known about names at a program point.
@@ -81,16 +86,36 @@ impl Narrowed {
         }
     }
 
-    /// Forget everything about `name` (rebound in an unknown way).
+    /// Forget everything about `name` (rebound in an unknown way), and
+    /// about its attributes (`name.f`) when `name` is a variable.
     pub fn remove(&mut self, name: &str) {
         self.names.remove(name);
         self.defs.remove(name);
+        self.forget_attributes(name);
     }
 
     /// `name` now holds the value of `def`.
     pub fn rebind(&mut self, name: &str, def: Def) {
         self.names.remove(name);
         self.defs.insert(name.to_string(), vec![(def, false)]);
+        self.forget_attributes(name);
+    }
+
+    /// A rebound variable's attributes (`obj.f`) no longer hold values
+    /// assigned to them before (`Def::Param`), and are not narrowed.
+    fn forget_attributes(&mut self, name: &str) {
+        if name.contains('.') {
+            return;
+        }
+        let prefix = format!("{name}.");
+        if self.names.iter().any(|n| n.starts_with(&prefix)) {
+            self.names.retain(|n| !n.starts_with(&prefix));
+        }
+        for (n, defs) in self.defs.iter_mut() {
+            if n.starts_with(&prefix) {
+                *defs = vec![(Def::Param, false)];
+            }
+        }
     }
 
     /// Entry state: each of `params` holds its argument.
@@ -221,9 +246,18 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::With(w) => {
                 for item in &w.items {
                     v.header(&item.context_expr, &n);
+                    if let Some(target) = &item.optional_vars {
+                        remove_all(&mut n, bound_names_in_expr(target));
+                    }
                 }
-                remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
-                walk(&w.body, &n, v, counts);
+                // The body runs once, in order (a context manager that
+                // suppresses an exception is not modelled).
+                let end = walk(&w.body, &n, v, counts);
+                if always_exits(&w.body) {
+                    remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
+                } else {
+                    n = end;
+                }
             }
             Stmt::Try(t) => {
                 let after = {
@@ -257,6 +291,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 v.simple(stmt, &n);
                 let simple: Vec<String> = match stmt {
                     Stmt::Assign(a) => simple_assign_targets(a)
+                        .or_else(|| simple_attr_targets(a))
                         .map(|pairs| pairs.into_iter().map(|(name, _)| name).collect())
                         .unwrap_or_default(),
                     Stmt::AnnAssign(a) if a.value.is_some() => match a.target.as_ref() {
@@ -271,6 +306,15 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     n.rebind(&name, Def::Assign(*count));
                     *count += 1;
                 }
+                if let Stmt::AugAssign(a) = stmt {
+                    let target = match a.target.as_ref() {
+                        Expr::Name(t) => Some(t.id.to_string()),
+                        other => attr_name(other),
+                    };
+                    if let Some(name) = target {
+                        n.defs.insert(name, vec![(Def::Augmented, true)]);
+                    }
+                }
             }
         }
     }
@@ -283,10 +327,12 @@ fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
     }
 }
 
-/// Names known non-None when `test` is true.
+/// Names known non-None when `test` is true (attributes of variables as
+/// `obj.f`, see `attr_name`).
 pub fn positive(test: &Expr) -> Vec<String> {
     match test {
         Expr::Name(n) => vec![n.id.to_string()],
+        Expr::Attribute(_) => attr_name(test).into_iter().collect(),
         Expr::Compare(c) => none_comparison(c, CmpOp::IsNot).into_iter().collect(),
         Expr::BoolOp(b) if matches!(b.op, BoolOp::And) => {
             b.values.iter().flat_map(positive).collect()
@@ -317,12 +363,36 @@ fn none_comparison(c: &ast::ExprCompare, op: CmpOp) -> Option<String> {
         (Expr::Name(n), Expr::NoneLiteral(_)) | (Expr::NoneLiteral(_), Expr::Name(n)) => {
             Some(n.id.to_string())
         }
+        (e @ Expr::Attribute(_), Expr::NoneLiteral(_))
+        | (Expr::NoneLiteral(_), e @ Expr::Attribute(_)) => attr_name(e),
         _ => None,
     }
 }
 
+/// `obj.f` for an attribute of a variable: the flow name of the attribute
+/// (tracked like a local: `obj.f = v` rebinds it, `if obj.f is None:` narrows it).
+pub fn attr_name(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Attribute(a) => match a.value.as_ref() {
+            Expr::Name(n) => Some(format!("{}.{}", n.id, a.attr)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// `(obj.f, value)` pairs of an assignment whose every target is an
+/// attribute of a variable (`self.f = v`, `a.x = b.y = v`); `None` otherwise.
+pub fn simple_attr_targets(a: &ast::StmtAssign) -> Option<Vec<(String, &Expr)>> {
+    a.targets
+        .iter()
+        .map(|t| attr_name(t).map(|n| (n, a.value.as_ref())))
+        .collect()
+}
+
 /// Whether control never falls off the end of `body` (it ends in
-/// `return` / `raise` / `continue` / `break`, or an `if` whose every branch does).
+/// `return` / `raise` / `continue` / `break`, or an `if` or exhaustive
+/// `match` whose every branch does).
 pub fn always_exits(body: &[Stmt]) -> bool {
     match body.last() {
         Some(Stmt::Return(_) | Stmt::Raise(_) | Stmt::Continue(_) | Stmt::Break(_)) => true,
@@ -331,8 +401,26 @@ pub fn always_exits(body: &[Stmt]) -> bool {
                 && s.elif_else_clauses.iter().any(|c| c.test.is_none())
                 && s.elif_else_clauses.iter().all(|c| always_exits(&c.body))
         }
+        Some(Stmt::Match(m)) => {
+            match_is_exhaustive(m) && m.cases.iter().all(|c| always_exits(&c.body))
+        }
         _ => false,
     }
+}
+
+/// Whether some case of a `match` always matches: an unguarded wildcard
+/// (`case _:`), capture (`case x:`), or an or-pattern containing one.
+pub fn match_is_exhaustive(m: &ast::StmtMatch) -> bool {
+    fn irrefutable(p: &Pattern) -> bool {
+        match p {
+            Pattern::MatchAs(a) => a.pattern.as_deref().is_none_or(irrefutable),
+            Pattern::MatchOr(o) => o.patterns.iter().any(irrefutable),
+            _ => false,
+        }
+    }
+    m.cases
+        .iter()
+        .any(|c| c.guard.is_none() && irrefutable(&c.pattern))
 }
 
 /// Whether execution can reach the end of a function body (an implicit `return None`).
@@ -353,6 +441,9 @@ fn terminates(body: &[Stmt]) -> bool {
                 && !contains_break(&w.body)
         }
         Some(Stmt::With(w)) => terminates(&w.body),
+        Some(Stmt::Match(m)) => {
+            match_is_exhaustive(m) && m.cases.iter().all(|c| terminates(&c.body))
+        }
         Some(Stmt::Try(t)) => {
             terminates(&t.finalbody)
                 || ((terminates(&t.body) || terminates(&t.orelse))
@@ -396,6 +487,7 @@ pub fn bound_names(stmts: &[Stmt]) -> HashSet<String> {
         names: HashSet::new(),
         imports: HashSet::new(),
         skip_simple: false,
+        skip_aug: false,
     };
     for s in stmts {
         c.visit_stmt(s);
@@ -410,6 +502,7 @@ pub fn bound_names_in_expr(expr: &Expr) -> HashSet<String> {
         names: HashSet::new(),
         imports: HashSet::new(),
         skip_simple: false,
+        skip_aug: false,
     };
     c.visit_expr(expr);
     c.names
@@ -421,6 +514,8 @@ struct Binders {
     imports: HashSet<String>,
     /// Skip targets of simple `name = value` assignments (tracked separately).
     skip_simple: bool,
+    /// Skip `name op= value` targets.
+    skip_aug: bool,
 }
 
 impl<'a> Visitor<'a> for Binders {
@@ -448,7 +543,13 @@ impl<'a> Visitor<'a> for Binders {
             }
             Stmt::Global(g) => self.names.extend(g.names.iter().map(|n| n.to_string())),
             Stmt::Nonlocal(g) => self.names.extend(g.names.iter().map(|n| n.to_string())),
-            Stmt::Assign(a) if self.skip_simple && simple_assign_targets(a).is_some() => {
+            Stmt::Assign(a)
+                if self.skip_simple
+                    && (simple_assign_targets(a).is_some() || simple_attr_targets(a).is_some()) =>
+            {
+                self.visit_expr(&a.value);
+            }
+            Stmt::AugAssign(a) if self.skip_aug && matches!(a.target.as_ref(), Expr::Name(_)) => {
                 self.visit_expr(&a.value);
             }
             Stmt::AnnAssign(a)
@@ -466,6 +567,11 @@ impl<'a> Visitor<'a> for Binders {
         match expr {
             Expr::Name(n) if matches!(n.ctx, ExprContext::Store | ExprContext::Del) => {
                 self.names.insert(n.id.to_string());
+            }
+            Expr::Attribute(a) if matches!(a.ctx, ExprContext::Store | ExprContext::Del) => {
+                // `obj.f` stored other than by a simple assignment.
+                self.names.extend(attr_name(expr));
+                visitor::walk_expr(self, expr);
             }
             Expr::Lambda(_) => {}
             _ => visitor::walk_expr(self, expr),
@@ -543,8 +649,14 @@ pub struct Assignment<'a> {
 pub struct FunctionFlow<'a> {
     /// `name = value` assignments per local name.
     pub assignments: HashMap<String, Vec<Assignment<'a>>>,
+    /// `obj.f = value` assignments per attribute (`simple_attr_targets`),
+    /// indexed like `assignments` (`Def::Assign(i)` of the name `obj.f`).
+    pub attr_assignments: HashMap<String, Vec<Assignment<'a>>>,
     /// Names bound in any other way; their values are unknown.
     pub opaque: HashSet<String>,
+    /// Names of `opaque` bound other than by simple assignment only by
+    /// augmented assignment (`total += x`): such a value is never `None`.
+    pub augmented_only: HashSet<String>,
     /// Names bound only by function-local `import` statements (the module's
     /// import map resolves them).
     pub imported: HashSet<String>,
@@ -560,6 +672,57 @@ pub struct FunctionFlow<'a> {
     pub escaping: HashSet<String>,
     /// The state at the start of the body (walks of the body start here).
     pub entry: Narrowed,
+    /// The body contains `yield` / `yield from` (outside nested definitions):
+    /// calling the function returns a generator, never `None`.
+    pub is_generator: bool,
+}
+
+/// The `obj.f` names of simple attribute assignments in `body` (not in
+/// nested definitions).
+fn assigned_attributes(body: &[Stmt]) -> HashSet<String> {
+    struct A(HashSet<String>);
+    impl<'a> Visitor<'a> for A {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            match stmt {
+                Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+                Stmt::Assign(a) => {
+                    if let Some(pairs) = simple_attr_targets(a) {
+                        self.0.extend(pairs.into_iter().map(|(n, _)| n));
+                    }
+                }
+                _ => visitor::walk_stmt(self, stmt),
+            }
+        }
+    }
+    let mut a = A(HashSet::new());
+    for s in body {
+        a.visit_stmt(s);
+    }
+    a.0
+}
+
+/// Whether `body` yields (not counting nested functions, classes and lambdas).
+pub fn is_generator_body(body: &[Stmt]) -> bool {
+    struct Y(bool);
+    impl<'a> Visitor<'a> for Y {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+                visitor::walk_stmt(self, stmt);
+            }
+        }
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            match expr {
+                Expr::Yield(_) | Expr::YieldFrom(_) => self.0 = true,
+                Expr::Lambda(_) => {}
+                _ => visitor::walk_expr(self, expr),
+            }
+        }
+    }
+    let mut y = Y(false);
+    for s in body {
+        y.visit_stmt(s);
+    }
+    y.0
 }
 
 impl<'a> FunctionFlow<'a> {
@@ -577,9 +740,14 @@ impl<'a> FunctionFlow<'a> {
         Self::with_entry(body, Narrowed::with_params(params))
     }
 
-    fn with_entry(body: &'a [Stmt], entry: Narrowed) -> Self {
+    fn with_entry(body: &'a [Stmt], mut entry: Narrowed) -> Self {
+        // Every attribute the body assigns starts with its value from before.
+        for name in assigned_attributes(body) {
+            entry.defs.insert(name, vec![(Def::Param, false)]);
+        }
         let mut flow = FunctionFlow {
             falls_through: falls_through(body),
+            is_generator: is_generator_body(body),
             entry: entry.clone(),
             ..Default::default()
         };
@@ -587,10 +755,24 @@ impl<'a> FunctionFlow<'a> {
             names: HashSet::new(),
             imports: HashSet::new(),
             skip_simple: true,
+            skip_aug: false,
+        };
+        let mut non_aug = Binders {
+            names: HashSet::new(),
+            imports: HashSet::new(),
+            skip_simple: true,
+            skip_aug: true,
         };
         for s in body {
             binders.visit_stmt(s);
+            non_aug.visit_stmt(s);
         }
+        flow.augmented_only = binders
+            .names
+            .difference(&non_aug.names)
+            .filter(|n| !non_aug.imports.contains(*n))
+            .cloned()
+            .collect();
         flow.imported = binders
             .imports
             .difference(&binders.names)
@@ -611,6 +793,7 @@ impl<'a> FunctionFlow<'a> {
             shared.visit_stmt(s);
         }
         flow.opaque.extend(shared.names.iter().cloned());
+        flow.augmented_only.retain(|n| !shared.names.contains(n));
         flow.unstable = shared.names;
         flow
     }
@@ -630,6 +813,13 @@ impl<'a> FlowVisitor<'a> for FunctionFlow<'a> {
                 if let Some(pairs) = simple_assign_targets(a) {
                     for (name, value) in pairs {
                         self.assignments.entry(name).or_default().push(Assignment {
+                            value,
+                            narrowed: narrowed.clone(),
+                        });
+                    }
+                } else if let Some(pairs) = simple_attr_targets(a) {
+                    for (name, value) in pairs {
+                        self.attr_assignments.entry(name).or_default().push(Assignment {
                             value,
                             narrowed: narrowed.clone(),
                         });
@@ -826,6 +1016,22 @@ mod tests {
         )));
         assert!(!falls_through(&body(
             "def f(x):\n    try:\n        return 1\n    except E:\n        return 2\n"
+        )));
+        // Round 5 N1: an exhaustive `match` whose every case returns or raises.
+        assert!(!falls_through(&body(
+            "def f(x):\n    match x:\n        case 'a':\n            return 1\n        case _:\n            raise E()\n"
+        )));
+        assert!(!falls_through(&body(
+            "def f(x):\n    match x:\n        case 1 | other:\n            return 1\n"
+        )));
+        assert!(falls_through(&body(
+            "def f(x):\n    match x:\n        case 'a':\n            return 1\n"
+        )));
+        assert!(falls_through(&body(
+            "def f(x):\n    match x:\n        case _ if x:\n            return 1\n"
+        )));
+        assert!(falls_through(&body(
+            "def f(x):\n    match x:\n        case 'a':\n            pass\n        case _:\n            return 2\n"
         )));
     }
 

@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad -> Big.n",
+      "source_guarantee": "range ≤ 20000000000000",
+      "target_requirement": "range ≤ 10000000000000",
+      "target": "Big.n"
+    },
+    {
+      "path": "bad -> Big.m",
+      "source_guarantee": "range ≥ -20000000000000",
+      "target_requirement": "range ≥ -10000000000000",
+      "target": "Big.m"
+    }
+  ]
+}

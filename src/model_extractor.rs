@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
-use crate::bounds::{self, BoundKind, Micros};
+use crate::bounds::{self, Dec};
 use crate::db::{
     ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
     VerificationLevel,
@@ -38,8 +38,8 @@ pub struct ModelField {
     /// `SomeTextChoices.choices`).
     pub choices_expr: Option<Expr>,
     /// Lower / upper bounds (micros) from validators and positive field types.
-    pub min_value: Option<Micros>,
-    pub max_value: Option<Micros>,
+    pub min_value: Option<Dec>,
+    pub max_value: Option<Dec>,
     pub source_file: String,
     pub source_line: u32,
 }
@@ -54,15 +54,13 @@ pub fn extract_models(
     defaults: &HashMap<String, FieldDefaults>,
 ) -> Vec<ModelField> {
     let mut fields = Vec::new();
-    for stmt in stmts {
-        if let Stmt::ClassDef(class_def) = stmt {
-            let direct = class_def
-                .arguments
-                .as_ref()
-                .is_some_and(|args| args.args.iter().any(is_django_root));
-            if direct {
-                fields.extend(extract_model_class(class_def, source_file, defaults));
-            }
+    for class_def in crate::resolve::module_classes(stmts) {
+        let direct = class_def
+            .arguments
+            .as_ref()
+            .is_some_and(|args| args.args.iter().any(is_django_root));
+        if direct {
+            fields.extend(extract_model_class(class_def, source_file, defaults));
         }
     }
     fields
@@ -241,14 +239,14 @@ fn extract_field_from_call(
         .flatten()
         .filter_map(|v| {
             let arg = v.strip_prefix("MinValueValidator(")?.strip_suffix(')')?;
-            bounds::parse_decimal(arg, BoundKind::RequiredMin)
+            bounds::parse_decimal(arg)
         })
         .max();
     let positive = matches!(
         field_type.as_str(),
         "PositiveIntegerField" | "PositiveSmallIntegerField" | "PositiveBigIntegerField"
     );
-    for bound in implicit_min.into_iter().chain(positive.then_some(0)) {
+    for bound in implicit_min.into_iter().chain(positive.then_some(Dec::ZERO)) {
         field.min_value = Some(field.min_value.map_or(bound, |m| m.max(bound)));
     }
 
@@ -281,12 +279,12 @@ fn apply_validators(field: &mut ModelField, expr: &Expr) {
         let Some(arg) = arg else { continue };
         match name.as_str() {
             "MinValueValidator" => {
-                if let Some(v) = bounds::literal_bound(arg, BoundKind::RequiredMin) {
+                if let Some(v) = bounds::literal_bound(arg) {
                     field.min_value = Some(field.min_value.map_or(v, |m| m.max(v)));
                 }
             }
             "MaxValueValidator" => {
-                if let Some(v) = bounds::literal_bound(arg, BoundKind::RequiredMax) {
+                if let Some(v) = bounds::literal_bound(arg) {
                     field.max_value = Some(field.max_value.map_or(v, |m| m.min(v)));
                 }
             }
@@ -413,7 +411,8 @@ pub fn write_model_fields(
             kind: NodeKind::Model,
             source_file: field.source_file.clone(),
             source_line: field.source_line,
-        })?;
+            is_call_site: false,
+            })?;
         ids.insert(qualified, node_id);
 
         let base = |constraint_type: ConstraintType| {
@@ -485,6 +484,8 @@ pub fn write_model_fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::bounds::mu;
 
     fn parse(src: &str) -> Vec<Stmt> {
         match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
@@ -510,15 +511,15 @@ mod tests {
              d = models.DecimalField(validators=[MinValueValidator(Decimal('0.5')), MaxValueValidator(9.99)])\n    \
              e = models.IntegerField(validators=[MinValueValidator(limit)])\n",
         );
-        let bounds: Vec<(Option<Micros>, Option<Micros>)> =
+        let bounds: Vec<(Option<Dec>, Option<Dec>)> =
             fs.iter().map(|f| (f.min_value, f.max_value)).collect();
         assert_eq!(
             bounds,
             [
-                (Some(0), Some(100_000_000)),
-                (Some(0), None),
-                (Some(5_000_000), None),
-                (Some(500_000), Some(9_990_000)),
+                (mu(0), mu(100_000_000)),
+                (mu(0), None),
+                (mu(5_000_000), None),
+                (mu(500_000), mu(9_990_000)),
                 (None, None),
             ]
         );

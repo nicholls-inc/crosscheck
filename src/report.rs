@@ -104,7 +104,7 @@ pub fn render_text(output: &CheckerOutput, no_warnings: bool) -> String {
         output.summary.edges_checked
     ));
     out.push_str(&format!(
-        "PATHS CHECKED: {}\n",
+        "STATES CHECKED: {}\n",
         output.summary.paths_checked
     ));
 
@@ -206,7 +206,7 @@ mod tests {
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines[0], "CONTRACTS CHECKED: 12");
         assert_eq!(lines[1], "EDGES CHECKED: 3");
-        assert_eq!(lines[2], "PATHS CHECKED: 2");
+        assert_eq!(lines[2], "STATES CHECKED: 2");
     }
 
     #[test]

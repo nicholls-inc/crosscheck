@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "first_amount -> Batch.first",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Batch.first"
+    }
+  ]
+}

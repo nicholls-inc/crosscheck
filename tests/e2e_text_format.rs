@@ -54,7 +54,7 @@ fn text_format_on_transitive_fixture() {
         "missing contracts header, got:\n{stdout}"
     );
     assert!(stdout.contains("EDGES CHECKED:"), "got:\n{stdout}");
-    assert!(stdout.contains("PATHS CHECKED:"), "got:\n{stdout}");
+    assert!(stdout.contains("STATES CHECKED:"), "got:\n{stdout}");
 
     // The transitive fixture's headline finding: a 3-hop error whose
     // failing hop is not the first edge, so it must carry the

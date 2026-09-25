@@ -60,6 +60,12 @@ pub struct FunctionInfo {
     pub source_line: u32,
     pub body: Vec<Stmt>,
     pub docstring: Option<String>,
+    /// A `typing.overload` stub (replaced by the implementation that follows).
+    pub is_overload: bool,
+    /// The implementation of overloads whose return annotations disagree on
+    /// `None` (`-> T` for some arguments, `-> T | None` for others): which
+    /// one applies at a call is not decided, so the result's nullability is unknown.
+    pub overloads_differ_on_none: bool,
 }
 
 impl FunctionInfo {
@@ -115,11 +121,12 @@ impl FunctionInfo {
 }
 
 /// Extract function definitions (module level and methods of module-level
-/// classes) from a parsed Python module.
+/// classes, including those inside module-level `if` / `try` / `with`
+/// blocks) from a parsed Python module.
 pub fn extract_functions(stmts: &[Stmt], source_file: &str, module: &str) -> Vec<FunctionInfo> {
     let mut functions = Vec::new();
 
-    for stmt in stmts {
+    for stmt in crate::resolve::module_defs(stmts) {
         match stmt {
             Stmt::FunctionDef(func_def) => {
                 functions.push(extract_function_info(func_def, source_file, module, None));
@@ -140,6 +147,20 @@ pub fn extract_functions(stmts: &[Stmt], source_file: &str, module: &str) -> Vec
         }
     }
 
+    // Overload stubs describe the implementation that follows them.
+    let mut stubs: std::collections::HashMap<String, (bool, bool)> = std::collections::HashMap::new();
+    for f in &mut functions {
+        if f.is_overload {
+            let e = stubs.entry(f.qualified_name.clone()).or_default();
+            if f.is_return_optional {
+                e.0 = true;
+            } else {
+                e.1 = true;
+            }
+        } else if let Some((optional, plain)) = stubs.remove(&f.qualified_name) {
+            f.overloads_differ_on_none = optional && plain;
+        }
+    }
     functions
 }
 
@@ -188,6 +209,8 @@ pub fn module_function(stmts: &[Stmt], source_file: &str, module: &str) -> Optio
         source_line: 0,
         body,
         docstring: None,
+        is_overload: false,
+        overloads_differ_on_none: false,
     })
 }
 
@@ -251,6 +274,11 @@ fn extract_function_info(
         source_line: func_def.range.start().to_u32(),
         body: func_def.body.to_vec(),
         docstring,
+        is_overload: func_def.decorator_list.iter().any(|d| {
+            matches!(&d.expression, Expr::Name(n) if n.id.as_str() == "overload")
+                || matches!(&d.expression, Expr::Attribute(a) if a.attr.as_str() == "overload")
+        }),
+        overloads_differ_on_none: false,
     }
 }
 
@@ -279,6 +307,22 @@ fn extract_params(params: &ast::Parameters) -> Vec<ParamInfo> {
         out.push(param_info(p, ParamKind::VarKeywords));
     }
     out
+}
+
+/// Re-read parameter annotations that name a module-level alias or type
+/// variable (see `resolve::annotation_aliases`).
+pub fn apply_aliases(func: &mut FunctionInfo, aliases: &std::collections::HashMap<String, Expr>) {
+    for p in &mut func.params {
+        let Some(Expr::Name(n)) = &p.annotation else { continue };
+        let Some(alias) = aliases.get(n.id.as_str()) else { continue };
+        let (type_name, nullable) = match annotation_facts(alias) {
+            Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
+            None => (None, None),
+        };
+        p.type_name = type_name;
+        // A `= None` default keeps the parameter nullable.
+        p.nullable = if p.nullable == Some(true) { Some(true) } else { nullable };
+    }
 }
 
 fn param_info(p: &ast::Parameter, kind: ParamKind) -> ParamInfo {
@@ -400,7 +444,7 @@ fn docstring_row(func: &FunctionInfo, dc: &DocstringContract, node_id: i64) -> C
         }
     };
     let range = (dc.constraint_type == ConstraintType::Range)
-        .then_some(dc.range_micros)
+        .then_some(dc.range_bound)
         .flatten();
     let required = matches!(dc.role, ContractRole::Precondition);
     // A precondition clause constrains the parameter it names; a name that is

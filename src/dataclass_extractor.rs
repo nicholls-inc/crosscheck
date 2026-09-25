@@ -31,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 use ruff_python_ast::{self as ast, Expr, Number, Stmt, UnaryOp};
 
-use crate::bounds::{self, BoundKind, Micros};
+use crate::bounds::{self, Dec};
 use crate::db::{
     ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
     VerificationLevel,
@@ -71,6 +71,9 @@ pub struct ClassCandidate {
     pub source_line: u32,
     /// Line number of each class-body statement, parallel to `class_def.body`.
     pub body_lines: Vec<u32>,
+    /// Annotation aliases of the module and the class's type parameters
+    /// (see `resolve::annotation_aliases`).
+    pub aliases: HashMap<String, Expr>,
 }
 
 /// One annotated field of a recognised data class.
@@ -86,9 +89,9 @@ pub struct DataClassField {
     pub max_digits: Option<i64>,
     pub decimal_places: Option<i64>,
     pub max_length: Option<i64>,
-    /// Upper / lower bound in micros (see `bounds`).
-    pub max_value: Option<Micros>,
-    pub min_value: Option<Micros>,
+    /// Upper / lower bound, exact (see `bounds`).
+    pub max_value: Option<Dec>,
+    pub min_value: Option<Dec>,
     /// Allowed values (`Literal["a", "b"]`, a project `Enum` type).
     pub choices: Option<Vec<String>>,
     /// pydantic strict validation for this field (`Field(strict=True)`,
@@ -154,27 +157,51 @@ fn config_is_strict(value: &Expr) -> bool {
     }
 }
 
-/// Collect top-level class definitions from a module. The module name is
+/// Collect module-level class definitions (also inside module-level
+/// `if` / `try` / `with` blocks) from a module. The module name is
 /// derived from `source_file` (a path relative to the application root).
 pub fn collect_classes(stmts: &[Stmt], source: &str, source_file: &str) -> Vec<ClassCandidate> {
     let module = crate::resolve::module_name(source_file);
-    stmts
-        .iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::ClassDef(class_def) => Some(ClassCandidate {
-                class_def: class_def.clone(),
-                module: module.clone(),
-                source_file: source_file.to_string(),
-                source_line: crate::source::line_of(source, class_def.range.start().to_u32()),
-                body_lines: class_def
-                    .body
-                    .iter()
-                    .map(|s| crate::source::line_of(source, stmt_start(s)))
-                    .collect(),
-            }),
-            _ => None,
+    let aliases = crate::resolve::annotation_aliases(stmts);
+    crate::resolve::module_classes(stmts)
+        .map(|class_def| ClassCandidate {
+            aliases: with_type_params(&aliases, class_def.type_params.as_deref()),
+            class_def: class_def.clone(),
+            module: module.clone(),
+            source_file: source_file.to_string(),
+            source_line: crate::source::line_of(source, class_def.range.start().to_u32()),
+            body_lines: class_def
+                .body
+                .iter()
+                .map(|s| crate::source::line_of(source, stmt_start(s)))
+                .collect(),
         })
         .collect()
+}
+
+/// `aliases` plus PEP 695 type parameters (`class C[N]:`), which stand for any type.
+pub fn with_type_params(
+    aliases: &HashMap<String, Expr>,
+    params: Option<&ast::TypeParams>,
+) -> HashMap<String, Expr> {
+    let mut out = aliases.clone();
+    let Some(params) = params else { return out };
+    for p in params.type_params.iter() {
+        if let ast::TypeParam::TypeVar(t) = p {
+            if let Ok(any) = ruff_python_parser::parse_expression("Any") {
+                out.insert(t.name.to_string(), any.into_expr());
+            }
+        }
+    }
+    out
+}
+
+/// The annotation a (possibly aliased) annotation stands for.
+pub fn unalias<'e>(annotation: &'e Expr, aliases: &'e HashMap<String, Expr>) -> &'e Expr {
+    match annotation {
+        Expr::Name(n) => aliases.get(n.id.as_str()).unwrap_or(annotation),
+        _ => annotation,
+    }
 }
 
 /// Start offset of a class-body statement. Only annotated assignments become
@@ -272,7 +299,16 @@ pub fn resolve_data_classes_with(
         let qualified = candidate_qualified(c);
         if let Some(&kind) = kinds.get(&qualified) {
             let mut visiting = HashSet::new();
-            let fields = fields_with_inheritance(&qualified, &by_name, &bases, &kinds, &mut visiting);
+            let mut fields =
+                fields_with_inheritance(&qualified, &by_name, &bases, &kinds, &mut visiting);
+            if kind == DataClassKind::Pydantic {
+                let pre = transforming_validators(&qualified, &by_name, &bases);
+                for f in &mut fields {
+                    if pre.all || pre.fields.contains(&f.field_name) {
+                        f.clear_requirements();
+                    }
+                }
+            }
             // Inherited fields come first in the constructor; only classes
             // without project-local data class bases get a positional order.
             let inherits = bases[&qualified].iter().any(|b| kinds.contains_key(b));
@@ -289,6 +325,84 @@ pub fn resolve_data_classes_with(
         }
     }
     result
+}
+
+/// Fields whose raw input a pydantic validator may transform before the
+/// field's own constraints are checked (`all`: every field).
+#[derive(Debug, Default)]
+struct PreValidated {
+    all: bool,
+    fields: HashSet<String>,
+}
+
+/// Validators of class `name` and its project-local bases that run before
+/// (or around) field validation: `field_validator(..., mode="before" |
+/// "wrap")`, v1 `validator(..., pre=True)`, and for every field
+/// `model_validator(mode="before" | "wrap")` / `root_validator(pre=True)`.
+fn transforming_validators(
+    name: &str,
+    by_name: &HashMap<String, &ClassCandidate>,
+    bases: &HashMap<String, Vec<String>>,
+) -> PreValidated {
+    let mut out = PreValidated::default();
+    let mut stack = vec![name.to_string()];
+    let mut seen = HashSet::new();
+    while let Some(q) = stack.pop() {
+        if !seen.insert(q.clone()) || seen.len() > 64 {
+            continue;
+        }
+        let Some(c) = by_name.get(&q) else { continue };
+        for stmt in &c.class_def.body {
+            let Stmt::FunctionDef(f) = stmt else { continue };
+            for d in &f.decorator_list {
+                let Expr::Call(call) = &d.expression else { continue };
+                let Some(kind) = last_segment(&call.func) else { continue };
+                let mode = call.arguments.keywords.iter().find_map(|k| {
+                    match (k.arg.as_deref(), &k.value) {
+                        (Some("mode"), Expr::StringLiteral(s)) => Some(s.value.to_string()),
+                        _ => None,
+                    }
+                });
+                let transforms = matches!(mode.as_deref(), Some("before" | "wrap"))
+                    || keyword_is(call, "pre", true);
+                if !transforms {
+                    continue;
+                }
+                match kind.as_str() {
+                    "field_validator" | "validator" => {
+                        for arg in call.arguments.args.iter() {
+                            match arg {
+                                Expr::StringLiteral(s) if s.value.to_str() == "*" => out.all = true,
+                                Expr::StringLiteral(s) => {
+                                    out.fields.insert(s.value.to_string());
+                                }
+                                // A computed field list: any field.
+                                _ => out.all = true,
+                            }
+                        }
+                    }
+                    "model_validator" | "root_validator" => out.all = true,
+                    _ => {}
+                }
+            }
+        }
+        stack.extend(bases.get(&q).into_iter().flatten().cloned());
+    }
+    out
+}
+
+impl DataClassField {
+    /// Drop every requirement (a validator may replace the value first).
+    fn clear_requirements(&mut self) {
+        self.type_name = None;
+        self.nullable = None;
+        self.max_digits = None;
+        self.decimal_places = None;
+        self.max_length = None;
+        self.max_value = None;
+        self.min_value = None;
+        self.choices = None;
+    }
 }
 
 /// Fields of `name`, parents first; a child field replaces a parent field of the same name.
@@ -468,7 +582,7 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
         if field_name.starts_with('_') || field_name == "model_config" {
             continue;
         }
-        let Some(info) = analyze_annotation(&ann.annotation) else {
+        let Some(info) = analyze_annotation(unalias(&ann.annotation, &candidate.aliases)) else {
             continue; // ClassVar and similar: not an instance field
         };
         let mut field = DataClassField {
@@ -625,12 +739,30 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             true
         }
         Expr::StringLiteral(s) => {
-            // Forward reference: only simple names are interpreted.
+            // Forward reference (`"Invoice"`, `"User | None"`,
+            // `"Optional[Address]"`): the annotation it spells.
             let text = s.value.to_string();
-            let trimmed = text.trim();
-            if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
-                info.type_name = Some(trimmed.rsplit('.').next().unwrap_or(trimmed).to_string());
+            let Ok(parsed) = ruff_python_parser::parse_expression(text.trim()) else {
+                return true;
+            };
+            let mut inner = AnnotationInfo {
+                type_name: None,
+                nullable: Some(false),
+                constraint_calls: Vec::new(),
+                choices: None,
+                strict: false,
+            };
+            if !walk_annotation(parsed.expr(), &mut inner) {
+                return false;
             }
+            info.type_name = inner.type_name;
+            info.choices = inner.choices;
+            info.strict |= inner.strict;
+            info.nullable = match (info.nullable, inner.nullable) {
+                (Some(true), _) | (_, Some(true)) => Some(true),
+                (_, None) => None,
+                (n, Some(false)) => n,
+            };
             true
         }
         Expr::NoneLiteral(_) => {
@@ -704,25 +836,39 @@ fn is_field_call(func: &Expr) -> bool {
 /// than required, so conservative).
 fn apply_constraint_keywords(field: &mut DataClassField, call: &ast::ExprCall) {
     let is_int = field.type_name.as_deref() == Some("int");
-    let step = if is_int { bounds::SCALE } else { 1 };
+    let one = Dec::from_int(1);
+    let step = Dec::from_micros(1);
     for kw in &call.arguments.keywords {
         let Some(arg) = kw.arg.as_ref() else { continue };
         let value = int_literal(&kw.value);
-        let bound = |k: BoundKind| bounds::literal_bound(&kw.value, k);
+        let bound = bounds::literal_bound(&kw.value);
         match arg.as_str() {
             "max_digits" => field.max_digits = value.or(field.max_digits),
             "decimal_places" => field.decimal_places = value.or(field.decimal_places),
             "max_length" => field.max_length = value.or(field.max_length),
-            "le" => field.max_value = bound(BoundKind::RequiredMax).or(field.max_value),
+            "le" => field.max_value = bound.or(field.max_value),
             "lt" => {
-                field.max_value = bound(BoundKind::RequiredMax)
-                    .map(|v| if is_int { floor_to_int(v - 1) } else { v - step })
+                // int: the largest integer below v; otherwise one millionth inside.
+                field.max_value = bound
+                    .and_then(|v| {
+                        if is_int {
+                            v.ceil().checked_add(-one)
+                        } else {
+                            v.checked_add(-step)
+                        }
+                    })
                     .or(field.max_value)
             }
-            "ge" => field.min_value = bound(BoundKind::RequiredMin).or(field.min_value),
+            "ge" => field.min_value = bound.or(field.min_value),
             "gt" => {
-                field.min_value = bound(BoundKind::RequiredMin)
-                    .map(|v| if is_int { floor_to_int(v) + step } else { v + step })
+                field.min_value = bound
+                    .and_then(|v| {
+                        if is_int {
+                            v.floor().checked_add(one)
+                        } else {
+                            v.checked_add(step)
+                        }
+                    })
                     .or(field.min_value)
             }
             "strict" => {
@@ -731,11 +877,6 @@ fn apply_constraint_keywords(field: &mut DataClassField, call: &ast::ExprCall) {
             _ => {}
         }
     }
-}
-
-/// The largest whole number (in micros) at most `v`.
-fn floor_to_int(v: Micros) -> Micros {
-    v.div_euclid(bounds::SCALE) * bounds::SCALE
 }
 
 /// An integer literal, including a negated one.
@@ -776,6 +917,7 @@ pub fn write_data_classes(
                 kind: NodeKind::Model,
                 source_file: field.source_file.clone(),
                 source_line: field.source_line,
+                is_call_site: false,
             })?;
             ids.insert(qualified, node_id);
 
@@ -836,6 +978,8 @@ pub fn write_data_classes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::bounds::mu;
 
     fn classes(src: &str) -> Vec<DataClass> {
         let parsed =
@@ -887,9 +1031,9 @@ mod tests {
         let amount = field(&cs, "M", "amount");
         assert_eq!((amount.max_digits, amount.decimal_places), (Some(10), Some(2)));
         assert_eq!(field(&cs, "M", "name").max_length, Some(32));
-        assert_eq!(field(&cs, "M", "qty").max_value, Some(9_000_000));
+        assert_eq!(field(&cs, "M", "qty").max_value, mu(9_000_000));
         let pct = field(&cs, "M", "pct");
-        assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), Some(100_000_000)));
+        assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), mu(100_000_000)));
     }
 
     #[test]
@@ -912,10 +1056,10 @@ mod tests {
             "class M(BaseModel):\n    a: int = Field(ge=0, le=10)\n    b: int = Field(gt=0)\n    c: float = Field(gt=0)\n",
         );
         let a = field(&cs, "M", "a");
-        assert_eq!((a.min_value, a.max_value), (Some(0), Some(10_000_000)));
-        assert_eq!(field(&cs, "M", "b").min_value, Some(1_000_000));
+        assert_eq!((a.min_value, a.max_value), (mu(0), mu(10_000_000)));
+        assert_eq!(field(&cs, "M", "b").min_value, mu(1_000_000));
         // gt on a non-int: one millionth above (stricter than required).
-        assert_eq!(field(&cs, "M", "c").min_value, Some(1));
+        assert_eq!(field(&cs, "M", "c").min_value, mu(1));
     }
 
     fn module(src: &str, path: &str) -> Vec<ClassCandidate> {
@@ -984,5 +1128,41 @@ mod tests {
         let kinds: Vec<DataClassKind> = cs.iter().map(|c| c.kind).collect();
         assert_eq!(kinds, [DataClassKind::NamedTuple, DataClassKind::TypedDict, DataClassKind::Attrs]);
         assert_eq!(field(&cs, "D", "y").type_name.as_deref(), Some("str"));
+    }
+
+    /// Round 5 N8: validators that run before field validation remove the
+    /// field's requirements.
+    #[test]
+    fn test_transforming_validators() {
+        let cs = classes(
+            "class A(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    y: str = Field(max_length=3)\n\
+             \x20   @field_validator('x', mode='before')\n    @classmethod\n    def r(cls, v):\n        return v\n\
+             class B(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @validator('x', pre=True)\n    def r(cls, v):\n        return v\n\
+             class C(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @field_validator('x')\n    def r(cls, v):\n        return v\n\
+             class D(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @model_validator(mode='before')\n    def r(cls, v):\n        return v\n\
+             class E(A):\n    pass\n",
+        );
+        assert_eq!(field(&cs, "A", "x").decimal_places, None);
+        assert_eq!(field(&cs, "A", "x").nullable, None);
+        assert_eq!(field(&cs, "A", "y").max_length, Some(3), "other fields keep theirs");
+        assert_eq!(field(&cs, "B", "x").decimal_places, None);
+        assert_eq!(field(&cs, "C", "x").decimal_places, Some(2), "after-validators do not");
+        assert_eq!(field(&cs, "D", "x").decimal_places, None);
+        assert_eq!(field(&cs, "E", "x").decimal_places, None, "inherited validator");
+    }
+
+    /// String annotations are parsed: `"User | None"`, `"Optional[int]"`.
+    #[test]
+    fn test_string_annotations() {
+        let cs = classes(
+            "class N(NamedTuple):\n    a: 'User | None'\n    b: 'Optional[int]'\n    c: 'Decimal'\n    d: Optional['Address']\n    e: 'ClassVar[int]'\n",
+        );
+        assert_eq!(field(&cs, "N", "a").nullable, Some(true));
+        let b = field(&cs, "N", "b");
+        assert_eq!((b.nullable, b.type_name.as_deref()), (Some(true), Some("int")));
+        let c = field(&cs, "N", "c");
+        assert_eq!((c.nullable, c.type_name.as_deref()), (Some(false), Some("Decimal")));
+        assert_eq!(field(&cs, "N", "d").nullable, Some(true));
+        assert!(cs[0].fields.iter().all(|f| f.field_name != "e"), "ClassVar in a string");
     }
 }

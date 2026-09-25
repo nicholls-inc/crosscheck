@@ -42,6 +42,62 @@ pub fn qualify(module: &str, name: &str) -> String {
     }
 }
 
+/// The `def` and `class` statements that define module-level names: those
+/// at top level and those inside module-level `if` / `try` / `with` blocks
+/// (`if not is_model_registered(...): class Price(...)`), in source order.
+pub fn module_defs(stmts: &[Stmt]) -> Vec<&Stmt> {
+    fn walk<'s>(stmts: &'s [Stmt], out: &mut Vec<&'s Stmt>) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::FunctionDef(_) | Stmt::ClassDef(_) => out.push(stmt),
+                Stmt::If(s) => {
+                    walk(&s.body, out);
+                    for clause in &s.elif_else_clauses {
+                        walk(&clause.body, out);
+                    }
+                }
+                Stmt::Try(t) => {
+                    walk(&t.body, out);
+                    for handler in &t.handlers {
+                        let ruff_python_ast::ExceptHandler::ExceptHandler(h) = handler;
+                        walk(&h.body, out);
+                    }
+                    walk(&t.orelse, out);
+                    walk(&t.finalbody, out);
+                }
+                Stmt::With(w) => walk(&w.body, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(stmts, &mut out);
+    out
+}
+
+/// Class definitions at module level (see `module_defs`).
+pub fn module_classes(stmts: &[Stmt]) -> impl Iterator<Item = &ruff_python_ast::StmtClassDef> {
+    module_defs(stmts).into_iter().filter_map(|s| match s {
+        Stmt::ClassDef(c) => Some(c),
+        _ => None,
+    })
+}
+
+/// Classes nested in a class body (at any depth), with their dotted path
+/// below the outer class (`Status`, `Status.Inner`).
+pub fn nested_classes(class: &ruff_python_ast::StmtClassDef) -> Vec<(String, &ruff_python_ast::StmtClassDef)> {
+    let mut out = Vec::new();
+    for stmt in &class.body {
+        if let Stmt::ClassDef(inner) = stmt {
+            out.push((inner.name.to_string(), inner));
+            for (path, deeper) in nested_classes(inner) {
+                out.push((format!("{}.{path}", inner.name), deeper));
+            }
+        }
+    }
+    out
+}
+
 /// What an imported local name refers to (absolute import paths).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Import {
@@ -78,7 +134,7 @@ impl ModuleInfo {
             is_package,
             ..Default::default()
         };
-        for stmt in stmts {
+        for stmt in module_defs(stmts) {
             match stmt {
                 Stmt::FunctionDef(f) => {
                     info.imports.remove(f.name.as_str());
@@ -164,6 +220,57 @@ fn is_choice_entry(expr: &Expr) -> bool {
         }
         _ => false,
     }
+}
+
+/// Module-level names that stand for an annotation: type aliases whose value
+/// is a union or `Optional` (`T_REQUESTOR = App | User | None`,
+/// `Maybe = Optional[int]`), and type variables (`N = TypeVar("N")`, which
+/// stand for any type: `Any`). Name -> the annotation to read instead.
+pub fn annotation_aliases(stmts: &[Stmt]) -> HashMap<String, Expr> {
+    let any = || {
+        ruff_python_parser::parse_expression("Any")
+            .ok()
+            .map(|p| p.into_expr())
+    };
+    let mut out = HashMap::new();
+    for (name, value) in single_assignments(stmts) {
+        let alias = match &value {
+            Expr::BinOp(b) if matches!(b.op, ruff_python_ast::Operator::BitOr) => Some(value.clone()),
+            Expr::Subscript(s)
+                if dotted_parts(&s.value)
+                    .is_some_and(|p| matches!(p.last().map(String::as_str), Some("Optional" | "Union"))) =>
+            {
+                Some(value.clone())
+            }
+            Expr::Call(c)
+                if dotted_parts(&c.func)
+                    .is_some_and(|p| p.last().map(String::as_str) == Some("TypeVar")) =>
+            {
+                any()
+            }
+            _ => None,
+        };
+        if let Some(a) = alias {
+            out.insert(name, a);
+        }
+    }
+    out
+}
+
+/// Whether `expr` is `re.compile(...)` (a compiled regular expression).
+pub fn is_re_compile(expr: &Expr) -> bool {
+    matches!(expr, Expr::Call(c)
+        if dotted_parts(&c.func).is_some_and(|p| p == ["re", "compile"] || p == ["regex", "compile"]))
+}
+
+/// Names bound exactly once in `stmts` (as for `module_constants`) to a
+/// compiled regular expression (`CODE = re.compile(...)`).
+pub fn module_patterns(stmts: &[Stmt]) -> Vec<String> {
+    single_assignments(stmts)
+        .into_iter()
+        .filter(|(_, v)| is_re_compile(v))
+        .map(|(n, _)| n)
+        .collect()
 }
 
 /// Names bound exactly once in `stmts` (not counting nested function and
@@ -354,6 +461,11 @@ pub struct ClassInfo {
     pub strict: bool,
     /// Names of `constants` in class-body order.
     pub constant_order: Vec<String>,
+    /// Declared nullability of extracted fields (`null=True/False`,
+    /// `Optional[T]` or not), when known.
+    pub field_nullable: HashMap<String, bool>,
+    /// Class-body names bound once to `re.compile(...)`.
+    pub patterns: HashSet<String>,
 }
 
 /// An enum-like class: members are class-body constants.
@@ -383,6 +495,8 @@ impl ClassInfo {
             enum_kind: None,
             strict: false,
             constant_order: Vec::new(),
+            field_nullable: HashMap::new(),
+            patterns: HashSet::new(),
         }
     }
 
@@ -398,6 +512,7 @@ impl ClassInfo {
             }
         });
         let is_enum = self.enum_kind.is_some();
+        self.patterns = module_patterns(body).into_iter().collect();
         for (name, value) in single_assignments(body) {
             // Enum members `NAME = value, label` may have a non-literal label.
             let member = is_enum
@@ -510,6 +625,8 @@ pub struct ProjectIndex {
     pub function_ids: HashMap<String, usize>,
     /// Module constants by qualified name (`module.NAME`).
     pub constants: HashMap<String, Expr>,
+    /// Module-level names bound once to `re.compile(...)`, qualified.
+    pub patterns: HashSet<String>,
     /// Modules by last dotted segment, for suffix matching (built on first use).
     by_last_segment: OnceCell<HashMap<String, Vec<String>>>,
 }
@@ -641,20 +758,33 @@ impl ProjectIndex {
             Symbol::Class(q) => self
                 .method(&q, attr)
                 .map(Symbol::Function)
-                .or_else(|| self.class_constant(&q, attr).map(Symbol::Constant)),
+                .or_else(|| self.class_constant(&q, attr).map(Symbol::Constant))
+                .or_else(|| self.nested_class(&q, attr).map(Symbol::Class)),
             Symbol::Function(_) | Symbol::Constant(_) => None,
         }
     }
 
     /// Resolve a `Name` / `Attribute` chain as seen from `module`.
     pub fn resolve_expr(&self, module: &str, expr: &Expr) -> Option<Symbol> {
+        // A parameterised generic (`Base[T]`) names its class.
+        if let Expr::Subscript(s) = expr {
+            return match self.resolve_expr(module, &s.value)? {
+                sym @ Symbol::Class(_) => Some(sym),
+                _ => None,
+            };
+        }
         let parts = dotted_parts(expr)?;
         self.resolve_dotted(module, &parts)
     }
 
     pub fn resolve_dotted(&self, module: &str, parts: &[String]) -> Option<Symbol> {
         let (head, rest) = parts.split_first()?;
-        let mut sym = self.lookup(module, head)?;
+        let sym = self.lookup(module, head)?;
+        self.resolve_attrs(module, sym, rest)
+    }
+
+    /// `sym.a.b...` for attribute names `rest`, as seen from `module`.
+    pub fn resolve_attrs(&self, module: &str, mut sym: Symbol, rest: &[String]) -> Option<Symbol> {
         for part in rest {
             sym = self.attribute(module, sym, part)?;
         }
@@ -666,6 +796,20 @@ impl ProjectIndex {
         match self.resolve_expr(module, expr)? {
             Symbol::Class(q) => self.classes.get(&q),
             _ => None,
+        }
+    }
+
+    /// Whether bare `name` in `module` is a module-level compiled pattern
+    /// (defined there or imported from where it is defined).
+    pub fn is_pattern(&self, module: &str, name: &str) -> bool {
+        if self.patterns.contains(&qualify(module, name)) {
+            return true;
+        }
+        match self.modules.get(module).and_then(|m| m.imports.get(name)) {
+            Some(Import::Symbol { module: m, name: n }) => self
+                .find_module(m, module)
+                .is_some_and(|found| self.patterns.contains(&qualify(found, n))),
+            _ => false,
         }
     }
 
@@ -694,6 +838,29 @@ impl ProjectIndex {
             if class.constants.contains_key(name) {
                 return Some(qualify(&q, name));
             }
+            for base in class.bases.iter().rev() {
+                if let Some(Symbol::Class(bq)) = self.resolve_expr(&class.module, base) {
+                    stack.push(bq);
+                }
+            }
+        }
+        None
+    }
+
+    /// Class `name` nested in the body of class `class_q` (or of a
+    /// project-local base): its qualified name.
+    pub fn nested_class(&self, class_q: &str, name: &str) -> Option<String> {
+        let mut visited = HashSet::new();
+        let mut stack = vec![class_q.to_string()];
+        while let Some(q) = stack.pop() {
+            if visited.len() > 64 || !visited.insert(q.clone()) {
+                continue;
+            }
+            let nested = qualify(&q, name);
+            if self.classes.contains_key(&nested) {
+                return Some(nested);
+            }
+            let Some(class) = self.classes.get(&q) else { continue };
             for base in class.bases.iter().rev() {
                 if let Some(Symbol::Class(bq)) = self.resolve_expr(&class.module, base) {
                     stack.push(bq);

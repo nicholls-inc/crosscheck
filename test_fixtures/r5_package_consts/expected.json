@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "r -> P.x",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "P.x"
+    },
+    {
+      "path": "r2 -> P.x",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "P.x"
+    }
+  ]
+}

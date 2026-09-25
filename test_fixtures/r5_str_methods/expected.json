@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad_length -> Code.short",
+      "source_guarantee": "length ≤ 7",
+      "target_requirement": "length ≤ 5",
+      "target": "Code.short"
+    },
+    {
+      "path": "bad_choice -> Code.kind",
+      "source_guarantee": "choices in [Maybe]",
+      "target_requirement": "choices in [OK, NO]",
+      "target": "Code.kind"
+    }
+  ]
+}

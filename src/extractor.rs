@@ -111,6 +111,9 @@ impl Project {
                 m.module.clone(),
                 ModuleInfo::from_stmts(&m.module, m.is_package, &m.stmts),
             );
+            for name in resolve::module_patterns(&m.stmts) {
+                index.patterns.insert(resolve::qualify(&m.module, &name));
+            }
             for (name, value) in resolve::module_constants(&m.stmts) {
                 if index.modules[&m.module].defs.get(&name) == Some(&resolve::DefKind::Constant) {
                     index
@@ -122,12 +125,14 @@ impl Project {
             // Functions (a later definition with the same qualified name replaces an earlier one)
             let module_fn =
                 function_extractor::module_function(&m.stmts, &m.relative_path, &m.module);
+            let aliases = resolve::annotation_aliases(&m.stmts);
             for mut func in
                 function_extractor::extract_functions(&m.stmts, &m.relative_path, &m.module)
                     .into_iter()
                     .chain(module_fn)
             {
                 func.source_line = m.lines.line(func.source_line);
+                function_extractor::apply_aliases(&mut func, &aliases);
                 match index.function_ids.get(&func.qualified_name) {
                     Some(&i) => index.functions[i] = func,
                     None => {
@@ -139,15 +144,18 @@ impl Project {
                 }
             }
 
-            // Classes
-            for stmt in &m.stmts {
-                if let Stmt::ClassDef(c) = stmt {
-                    let bases = c
+            // Classes (module level, and nested in class bodies as `Outer.Inner`)
+            for c in resolve::module_classes(&m.stmts) {
+                let nested = resolve::nested_classes(c)
+                    .into_iter()
+                    .map(|(path, inner)| (format!("{}.{path}", c.name), inner));
+                for (name, class) in std::iter::once((c.name.to_string(), c)).chain(nested) {
+                    let bases = class
                         .arguments
                         .as_ref()
                         .map(|a| a.args.to_vec())
                         .unwrap_or_default();
-                    let info = ClassInfo::new(&m.module, c.name.as_str(), bases).with_body(&c.body);
+                    let info = ClassInfo::new(&m.module, &name, bases).with_body(&class.body);
                     index.classes.insert(info.qualified.clone(), info);
                 }
             }
@@ -191,6 +199,11 @@ impl Project {
                 if c.kind == ClassKind::Plain {
                     c.kind = ClassKind::Data(dc.kind);
                     c.fields = dc.fields.iter().map(|f| f.field_name.clone()).collect();
+                    c.field_nullable = dc
+                        .fields
+                        .iter()
+                        .filter_map(|f| Some((f.field_name.clone(), f.nullable?)))
+                        .collect();
                     c.positional = dc.positional.clone();
                     c.strict = dc.strict;
                 }
@@ -281,10 +294,8 @@ fn django_models(
     // Class definitions by qualified name, in module order.
     let mut defs: Vec<(String, &ruff_python_ast::StmtClassDef, &SourceModule)> = Vec::new();
     for m in modules {
-        for stmt in &m.stmts {
-            if let Stmt::ClassDef(c) = stmt {
-                defs.push((resolve::qualify(&m.module, c.name.as_str()), c, m));
-            }
+        for c in resolve::module_classes(&m.stmts) {
+            defs.push((resolve::qualify(&m.module, c.name.as_str()), c, m));
         }
     }
     let base_classes: HashMap<String, Vec<String>> = defs
@@ -388,6 +399,10 @@ fn django_models(
         if let Some(info) = index.classes.get_mut(q) {
             info.kind = ClassKind::Django;
             info.fields = fields.iter().map(|f| f.field_name.clone()).collect();
+            info.field_nullable = fields
+                .iter()
+                .filter_map(|f| Some((f.field_name.clone(), f.null?)))
+                .collect();
         }
         all.extend(fields);
     }
@@ -446,10 +461,15 @@ fn resolve_choices(
             return resolve_choices(index, module, class_q, value, depth + 1);
         }
     }
-    // `Status.choices` on a choices class.
+    // `Status.choices` on a choices class (module level, or nested in the
+    // enclosing class body: `class Invoice: class Status(TextChoices): ...`).
     if let Expr::Attribute(a) = expr {
         if a.attr.as_str() == "choices" {
-            if let Some(Symbol::Class(q)) = index.resolve_expr(module, &a.value) {
+            let nested = match (a.value.as_ref(), class_q) {
+                (Expr::Name(n), Some(cq)) => index.nested_class(cq, n.id.as_str()).map(Symbol::Class),
+                _ => None,
+            };
+            if let Some(Symbol::Class(q)) = nested.or_else(|| index.resolve_expr(module, &a.value)) {
                 let class = index.class(&q)?;
                 if class.enum_kind == Some(EnumKind::DjangoChoices) {
                     return class.member_choices();
@@ -530,6 +550,42 @@ fn enum_field_choices(classes: &mut [DataClass], index: &ProjectIndex) {
 pub struct ExtractOptions {
     /// Skip files with syntax errors (with a warning) instead of failing.
     pub allow_parse_errors: bool,
+    /// Globs (`*`, `?`, `**`) over paths relative to the application root:
+    /// a file is skipped when it, or one of its directories, matches one.
+    pub exclude: Vec<String>,
+}
+
+/// Whether `path` (relative, `/`-separated) or one of its ancestor
+/// directories matches `glob`: `**` matches any number of path segments,
+/// `*` any characters within a segment, `?` one character.
+pub fn glob_excludes(glob: &str, path: &str) -> bool {
+    let pattern: Vec<&str> = glob
+        .trim_start_matches("./")
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    (1..=segments.len()).any(|n| match_segments(&pattern, &segments[..n]))
+}
+
+fn match_segments(pattern: &[&str], path: &[&str]) -> bool {
+    match pattern.split_first() {
+        None => path.is_empty(),
+        Some((&"**", rest)) => (0..=path.len()).any(|i| match_segments(rest, &path[i..])),
+        Some((p, rest)) => match path.split_first() {
+            Some((s, tail)) => match_segment(p.as_bytes(), s.as_bytes()) && match_segments(rest, tail),
+            None => false,
+        },
+    }
+}
+
+fn match_segment(p: &[u8], s: &[u8]) -> bool {
+    match p.split_first() {
+        None => s.is_empty(),
+        Some((b'*', rest)) => (0..=s.len()).any(|i| match_segment(rest, &s[i..])),
+        Some((b'?', rest)) => !s.is_empty() && match_segment(rest, &s[1..]),
+        Some((c, rest)) => s.first() == Some(c) && match_segment(rest, &s[1..]),
+    }
 }
 
 /// Run the full extraction pipeline on a Python project directory (or a single .py file).
@@ -585,6 +641,16 @@ pub fn extract_with(
     // Parse all Python files
     let mut py_files = find_python_files(app_path)?;
     py_files.sort();
+    if !options.exclude.is_empty() {
+        py_files.retain(|f| {
+            let rel = f
+                .strip_prefix(app_path)
+                .unwrap_or(f)
+                .to_string_lossy()
+                .replace('\\', "/");
+            !options.exclude.iter().any(|g| glob_excludes(g, &rel))
+        });
+    }
     let mut modules = Vec::new();
     let mut parse_errors = Vec::new();
     for py_file in &py_files {
@@ -712,6 +778,7 @@ fn write_functions(
             kind: NodeKind::Function,
             source_file: func.source_file.clone(),
             source_line: func.source_line,
+            is_call_site: false,
         })?;
         ids.insert(func.qualified_name.clone(), node_id);
 
@@ -762,6 +829,7 @@ fn write_call_sites(
             kind: NodeKind::Function,
             source_file: site.key.file.clone(),
             source_line: site.line,
+            is_call_site: true,
         })?;
         for row in rows {
             db.insert_contract(&ContractRecord {
@@ -929,6 +997,8 @@ fn find_python_files(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::bounds::mu;
 
     fn project(files: &[(&str, &str)]) -> Project {
         Project::from_sources(
@@ -1068,11 +1138,11 @@ mod tests {
         )]);
         let dc = |name: &str| p.data_classes.iter().find(|c| c.name == name).unwrap();
         let f = |c: &str, n: &str| dc(c).fields.iter().find(|f| f.field_name == n).unwrap().clone();
-        assert_eq!((f("R", "ratio").min_value, f("R", "ratio").max_value), (Some(0), Some(500_000)));
-        assert_eq!(f("R", "amt").max_value, Some(10_000_000));
-        assert_eq!(f("R", "amt2").min_value, Some(0));
+        assert_eq!((f("R", "ratio").min_value, f("R", "ratio").max_value), (mu(0), mu(500_000)));
+        assert_eq!(f("R", "amt").max_value, mu(10_000_000));
+        assert_eq!(f("R", "amt2").min_value, mu(0));
         // Strict bounds on a float: one millionth inside (stricter than required).
-        assert_eq!((f("R", "small").min_value, f("R", "small").max_value), (Some(1), Some(999_999)));
+        assert_eq!((f("R", "small").min_value, f("R", "small").max_value), (mu(1), mu(999_999)));
         assert_eq!(f("R", "kind").choices, Some(vec!["a".to_string(), "b".to_string()]));
         assert_eq!(f("R", "colour").choices, Some(vec!["red".to_string(), "blue".to_string()]));
         let r = dc("R");
@@ -1080,6 +1150,19 @@ mod tests {
         assert!(!r.lax_numeric(&f("R", "n")), "Field(strict=True)");
         assert!(!dc("S").lax_numeric(&f("S", "x")), "model_config strict");
         assert!(!dc("T").lax_numeric(&f("T", "y")), "strictness is inherited");
+    }
+
+    #[test]
+    fn test_exclude_globs() {
+        assert!(glob_excludes("**/tests/**", "netbox/tests/test_api.py"));
+        assert!(glob_excludes("**/tests/**", "tests/test_api.py"));
+        assert!(glob_excludes("**/tests", "a/b/tests/x.py"), "a matching directory excludes its files");
+        assert!(!glob_excludes("**/tests/**", "netbox/testsuite/x.py"));
+        assert!(glob_excludes("**/test_*.py", "app/test_models.py"));
+        assert!(!glob_excludes("test_*.py", "app/test_models.py"), "no `**`: anchored at the root");
+        assert!(glob_excludes("*/migrations/*", "app/migrations/0001_initial.py"));
+        assert!(glob_excludes("app/m?dels.py", "app/models.py"));
+        assert!(!glob_excludes("app/*.py", "app/sub/models.py"));
     }
 
     #[test]
@@ -1093,5 +1176,51 @@ mod tests {
                 .to_string(),
         );
         assert_eq!(m.parse_error, None);
+    }
+
+    /// Round 5 N5 / N6: classes (and functions) in module-level `if` / `try`
+    /// / `with` blocks, and classes nested in class bodies.
+    #[test]
+    fn test_conditional_and_nested_classes() {
+        let p = project(&[(
+            "models.py",
+            "from django.db import models\n\
+             if not registered('Price'):\n    class Price(models.Model):\n        amount = models.DecimalField(max_digits=5, decimal_places=2)\n\
+             try:\n    class Fee(models.Model):\n        x = models.IntegerField()\nexcept ImportError:\n    pass\n\
+             with ctx():\n    def helper():\n        return 1\n\
+             class Invoice(models.Model):\n    class Status(models.TextChoices):\n        DRAFT = 'draft', 'Draft'\n        PAID = 'paid', 'Paid'\n\
+             \x20   status = models.CharField(max_length=5, choices=Status.choices)\n\
+             class Child(Invoice):\n    other = models.CharField(max_length=5, choices=Status.choices)\n",
+        )]);
+        let fields = model_fields(&p);
+        assert!(fields.iter().any(|f| f.starts_with("models.Price.amount dp=Some(2)")), "{fields:?}");
+        assert!(fields.iter().any(|f| f.starts_with("models.Fee.x")), "{fields:?}");
+        assert!(p.index.function("models.helper").is_some());
+        let status = p.model_fields.iter().find(|f| f.model_name == "Invoice" && f.field_name == "status").unwrap();
+        assert_eq!(status.choices, Some(vec!["draft".to_string(), "paid".to_string()]));
+        assert!(p.index.class("models.Invoice.Status").is_some());
+        // Inside a subclass body the bare name does not resolve in Python either,
+        // but through the base's nested class it does here.
+        let other = p.model_fields.iter().find(|f| f.field_name == "other").unwrap();
+        assert_eq!(other.choices, Some(vec!["draft".to_string(), "paid".to_string()]));
+    }
+
+    /// Annotations naming a module-level union alias or a type variable.
+    #[test]
+    fn test_annotation_aliases_and_type_vars() {
+        let p = project(&[(
+            "code.py",
+            "from typing import Optional, TypeVar\nfrom dataclasses import dataclass\n\
+             Requestor = App | User | None\nMaybe = Optional[int]\nN = TypeVar('N')\n\
+             def f(r: Requestor, m: Maybe, n: N, s: str): pass\n\
+             @dataclass\nclass Box[T]:\n    item: T\n    other: N\n    who: Requestor\n    name: str\n",
+        )]);
+        let f = p.index.function("code.f").unwrap();
+        let null: Vec<Option<bool>> = f.params.iter().map(|p| p.nullable).collect();
+        assert_eq!(null, [Some(true), Some(true), None, Some(false)]);
+        assert_eq!(f.params[1].type_name.as_deref(), Some("int"));
+        let b = p.data_classes.iter().find(|c| c.name == "Box").unwrap();
+        let null: Vec<Option<bool>> = b.fields.iter().map(|f| f.nullable).collect();
+        assert_eq!(null, [None, None, Some(true), Some(false)]);
     }
 }

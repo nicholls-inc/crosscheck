@@ -162,15 +162,15 @@ The extractor reads any Python project; Django is one source of target contracts
 
 | Declaration | Recognised by | Contracts per field |
 |-------------|---------------|---------------------|
-| Django model | base `models.Model`, or a project model (abstract or concrete, across modules) | `DecimalField` precision, `CharField` length, `null`, `choices` (literal, constant, `TextChoices`/`IntegerChoices`), `MinValueValidator`/`MaxValueValidator`, `Positive*Field`, implicit defaults |
+| Django model | base `models.Model`, or a project model (abstract or concrete, across modules) | `DecimalField` precision, `CharField` length, `null`, `choices` (literal, constant, `TextChoices`/`IntegerChoices`, also nested in the model), `MinValueValidator`/`MaxValueValidator`, `Positive*Field`, implicit defaults |
 | dataclass | `@dataclass`, `@dataclasses.dataclass(...)` | type, nullability |
 | attrs | `@attr.s`, `@attr.define`, `@attrs.define`, `@define`, `@frozen`, `@mutable` | type, nullability |
-| pydantic | base `BaseModel` | nullability, `Field(max_digits, decimal_places, max_length, ge, gt, le, lt)` with int, float or Decimal bounds, `Annotated[T, Field(...)]`, `con*()`, `Literal[...]`, Enum types; type only in strict mode |
+| pydantic | base `BaseModel` | nullability, `Field(max_digits, decimal_places, max_length, ge, gt, le, lt)` with int, float or Decimal bounds, `Annotated[T, Field(...)]`, `con*()`, `Literal[...]`, Enum types; type only in strict mode. A field with a `field_validator(..., mode="before"/"wrap")` (v1 `validator(..., pre=True)`), or any field of a model with `model_validator(mode="before"/"wrap")` (v1 `root_validator(pre=True)`), has no requirements: the validator may transform the value first |
 | `NamedTuple`, `TypedDict` | base class | type, nullability |
 
-Numeric bounds are exact to six decimal places and rounded conservatively beyond that. Django and non-strict pydantic numeric fields accept int, float and Decimal, so they carry no type contract.
+Classes are found at module level, inside module-level `if` / `try` / `with` blocks (django-oscar's `if not is_model_registered(...)`), and nested in class bodies (for `choices=Status.choices`). Numeric bounds are exact decimals of any size and precision (exponent notation normalised); a copy in millionths, rounded conservatively, is kept for older checkers. Django and non-strict pydantic numeric fields accept int, float and Decimal, so they carry no type contract.
 
-**Function contracts.** Postconditions describe the return value: return annotation, analysis of the `return` expressions, docstring `ensures:`. Preconditions are per parameter: the parameter's annotation and docstring `requires:` clauses about it. Value analysis understands `quantize`, `round`, `Decimal('...')` literals (including exponent notation), Decimal `+`/`-` (`max(p, q)` places) and `*` (`p + q`), local variables, module and class constants, literals, and None producers (`None`, `x if c else None`, `.get(k)`, `getattr(o, n, None)`, `next(it, None)`, `.pop(k, None)`, `re.match/search/fullmatch`, `.first()`/`.last()`, calls to nullable functions, `Optional` parameters). Nullability is flow-sensitive: `if x is None: return`, `if x:`, `assert x is not None` and reassignment in a branch all narrow. Docstring clauses:
+**Function contracts.** Postconditions describe the return value: return annotation, analysis of the `return` expressions, docstring `ensures:`. Preconditions are per parameter: the parameter's annotation and docstring `requires:` clauses about it. Value analysis understands `quantize`, `round`, `Decimal('...')` literals (including exponent notation), Decimal `+`/`-` (`max(p, q)` places) and `*` (`p + q`), `sum()` over a generator or list of Decimals (the elements' places), `min`/`max`, `await`, local variables, module and class constants (also `self.Status.PAID` on a nested class), literals, case mapping of string literals (`"ok".upper()` keeps the length and maps the value), reads of fields of a known class (the values assigned in the function, else the declared nullability), and None producers (`None`, `x if c else None`, `.get(k)`, `getattr(o, n, None)`, `next(it, None)`, `.pop(k, None)`, `re.match/search/fullmatch` and the same methods on a compiled pattern, `.first()`/`.last()`, `x and y` with a nullable operand, `min/max(..., default=None)`, calls to nullable functions, `Optional` parameters and fields). Values that cannot be None: operator results and augmented assignments, `sum/min/max/len/abs/round/int/float/str/bool/list/tuple/dict/set/sorted`, string methods, `%` formatting, `F()` expressions, enum members, generator calls (a function containing `yield`). Nullability is flow-sensitive: `if x is None: return`, `if x:`, `assert x is not None` and reassignment in a branch all narrow; `match` statements count for termination (an exhaustive `match` whose cases all return or raise does not fall through). Docstring clauses:
 
 ```
 requires: precision(amount) <= 10
@@ -189,19 +189,21 @@ A value derived from the parameter of a single-parameter function gets a depende
 
 | Pattern | Edge |
 |---------|------|
-| a write whose value is the result of `g(...)`: `Cls(f=g(...))`, `x = g(...); Cls(f=x)`, positional (dataclass/attrs/NamedTuple), `**{...}`, `Model.objects.create/update/update_or_create/get_or_create(defaults=...)`, `obj.f = ...`, `**kw` forwarders | `g` (call-site node) `writes_to` `Cls.f` |
+| a write whose value is the result of `g(...)`: `Cls(f=g(...))`, `x = g(...); Cls(f=x)`, positional (dataclass/attrs/NamedTuple), `**{...}` (also `**{**base, "f": v}`: the keys no later spread may replace), `Model.objects.create/update/update_or_create/get_or_create(defaults=...)` and their async forms (`acreate`, `aupdate`, `aget_or_create`, `aupdate_or_create`), `cls(...)` / `cls.objects.create(...)` in a classmethod, `obj.f = ...`, `setattr(obj, "f", v)`, `dataclasses.replace(obj, f=v)`, `obj.model_copy(update={...})`, `Cls.model_validate({...})`, `**kw` forwarders, and dicts passed to a function that splats its parameter (`def create(self, data): return Model.objects.create(**data)`) | `g` (call-site node) `writes_to` `Cls.f` |
 | a write of any other expression | enclosing function `writes_to` `Cls.f`, with the expression's own contracts (override) |
 | `h(..., g(...), ...)` | `g` (call-site node) `flows_to` `h`, bound to the parameter |
 | `h(..., expr, ...)` | enclosing function `flows_to` `h`, bound to the parameter, with `expr`'s contracts |
 | `h(...)` | caller `calls` `h` (structural, not checked) |
 
-Calls are resolved through imports (`import m as a`, `from m import x`, relative imports), `self.method()`, `cls.method()`, and methods on receivers of a known class. Every call whose value is used gets its own call-site node, so one helper used in two places does not create impossible paths. Module-level code is analysed as a pseudo function `<module m>`. Names are short when unique and module-qualified otherwise (`billing.records.Invoice.total`).
+`obj.f = v` is flow-sensitive: the values written are those of `obj.f` that reach an `obj.save()` (or `super().save()` in a model method) in the function, or its exits when it never saves `obj`, narrowed there (`if self.f is None: self.f = "x"` or `raise` before the save leaves no None). Calls are resolved through imports (`import m as a`, `from m import x`, relative imports), `self.method()`, `cls.method()`, and methods on receivers of a known class. Every call whose value is used gets its own call-site node, so one helper used in two places does not create impossible paths. Module-level code is analysed as a pseudo function `<module m>`. Names are short when unique and module-qualified otherwise (`billing.records.Invoice.total`).
 
 **Checking.** Each hop of a path compares the source's guarantees with the target's requirements of the same kind, after composing dependent bounds along the path. Errors are reported once per finding with the shortest path, the failing hop and the write or call site. A hop where the target has a requirement but the source has no guarantee of that kind gives a warning, when the requirement could reject a value.
 
 **Trust:** the Python data class semantics in `BehaviorModel.lean` are trusted-not-proved like the Django ones. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is the annotation, which Python does not enforce at runtime; the claim is relative to a type-correct program. pydantic enforces its constraints on construction.
 
-**Not covered:** a tuple return is one value (no per-element contracts); `@property` access and nested functions are not followed; values built inside comprehensions are unknown; a dependent bound is only produced for single-parameter functions; pydantic field aliases; DRF `ModelSerializer` writes; `max_digits` overflow of the integer part is not claimed. A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` is given.
+**Not covered:** a tuple return is one value (no per-element contracts); `@property` access and nested functions are not followed; values built inside comprehensions are unknown (`sum()` of a generator excepted); a dependent bound is only produced for single-parameter functions; pydantic field aliases; DRF `ModelSerializer` writes; `max_digits` overflow of the integer part is not claimed; a method called between an attribute write and the save is assumed not to reassign the attribute. A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` is given.
+
+**Excluding files.** `--exclude GLOB` (repeatable) skips every file whose path relative to the application root, or one of whose directories, matches the glob (`*` and `?` within a path segment, `**` across segments; no leading `**` means anchored at the root). For Django projects whose tests build invalid unsaved instances on purpose, use `--exclude '**/tests/**'` (and `--exclude '**/test_*.py'` for test modules outside a `tests` directory).
 
 ## Output
 
@@ -212,7 +214,7 @@ $ ./target/release/crosscheck-contracts contracts check test_fixtures/transitive
     --lean-checker ./prover/.lake/build/bin/contract-graph-checker --format text
 CONTRACTS CHECKED: 12
 EDGES CHECKED: 3
-PATHS CHECKED: 2
+STATES CHECKED: 2
 
 ERROR  utils.py:27 → models.py:5
        compute_offpeak guarantees precision ≤ 4
@@ -239,4 +241,6 @@ RESULT: 1 error, 1 warning. Exit code 1.
 |------|---------|
 | 0 | All paths consistent |
 | 1 | One or more inconsistencies found |
-| 2 | Extraction, parse or translation failure, or an incomplete check (budget exceeded, checker crashed) |
+| 2 | Extraction, parse or translation failure, or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded, checker crashed or produced no JSON) |
+
+`--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.

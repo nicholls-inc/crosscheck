@@ -18,7 +18,7 @@ fn nullable_db() -> (TempDir, rusqlite::Connection) {
     (tmp, conn)
 }
 
-fn postconditions<'a>(contracts: &'a [ContractRow]) -> Vec<&'a ContractRow> {
+fn postconditions(contracts: &[ContractRow]) -> Vec<&ContractRow> {
     contracts
         .iter()
         .filter(|c| c.contract_role.as_deref() == Some("postcondition"))

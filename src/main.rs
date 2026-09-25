@@ -64,10 +64,20 @@ enum Commands {
         #[arg(long)]
         no_warnings: bool,
 
-        /// Path budget passed to the checker (`--max-paths N`); past it the
-        /// checker reports an incomplete run (exit 2)
+        /// Search budget passed to the checker (`--max-states N`, total hop
+        /// states); past it the checker reports an incomplete run (exit 2).
+        /// `--max-paths` is an alias.
+        #[arg(long, value_name = "N", alias = "max-paths")]
+        max_states: Option<u64>,
+
+        /// Per-edge state budget passed to the checker (`--max-states-per-edge N`)
         #[arg(long, value_name = "N")]
-        max_paths: Option<u64>,
+        max_states_per_edge: Option<u64>,
+
+        /// Skip files whose path relative to the application root (or one of
+        /// its directories) matches GLOB (`*`, `?`, `**`); repeatable
+        #[arg(long, value_name = "GLOB")]
+        exclude: Vec<String>,
 
         /// Skip files with syntax errors (with a warning) instead of failing the run
         #[arg(long)]
@@ -109,11 +119,16 @@ fn run(cli: Cli) -> Result<i32> {
             output_db,
             format,
             no_warnings,
-            max_paths,
+            max_states,
+            max_states_per_edge,
+            exclude,
             allow_parse_errors,
         } => {
             // Layer 1: extract contracts to SQLite (on a thread with a large stack)
-            let options = extractor::ExtractOptions { allow_parse_errors };
+            let options = extractor::ExtractOptions {
+                allow_parse_errors,
+                exclude,
+            };
             let db_path = std::thread::Builder::new()
                 .name("extract".into())
                 .stack_size(EXTRACTION_STACK)
@@ -135,8 +150,11 @@ fn run(cli: Cli) -> Result<i32> {
             })?;
             let mut command = Command::new(&lean_binary);
             command.arg(&db_path);
-            if let Some(n) = max_paths {
-                command.arg("--max-paths").arg(n.to_string());
+            if let Some(n) = max_states {
+                command.arg("--max-states").arg(n.to_string());
+            }
+            if let Some(n) = max_states_per_edge {
+                command.arg("--max-states-per-edge").arg(n.to_string());
             }
             let output = run_checker(command).map_err(|e| {
                 anyhow::anyhow!("Failed to run Lean checker at {}: {e}", lean_binary.display())

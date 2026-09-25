@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Invoice.cancel -> Invoice.status",
+      "source_guarantee": "choices in [cancl]",
+      "target_requirement": "choices in [draft, sent, paid, void]",
+      "target": "Invoice.status"
+    },
+    {
+      "path": "Invoice.refund -> Invoice.status",
+      "source_guarantee": "length ≤ 8",
+      "target_requirement": "length ≤ 5",
+      "target": "Invoice.status"
+    },
+    {
+      "path": "Invoice.refund -> Invoice.status",
+      "source_guarantee": "choices in [refunded]",
+      "target_requirement": "choices in [draft, sent, paid, void]",
+      "target": "Invoice.status"
+    },
+    {
+      "path": "cancel_all -> Invoice.status",
+      "source_guarantee": "choices in [cancl]",
+      "target_requirement": "choices in [draft, sent, paid, void]",
+      "target": "Invoice.status"
+    },
+    {
+      "path": "bad_kind -> Order.kind",
+      "source_guarantee": "choices in [3]",
+      "target_requirement": "choices in [1, 2]",
+      "target": "Order.kind"
+    }
+  ]
+}

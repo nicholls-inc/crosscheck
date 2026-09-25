@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::bounds::{self, BoundKind, Micros};
+use crate::bounds::{self, BoundKind, Dec};
 
 /// Node kinds matching the SQL CHECK constraint.
 #[derive(Debug, Clone, Copy)]
@@ -126,6 +126,8 @@ pub struct NodeRecord {
     pub kind: NodeKind,
     pub source_file: String,
     pub source_line: u32,
+    /// A call-site node (the result of one call; `nodes.is_call_site`).
+    pub is_call_site: bool,
 }
 
 /// A contract to be inserted.
@@ -141,9 +143,12 @@ pub struct ContractRecord {
     /// Legacy readers' copy of the bound (`param_min_micros` / 10^6).
     pub param_min_value: Option<f64>,
     pub param_max_value: Option<f64>,
-    /// Exact bounds times 10^6 (see `bounds`); set for every range row.
+    /// Bounds times 10^6 (see `bounds`), rounded by role; NULL past `i64`.
     pub param_min_micros: Option<i64>,
     pub param_max_micros: Option<i64>,
+    /// Exact bounds as decimal strings (`-?digits(.digits)?`); set for every range row.
+    pub param_min_decimal: Option<String>,
+    pub param_max_decimal: Option<String>,
     /// A JSON array of strings (`["a","x"]`); legacy rows used a comma list.
     pub param_choices: Option<String>,
     pub source_file: String,
@@ -180,6 +185,8 @@ impl ContractRecord {
             param_max_value: None,
             param_min_micros: None,
             param_max_micros: None,
+            param_min_decimal: None,
+            param_max_decimal: None,
             param_choices: None,
             source_file: source_file.to_string(),
             source_line,
@@ -192,21 +199,20 @@ impl ContractRecord {
         }
     }
 
-    /// Set the range columns (legacy value and micros) from bounds in micros.
-    /// `required` selects the rounding/clamping direction (see `bounds::columns`).
-    pub fn with_range(
-        mut self,
-        min: Option<Micros>,
-        max: Option<Micros>,
-        required: bool,
-    ) -> Self {
+    /// Set the range columns (legacy value, micros, exact decimal) from exact
+    /// bounds. `required` selects the micros rounding direction (see `bounds::columns`).
+    pub fn with_range(mut self, min: Option<Dec>, max: Option<Dec>, required: bool) -> Self {
         let (min_kind, max_kind) = if required {
             (BoundKind::RequiredMin, BoundKind::RequiredMax)
         } else {
             (BoundKind::GuaranteedMin, BoundKind::GuaranteedMax)
         };
-        (self.param_min_value, self.param_min_micros) = bounds::columns(min, min_kind);
-        (self.param_max_value, self.param_max_micros) = bounds::columns(max, max_kind);
+        let lo = bounds::columns(min, min_kind);
+        let hi = bounds::columns(max, max_kind);
+        (self.param_min_value, self.param_min_micros, self.param_min_decimal) =
+            (lo.value, lo.micros, lo.decimal);
+        (self.param_max_value, self.param_max_micros, self.param_max_decimal) =
+            (hi.value, hi.micros, hi.decimal);
         self
     }
 
@@ -267,8 +273,9 @@ impl ContractDb {
     pub fn insert_node(&self, node: &NodeRecord) -> Result<i64> {
         self.conn
             .prepare_cached(
-                "INSERT INTO nodes (name, qualified_name, kind, source_file, source_line)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO nodes (name, qualified_name, kind, source_file, source_line,
+                                    is_call_site)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             )?
             .execute(rusqlite::params![
                 node.name,
@@ -276,6 +283,7 @@ impl ContractDb {
                 node.kind.as_str(),
                 node.source_file,
                 node.source_line,
+                node.is_call_site as i64,
             ])?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -290,9 +298,9 @@ impl ContractDb {
                     param_min_value, param_max_value, param_choices,
                     source_file, source_line, is_implicit, verification_level,
                     contract_role, dependent_expr, subject, edge_id,
-                    param_min_micros, param_max_micros
+                    param_min_micros, param_max_micros, param_min_decimal, param_max_decimal
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                          ?17, ?18, ?19, ?20)",
+                          ?17, ?18, ?19, ?20, ?21, ?22)",
             )?
             .execute(rusqlite::params![
                 contract.node_id,
@@ -315,6 +323,8 @@ impl ContractDb {
                 contract.edge_id,
                 contract.param_min_micros,
                 contract.param_max_micros,
+                contract.param_min_decimal,
+                contract.param_max_decimal,
             ])?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -348,7 +358,8 @@ CREATE TABLE nodes (
     kind           TEXT NOT NULL CHECK (kind IN ('model', 'function', 'field')),
     source_file    TEXT NOT NULL,
     source_line    INTEGER NOT NULL,
-    qualified_name TEXT
+    qualified_name TEXT,
+    is_call_site   INTEGER NOT NULL DEFAULT 0 CHECK (is_call_site IN (0, 1))
 );
 
 CREATE TABLE edges (
@@ -389,7 +400,9 @@ CREATE TABLE contracts (
     subject             TEXT,
     edge_id             INTEGER REFERENCES edges(id),
     param_min_micros    INTEGER,
-    param_max_micros    INTEGER
+    param_max_micros    INTEGER,
+    param_min_decimal   TEXT,
+    param_max_decimal   TEXT
 );
 
 CREATE INDEX idx_contracts_node ON contracts(node_id);
