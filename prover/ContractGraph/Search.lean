@@ -1,6 +1,8 @@
 -- Search.lean
 --
--- Path enumeration and checking with shared prefixes.
+-- Path enumeration and checking with shared prefixes. The executable checks
+-- states instead (StateSearch.lean, `runChecker`); this search backs the
+-- path-based reference checker `runCheckerPaths` and `enumeratePaths`.
 --
 -- One depth-first search per function node collects the paths to every model
 -- node. The search carries the composed last hop (`stepEdge`) and the results

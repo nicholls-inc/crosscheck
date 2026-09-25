@@ -8,6 +8,7 @@ import ContractGraph.Checker
 import ContractGraph.Composition
 import ContractGraph.Diagnostics
 import ContractGraph.Search
+import ContractGraph.StateSearch
 
 namespace ContractGraph
 
@@ -174,17 +175,19 @@ def incompleteOutput (graph : ContractGraph) (maxPaths : Nat) (stepsExceeded : B
     exitCode := 2
   }
 
-/-- Run the full checking pipeline on a contract graph. If the search would
-    visit more than `maxPaths` data paths (or more than `stepBudget maxPaths`
-    edges), stop and report the run incomplete (exit code 2). -/
-def runChecker (graph : ContractGraph) (maxPaths : Nat := defaultMaxPaths) : CheckOutput :=
+/-- The path-based checker (the executable's before the state-based
+    `runChecker`; kept as a reference for tests): check every data path. If
+    the search would visit more than `maxPaths` data paths (or more than
+    `stepBudget maxPaths` edges), stop and report the run incomplete (exit
+    code 2). -/
+def runCheckerPaths (graph : ContractGraph) (maxPaths : Nat := defaultMaxPaths) : CheckOutput :=
   let s := searchSetup graph
   let counted := countPaths s graph maxPaths (stepBudget maxPaths)
   if counted.1 > maxPaths then incompleteOutput graph maxPaths false
   else if counted.2 > stepBudget maxPaths then incompleteOutput graph maxPaths true
   else runCheckerWith s graph
 
-/-! ## Soundness of the executable's verdict
+/-! ## Soundness of the path-based checker's verdict
 
 Exit code 0 means the budget was not exceeded and no reported entry has
 severity "error". Every error `CheckResult` of every checked path yields such
@@ -210,10 +213,10 @@ theorem incompleteOutput_exitCode (g : ContractGraph) (m : Nat) (b : Bool) :
     (incompleteOutput g m b).exitCode = 2 := rfl
 
 /-- Exit code 0 means the budget was not exceeded: the full search ran. -/
-theorem runChecker_eq_of_exitCode_zero (g : ContractGraph) (maxPaths : Nat)
-    (h : (runChecker g maxPaths).exitCode = 0) :
-    runChecker g maxPaths = runCheckerWith (searchSetup g) g := by
-  unfold runChecker at h ⊢
+theorem runCheckerPaths_eq_of_exitCode_zero (g : ContractGraph) (maxPaths : Nat)
+    (h : (runCheckerPaths g maxPaths).exitCode = 0) :
+    runCheckerPaths g maxPaths = runCheckerWith (searchSetup g) g := by
+  unfold runCheckerPaths at h ⊢
   simp only at h ⊢
   split at h
   · simp [incompleteOutput] at h
@@ -224,10 +227,10 @@ theorem runChecker_eq_of_exitCode_zero (g : ContractGraph) (maxPaths : Nat)
 
 /-- Exit code 0 iff no reported entry has severity "error" (an incomplete
     run reports one). -/
-theorem runChecker_exitCode_eq_zero_iff (g : ContractGraph) (maxPaths : Nat := defaultMaxPaths) :
-    (runChecker g maxPaths).exitCode = 0 ↔
-      ∀ e ∈ (runChecker g maxPaths).results, e.severity ≠ "error" := by
-  unfold runChecker
+theorem runCheckerPaths_exitCode_eq_zero_iff (g : ContractGraph) (maxPaths : Nat := defaultMaxPaths) :
+    (runCheckerPaths g maxPaths).exitCode = 0 ↔
+      ∀ e ∈ (runCheckerPaths g maxPaths).results, e.severity ≠ "error" := by
+  unfold runCheckerPaths
   simp only
   split
   · simp [incompleteOutput]
@@ -362,10 +365,10 @@ theorem runCheckerWith_paths (s : SearchSetup) (g : ContractGraph) :
   simp only [runCheckerWith, foldRaw_eq, foldl_count_report, Nat.zero_add]
 
 /-- With exit code 0, no result of any checked path is an error. -/
-theorem runChecker_noErrors (g : ContractGraph) {maxPaths : Nat}
-    (h : (runChecker g maxPaths).exitCode = 0) :
+theorem runCheckerPaths_noErrors (g : ContractGraph) {maxPaths : Nat}
+    (h : (runCheckerPaths g maxPaths).exitCode = 0) :
     ∀ y ∈ checkAllPaths g, ∀ r ∈ y.2, r.isError = false := by
-  have heq := runChecker_eq_of_exitCode_zero g maxPaths h
+  have heq := runCheckerPaths_eq_of_exitCode_zero g maxPaths h
   rw [heq] at h
   intro y hy r hr
   cases herr : r.isError with
@@ -381,47 +384,401 @@ theorem runChecker_noErrors (g : ContractGraph) {maxPaths : Nat}
     so the path budget was not exceeded), every enumerated path is stepwise
     sound: at every hop, the (composed) source guarantees imply the target's
     requirements. -/
-theorem runChecker_sound (g : ContractGraph) {maxPaths : Nat}
-    (h : (runChecker g maxPaths).exitCode = 0) :
+theorem runCheckerPaths_sound (g : ContractGraph) {maxPaths : Nat}
+    (h : (runCheckerPaths g maxPaths).exitCode = 0) :
     ∀ p ∈ enumeratePaths g, p ≠ [] → stepwiseSound p := by
   intro p hp hne
   obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hp
   apply checkPath_sound_noErrors _ hne
   rw [← checkAllPaths_spec g y hy]
-  exact runChecker_noErrors g h y hy
+  exact runCheckerPaths_noErrors g h y hy
 
 /-- END-TO-END SOUNDNESS over all data paths. If the checker exits with code 0,
     every checked data path of the graph (`IsDataPath`: simple, non-`calls`
     edges, function node to model node) is stepwise sound — not only the ones
     the enumeration happened to produce (`enumeratePaths_complete`). -/
-theorem runChecker_sound_all (g : ContractGraph) {maxPaths : Nat}
-    (h : (runChecker g maxPaths).exitCode = 0) :
+theorem runCheckerPaths_sound_all (g : ContractGraph) {maxPaths : Nat}
+    (h : (runCheckerPaths g maxPaths).exitCode = 0) :
     ∀ p, IsDataPath g p → stepwiseSound p :=
-  fun p hp => runChecker_sound g h p (enumeratePaths_complete g p hp) hp.1
+  fun p hp => runCheckerPaths_sound g h p (enumeratePaths_complete g p hp) hp.1
 
-/-- Parse the arguments after the database path. -/
-def parseOptions : List String → Except String Nat
-  | [] => .ok defaultMaxPaths
-  | ["--max-paths", n] =>
-    match n.toNat? with
-    | some k => .ok k
-    | none => .error s!"--max-paths expects a non-negative integer, got '{n}'"
+
+/-! ## The state-based checker (the executable's)
+
+`runChecker` explores the composed hops reachable from the first hops of
+paths (`explore`, StateSearch.lean), checks the exploration is closed
+(`closedStates`), and checks each hop once (`checkHop`). Each finding is
+reported once (deduplicated as by `dedupeResults`, keeping the shortest
+witness path), with a witness data path: the shortest walk found to the hop,
+then a shortest continuation to a model node. -/
+
+/-- Default for `--max-states` (alias `--max-paths`): distinct hop states in
+    total. -/
+def defaultMaxStates : Nat := 2000000
+
+/-- Default for `--max-states-per-edge`: distinct composed states on one
+    edge. Only a cycle through a dependent postcondition that keeps changing
+    a bound gets near it. -/
+def defaultMaxPerEdge : Nat := 64
+
+/-- Deduplicated report under construction: the entries in first-seen order,
+    and an index from a finding key to an entry's position. The index is a
+    hint: a hit is confirmed with `sameFinding`, a miss appends. -/
+structure Dedupe where
+  arr : Array ResultEntry := #[]
+  idx : Std.HashMap String Nat := ∅
+
+/-- The fields `sameFinding` compares, as one key. -/
+def findingKey (r : ResultEntry) : String :=
+  "\x1f".intercalate [r.severity, r.guaranteeFile, toString r.guaranteeLine, r.target.file,
+    toString r.target.line, r.target.name, toString r.hop, r.site.file, toString r.site.line,
+    r.sourceGuarantee, r.targetRequirement, r.suggestion]
+
+def Dedupe.push (d : Dedupe) (r : ResultEntry) : Dedupe :=
+  { arr := d.arr.push r, idx := d.idx.insert (findingKey r) d.arr.size }
+
+/-- `dedupeStep` with an index: add `r`, or, if the report already has the
+    same finding, keep whichever of the two has the shorter path. -/
+def Dedupe.step (d : Dedupe) (r : ResultEntry) : Dedupe :=
+  match d.idx[findingKey r]? with
+  | some i =>
+    if h : i < d.arr.size then
+      if sameFinding d.arr[i] r then
+        if r.path.length < d.arr[i].path.length then { d with arr := d.arr.set i r h } else d
+      else d.push r
+    else d.push r
+  | none => d.push r
+
+/-- The report entries of one state: those of its hop's results, with the
+    state's witness path. -/
+def stateEntries (st : StateSetup) (ex : Explored) (r : StateRec) : List ResultEntry :=
+  let rs := checkHop r.hop
+  if rs.all (·.isConsistent) then [] else collectEntries (witnessOf st ex r) rs
+
+/-- The deduplicated report of every explored state. -/
+def reportStates (st : StateSetup) (ex : Explored) : List ResultEntry :=
+  (ex.recs.foldl (fun d r => (stateEntries st ex r).foldl Dedupe.step d) {}).arr.toList
+
+/-- The output of a finished, closed exploration. `paths_checked` counts the
+    checked hop states. -/
+def runStatesWith (st : StateSetup) (graph : ContractGraph) (ex : Explored) : CheckOutput :=
+  let results := reportStates st ex
+  { summary := {
+      contractsChecked := countContracts graph.nodes
+      edgesChecked := graph.edges.length
+      pathsChecked := ex.recs.size
+    }
+    results := results
+    exitCode := if results.any (·.severity == "error") then 1 else 0 }
+
+/-- An incomplete run: nothing reported but one result of severity error,
+    status "incomplete", with `msg`; exit code 2. -/
+def incompleteWith (graph : ContractGraph) (msg : String) : CheckOutput :=
+  { summary := {
+      contractsChecked := countContracts graph.nodes
+      edgesChecked := graph.edges.length
+      pathsChecked := 0
+    }
+    results := [{
+      status := "incomplete"
+      severity := "error"
+      source := { file := "", line := 0, name := "" }
+      target := { file := "", line := 0, name := "" }
+      path := []
+      sourceGuarantee := ""
+      targetRequirement := ""
+      verificationLevel := ""
+      suggestion := msg }]
+    exitCode := 2
+  }
+
+/-- The last `n` elements of a list. -/
+def lastN {α : Type} (n : Nat) (xs : List α) : List α := xs.drop (xs.length - n)
+
+/-- Why a state cap was exceeded: the hop, its site, the walk that reached
+    the new state (with the cycle it went round, when it repeats a node) and
+    the composed bounds of the hop's source. -/
+def capMessage (ex : Explored) (maxPerEdge : Nat) (hop : Edge) (pred : Nat) (raw : Edge) :
+    String :=
+  let walk := prefixOf ex.recs ⟨hop, pred, raw⟩
+  let names := pathNamesOf walk
+  let ids := walk.map (·.source.id) ++ [raw.target.id]
+  -- the cycle: from the last earlier visit of the hop's target to the end
+  let cycle :=
+    match (ids.dropLast.zip names.dropLast).reverse.findIdx? (·.1 == raw.target.id) with
+    | some k => lastN (k + 2) names
+    | none => []
+  let site := if raw.siteFile.isEmpty then "" else s!" (site {raw.siteFile}:{raw.siteLine})"
+  let bounds := ", ".intercalate (hop.source.postconditions.map formatBound)
+  let shown := lastN 12 names
+  s!"State cap exceeded (--max-states-per-edge {maxPerEdge}): the edge " ++
+  s!"{raw.source.name} -> {raw.target.name}{site} reached more than {maxPerEdge} distinct " ++
+  s!"composed states. " ++
+  (if cycle.isEmpty then "" else s!"Cycle: {" -> ".intercalate cycle}. ") ++
+  s!"Walk (last {shown.length} nodes): {" -> ".intercalate shown}; composed source " ++
+  s!"bounds: [{bounds}]. " ++
+  (if cycle.isEmpty then "Upstream paths give this edge many different composed bounds. "
+   else "A dependent postcondition on this cycle keeps changing a bound. ") ++
+  "Nothing was reported. Raise --max-states-per-edge, or check a smaller part of the project."
+
+/-- Run the full checking pipeline on a contract graph (state-based). If the
+    exploration exceeds `maxStates` states, or `maxPerEdge` states on one
+    edge, stop and report the run incomplete (exit code 2). -/
+def runChecker (graph : ContractGraph) (maxStates : Nat := defaultMaxStates)
+    (maxPerEdge : Nat := defaultMaxPerEdge) : CheckOutput :=
+  let st := stateSetup graph
+  match explore st graph maxStates maxPerEdge with
+  | .done ex =>
+    if closedStates st.setup graph ex then runStatesWith st graph ex
+    else incompleteWith graph
+      "Internal error: the state exploration is not closed under successors. Nothing was reported."
+  | .tooMany ex =>
+    incompleteWith graph <|
+      s!"State budget exceeded (--max-states {maxStates}): the exploration reached more than " ++
+      s!"{maxStates} distinct hop states ({ex.recs.size} explored). Nothing was reported. " ++
+      "Raise --max-states (alias --max-paths), or check a smaller part of the project."
+  | .capped ex hop pred raw => incompleteWith graph (capMessage ex maxPerEdge hop pred raw)
+
+/-! ### Soundness of the state-based checker
+
+Exit code 0 means the exploration finished, passed the closure check, and no
+reported entry has severity "error". Every error result of every explored
+state's `checkHop` yields such an entry (`reportStates_error`: the indexed
+deduplication never drops the last entry of a severity). The closure check
+alone gives that every `checkPath` result of every data path is a `checkHop`
+result of an explored state (`closedStates_checkPath`), whatever the
+unverified exploration did. Hence no data path has an error result, and
+`checkPath_sound_noErrors` gives `stepwiseSound`. The witness paths and the
+exploration order play no part. -/
+
+theorem runStatesWith_exitCode_eq_zero_iff (st : StateSetup) (g : ContractGraph) (ex : Explored) :
+    (runStatesWith st g ex).exitCode = 0 ↔
+      ∀ e ∈ (runStatesWith st g ex).results, e.severity ≠ "error" := by
+  simp only [runStatesWith]
+  split
+  · rename_i hany
+    obtain ⟨e, he, hs⟩ := List.any_eq_true.mp hany
+    simp only [beq_iff_eq] at hs
+    exact ⟨fun h => absurd h (by decide), fun h => absurd hs (h e he)⟩
+  · rename_i hany
+    refine ⟨fun _ e he hs => hany (List.any_eq_true.mpr ⟨e, he, by simp [hs]⟩), fun _ => rfl⟩
+
+/-- An incomplete run exits with code 2. -/
+theorem incompleteWith_exitCode (g : ContractGraph) (m : String) :
+    (incompleteWith g m).exitCode = 2 := rfl
+
+/-- Exit code 0 iff no reported entry has severity "error" (an incomplete
+    run reports one). -/
+theorem runChecker_exitCode_eq_zero_iff (g : ContractGraph) (maxStates : Nat := defaultMaxStates)
+    (maxPerEdge : Nat := defaultMaxPerEdge) :
+    (runChecker g maxStates maxPerEdge).exitCode = 0 ↔
+      ∀ e ∈ (runChecker g maxStates maxPerEdge).results, e.severity ≠ "error" := by
+  unfold runChecker
+  simp only
+  split
+  · split
+    · exact runStatesWith_exitCode_eq_zero_iff _ _ _
+    · simp [incompleteWith]
+  · simp [incompleteWith]
+  · simp [incompleteWith]
+
+/-- Exit code 0 means the exploration finished and passed the closure check. -/
+theorem runChecker_done_of_exitCode_zero (g : ContractGraph) (maxStates maxPerEdge : Nat)
+    (h : (runChecker g maxStates maxPerEdge).exitCode = 0) :
+    ∃ ex, closedStates (searchSetup g) g ex = true ∧
+      runChecker g maxStates maxPerEdge = runStatesWith (stateSetup g) g ex := by
+  unfold runChecker at h ⊢
+  simp only at h ⊢
+  split at h
+  · rename_i ex _
+    split at h
+    · rename_i hc
+      exact ⟨ex, hc, by simp [hc]⟩
+    · simp [incompleteWith] at h
+  · simp [incompleteWith] at h
+  · simp [incompleteWith] at h
+
+/-- A dedupe step keeps an entry of every severity already present. -/
+theorem Dedupe.step_keeps (d : Dedupe) (r : ResultEntry) (s : String)
+    (h : ∃ x ∈ d.arr.toList, x.severity = s) : ∃ y ∈ (d.step r).arr.toList, y.severity = s := by
+  have hpush : ∃ y ∈ (d.push r).arr.toList, y.severity = s := by
+    obtain ⟨x, hx, hs⟩ := h
+    exact ⟨x, by simp [Dedupe.push, hx], hs⟩
+  unfold Dedupe.step
+  split
+  · rename_i i _
+    split
+    · rename_i hi
+      split
+      · rename_i hsf
+        split
+        · obtain ⟨x, hx, hs⟩ := h
+          obtain ⟨j, hj, rfl⟩ := Array.mem_iff_getElem.mp (Array.mem_toList_iff.mp hx)
+          by_cases hji : j = i
+          · subst hji
+            refine ⟨r, Array.mem_toList_iff.mpr (Array.mem_set hi), ?_⟩
+            rw [← sameFinding_severity hsf]; exact hs
+          · refine ⟨d.arr[j], Array.mem_toList_iff.mpr ?_, hs⟩
+            have hmem := Array.getElem_mem (xs := d.arr.set i r hi) (i := j) (by simpa using hj)
+            rwa [Array.getElem_set_ne hi hj (Ne.symm hji)] at hmem
+        · exact h
+      · exact hpush
+    · exact hpush
+  · exact hpush
+
+/-- A dedupe step keeps an entry with the new entry's severity. -/
+theorem Dedupe.step_adds (d : Dedupe) (r : ResultEntry) :
+    ∃ y ∈ (d.step r).arr.toList, y.severity = r.severity := by
+  have hpush : ∃ y ∈ (d.push r).arr.toList, y.severity = r.severity :=
+    ⟨r, by simp [Dedupe.push], rfl⟩
+  unfold Dedupe.step
+  split
+  · rename_i i _
+    split
+    · rename_i hi
+      split
+      · rename_i hsf
+        split
+        · exact ⟨r, Array.mem_toList_iff.mpr (Array.mem_set hi), rfl⟩
+        · exact ⟨d.arr[i], Array.mem_toList_iff.mpr (Array.getElem_mem hi),
+            sameFinding_severity hsf⟩
+      · exact hpush
+    · exact hpush
+  · exact hpush
+
+theorem foldl_Dedupe_keeps (rs : List ResultEntry) (d : Dedupe) (s : String)
+    (h : ∃ x ∈ d.arr.toList, x.severity = s) :
+    ∃ y ∈ (rs.foldl Dedupe.step d).arr.toList, y.severity = s := by
+  induction rs generalizing d with
+  | nil => exact h
+  | cons hd tl ih => exact ih _ (Dedupe.step_keeps d hd s h)
+
+theorem foldl_Dedupe_finds (rs : List ResultEntry) (e : ResultEntry) (he : e ∈ rs) :
+    ∀ d, ∃ y ∈ (rs.foldl Dedupe.step d).arr.toList, y.severity = e.severity := by
+  induction rs with
+  | nil => cases he
+  | cons hd tl ih =>
+    intro d
+    rcases List.mem_cons.mp he with rfl | htl
+    · exact foldl_Dedupe_keeps tl _ _ (Dedupe.step_adds d e)
+    · exact ih htl _
+
+/-- Every error result of every explored state's hop is reported with
+    severity "error". -/
+theorem reportStates_error (st : StateSetup) (ex : Explored) (r : StateRec)
+    (hr : r ∈ ex.recs.toList) (x : CheckResult) (hx : x ∈ checkHop r.hop)
+    (herr : x.isError = true) : ∃ e ∈ reportStates st ex, e.severity = "error" := by
+  have hent : ∃ e ∈ stateEntries st ex r, e.severity = "error" := by
+    unfold stateEntries
+    simp only
+    split
+    · rename_i hall
+      have := List.all_eq_true.mp hall x hx
+      cases x with
+      | consistent => cases herr
+      | inconsistent _ => simp [CheckResult.isConsistent] at this
+    · exact collectEntries_error _ _ x hx herr
+  obtain ⟨e, he, hs⟩ := hent
+  unfold reportStates
+  rw [← Array.foldl_toList]
+  let F := fun (d : Dedupe) (r : StateRec) => (stateEntries st ex r).foldl Dedupe.step d
+  suffices ∀ (l : List StateRec), r ∈ l → ∀ d, ∃ y ∈ (l.foldl F d).arr.toList, y.severity = "error"
+    from this _ hr {}
+  intro l hl
+  induction l with
+  | nil => cases hl
+  | cons hd tl ih =>
+    intro d
+    rcases List.mem_cons.mp hl with rfl | htl
+    · have ⟨y, hy, hys⟩ := foldl_Dedupe_finds _ e he d
+      have key : ∀ (l : List StateRec) d', (∃ y ∈ d'.arr.toList, y.severity = "error") →
+          ∃ y ∈ (l.foldl F d').arr.toList, y.severity = "error" := by
+        intro l
+        induction l with
+        | nil => exact fun _ h => h
+        | cons a l ih' => exact fun d' h => ih' _ (foldl_Dedupe_keeps _ d' _ h)
+      exact key tl _ ⟨y, hy, hys.trans hs⟩
+    · exact ih htl _
+
+/-- With exit code 0, no result of any data path's `checkPath` is an error. -/
+theorem runChecker_noErrors (g : ContractGraph) {maxStates maxPerEdge : Nat}
+    (h : (runChecker g maxStates maxPerEdge).exitCode = 0) :
+    ∀ p, IsDataPath g p → ∀ x ∈ checkPath p, x.isError = false := by
+  obtain ⟨ex, hc, heq⟩ := runChecker_done_of_exitCode_zero g maxStates maxPerEdge h
+  intro p hp x hx
+  cases herr : x.isError with
+  | false => rfl
+  | true =>
+    exfalso
+    obtain ⟨r, hr, hxr⟩ := closedStates_checkPath g ex hc p hp x hx
+    obtain ⟨e, he, hs⟩ := reportStates_error (stateSetup g) ex r hr x hxr herr
+    rw [heq] at h
+    exact (runStatesWith_exitCode_eq_zero_iff _ g ex).mp h e he hs
+
+/-- END-TO-END SOUNDNESS over all data paths. If the checker exits with code 0
+    (warnings allowed; so the state budgets were not exceeded), every checked
+    data path of the graph (`IsDataPath`: simple, non-`calls` edges, function
+    node to model node) is stepwise sound: at every hop, the (composed) source
+    guarantees imply the target's requirements. -/
+theorem runChecker_sound_all (g : ContractGraph) {maxStates maxPerEdge : Nat}
+    (h : (runChecker g maxStates maxPerEdge).exitCode = 0) :
+    ∀ p, IsDataPath g p → stepwiseSound p :=
+  fun p hp => checkPath_sound_noErrors p hp.1 (runChecker_noErrors g h p hp)
+
+/-- END-TO-END SOUNDNESS over the enumerated paths (every one of which is a
+    data path's worth of hops: `enumeratePaths` is complete, and every data
+    path is covered by `runChecker_sound_all`). -/
+theorem runChecker_sound (g : ContractGraph) {maxStates maxPerEdge : Nat}
+    (h : (runChecker g maxStates maxPerEdge).exitCode = 0) :
+    ∀ p, IsDataPath g p → p ∈ enumeratePaths g ∧ stepwiseSound p :=
+  fun p hp => ⟨enumeratePaths_complete g p hp, runChecker_sound_all g h p hp⟩
+
+/-! ## Command line -/
+
+/-- Checker options. -/
+structure Options where
+  maxStates : Nat := defaultMaxStates
+  maxPerEdge : Nat := defaultMaxPerEdge
+  deriving Repr, BEq
+
+/-- Parse the arguments after the database path: `--max-states N`
+    (`--max-paths N` is an alias, kept for the extractor CLI) and
+    `--max-states-per-edge N`, in any order. -/
+def parseOptionsFrom (o : Options) : List String → Except String Options
+  | [] => .ok o
+  | flag :: n :: rest =>
+    if flag == "--max-states" || flag == "--max-paths" || flag == "--max-states-per-edge" then
+      match n.toNat? with
+      | some k =>
+        parseOptionsFrom (if flag == "--max-states-per-edge" then { o with maxPerEdge := k }
+          else { o with maxStates := k }) rest
+      | none => .error s!"{flag} expects a non-negative integer, got '{n}'"
+    else .error s!"unexpected arguments: {" ".intercalate (flag :: n :: rest)}"
   | args => .error s!"unexpected arguments: {" ".intercalate args}"
+
+def parseOptions (args : List String) : Except String Options := parseOptionsFrom {} args
+
+def usage : String :=
+  "Usage: contract-graph-checker <database.sqlite> [--max-states N] [--max-states-per-edge K]\n" ++
+  "  --max-states N           stop past N distinct hop states (default " ++
+  s!"{defaultMaxStates}; --max-paths N is an alias)\n" ++
+  "  --max-states-per-edge K  stop past K distinct composed states on one edge (default " ++
+  s!"{defaultMaxPerEdge})"
 
 /-- Main entry point. -/
 def main (args : List String) : IO UInt32 := do
   match args with
   | [] =>
-    IO.eprintln "Usage: contract-graph-checker <database.sqlite> [--max-paths N]"
+    IO.eprintln usage
     IO.eprintln "  (No database path provided)"
     return 2
   | dbPath :: rest =>
     match parseOptions rest with
     | .error msg =>
       IO.eprintln s!"Error: {msg}"
-      IO.eprintln "Usage: contract-graph-checker <database.sqlite> [--max-paths N]"
+      IO.eprintln usage
       return 2
-    | .ok maxPaths =>
+    | .ok opts =>
       -- Check if the database file exists
       let dbFile : System.FilePath := ⟨dbPath⟩
       let fileExists ← dbFile.pathExists
@@ -432,7 +789,7 @@ def main (args : List String) : IO UInt32 := do
         -- Read the contract graph from SQLite
         let graph ← readContractGraph dbPath
         -- Run the checker pipeline
-        let output := runChecker graph maxPaths
+        let output := runChecker graph opts.maxStates opts.maxPerEdge
         -- Output JSON to stdout
         IO.println (outputToJson output)
         return output.exitCode.toUInt32

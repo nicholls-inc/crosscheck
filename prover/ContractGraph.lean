@@ -6,3 +6,4 @@ import ContractGraph.Checker
 import ContractGraph.Composition
 import ContractGraph.Diagnostics
 import ContractGraph.Search
+import ContractGraph.StateSearch

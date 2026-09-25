@@ -53,9 +53,14 @@ def graph : ContractGraph :=
 -- (test module only; the library has no `native_decide`).
 theorem graph_exit_zero : (runChecker graph).exitCode = 0 := by native_decide
 
--- End-to-end: every path the checker enumerates is stepwise sound.
-theorem graph_sound : ∀ p ∈ enumeratePaths graph, p ≠ [] → stepwiseSound p :=
+-- End-to-end: every data path is enumerated and stepwise sound.
+theorem graph_sound : ∀ p, IsDataPath graph p → p ∈ enumeratePaths graph ∧ stepwiseSound p :=
   runChecker_sound graph graph_exit_zero
+
+-- The same for the path-based reference checker.
+theorem graph_exit_zero_paths : (runCheckerPaths graph).exitCode = 0 := by native_decide
+theorem graph_sound_paths : ∀ p ∈ enumeratePaths graph, p ≠ [] → stepwiseSound p :=
+  runCheckerPaths_sound graph graph_exit_zero_paths
 
 -- The exit-code characterisation, instantiated.
 example : ∀ e ∈ (runChecker graph).results, e.severity ≠ "error" :=

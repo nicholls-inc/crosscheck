@@ -103,27 +103,32 @@ def prunedGraph : ContractGraph :=
 #guard ((searchSetup prunedGraph).out 1).map (·.target.name) == ["g2", "M.b"]
 -- ... while the naive search explores it.
 #guard (enumeratePaths prunedGraph).length == 5
-#guard (runChecker prunedGraph).summary.pathsChecked == 5
+#guard (runCheckerPaths prunedGraph).summary.pathsChecked == 5
 
-/-! ### Path budget -/
+/-! ### Path budget (path-based reference checker `runCheckerPaths`) -/
 
 -- chainGraph has 3 data paths.
-#guard (runChecker NoErrorsSoundness.chainGraph 3).exitCode == 0
-#guard (runChecker NoErrorsSoundness.chainGraph 3).summary.pathsChecked == 3
+#guard (runCheckerPaths NoErrorsSoundness.chainGraph 3).exitCode == 0
+#guard (runCheckerPaths NoErrorsSoundness.chainGraph 3).summary.pathsChecked == 3
 -- A budget of 2 is exceeded: exit code 2, one "incomplete" error, no paths checked.
-#guard (runChecker NoErrorsSoundness.chainGraph 2).exitCode == 2
-#guard (runChecker NoErrorsSoundness.chainGraph 2).results.map (fun r => (r.status, r.severity))
+#guard (runCheckerPaths NoErrorsSoundness.chainGraph 2).exitCode == 2
+#guard (runCheckerPaths NoErrorsSoundness.chainGraph 2).results.map (fun r => (r.status, r.severity))
   == [("incomplete", "error")]
-#guard contains (firstSuggestion (runChecker NoErrorsSoundness.chainGraph 2).results)
+#guard contains (firstSuggestion (runCheckerPaths NoErrorsSoundness.chainGraph 2).results)
   "--max-paths 2"
-#guard (runChecker NoErrorsSoundness.chainGraph 2).summary.pathsChecked == 0
-#guard (runChecker NoErrorsSoundness.chainGraph 2).summary.edgesChecked == 3
-#guard contains (outputToJson (runChecker NoErrorsSoundness.chainGraph 2)) "\"exit_code\": 2"
-#guard contains (outputToJson (runChecker NoErrorsSoundness.chainGraph 2)) "\"status\": \"incomplete\""
--- Command-line option.
-#guard (parseOptions []).toOption == some defaultMaxPaths
-#guard (parseOptions ["--max-paths", "17"]).toOption == some 17
+#guard (runCheckerPaths NoErrorsSoundness.chainGraph 2).summary.pathsChecked == 0
+#guard (runCheckerPaths NoErrorsSoundness.chainGraph 2).summary.edgesChecked == 3
+#guard contains (outputToJson (runCheckerPaths NoErrorsSoundness.chainGraph 2)) "\"exit_code\": 2"
+#guard contains (outputToJson (runCheckerPaths NoErrorsSoundness.chainGraph 2)) "\"status\": \"incomplete\""
+-- Command-line options (state-based checker; `--max-paths` is an alias of
+-- `--max-states`).
+#guard (parseOptions []).toOption == some {}
+#guard (parseOptions ["--max-paths", "17"]).toOption == some { maxStates := 17 }
+#guard (parseOptions ["--max-states", "17"]).toOption == some { maxStates := 17 }
+#guard (parseOptions ["--max-states-per-edge", "5", "--max-states", "9"]).toOption
+  == some { maxStates := 9, maxPerEdge := 5 }
 #guard (parseOptions ["--max-paths", "x"]).toOption == none
+#guard (parseOptions ["--max-states"]).toOption == none
 #guard (parseOptions ["--bogus"]).toOption == none
 
 /-- A diamond: `a_i → a_{i+1}` and `a_i → b_{i+1}`, `b_i → a_{i+1}`, `b_i →
@@ -145,14 +150,17 @@ def diamond (n : Nat) : ContractGraph :=
         [flow (a i) (a (i+1)), flow (a i) (b (i+1)), flow (b i) (a (i+1)), flow (b i) (b (i+1))]) }
 
 -- 2^6 paths from src (a1 and a8 fixed), 2 · 2^(7-i) from layer i, and a8...
-#guard (runChecker (diamond 8)).summary.pathsChecked == 319
+#guard (runCheckerPaths (diamond 8)).summary.pathsChecked == 319
 #guard agreesWithNaive (diamond 6)
 #guard (errors (runChecker (diamond 8))).map (·.sourceGuarantee) == ["precision ≤ 3"]
-#guard (runChecker (diamond 8) 100).exitCode == 2
+#guard (runCheckerPaths (diamond 8) 100).exitCode == 2
 
 -- Soundness still holds for the budgeted runner: exit code 0 with any
 -- budget gives stepwise soundness of every data path.
-example (g : ContractGraph) (m : Nat) (h : (runChecker g m).exitCode = 0) :
+example (g : ContractGraph) (m : Nat) (h : (runCheckerPaths g m).exitCode = 0) :
+    ∀ p, IsDataPath g p → stepwiseSound p := runCheckerPaths_sound_all g h
+-- ... and for the state-based one, with any state budgets.
+example (g : ContractGraph) (m k : Nat) (h : (runChecker g m k).exitCode = 0) :
     ∀ p, IsDataPath g p → stepwiseSound p := runChecker_sound_all g h
 
 /-! ## 2. Node locations (M1, M2) and 3. sites (M3) -/

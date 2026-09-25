@@ -9,7 +9,8 @@ the checker on a database with the v1 schema (no v2 columns), which must still
 translate, and on a round-3 database (edges.site_file/site_line,
 contracts.param_min_micros/param_max_micros, JSON param_choices): node
 locations, sites, exact bounds, legacy REAL fallback, choices, and the
---max-paths budget (exit code 2).
+state budgets (--max-states / --max-paths alias, --max-states-per-edge; exit
+code 2).
 
 Usage: prover/scripts/translation_smoke.py [path/to/contract-graph-checker]
 Requires: cd prover && lake build
@@ -355,20 +356,35 @@ def check_v3(checker, tmp):
     check(sites == [("a.py", 10), ("b.py", 20), ("c.py", 30)],
           "v3: findings at different sites are not merged (M3)")
 
-    # Path budget: 9 data paths; a budget of 3 is exceeded.
-    proc = subprocess.run([checker, v3, "--max-paths", "3"], capture_output=True, text=True)
+    # State budget (--max-states; --max-paths is its alias): 10 hop states
+    # (every edge once, and keep -> S.e also composed after five); a budget
+    # of 3 is exceeded.
+    proc = subprocess.run([checker, v3], capture_output=True, text=True)
+    states = json.loads(proc.stdout)["summary"]["paths_checked"]
+    check(states == 10, "v3: 10 hop states checked")
+    for flag in ["--max-paths", "--max-states"]:
+        proc = subprocess.run([checker, v3, flag, "3"], capture_output=True, text=True)
+        out = json.loads(proc.stdout)
+        check(proc.returncode == 2 and out["exit_code"] == 2, f"v3: {flag} exceeded exits 2")
+        check([(r["status"], r["severity"]) for r in out["results"]] == [("incomplete", "error")]
+              and "--max-states 3" in out["results"][0]["suggestion"],
+              f"v3: {flag}: one incomplete error naming the budget")
+        check(out["summary"]["paths_checked"] == 0 and out["summary"]["edges_checked"] == 9,
+              f"v3: {flag}: incomplete summary")
+    proc = subprocess.run([checker, v3, "--max-paths", str(states)], capture_output=True, text=True)
+    check(proc.returncode == 1 and json.loads(proc.stdout)["summary"]["paths_checked"] == states,
+          "v3: a budget equal to the state count is not exceeded")
+    proc = subprocess.run([checker, v3, "--max-states-per-edge", "2", "--max-states", "100"],
+                          capture_output=True, text=True)
+    check(proc.returncode == 1, "v3: at most two states per edge fit a per-edge cap of 2")
+    proc = subprocess.run([checker, v3, "--max-states-per-edge", "1"], capture_output=True, text=True)
     out = json.loads(proc.stdout)
-    check(proc.returncode == 2 and out["exit_code"] == 2, "v3: --max-paths exceeded exits 2")
-    check([(r["status"], r["severity"]) for r in out["results"]] == [("incomplete", "error")]
-          and "--max-paths 3" in out["results"][0]["suggestion"],
-          "v3: one incomplete error naming the budget")
-    check(out["summary"]["paths_checked"] == 0 and out["summary"]["edges_checked"] == 9,
-          "v3: incomplete summary")
-    proc = subprocess.run([checker, v3, "--max-paths", "9"], capture_output=True, text=True)
-    check(proc.returncode == 1 and json.loads(proc.stdout)["summary"]["paths_checked"] == 9,
-          "v3: a budget equal to the path count is not exceeded")
+    check(proc.returncode == 2 and "keep -> S.e" in out["results"][0]["suggestion"],
+          "v3: per-edge cap 1 exceeded on keep -> S.e (raw and composed)")
     proc = subprocess.run([checker, v3, "--max-paths", "many"], capture_output=True, text=True)
     check(proc.returncode == 2 and proc.stdout == "", "v3: bad --max-paths is a usage error")
+    proc = subprocess.run([checker, v3, "--max-states-per-edge"], capture_output=True, text=True)
+    check(proc.returncode == 2 and proc.stdout == "", "v3: missing option value is a usage error")
 
 
 def run(checker, db_path):
