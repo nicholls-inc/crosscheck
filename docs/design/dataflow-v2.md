@@ -243,3 +243,52 @@ pydantic strict mode); decidable literals (`None` has precision 0 and length
 0; `"x" * 30` has length 30 and is non-null; `Decimal("-1.00")` has range
 -1; `Decimal("1e-4")` has 4 places; module constants resolve); parse errors
 make the run incomplete (exit 2) unless `--allow-parse-errors`.
+
+## Round 5 (second adversarial run)
+
+### Interface additions
+
+- `contracts.param_min_decimal TEXT`, `contracts.param_max_decimal TEXT`: the
+  bound as an exact decimal string (`-?digits(.digits)?`, no exponent) taken
+  from the source literal. The checker prefers these, then the micros columns,
+  then the REAL columns. It scales every range bound in a run by 10^D, where D
+  is the largest number of decimal places seen, so comparisons are exact for
+  any size and precision (Lean `Int` is unbounded).
+- `nodes.is_call_site INTEGER NOT NULL DEFAULT 0`: 1 for call-site nodes.
+  A path whose head is a call-site node with at least one incoming checked
+  edge is a suffix of longer paths; the checker still checks it but reports no
+  warnings for it.
+- JSON results gain `"guarantee_at": {"file", "line"}`: where the violating
+  guarantee comes from (the constraint's own location).
+
+### Extraction rules
+
+- `match` statements take part in termination and fall-through analysis.
+- Attribute writes are flow-sensitive: the value written by `obj.f = v` is the
+  join of the values of `obj.f` that reach each `obj.save()` in the function,
+  or the function's exit when there is no save, with narrowing on `obj.f`
+  (`if self.f is None: self.f = "x"` / `raise`).
+- Calling a generator function (one containing `yield`) returns a non-null
+  generator.
+- `cls(...)` in a classmethod constructs `cls`'s class.
+- Classes defined inside module-level `if`/`try`/`with` blocks, and classes
+  nested in class bodies (for `choices=Status.choices`), are extracted.
+- `await e` has the facts of `e`; async ORM methods (`acreate`, `aupdate`,
+  `aget_or_create`, `aupdate_or_create`, `abulk_create`) are writes.
+- pydantic `field_validator(..., mode="before"|"wrap")` (and v1
+  `validator(..., pre=True)`) on a field removes that field's requirements,
+  since the validator may transform the value first.
+- Non-null by construction: arithmetic and augmented assignment results,
+  `sum/min/max/len/abs/round/int/float/str/bool/list/tuple/dict/set/sorted`,
+  string methods, `%` formatting, `F()` expressions, enum members, and reads of
+  a non-Optional field of a known data class or model.
+- `x and y` / `x or y` nullability from the operands; `.match/.search/.fullmatch`
+  on a compiled pattern is nullable; `sum(<generator or list>)` of Decimal
+  elements has the elements' precision.
+- More write patterns: `dataclasses.replace(obj, f=v)`,
+  `obj.model_copy(update={...})`, `Cls.model_validate({...})`,
+  `Cls(**{**base, "f": v})` (the explicit keys), `setattr(obj, "f", v)` with a
+  literal name.
+- `--exclude GLOB` (repeatable) skips matching files; the README recommends
+  `--exclude '**/tests/**'` for Django projects whose tests build invalid
+  unsaved instances on purpose.
