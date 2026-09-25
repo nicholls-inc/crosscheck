@@ -10,7 +10,9 @@ translate, and on a round-3 database (edges.site_file/site_line,
 contracts.param_min_micros/param_max_micros, JSON param_choices): node
 locations, sites, exact bounds, legacy REAL fallback, choices, and the
 state budgets (--max-states / --max-paths alias, --max-states-per-edge; exit
-code 2).
+code 2), and on a round-5 database (nodes.is_call_site,
+contracts.param_min_decimal/param_max_decimal): exact decimal bounds, no
+warnings on call-site suffix paths, guarantee_at and states_checked.
 
 Usage: prover/scripts/translation_smoke.py [path/to/contract-graph-checker]
 Requires: cd prover && lake build
@@ -314,6 +316,87 @@ def build_v3(path):
     db.close()
 
 
+# Round-5 columns: nodes.is_call_site, contracts.param_min_decimal/param_max_decimal.
+SCHEMA_V5 = (
+    SCHEMA_V3.replace(
+        "    qualified_name TEXT\n);",
+        "    qualified_name TEXT,\n"
+        "    is_call_site   INTEGER NOT NULL DEFAULT 0\n);",
+    ).replace(
+        "    param_max_micros    INTEGER\n);",
+        "    param_max_micros    INTEGER,\n"
+        "    param_min_decimal   TEXT,\n"
+        "    param_max_decimal   TEXT\n);",
+    )
+)
+assert "is_call_site" in SCHEMA_V5 and "param_max_decimal" in SCHEMA_V5
+
+
+def build_v5(path):
+    db = sqlite3.connect(path)
+    db.executescript(SCHEMA_V5)
+    # big(): le=2e13 written into le=1e13 (exact decimals, no micros).
+    node_at(db, 1, "big", "function", "d.py", 1)
+    node_at(db, 2, "D.big", "model", "models.py", 1)
+    contract(db, 1, "range", "postcondition", 2, param_max_decimal="20000000000000")
+    contract(db, 2, "range", "precondition", 3, param_max_decimal="10000000000000")
+    edge_at(db, 1, 1, 2, "writes_to", "d.py", 4)
+    # seven(): 0.1234567 into le=0.1234567 (consistent); eight(): 0.1234568 (error).
+    node_at(db, 3, "seven", "function", "d.py", 10)
+    node_at(db, 4, "eight", "function", "d.py", 20)
+    node_at(db, 5, "D.fine", "model", "models.py", 10)
+    contract(db, 3, "range", "postcondition", 11, param_max_decimal="0.1234567",
+             param_max_micros=123457, param_max_value=0.1234567)
+    contract(db, 4, "range", "postcondition", 21, param_max_decimal="0.1234568")
+    contract(db, 5, "range", "precondition", 12, param_max_decimal="0.1234567",
+             param_max_micros=123456)
+    edge_at(db, 2, 3, 5, "writes_to", "d.py", 13)
+    edge_at(db, 3, 4, 5, "writes_to", "d.py", 23)
+    # micros only (0.5000001 can't be given in micros: 0.500001) into le=0.5000009.
+    node_at(db, 6, "micro", "function", "d.py", 30)
+    contract(db, 6, "range", "postcondition", 31, param_max_micros=500001)
+    node_at(db, 7, "D.mix", "model", "models.py", 30)
+    contract(db, 7, "range", "precondition", 32, param_max_decimal="0.5000009")
+    edge_at(db, 4, 6, 7, "writes_to", "d.py", 33)
+    # caller (3dp) -> call site cs (max(input_precision, 2)) -> D.p (2dp).
+    node_at(db, 8, "caller", "function", "c.py", 1)
+    node_at(db, 9, "cs", "function", "c.py", 5)
+    db.execute("UPDATE nodes SET is_call_site = 1 WHERE id = 9")
+    node_at(db, 10, "D.p", "model", "models.py", 40)
+    contract(db, 8, "precision", "postcondition", 2, param_decimal_places=3)
+    contract(db, 9, "precision", "postcondition", 6, dependent_expr="max(input_precision, 2)")
+    contract(db, 10, "precision", "precondition", 41, param_max_digits=10, param_decimal_places=2)
+    edge_at(db, 5, 8, 9, "flows_to", "c.py", 3)
+    edge_at(db, 6, 9, 10, "writes_to", "c.py", 7)
+    db.commit()
+    db.close()
+
+
+def check_v5(checker, tmp):
+    v5 = os.path.join(tmp, "v5.sqlite")
+    build_v5(v5)
+    code, out = run(checker, v5)
+    results = out["results"]
+    for r in results:
+        print("     ", r["severity"], " -> ".join(r["path"]), r["source_guarantee"], "|",
+              r["target_requirement"], r["guarantee_at"])
+    errs = sorted((" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"])
+                  for r in results if r["severity"] == "error")
+    check(errs == sorted([
+        ("big -> D.big", "range ≤ 20000000000000", "range ≤ 10000000000000"),
+        ("eight -> D.fine", "range ≤ 0.1234568", "range ≤ 0.1234567"),
+        ("micro -> D.mix", "range ≤ 0.500001", "range ≤ 0.5000009"),
+        ("caller -> cs -> D.p", "precision ≤ 3", "precision ≤ 2"),
+    ]), "v5: exact decimal errors (2e13 > 1e13, 7 places, mixed with micros) and the call-site path")
+    check(code == 1, "v5: exit code 1")
+    check([r for r in results if r["severity"] == "warning"] == [],
+          "v5: no unresolved-bound warning on the call-site suffix cs -> D.p")
+    big = [r for r in results if r["path"] == ["big", "D.big"]][0]
+    check(big["guarantee_at"] == {"file": "app.py", "line": 2}, "v5: guarantee_at is the guarantee's row")
+    check(out["summary"]["states_checked"] == out["summary"]["paths_checked"] > 0,
+          "v5: states_checked reported")
+
+
 def check_v3(checker, tmp):
     v3 = os.path.join(tmp, "v3.sqlite")
     build_v3(v3)
@@ -451,6 +534,7 @@ def main():
               "v1: error source is the head node's definition")
 
         check_v3(checker, tmp)
+        check_v5(checker, tmp)
     print("translation smoke test passed")
 
 

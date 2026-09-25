@@ -79,10 +79,17 @@ structure ContractRow where
       fills `minMicros`/`maxMicros`). Used when the micros field is `none`. -/
   minValue          : Option Int := none
   maxValue          : Option Int := none
-  /-- Bounds × 10^6 (`param_min_micros`/`param_max_micros`, or the legacy
-      REAL columns converted by `legacyMicros`). -/
+  /-- Bounds × 10^6 (`param_min_micros`/`param_max_micros`). -/
   minMicros         : Option Int := none
   maxMicros         : Option Int := none
+  /-- Exact decimal bounds (`param_min_decimal`/`param_max_decimal`,
+      `-?digits(.digits)?`). Preferred over micros, then REAL. -/
+  minDecimal        : Option String := none
+  maxDecimal        : Option String := none
+  /-- Legacy REAL bounds (`param_min_value`/`param_max_value`), used when a
+      bound has neither a decimal nor a micros value. -/
+  minReal           : Option Float := none
+  maxReal           : Option Float := none
   choices           : Option String := none
   sourceFile        : String := ""
   sourceLine        : Nat := 0
@@ -102,6 +109,8 @@ structure NodeRow where
   kind       : String
   sourceFile : String := ""
   sourceLine : Nat := 0
+  /-- `nodes.is_call_site` (0 when the column is absent). -/
+  isCallSite : Bool := false
   deriving Repr
 
 /-- `(id, name, kind)` without a location (Lean-side tests). -/
@@ -190,12 +199,18 @@ def parseChoices (s : String) : Option (List String) :=
   if s.trimAscii.toString.startsWith "[" then parseJsonStringArray s
   else some (s.splitOn ",")
 
-/-! ## Range bounds in micros -/
+/-! ## Range bounds, scaled exactly
+
+Range bounds are held as integers value × 10^D, where D (`rangeScale`) is
+the largest number of decimal places among the exact decimal bounds of the
+database, and at least 6 when some bound is only given in micros or as a
+REAL. Every range constraint of a graph has the same scale, so comparisons
+are exact for decimal and micros bounds of any size. -/
 
 /-- Scale the literals of a dependent expression by `k`. Range bounds are
-    held in micros (× 10^6) while `dependent_expr` literals are in plain
+    held as value × 10^D while `dependent_expr` literals are in plain
     units; `max`/`min`/`add`/`sub` commute with scaling, so scaling the
-    literals gives the expression in micros. -/
+    literals gives the expression at scale D. -/
 def DepExpr.scaleLits (k : Int) : DepExpr → DepExpr
   | .lit n => .lit (n * k)
   | .input s => .input s
@@ -204,27 +219,103 @@ def DepExpr.scaleLits (k : Int) : DepExpr → DepExpr
   | .add a b => .add (a.scaleLits k) (b.scaleLits k)
   | .sub a b => .sub (a.scaleLits k) (b.scaleLits k)
 
-/-- Convert a legacy REAL bound to micros, rounding conservatively: a
-    requirement (`strict = true`) to the stricter side, a guarantee to the
+/-- The value of a non-empty list of decimal digits. -/
+def digitsValue (cs : List Char) : Option Nat :=
+  if !cs.isEmpty && cs.all Char.isDigit then
+    some (cs.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0)
+  else none
+
+/-- Parse an exact decimal `-?digits(.digits)?` into `(m, f)` with value
+    `m / 10^f`; `none` if malformed (then the micros/REAL columns are used). -/
+def parseDecimal (s : String) : Option (Int × Nat) :=
+  let cs := s.toList
+  let (neg, body) := match cs with
+    | '-' :: rest => (true, rest)
+    | _ => (false, cs)
+  let sign (n : Nat) : Int := if neg then -(n : Int) else n
+  let ip := body.takeWhile (· != '.')
+  match body.dropWhile (· != '.') with
+  | [] => (digitsValue ip).map fun n => (sign n, 0)
+  | _ :: fp =>
+    match digitsValue ip, digitsValue fp with
+    | some i, some f => some (sign (i * 10 ^ fp.length + f), fp.length)
+    | _, _ => none
+
+/-- `m / 10^src` at scale `dst`: exact when `dst ≥ src`; otherwise rounded
+    up (`up`) or down. -/
+def rescale (m : Int) (src dst : Nat) (up : Bool) : Int :=
+  if src ≤ dst then m * 10 ^ (dst - src)
+  else
+    let d : Int := 10 ^ (src - dst)
+    if up then -((-m) / d) else m / d
+
+/-- Convert a legacy REAL bound to value × 10^scale, rounding conservatively:
+    a requirement (`strict = true`) to the stricter side, a guarantee to the
     weaker side. `upper` says whether the bound is an upper bound. A value
-    within 10^-4 micros of an integer (floating-point noise in `v × 10^6`,
-    e.g. `0.3 × 10^6`) is taken as that integer. -/
-def legacyMicros (v : Float) (upper strict : Bool) : Int :=
-  let x := v * 1000000.0
+    within 10^-4 of an integer after scaling (floating-point noise, e.g.
+    `0.3 × 10^6`) is taken as that integer. -/
+def legacyScaled (v : Float) (upper strict : Bool) (scale : Nat) : Int :=
+  let x := v * (10 ^ scale : Nat).toFloat
   let r := x.round
   if (x - r).abs < 0.0001 then r.toInt64.toInt
   else
     -- stricter: upper ↓, lower ↑; weaker: upper ↑, lower ↓
     if upper == strict then x.floor.toInt64.toInt else x.ceil.toInt64.toInt
 
-/-- A row's lower bound in micros: `minMicros`, else the plain-unit
-    `minValue` × 10^6. -/
-def ContractRow.lowerMicros (row : ContractRow) : Option Int :=
-  row.minMicros.orElse fun _ => row.minValue.map (· * 1000000)
+/-- `legacyScaled` at scale 6 (micros). -/
+def legacyMicros (v : Float) (upper strict : Bool) : Int := legacyScaled v upper strict 6
+
+/-- Whether a row states a guarantee (a postcondition) rather than a
+    requirement (a precondition, including `contract_role` NULL). -/
+def ContractRow.isGuarantee (row : ContractRow) : Bool := row.role == some "postcondition"
+
+/-- A bound at scale `scale`: the exact decimal, else micros, else the REAL,
+    else the plain-unit integer (Lean-side tests). A bound that cannot be
+    represented exactly is rounded to the requirement's stricter side and
+    the guarantee's weaker side. -/
+def scaledBound (dec : Option String) (micros : Option Int) (real : Option Float)
+    (plain : Option Int) (upper strict : Bool) (scale : Nat) : Option Int :=
+  let up := upper != strict
+  match dec.bind parseDecimal with
+  | some (m, f) => some (rescale m f scale up)
+  | none =>
+    match micros with
+    | some m => some (rescale m 6 scale up)
+    | none =>
+      match real with
+      | some v => some (legacyScaled v upper strict scale)
+      | none => plain.map (· * 10 ^ scale)
+
+/-- A row's lower bound at scale `scale`. -/
+def ContractRow.lowerScaled (row : ContractRow) (scale : Nat) : Option Int :=
+  scaledBound row.minDecimal row.minMicros row.minReal row.minValue false (!row.isGuarantee) scale
+
+/-- A row's upper bound at scale `scale`. -/
+def ContractRow.upperScaled (row : ContractRow) (scale : Nat) : Option Int :=
+  scaledBound row.maxDecimal row.maxMicros row.maxReal row.maxValue true (!row.isGuarantee) scale
+
+/-- A row's lower bound in micros. -/
+def ContractRow.lowerMicros (row : ContractRow) : Option Int := row.lowerScaled 6
 
 /-- A row's upper bound in micros. -/
-def ContractRow.upperMicros (row : ContractRow) : Option Int :=
-  row.maxMicros.orElse fun _ => row.maxValue.map (· * 1000000)
+def ContractRow.upperMicros (row : ContractRow) : Option Int := row.upperScaled 6
+
+/-- The decimal places one bound needs: its exact decimal's, else 6 for a
+    micros or REAL bound, else 0. -/
+def boundPlaces (dec : Option String) (micros : Option Int) (real : Option Float) : Nat :=
+  match dec.bind parseDecimal with
+  | some (_, f) => f
+  | none => if micros.isSome || real.isSome then 6 else 0
+
+/-- The scale D of a database's range bounds: the most decimal places any
+    range bound needs (`boundPlaces`). -/
+def rangeScale (rows : List ContractRow) : Nat :=
+  rows.foldl (fun d row =>
+    match parseConstraintKind row.constraintType with
+    | .range | .rangeMin =>
+      max d (max (boundPlaces row.minDecimal row.minMicros row.minReal)
+                 (boundPlaces row.maxDecimal row.maxMicros row.maxReal))
+    | _ => d) 0
 
 /-- Translate a contracts row into Lean constraints (pure).
 
@@ -233,23 +324,25 @@ def ContractRow.upperMicros (row : ContractRow) : Option Int :=
     - nullability: staticBound ← param_nullable (0=NOT NULL, 1=NULL)
     - type:        typeName ← param_type_name
     - range:       up to two constraints: `range` (upper) with
-                   staticBound ← param_max_micros, and `rangeMin` (lower) with
-                   staticBound ← param_min_micros (bounds × 10^6; see
-                   `readContracts` for the legacy REAL columns). A row with
-                   neither yields one `range` constraint without a bound.
-                   The literals of a range `dependent_expr` are scaled to
-                   micros (`DepExpr.scaleLits`).
+                   staticBound ← the upper bound, and `rangeMin` (lower) with
+                   staticBound ← the lower bound, both × 10^scale
+                   (`lowerScaled`/`upperScaled`: exact decimal, else micros,
+                   else REAL). A row with neither yields one `range`
+                   constraint without a bound. The literals of a range
+                   `dependent_expr` are scaled by 10^scale
+                   (`DepExpr.scaleLits`), and every constraint records
+                   `scale`.
     - length:      staticBound ← param_max_length
     - choices:     choicesList ← `parseChoices param_choices` (JSON array of
                    strings, or legacy comma list)
     `dependent_expr` goes on the upper `range` constraint, or on `rangeMin`
     when the row has only a lower bound. `subject` is copied to every
     constraint. -/
-def translateContractRow (row : ContractRow) : List Constraint :=
+def translateContractRow (row : ContractRow) (scale : Nat := 6) : List Constraint :=
   let kind := parseConstraintKind row.constraintType
   let depExpr := row.dependentExpr.bind parseDepExpr
   let depExpr := match kind with
-    | .range | .rangeMin => depExpr.map (·.scaleLits 1000000)
+    | .range | .rangeMin => depExpr.map (·.scaleLits (10 ^ scale))
     | _ => depExpr
   let base : Constraint := {
     kind := kind
@@ -258,6 +351,7 @@ def translateContractRow (row : ContractRow) : List Constraint :=
     sourceLine := row.sourceLine
     verificationLevel := parseVerifLevel row.verificationLevel
     subject := row.subject
+    scale := scale
   }
   match kind with
   | .precision => [{ base with staticBound := row.decimalPlaces }]
@@ -265,9 +359,9 @@ def translateContractRow (row : ContractRow) : List Constraint :=
   | .length => [{ base with staticBound := row.maxLength }]
   | .type => [{ base with typeName := row.typeName }]
   | .choices => [{ base with choicesList := row.choices.bind parseChoices }]
-  | .rangeMin => [{ base with staticBound := row.lowerMicros }]
+  | .rangeMin => [{ base with staticBound := row.lowerScaled scale }]
   | .range =>
-    match row.lowerMicros, row.upperMicros with
+    match row.lowerScaled scale, row.upperScaled scale with
     | some lo, some hi =>
       [{ base with staticBound := some hi },
        { base with kind := .rangeMin, staticBound := some lo, depExpr := none }]
@@ -313,32 +407,30 @@ private def readOptionalFloat (stmt : Stmt) (col : Int32) : IO (Option Float) :=
       13: is_implicit, 14: verification_level,
       15: contract_role, 16: dependent_expr,
       17: subject, 18: edge_id,
-      19: param_min_micros, 20: param_max_micros
+      19: param_min_micros, 20: param_max_micros,
+      21: param_min_decimal, 22: param_max_decimal
 
-    Range bounds: `param_min_micros`/`param_max_micros` (exact, × 10^6) when
-    not NULL; otherwise the legacy REAL `param_min_value`/`param_max_value`
-    × 10^6, rounded by `legacyMicros` (a precondition row, including
-    `contract_role` NULL, is a requirement and rounds stricter; a
-    postcondition row is a guarantee and rounds weaker). -/
+    Range bounds are kept as read (decimal strings, micros, REALs); they are
+    scaled in `translateContractRow` (see `rangeScale`). Columns missing in
+    older databases read as NULL. -/
 def readContracts (db : SQLite) : IO (List ContractRow) := do
   let subjectCol ← columnOrNull db "contracts" "subject"
   let edgeIdCol ← columnOrNull db "contracts" "edge_id"
   let minMicrosCol ← columnOrNull db "contracts" "param_min_micros"
   let maxMicrosCol ← columnOrNull db "contracts" "param_max_micros"
+  let minDecimalCol ← columnOrNull db "contracts" "param_min_decimal"
+  let maxDecimalCol ← columnOrNull db "contracts" "param_max_decimal"
   let stmt ← prepare db
     ("SELECT id, node_id, constraint_type, param_max_digits, param_decimal_places, " ++
      "param_max_length, param_nullable, param_type_name, param_min_value, param_max_value, " ++
      "param_choices, source_file, source_line, is_implicit, verification_level, " ++
      s!"contract_role, dependent_expr, {subjectCol}, {edgeIdCol}, {minMicrosCol}, " ++
-     s!"{maxMicrosCol} FROM contracts ORDER BY id")
+     s!"{maxMicrosCol}, {minDecimalCol}, {maxDecimalCol} FROM contracts ORDER BY id")
   let mut results : Array ContractRow := #[]
   let mut hasRow ← stmt.step
   while hasRow do
     let nodeId ← stmt.columnInt64 1
     let role ← readOptionalString stmt 15
-    let strict := match role with
-      | some "postcondition" => false
-      | _ => true
     let legacyMin ← readOptionalFloat stmt 8
     let legacyMax ← readOptionalFloat stmt 9
     let minMicros ← readOptionalInt stmt 19
@@ -350,8 +442,12 @@ def readContracts (db : SQLite) : IO (List ContractRow) := do
       maxLength := ← readOptionalInt stmt 5
       nullable := ← readOptionalInt stmt 6
       typeName := ← readOptionalString stmt 7
-      minMicros := minMicros.orElse fun _ => legacyMin.map (legacyMicros · false strict)
-      maxMicros := maxMicros.orElse fun _ => legacyMax.map (legacyMicros · true strict)
+      minMicros := minMicros
+      maxMicros := maxMicros
+      minDecimal := ← readOptionalString stmt 21
+      maxDecimal := ← readOptionalString stmt 22
+      minReal := legacyMin
+      maxReal := legacyMax
       choices := ← readOptionalString stmt 10
       sourceFile := ← stmt.columnText 11
       sourceLine := (← stmt.columnInt64 12).toInt.toNat
@@ -368,8 +464,9 @@ def readContracts (db : SQLite) : IO (List ContractRow) := do
 /-- Read all nodes from the database, with their definition locations.
     `qualified_name` is not read. -/
 def readNodes (db : SQLite) : IO (List NodeRow) := do
+  let callSiteCol ← columnOrNull db "nodes" "is_call_site"
   let stmt ← prepare db
-    "SELECT id, name, kind, source_file, source_line FROM nodes ORDER BY id"
+    s!"SELECT id, name, kind, source_file, source_line, {callSiteCol} FROM nodes ORDER BY id"
   let mut results : Array NodeRow := #[]
   let mut hasRow ← stmt.step
   while hasRow do
@@ -378,8 +475,10 @@ def readNodes (db : SQLite) : IO (List NodeRow) := do
     let kind ← stmt.columnText 2
     let file := (← readOptionalString stmt 3).getD ""
     let line := ((← readOptionalInt stmt 4).getD 0).toNat
+    let callSite := ((← readOptionalInt stmt 5).getD 0) != 0
     results := results.push
-      { id := nodeId.toInt.toNat, name := name, kind := kind, sourceFile := file, sourceLine := line }
+      { id := nodeId.toInt.toNat, name := name, kind := kind, sourceFile := file, sourceLine := line,
+        isCallSite := callSite }
     hasRow ← stmt.step
   return results.toList
 
@@ -431,8 +530,9 @@ def groupBy {α : Type} (key : α → Option Nat) (xs : List α) : Std.HashMap N
 
 /-- Build a ContractGraph from raw database rows (pure).
 
-    Nodes carry the node contracts (rows with `edge_id` NULL) and their
-    definition locations. Each edge gets its own copies of its endpoints:
+    Nodes carry the node contracts (rows with `edge_id` NULL), their
+    definition locations and call-site flags. Range bounds are scaled by
+    10^`rangeScale contractRows`. Each edge gets its own copies of its endpoints:
     - `source`: when `source_override`, postconditions := the translated rows
       whose `edge_id` is this edge (possibly none); otherwise the node itself.
     - `target`: when `target_param = p`, preconditions filtered to
@@ -446,21 +546,23 @@ def buildGraph
     (contractRows : List ContractRow)
     (edgeRows : List EdgeRow)
     : ContractGraph :=
+  let scale := rangeScale contractRows
   let byNode := groupBy (fun r => if r.edgeId.isNone then some r.nodeId else none) contractRows
   let byEdge := groupBy (·.edgeId) contractRows
   let nodes := nodeRows.map fun nr =>
     let own := byNode.getD nr.id []
     let preconditions := own.flatMap fun row =>
       match row.contractRole with
-      | .precondition => translateContractRow row
+      | .precondition => translateContractRow row scale
       | .postcondition => []
     let postconditions := own.flatMap fun row =>
       match row.contractRole with
-      | .postcondition => translateContractRow row
+      | .postcondition => translateContractRow row scale
       | .precondition => []
     ({ id := nr.id, name := nr.name, kind := nr.kind,
        preconditions := preconditions, postconditions := postconditions,
-       sourceFile := nr.sourceFile, sourceLine := nr.sourceLine } : Node)
+       sourceFile := nr.sourceFile, sourceLine := nr.sourceLine,
+       isCallSite := nr.isCallSite } : Node)
 
   -- first node with each id, as `List.find?` would pick
   let nodeById : Std.HashMap Nat Node :=
@@ -470,7 +572,7 @@ def buildGraph
     match nodeById.get? row.sourceId, nodeById.get? row.targetId with
     | some src, some tgt =>
       let src := if row.sourceOverride then
-        { src with postconditions := (byEdge.getD row.id []).flatMap translateContractRow }
+        { src with postconditions := (byEdge.getD row.id []).flatMap (translateContractRow · scale) }
       else src
       let tgt := match row.targetParam with
         | some p => { tgt with preconditions := tgt.preconditions.filter (appliesToParam p) }

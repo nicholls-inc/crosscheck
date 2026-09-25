@@ -71,20 +71,23 @@ def pydanticMaxLengthAccepts (maxLength : Nat) (actualLength : Nat) : Prop :=
 def pydanticLeAccepts (limit : Int) (value : Int) : Prop :=
   value ≤ limit
 
-/-! ## Numeric bounds in micros
+/-! ## Numeric bounds, scaled to integers
 
 Range bounds (`le`/`ge`, `MinValueValidator`/`MaxValueValidator`,
 `PositiveIntegerField`, `condecimal(ge=...)`, on int, float and Decimal
-fields) are compared as integers in micros, value × 10^6. The claim is that
-for a bound `b` with at most 6 decimal places, `v ≤ b ↔ v·10^6 ≤ b·10^6`
-(and likewise `≥`), and that a bound with more places is represented by the
-extractor rounded toward the requirement's stricter side and the guarantee's
-weaker side, so a consistent comparison in micros implies a consistent
-comparison of the exact values. Legacy databases without the micros columns
-give the bound as a REAL; the checker multiplies by 10^6 and rounds the same
-way, except that a product within 10^-4 of an integer is taken as that
-integer (floating-point noise such as 0.3 × 10^6), which trusts the REAL to
-denote a bound with at most 6 decimal places. -/
+fields) are compared as integers value × 10^D, with one D per database: the
+most decimal places of any exact decimal bound (`param_min_decimal`/
+`param_max_decimal`), and at least 6 when a bound is only given in micros
+(`param_*_micros`, value × 10^6) or as a REAL. The claim is that for bounds
+with at most D decimal places, `v ≤ b ↔ v·10^D ≤ b·10^D` (and likewise `≥`),
+so decimal and micros bounds compare exactly at any size; that the
+extractor's micros for a bound with more than 6 places are rounded toward
+the requirement's stricter side and the guarantee's weaker side; and that
+legacy REAL bounds, multiplied by 10^D and rounded the same way (a product
+within 10^-4 of an integer is taken as that integer, floating-point noise
+such as 0.3 × 10^6), denote bounds with at most D decimal places. The
+functions below state the comparison with the scaled integers (named
+"micros" for the common case D = 6). -/
 
 /-- `v ≤ limit`, both in micros. -/
 def maxValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=

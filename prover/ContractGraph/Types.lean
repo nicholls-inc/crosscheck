@@ -53,24 +53,28 @@ instance : Min VerificationLevel where
 instance : Max VerificationLevel where
   max a b := if Ord.compare a b == .gt then a else b
 
-/-- Decimal display of a bound held in micros (value × 10^6), as used for
-    `range` / `rangeMin` bounds: `500000 ↦ "0.5"`, `-1000000 ↦ "-1"`. -/
-def formatMicros (m : Int) : String :=
+/-- Decimal display of a bound held as value × 10^scale:
+    `formatScaled 500000 6 = "0.5"`, `formatScaled (-1000000) 6 = "-1"`. -/
+def formatScaled (m : Int) (scale : Nat) : String :=
   let sign := if m < 0 then "-" else ""
   let a := m.natAbs
-  let ip := a / 1000000
-  let fp := a % 1000000
+  let ip := a / 10 ^ scale
+  let fp := a % 10 ^ scale
   if fp == 0 then s!"{sign}{ip}"
   else
     let raw := toString fp
-    let digits := "".pushn '0' (6 - raw.length) ++ raw  -- six digits, zero-padded
+    let digits := "".pushn '0' (scale - raw.length) ++ raw  -- `scale` digits, zero-padded
     let trimmed := (digits.toList.reverse.dropWhile (· == '0')).reverse
     s!"{sign}{ip}.{String.ofList trimmed}"
 
-/-- Display a static bound of kind `k`: range bounds are in micros. -/
-def formatBoundValue (k : ConstraintKind) (b : Int) : String :=
+/-- Decimal display of a bound held in micros (value × 10^6). -/
+def formatMicros (m : Int) : String := formatScaled m 6
+
+/-- Display a static bound of kind `k`: range bounds are held as
+    value × 10^scale (`Constraint.scale`, 6 = micros by default). -/
+def formatBoundValue (k : ConstraintKind) (b : Int) (scale : Nat := 6) : String :=
   match k with
-  | .range | .rangeMin => formatMicros b
+  | .range | .rangeMin => formatScaled b scale
   | _ => toString b
 
 /-- A dependent expression: postconditions that are functions of inputs. -/
@@ -96,6 +100,10 @@ structure Constraint where
   /-- For a function precondition: the parameter it constrains. `none` means
       every parameter (legacy rows). Postconditions leave it `none`. -/
   subject           : Option String := none
+  /-- For `range` / `rangeMin`: the bound (and dependent-expression
+      literals) are value × 10^scale. Every range constraint of a graph read
+      from a database has the same scale (`rangeScale`). -/
+  scale             : Nat := 6
   deriving Repr
 
 /-- Contract role: precondition or postcondition. -/
@@ -115,6 +123,10 @@ structure Node where
       empty/0 when unknown. -/
   sourceFile      : String := ""
   sourceLine      : Nat := 0
+  /-- A call-site node (`nodes.is_call_site`). A path whose head is a call
+      site with an incoming checked edge is a suffix of longer paths: its
+      warnings are not reported. -/
+  isCallSite      : Bool := false
   deriving Repr
 
 /-- Relationship types for edges. -/
@@ -229,7 +241,11 @@ structure ResultEntry where
 structure Summary where
   contractsChecked : Nat
   edgesChecked : Nat
+  /-- Path-based checker: data paths checked. State-based checker: hop
+      states checked (the same as `statesChecked`, kept for compatibility). -/
   pathsChecked : Nat
+  /-- Hop states checked (state-based checker; 0 for the path-based one). -/
+  statesChecked : Nat := 0
   deriving Repr
 
 /-- Full output structure. -/

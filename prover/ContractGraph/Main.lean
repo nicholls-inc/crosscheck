@@ -29,8 +29,15 @@ private def stringListToJson (xs : List String) : String :=
   let items := xs.map (fun s => s!"\"{jsonEscape s}\"")
   s!"[{", ".intercalate items}]"
 
+/-- Where the violating guarantee comes from (`"guarantee_at"`): for an
+    error, the source constraint's own location; for a warning, the target's
+    requirement location (a warning has no violating guarantee). -/
+def guaranteeAt (r : ResultEntry) : SiteLocation :=
+  if r.severity == "error" then { file := r.guaranteeFile, line := r.guaranteeLine }
+  else { file := r.target.file, line := r.target.line }
+
 /-- Format a ResultEntry as JSON. -/
-private def resultEntryToJson (r : ResultEntry) : String :=
+def resultEntryToJson (r : ResultEntry) : String :=
   s!"\{\"status\": \"{r.status}\", " ++
   s!"\"severity\": \"{r.severity}\", " ++
   s!"\"source\": {sourceLocationToJson r.source}, " ++
@@ -38,6 +45,7 @@ private def resultEntryToJson (r : ResultEntry) : String :=
   s!"\"path\": {stringListToJson r.path}, " ++
   s!"\"hop\": {stringListToJson r.hop}, " ++
   s!"\"site\": {siteLocationToJson r.site}, " ++
+  s!"\"guarantee_at\": {siteLocationToJson (guaranteeAt r)}, " ++
   s!"\"source_guarantee\": \"{jsonEscape r.sourceGuarantee}\", " ++
   s!"\"target_requirement\": \"{jsonEscape r.targetRequirement}\", " ++
   s!"\"verification_level\": \"{r.verificationLevel}\", " ++
@@ -49,7 +57,8 @@ def outputToJson (output : CheckOutput) : String :=
   s!"\{\"summary\": \{" ++
   s!"\"contracts_checked\": {output.summary.contractsChecked}, " ++
   s!"\"edges_checked\": {output.summary.edgesChecked}, " ++
-  s!"\"paths_checked\": {output.summary.pathsChecked}}, " ++
+  s!"\"paths_checked\": {output.summary.pathsChecked}, " ++
+  s!"\"states_checked\": {output.summary.statesChecked}}, " ++
   s!"\"results\": [{", ".intercalate resultsJson}], " ++
   s!"\"exit_code\": {output.exitCode}}"
 
@@ -112,16 +121,35 @@ def dedupeStep (acc : List ResultEntry) (r : ResultEntry) : List ResultEntry :=
 def dedupeResults (results : List ResultEntry) : List ResultEntry :=
   results.foldl dedupeStep []
 
-/-- Add one raw search result's entries (`viewPath`) to the deduplicated
-    report. -/
-def reportStep (acc : List ResultEntry) (x : List Edge × List CheckResult) : List ResultEntry :=
-  (collectEntries (viewPath x).1 (viewPath x).2).foldl dedupeStep acc
+/-- A raw search result's results as reported: without warnings when the
+    path's head is a suffix head (`supp`, see `suffixHeadSet`). -/
+def reportedResults (supp : Nat → Bool) (x : List Edge × List CheckResult) : List CheckResult :=
+  match (viewPath x).1.head? with
+  | some e => if supp e.source.id then dropWarnings (viewPath x).2 else (viewPath x).2
+  | none => (viewPath x).2
+
+/-- Reporting keeps every error. -/
+theorem mem_reportedResults (supp : Nat → Bool) (x : List Edge × List CheckResult)
+    (r : CheckResult) (hr : r ∈ (viewPath x).2) (herr : r.isError = true) :
+    r ∈ reportedResults supp x := by
+  unfold reportedResults
+  split
+  · split
+    · exact mem_dropWarnings _ r hr herr
+    · exact hr
+  · exact hr
+
+/-- Add one raw search result's entries (`viewPath`, `reportedResults`) to
+    the deduplicated report. -/
+def reportStep (supp : Nat → Bool) (acc : List ResultEntry) (x : List Edge × List CheckResult) :
+    List ResultEntry :=
+  (collectEntries (viewPath x).1 (reportedResults supp x)).foldl dedupeStep acc
 
 /-- The deduplicated report of raw search results, built path by path (the
-    same entries as `dedupeResults (collectResults (raw.map viewPath))`, without
-    holding every path's entries at once). -/
-def reportRaw (raw : List (List Edge × List CheckResult)) : List ResultEntry :=
-  raw.foldl reportStep []
+    same entries as `dedupeResults (collectResults (raw.map viewPath))` when
+    nothing is suppressed, without holding every path's entries at once). -/
+def reportRaw (supp : Nat → Bool) (raw : List (List Edge × List CheckResult)) : List ResultEntry :=
+  raw.foldl (reportStep supp) []
 
 /-- Count total contracts across all nodes. -/
 def countContracts (nodes : List Node) : Nat :=
@@ -135,9 +163,10 @@ def stepBudget (maxPaths : Nat) : Nat := 64 * maxPaths + 100000
 
 /-- Run the full search and check with a prepared setup. -/
 def runCheckerWith (s : SearchSetup) (graph : ContractGraph) : CheckOutput :=
+  let supp := suffixHeadSet graph
   -- streaming: (paths seen, report so far), one path at a time
-  let r := foldRaw s graph (fun (acc : Nat × List ResultEntry) x => (acc.1 + 1, reportStep acc.2 x))
-    (0, [])
+  let r := foldRaw s graph
+    (fun (acc : Nat × List ResultEntry) x => (acc.1 + 1, reportStep supp.contains acc.2 x)) (0, [])
   let results := r.2
   let hasErrors := results.any (·.severity == "error")
   { summary := {
@@ -320,34 +349,35 @@ theorem collectResults_error (pathResults : List (List Edge × List CheckResult)
   obtain ⟨e, he, hs⟩ := collectEntries_error p rs r hr herr
   exact ⟨e, List.mem_flatMap.mpr ⟨(p, rs), hmem, he⟩, hs⟩
 
-theorem foldl_reportStep_keeps (raw : List (List Edge × List CheckResult))
+theorem foldl_reportStep_keeps (supp : Nat → Bool) (raw : List (List Edge × List CheckResult))
     (acc : List ResultEntry) (s : String) (h : ∃ x ∈ acc, x.severity = s) :
-    ∃ y ∈ raw.foldl reportStep acc, y.severity = s := by
+    ∃ y ∈ raw.foldl (reportStep supp) acc, y.severity = s := by
   induction raw generalizing acc with
   | nil => exact h
   | cons hd tl ih => exact ih _ (foldl_dedupeStep_keeps _ acc s h)
 
 /-- Every error result of every raw search result is reported with severity
     "error". -/
-theorem reportRaw_error (raw : List (List Edge × List CheckResult))
+theorem reportRaw_error (supp : Nat → Bool) (raw : List (List Edge × List CheckResult))
     (x : List Edge × List CheckResult) (hx : x ∈ raw) (r : CheckResult)
     (hr : r ∈ (viewPath x).2) (herr : r.isError = true) :
-    ∃ e ∈ reportRaw raw, e.severity = "error" := by
-  obtain ⟨e, he, hs⟩ := collectEntries_error (viewPath x).1 _ r hr herr
-  suffices ∀ acc, ∃ y ∈ raw.foldl reportStep acc, y.severity = "error" from this []
+    ∃ e ∈ reportRaw supp raw, e.severity = "error" := by
+  obtain ⟨e, he, hs⟩ := collectEntries_error (viewPath x).1 _ r
+    (mem_reportedResults supp x r hr herr) herr
+  suffices ∀ acc, ∃ y ∈ raw.foldl (reportStep supp) acc, y.severity = "error" from this []
   induction raw with
   | nil => cases hx
   | cons hd tl ih =>
     intro acc
     rcases List.mem_cons.mp hx with rfl | htl
     · obtain ⟨y, hy, hys⟩ := foldl_dedupeStep_finds _ e he acc
-      exact foldl_reportStep_keeps tl _ _ ⟨y, hy, hys.trans hs⟩
+      exact foldl_reportStep_keeps _ tl _ _ ⟨y, hy, hys.trans hs⟩
     · exact ih htl _
 
-theorem foldl_count_report (raw : List (List Edge × List CheckResult)) (n : Nat)
-    (acc : List ResultEntry) :
-    raw.foldl (fun (acc : Nat × List ResultEntry) x => (acc.1 + 1, reportStep acc.2 x)) (n, acc) =
-      (n + raw.length, raw.foldl reportStep acc) := by
+theorem foldl_count_report (supp : Nat → Bool) (raw : List (List Edge × List CheckResult))
+    (n : Nat) (acc : List ResultEntry) :
+    raw.foldl (fun (acc : Nat × List ResultEntry) x => (acc.1 + 1, reportStep supp acc.2 x))
+      (n, acc) = (n + raw.length, raw.foldl (reportStep supp) acc) := by
   induction raw generalizing n acc with
   | nil => rfl
   | cons hd tl ih =>
@@ -356,7 +386,7 @@ theorem foldl_count_report (raw : List (List Edge × List CheckResult)) (n : Nat
 
 /-- The streamed report is `reportRaw` of the search results. -/
 theorem runCheckerWith_results (s : SearchSetup) (g : ContractGraph) :
-    (runCheckerWith s g).results = reportRaw (searchRaw s g) := by
+    (runCheckerWith s g).results = reportRaw (suffixHeadSet g).contains (searchRaw s g) := by
   simp only [runCheckerWith, foldRaw_eq, foldl_count_report, reportRaw]
 
 /-- The number of checked paths is the number of search results. -/
@@ -376,7 +406,7 @@ theorem runCheckerPaths_noErrors (g : ContractGraph) {maxPaths : Nat}
   | true =>
     exfalso
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hy
-    obtain ⟨e, he, hs⟩ := reportRaw_error _ x hx r hr herr
+    obtain ⟨e, he, hs⟩ := reportRaw_error _ _ x hx r hr herr
     rw [← runCheckerWith_results] at he
     exact (runCheckerWith_exitCode_eq_zero_iff _ g).mp h e he hs
 
@@ -449,24 +479,51 @@ def Dedupe.step (d : Dedupe) (r : ResultEntry) : Dedupe :=
     else d.push r
   | none => d.push r
 
-/-- The report entries of one state: those of its hop's results, with the
-    state's witness path. -/
-def stateEntries (st : StateSetup) (ex : Explored) (r : StateRec) : List ResultEntry :=
-  let rs := checkHop r.hop
-  if rs.all (·.isConsistent) then [] else collectEntries (witnessOf st ex r) rs
+/-- `collectEntries`, computing the path (`path ()`) only when some result is
+    inconsistent. -/
+def guardedEntries (path : Unit → List Edge) (rs : List CheckResult) : List ResultEntry :=
+  if rs.all (·.isConsistent) then [] else collectEntries (path ()) rs
 
-/-- The deduplicated report of every explored state. -/
-def reportStates (st : StateSetup) (ex : Explored) : List ResultEntry :=
-  (ex.recs.foldl (fun d r => (stateEntries st ex r).foldl Dedupe.step d) {}).arr.toList
+theorem guardedEntries_error (path : Unit → List Edge) (rs : List CheckResult) (x : CheckResult)
+    (hx : x ∈ rs) (herr : x.isError = true) :
+    ∃ e ∈ guardedEntries path rs, e.severity = "error" := by
+  unfold guardedEntries
+  split
+  · rename_i hall
+    have := List.all_eq_true.mp hall x hx
+    cases x with
+    | consistent => cases herr
+    | inconsistent _ => simp [CheckResult.isConsistent] at this
+  · exact collectEntries_error _ _ x hx herr
+
+/-- The report entries of one state: those of its hop's results (without
+    the warnings unless `warn`, see `warnFlags`), with the state's witness
+    path. -/
+def stateEntries (st : StateSetup) (ex : Explored) (r : StateRec) (warn : Bool) :
+    List ResultEntry :=
+  guardedEntries (fun _ => witnessOf st ex r)
+    (if warn then checkHop r.hop else dropWarnings (checkHop r.hop))
+
+/-- The deduplicated report of every explored state; `flags[i]` says whether
+    state `i` reports its warnings. -/
+def reportStatesWith (st : StateSetup) (ex : Explored) (flags : Array Bool) : List ResultEntry :=
+  (ex.recs.toList.zipIdx.foldl (fun d (r, i) => (stateEntries st ex r (flags.getD i true)).foldl
+    Dedupe.step d) {}).arr.toList
+
+/-- The report of a graph's states: warnings only from states reached from a
+    head that is not a call-site suffix head. -/
+def reportStates (st : StateSetup) (g : ContractGraph) (ex : Explored) : List ResultEntry :=
+  reportStatesWith st ex (warnFlags st ex (suffixHeadSet g))
 
 /-- The output of a finished, closed exploration. `paths_checked` counts the
     checked hop states. -/
 def runStatesWith (st : StateSetup) (graph : ContractGraph) (ex : Explored) : CheckOutput :=
-  let results := reportStates st ex
+  let results := reportStates st graph ex
   { summary := {
       contractsChecked := countContracts graph.nodes
       edgesChecked := graph.edges.length
       pathsChecked := ex.recs.size
+      statesChecked := ex.recs.size
     }
     results := results
     exitCode := if results.any (·.severity == "error") then 1 else 0 }
@@ -665,25 +722,24 @@ theorem foldl_Dedupe_finds (rs : List ResultEntry) (e : ResultEntry) (he : e ∈
 
 /-- Every error result of every explored state's hop is reported with
     severity "error". -/
-theorem reportStates_error (st : StateSetup) (ex : Explored) (r : StateRec)
-    (hr : r ∈ ex.recs.toList) (x : CheckResult) (hx : x ∈ checkHop r.hop)
-    (herr : x.isError = true) : ∃ e ∈ reportStates st ex, e.severity = "error" := by
-  have hent : ∃ e ∈ stateEntries st ex r, e.severity = "error" := by
-    unfold stateEntries
-    simp only
-    split
-    · rename_i hall
-      have := List.all_eq_true.mp hall x hx
-      cases x with
-      | consistent => cases herr
-      | inconsistent _ => simp [CheckResult.isConsistent] at this
-    · exact collectEntries_error _ _ x hx herr
+theorem reportStatesWith_error (st : StateSetup) (ex : Explored) (flags : Array Bool)
+    (r : StateRec) (hr : r ∈ ex.recs.toList) (x : CheckResult) (hx : x ∈ checkHop r.hop)
+    (herr : x.isError = true) : ∃ e ∈ reportStatesWith st ex flags, e.severity = "error" := by
+  obtain ⟨i, hi⟩ := List.mem_iff_getElem?.mp hr
+  have hri : (r, i) ∈ ex.recs.toList.zipIdx := List.mem_zipIdx_iff_getElem?.mpr hi
+  have hent : ∃ e ∈ stateEntries st ex r (flags.getD i true), e.severity = "error" := by
+    have hx' : x ∈ (if flags.getD i true then checkHop r.hop else dropWarnings (checkHop r.hop)) := by
+      split
+      · exact hx
+      · exact mem_dropWarnings _ x hx herr
+    exact guardedEntries_error _ _ x hx' herr
   obtain ⟨e, he, hs⟩ := hent
-  unfold reportStates
-  rw [← Array.foldl_toList]
-  let F := fun (d : Dedupe) (r : StateRec) => (stateEntries st ex r).foldl Dedupe.step d
-  suffices ∀ (l : List StateRec), r ∈ l → ∀ d, ∃ y ∈ (l.foldl F d).arr.toList, y.severity = "error"
-    from this _ hr {}
+  unfold reportStatesWith
+  let F := fun (d : Dedupe) (p : StateRec × Nat) =>
+    (stateEntries st ex p.1 (flags.getD p.2 true)).foldl Dedupe.step d
+  suffices ∀ (l : List (StateRec × Nat)), (r, i) ∈ l → ∀ d,
+      ∃ y ∈ (l.foldl F d).arr.toList, y.severity = "error"
+    from this _ hri {}
   intro l hl
   induction l with
   | nil => cases hl
@@ -691,7 +747,7 @@ theorem reportStates_error (st : StateSetup) (ex : Explored) (r : StateRec)
     intro d
     rcases List.mem_cons.mp hl with rfl | htl
     · have ⟨y, hy, hys⟩ := foldl_Dedupe_finds _ e he d
-      have key : ∀ (l : List StateRec) d', (∃ y ∈ d'.arr.toList, y.severity = "error") →
+      have key : ∀ (l : List (StateRec × Nat)) d', (∃ y ∈ d'.arr.toList, y.severity = "error") →
           ∃ y ∈ (l.foldl F d').arr.toList, y.severity = "error" := by
         intro l
         induction l with
@@ -711,7 +767,7 @@ theorem runChecker_noErrors (g : ContractGraph) {maxStates maxPerEdge : Nat}
   | true =>
     exfalso
     obtain ⟨r, hr, hxr⟩ := closedStates_checkPath g ex hc p hp x hx
-    obtain ⟨e, he, hs⟩ := reportStates_error (stateSetup g) ex r hr x hxr herr
+    obtain ⟨e, he, hs⟩ := reportStatesWith_error (stateSetup g) ex _ r hr x hxr herr
     rw [heq] at h
     exact (runStatesWith_exitCode_eq_zero_iff _ g ex).mp h e he hs
 

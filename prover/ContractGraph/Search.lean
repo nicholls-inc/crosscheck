@@ -522,4 +522,34 @@ def countPaths (s : SearchSetup) (g : ContractGraph) (maxPaths maxSteps : Nat) :
     if acc.1 > maxPaths || acc.2 > maxSteps then acc
     else countFrom s.out s.isModel maxPaths maxSteps s.fuel src.id [] acc) (0, 0)
 
+
+/-! ## Call-site suffix paths: no warnings
+
+A path whose head is a call-site node (`Node.isCallSite`) with at least one
+incoming checked edge is a suffix of longer paths through that call site. It
+is still checked (its errors are reported) but its warnings are not: they
+would repeat, as "could not be resolved", what the longer paths resolve.
+Warnings never affect the exit code, so soundness is unaffected
+(`mem_dropWarnings`). -/
+
+/-- The results without the warnings. -/
+def dropWarnings (rs : List CheckResult) : List CheckResult :=
+  rs.filter fun r => match r with
+    | .consistent => true
+    | .inconsistent _ => r.isError
+
+/-- Dropping warnings keeps every error. -/
+theorem mem_dropWarnings (rs : List CheckResult) (r : CheckResult) (hr : r ∈ rs)
+    (herr : r.isError = true) : r ∈ dropWarnings rs := by
+  refine List.mem_filter.mpr ⟨hr, ?_⟩
+  cases r with
+  | consistent => rfl
+  | inconsistent d => exact herr
+
+/-- Ids of the call-site nodes of `g` with an incoming checked edge: heads of
+    suffix paths, whose warnings are not reported. -/
+def suffixHeadSet (g : ContractGraph) : HashSet Nat :=
+  let targets := idSet ((checkedEdges g.edges).map (·.target.id))
+  idSet ((g.nodes.filter fun n => n.isCallSite && targets.contains n.id).map (·.id))
+
 end ContractGraph

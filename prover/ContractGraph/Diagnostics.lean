@@ -26,14 +26,14 @@ def formatBound (c : Constraint) : String :=
   match c.kind with
   | .precision | .length | .range =>
     match c.staticBound with
-    | some b => s!"{formatConstraintKind c.kind} ≤ {formatBoundValue c.kind b}"
+    | some b => s!"{formatConstraintKind c.kind} ≤ {formatBoundValue c.kind b c.scale}"
     | none =>
       match c.depExpr with
       | some _ => s!"{formatConstraintKind c.kind} (dependent)"
       | none => s!"{formatConstraintKind c.kind} (unspecified)"
   | .rangeMin =>
     match c.staticBound with
-    | some b => s!"range ≥ {formatMicros b}"
+    | some b => s!"range ≥ {formatScaled b c.scale}"
     | none =>
       match c.depExpr with
       | some _ => "range_min (dependent)"

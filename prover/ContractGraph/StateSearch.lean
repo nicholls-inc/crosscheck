@@ -272,6 +272,37 @@ theorem closedStates_checkPath (g : ContractGraph) (ex : Explored)
     exact checkPath_mem_states _ g ex hc rest e (memStates_sound ex _ (hc'.1 src hsrc e he))
       hchain.2 (fun e' he' => hout e' (List.mem_cons_of_mem _ he'))
 
+/-! ## Which states report warnings
+
+A state reports its warnings when some walk reaches it from a first hop whose
+head is not a suffix head (`suffixHeadSet`): the flags start at those first
+hops and spread to successors. Unverified and display-only: warnings never
+affect the exit code. -/
+
+def warnFlags (st : StateSetup) (ex : Explored) (supp : Std.HashSet Nat) : Array Bool := Id.run do
+  if supp.isEmpty then return Array.replicate ex.recs.size true
+  let mut flags : Array Bool := Array.replicate ex.recs.size false
+  let mut work : Array Nat := #[]
+  for h : i in [0:ex.recs.size] do
+    let r := ex.recs[i]
+    if r.pred == 0 && !supp.contains r.raw.source.id then
+      flags := flags.set! i true
+      work := work.push i
+  while h : 0 < work.size do
+    let i := work.back
+    work := work.pop
+    match ex.recs[i]? with
+    | none => pure ()
+    | some r =>
+      for (_, n) in st.outI.getD r.hop.target.id #[] do
+        match ex.index[normHop (stepEdge r.hop n)]? with
+        | some j =>
+          if !flags[j]! then
+            flags := flags.set! j true
+            work := work.push j
+        | none => pure ()
+  return flags
+
 /-! ## Witness paths -/
 
 /-- The raw edges from a first hop to the state `r` (following predecessors). -/
