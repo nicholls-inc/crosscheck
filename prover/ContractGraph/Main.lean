@@ -211,6 +211,14 @@ theorem runChecker_sound (g : ContractGraph) (h : (runChecker g).exitCode = 0) :
     obtain ⟨y, hy, hys⟩ := dedupeResults_keeps _ e he
     exact (runChecker_exitCode_eq_zero_iff g).mp h y hy (hys.trans hs)
 
+/-- END-TO-END SOUNDNESS over all data paths. If the checker exits with code 0,
+    every checked data path of the graph (`IsDataPath`: simple, non-`calls`
+    edges, function node to model node) is stepwise sound — not only the ones
+    the enumeration happened to produce (`enumeratePaths_complete`). -/
+theorem runChecker_sound_all (g : ContractGraph) (h : (runChecker g).exitCode = 0) :
+    ∀ p, IsDataPath g p → stepwiseSound p :=
+  fun p hp => runChecker_sound g h p (enumeratePaths_complete g p hp) hp.1
+
 /-- Main entry point. -/
 def main (args : List String) : IO UInt32 := do
   if args.isEmpty then

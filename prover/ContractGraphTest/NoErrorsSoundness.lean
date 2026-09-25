@@ -60,6 +60,42 @@ theorem graph_sound : ∀ p ∈ enumeratePaths graph, p ≠ [] → stepwiseSound
 example : ∀ e ∈ (runChecker graph).results, e.severity ≠ "error" :=
   (runChecker_exitCode_eq_zero_iff graph).mp graph_exit_zero
 
+-- The graph's one edge is a data path, so `runChecker_sound_all` covers it
+-- without reference to the enumeration.
+theorem graph_edge_isDataPath : IsDataPath graph graph.edges := by
+  refine ⟨by simp [graph], ?_, make, by simp [graph], total, by simp [graph],
+          rfl, rfl, ⟨rfl, trivial⟩, rfl, by decide⟩
+  intro e he
+  simp only [graph, List.mem_singleton] at he
+  subst he
+  exact List.mem_filter.mpr ⟨List.mem_singleton_self _, rfl⟩
+
+example : stepwiseSound graph.edges :=
+  runChecker_sound_all graph graph_exit_zero _ graph_edge_isDataPath
+
+/-! ## Total enumeration: fuel suffices, cycles terminate -/
+
+def fn (i : Nat) (n : String) : Node :=
+  { id := i, name := n, kind := "function", preconditions := [], postconditions := [] }
+def field : Node :=
+  { id := 9, name := "M.x", kind := "model", preconditions := [], postconditions := [] }
+def data (s t : Node) : Edge := { source := s, target := t, relationship := .flowsTo }
+
+-- A path using every edge (length = edges.length) is still found.
+def chainGraph : ContractGraph :=
+  { nodes := [fn 1 "a", fn 2 "b", fn 3 "c", field]
+    edges := [data (fn 1 "a") (fn 2 "b"), data (fn 2 "b") (fn 3 "c"), data (fn 3 "c") field] }
+
+#guard (enumeratePaths chainGraph).map (·.map (·.source.name))
+  == [["a", "b", "c"], ["b", "c"], ["c"]]
+
+-- A cycle a ⇄ b is not followed twice; both simple paths to the field are found.
+def cycleGraph : ContractGraph :=
+  { nodes := [fn 1 "a", fn 2 "b", field]
+    edges := [data (fn 1 "a") (fn 2 "b"), data (fn 2 "b") (fn 1 "a"), data (fn 2 "b") field] }
+
+#guard (enumeratePaths cycleGraph).map (·.map (·.source.name)) == [["a", "b"], ["b"]]
+
 -- Pair-check inconsistencies are errors; hop tagging keeps the severity.
 example (di : DiagnosticInfo)
     (h : checkConstraintPair (c .precision 4) (c .precision 2) = .inconsistent di) :

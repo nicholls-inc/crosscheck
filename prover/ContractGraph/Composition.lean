@@ -114,16 +114,25 @@ def checkPath (path : List Edge) : List CheckResult :=
 termination_by path.length
 decreasing_by simp_wf
 
-/-- Enumerate all simple paths from function nodes to model nodes. -/
-partial def findAllSimplePaths (edges : List Edge) (src tgt : Node)
-    (visited : List Nat := []) : List (List Edge) :=
-  if src.id == tgt.id then [[]]
-  else if visited.contains src.id then []
-  else
-    let outEdges := edges.filter (fun e => e.source.id == src.id)
-    outEdges.flatMap fun edge =>
-      let subPaths := findAllSimplePaths edges edge.target tgt (src.id :: visited)
-      subPaths.map fun subPath => edge :: subPath
+/-- Enumerate all simple paths from `src` to `tgt` over `edges`, not revisiting
+    the node ids in `visited`. Structural recursion on `fuel`, the maximum
+    number of edges on a path. With `fuel > edges.length` (as `enumeratePaths`
+    uses) the fuel never runs out: every recursive call adds a distinct source
+    id of some edge to `visited`, so the depth is at most `edges.length`, and
+    the result equals that of the former unbounded (`partial`) search, in the
+    same order. `enumeratePaths_complete` proves every simple data path is
+    found. -/
+def findAllSimplePaths (edges : List Edge) (src tgt : Node)
+    (visited : List Nat) : (fuel : Nat) → List (List Edge)
+  | 0 => []
+  | fuel + 1 =>
+    if src.id == tgt.id then [[]]
+    else if visited.contains src.id then []
+    else
+      let outEdges := edges.filter (fun e => e.source.id == src.id)
+      outEdges.flatMap fun edge =>
+        let subPaths := findAllSimplePaths edges edge.target tgt (src.id :: visited) fuel
+        subPaths.map fun subPath => edge :: subPath
 
 /-- Edges that carry data and are checked: `writes_to` and `flows_to`.
     `calls` edges are structural only. -/
@@ -138,7 +147,126 @@ def enumeratePaths (graph : ContractGraph) : List (List Edge) :=
   let edges := checkedEdges graph.edges
   functionNodes.flatMap fun src =>
     modelNodes.flatMap fun tgt =>
-      findAllSimplePaths edges src tgt
+      findAllSimplePaths edges src tgt [] (edges.length + 1)
+
+/-! ## Data paths and completeness of `enumeratePaths` -/
+
+/-- The edges of a path chain by node id, starting at node id `srcId`: the
+    first edge leaves `srcId`, and each edge leaves the node the previous one
+    enters. -/
+def ChainFrom (srcId : Nat) : List Edge → Prop
+  | [] => True
+  | e :: rest => e.source.id = srcId ∧ ChainFrom e.target.id rest
+
+/-- The node id a path starting at `srcId` ends at. -/
+def endId (srcId : Nat) : List Edge → Nat
+  | [] => srcId
+  | e :: rest => endId e.target.id rest
+
+/-- The node ids a path starting at `srcId` visits, in order, including both
+    ends (`srcId` and `endId srcId path`). -/
+def nodeIds (srcId : Nat) : List Edge → List Nat
+  | [] => [srcId]
+  | e :: rest => srcId :: nodeIds e.target.id rest
+
+/-- A checked data path of `g`: non-empty, made of `g`'s non-`calls` edges,
+    starting at a function node of `g` and ending at a model node of `g`
+    (node identity is by id; edges carry copies of their endpoint nodes),
+    chaining by node id, and simple (all visited node ids pairwise distinct). -/
+def IsDataPath (g : ContractGraph) (p : List Edge) : Prop :=
+  p ≠ [] ∧
+  (∀ e ∈ p, e ∈ checkedEdges g.edges) ∧
+  ∃ src ∈ g.nodes, ∃ tgt ∈ g.nodes,
+    src.kind = "function" ∧ tgt.kind = "model" ∧
+    ChainFrom src.id p ∧ endId src.id p = tgt.id ∧ (nodeIds src.id p).Nodup
+
+theorem endId_mem_nodeIds (srcId : Nat) (p : List Edge) : endId srcId p ∈ nodeIds srcId p := by
+  induction p generalizing srcId with
+  | nil => simp [endId, nodeIds]
+  | cons e rest ih => simp only [endId, nodeIds]; exact List.mem_cons_of_mem _ (ih _)
+
+theorem nodeIds_eq (srcId : Nat) (p : List Edge) (h : ChainFrom srcId p) :
+    nodeIds srcId p = p.map (·.source.id) ++ [endId srcId p] := by
+  induction p generalizing srcId with
+  | nil => rfl
+  | cons e rest ih =>
+    simp only [ChainFrom] at h
+    simp only [nodeIds, endId, List.map_cons, List.cons_append, h.1]
+    rw [ih _ h.2]
+
+/-- Pigeonhole: a duplicate-free list contained in `m` is no longer than `m`. -/
+theorem nodup_length_le (l m : List Nat) (hl : l.Nodup) (hsub : ∀ x ∈ l, x ∈ m) :
+    l.length ≤ m.length := by
+  induction l generalizing m with
+  | nil => simp
+  | cons a l ih =>
+    have ⟨ha, hl'⟩ := List.nodup_cons.mp hl
+    have ham : a ∈ m := hsub a (List.mem_cons_self)
+    have h' := ih (m.erase a) hl' fun x hx => by
+      have hxa : x ≠ a := fun hxa => ha (hxa ▸ hx)
+      exact (List.mem_erase_of_ne hxa).mpr (hsub x (List.mem_cons_of_mem _ hx))
+    rw [List.length_erase_of_mem ham] at h'
+    have : 0 < m.length := List.length_pos_of_mem ham
+    simp only [List.length_cons]; omega
+
+/-- Every simple chain from `src` to `tgt` over `edges`, avoiding `visited`,
+    with fewer edges than `fuel`, is found by `findAllSimplePaths`. -/
+theorem mem_findAllSimplePaths (edges : List Edge) (tgt : Node) :
+    ∀ (p : List Edge) (src : Node) (visited : List Nat) (fuel : Nat),
+      (∀ e ∈ p, e ∈ edges) → ChainFrom src.id p → endId src.id p = tgt.id →
+      (nodeIds src.id p).Nodup → (∀ x ∈ nodeIds src.id p, x ∉ visited) →
+      p.length < fuel →
+      p ∈ findAllSimplePaths edges src tgt visited fuel := by
+  intro p
+  induction p with
+  | nil =>
+    intro src visited fuel _ _ hend _ _ hlen
+    match fuel, hlen with
+    | f + 1, _ =>
+      simp only [endId] at hend
+      simp [findAllSimplePaths, hend]
+  | cons e rest ih =>
+    intro src visited fuel hedges hchain hend hnodup hvis hlen
+    match fuel, hlen with
+    | f + 1, hlen =>
+      simp only [ChainFrom] at hchain
+      simp only [endId] at hend
+      simp only [nodeIds] at hnodup hvis
+      have ⟨hnot, hnodup'⟩ := List.nodup_cons.mp hnodup
+      have hne : src.id ≠ tgt.id := by
+        intro h; apply hnot; rw [h, ← hend]; exact endId_mem_nodeIds _ _
+      have hsv : src.id ∉ visited := hvis src.id List.mem_cons_self
+      have hsub : rest ∈ findAllSimplePaths edges e.target tgt (src.id :: visited) f := by
+        apply ih e.target (src.id :: visited) f
+          (fun x hx => hedges x (List.mem_cons_of_mem _ hx)) hchain.2 hend hnodup'
+        · intro x hx hmem
+          rcases List.mem_cons.mp hmem with rfl | hv
+          · exact hnot hx
+          · exact hvis x (List.mem_cons_of_mem _ hx) hv
+        · simp only [List.length_cons] at hlen; omega
+      have hout : e ∈ edges.filter (fun e' => e'.source.id == src.id) :=
+        List.mem_filter.mpr ⟨hedges e List.mem_cons_self, by simp [hchain.1]⟩
+      simp only [findAllSimplePaths, beq_iff_eq, hne, if_false, List.contains_iff_mem, hsv]
+      exact List.mem_flatMap.mpr ⟨e, hout, List.mem_map.mpr ⟨rest, hsub, rfl⟩⟩
+
+/-- COMPLETENESS: every checked data path of `g` is enumerated. -/
+theorem enumeratePaths_complete (g : ContractGraph) (p : List Edge)
+    (h : IsDataPath g p) : p ∈ enumeratePaths g := by
+  obtain ⟨_, hedges, src, hsrc, tgt, htgt, hsk, htk, hchain, hend, hnodup⟩ := h
+  have hlen : p.length < (checkedEdges g.edges).length + 1 := by
+    rw [nodeIds_eq _ _ hchain] at hnodup
+    have hn := (List.nodup_append.mp hnodup).1
+    have := nodup_length_le (p.map (·.source.id)) ((checkedEdges g.edges).map (·.source.id)) hn
+      (fun x hx => by
+        obtain ⟨e, he, rfl⟩ := List.mem_map.mp hx
+        exact List.mem_map.mpr ⟨e, hedges e he, rfl⟩)
+    simp only [List.length_map] at this
+    omega
+  unfold enumeratePaths
+  refine List.mem_flatMap.mpr ⟨src, List.mem_filter.mpr ⟨hsrc, by simp [hsk]⟩, ?_⟩
+  refine List.mem_flatMap.mpr ⟨tgt, List.mem_filter.mpr ⟨htgt, by simp [htk]⟩, ?_⟩
+  exact mem_findAllSimplePaths _ tgt p src [] _ hedges hchain hend hnodup
+    (fun _ _ h => by cases h) hlen
 
 /-- Check all paths and collect results with unresolved-dep warnings. -/
 def checkAllPaths (graph : ContractGraph) : List (List Edge × List CheckResult) :=
