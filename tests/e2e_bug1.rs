@@ -141,21 +141,12 @@ fn test_bug1_implicit_null_defaults() {
 fn test_bug1_type_contracts() {
     let (_tmp, conn) = bug1_db();
 
-    // Model fields should have type=Decimal precondition (from DecimalField)
+    // A DecimalField accepts int, float and Decimal alike (Django converts),
+    // so it has no type contract (round 3, F4).
     let model_type = query_contract_by_type(&conn, "EnergyRecord.energy", "type");
-    let decimal_types: Vec<&ContractRow> = model_type
-        .iter()
-        .filter(|c| c.param_type_name.as_deref() == Some("Decimal"))
-        .collect();
-    assert_eq!(
-        decimal_types.len(),
-        1,
-        "EnergyRecord.energy should have a Decimal type contract"
-    );
-    assert_eq!(
-        decimal_types[0].contract_role.as_deref(),
-        Some("precondition"),
-        "model field type should be a precondition"
+    assert!(
+        model_type.is_empty(),
+        "EnergyRecord.energy (numeric field) should have no type contract, got {model_type:?}"
     );
 
     // split_energy returns EnergyRecord (a model class name), which is intentionally

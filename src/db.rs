@@ -1,6 +1,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::bounds::{self, BoundKind, Micros};
+
 /// Node kinds matching the SQL CHECK constraint.
 #[derive(Debug, Clone, Copy)]
 pub enum NodeKind {
@@ -136,8 +138,13 @@ pub struct ContractRecord {
     pub param_max_length: Option<i64>,
     pub param_nullable: Option<i64>,
     pub param_type_name: Option<String>,
+    /// Legacy readers' copy of the bound (`param_min_micros` / 10^6).
     pub param_min_value: Option<f64>,
     pub param_max_value: Option<f64>,
+    /// Exact bounds times 10^6 (see `bounds`); set for every range row.
+    pub param_min_micros: Option<i64>,
+    pub param_max_micros: Option<i64>,
+    /// A JSON array of strings (`["a","x"]`); legacy rows used a comma list.
     pub param_choices: Option<String>,
     pub source_file: String,
     pub source_line: u32,
@@ -171,6 +178,8 @@ impl ContractRecord {
             param_type_name: None,
             param_min_value: None,
             param_max_value: None,
+            param_min_micros: None,
+            param_max_micros: None,
             param_choices: None,
             source_file: source_file.to_string(),
             source_line,
@@ -182,6 +191,35 @@ impl ContractRecord {
             edge_id: None,
         }
     }
+
+    /// Set the range columns (legacy value and micros) from bounds in micros.
+    /// `required` selects the rounding/clamping direction (see `bounds::columns`).
+    pub fn with_range(
+        mut self,
+        min: Option<Micros>,
+        max: Option<Micros>,
+        required: bool,
+    ) -> Self {
+        let (min_kind, max_kind) = if required {
+            (BoundKind::RequiredMin, BoundKind::RequiredMax)
+        } else {
+            (BoundKind::GuaranteedMin, BoundKind::GuaranteedMax)
+        };
+        (self.param_min_value, self.param_min_micros) = bounds::columns(min, min_kind);
+        (self.param_max_value, self.param_max_micros) = bounds::columns(max, max_kind);
+        self
+    }
+
+    /// Set the choices column (JSON array of strings).
+    pub fn with_choices(mut self, values: &[String]) -> Self {
+        self.param_choices = Some(choices_json(values));
+        self
+    }
+}
+
+/// `["a","x"]`: the `param_choices` encoding.
+pub fn choices_json(values: &[String]) -> String {
+    serde_json::to_string(values).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// An edge to be inserted.
@@ -194,9 +232,15 @@ pub struct EdgeRecord {
     pub target_param: Option<String>,
     /// When true, the source's postconditions on this edge are the rows with `edge_id` = this edge.
     pub source_override: bool,
+    /// Location of the write or call expression that produced the edge.
+    pub site_file: Option<String>,
+    pub site_line: Option<u32>,
 }
 
 /// Database wrapper for the contract graph.
+///
+/// Every insert runs inside one transaction (journal off, no fsync per row);
+/// `finish` commits it. A database that is not finished is incomplete.
 pub struct ContractDb {
     conn: Connection,
 }
@@ -205,37 +249,52 @@ impl ContractDb {
     /// Create a new database at the given path with the schema.
     pub fn create(path: &std::path::Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF; PRAGMA foreign_keys = OFF;",
+        )?;
         conn.execute_batch(SCHEMA)?;
+        conn.execute_batch("BEGIN")?;
         Ok(ContractDb { conn })
+    }
+
+    /// Commit every insert.
+    pub fn finish(&self) -> Result<()> {
+        self.conn.execute_batch("COMMIT")?;
+        Ok(())
     }
 
     /// Insert a node and return its ID.
     pub fn insert_node(&self, node: &NodeRecord) -> Result<i64> {
-        self.conn.execute(
-            "INSERT INTO nodes (name, qualified_name, kind, source_file, source_line)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
+        self.conn
+            .prepare_cached(
+                "INSERT INTO nodes (name, qualified_name, kind, source_file, source_line)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?
+            .execute(rusqlite::params![
                 node.name,
                 node.qualified_name,
                 node.kind.as_str(),
                 node.source_file,
                 node.source_line,
-            ],
-        )?;
+            ])?;
         Ok(self.conn.last_insert_rowid())
     }
 
     /// Insert a contract.
     pub fn insert_contract(&self, contract: &ContractRecord) -> Result<i64> {
-        self.conn.execute(
-            "INSERT INTO contracts (
-                node_id, constraint_type, param_max_digits, param_decimal_places,
-                param_max_length, param_nullable, param_type_name,
-                param_min_value, param_max_value, param_choices,
-                source_file, source_line, is_implicit, verification_level,
-                contract_role, dependent_expr, subject, edge_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
-            rusqlite::params![
+        self.conn
+            .prepare_cached(
+                "INSERT INTO contracts (
+                    node_id, constraint_type, param_max_digits, param_decimal_places,
+                    param_max_length, param_nullable, param_type_name,
+                    param_min_value, param_max_value, param_choices,
+                    source_file, source_line, is_implicit, verification_level,
+                    contract_role, dependent_expr, subject, edge_id,
+                    param_min_micros, param_max_micros
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+                          ?17, ?18, ?19, ?20)",
+            )?
+            .execute(rusqlite::params![
                 contract.node_id,
                 contract.constraint_type.as_str(),
                 contract.param_max_digits,
@@ -254,26 +313,30 @@ impl ContractDb {
                 contract.dependent_expr,
                 contract.subject,
                 contract.edge_id,
-            ],
-        )?;
+                contract.param_min_micros,
+                contract.param_max_micros,
+            ])?;
         Ok(self.conn.last_insert_rowid())
     }
 
     /// Insert an edge.
     pub fn insert_edge(&self, edge: &EdgeRecord) -> Result<i64> {
-        self.conn.execute(
-            "INSERT INTO edges (source_node_id, target_node_id, relationship, discovery,
-                                target_param, source_override)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
+        self.conn
+            .prepare_cached(
+                "INSERT INTO edges (source_node_id, target_node_id, relationship, discovery,
+                                    target_param, source_override, site_file, site_line)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?
+            .execute(rusqlite::params![
                 edge.source_node_id,
                 edge.target_node_id,
                 edge.relationship.as_str(),
                 edge.discovery.as_str(),
                 edge.target_param,
                 edge.source_override as i64,
-            ],
-        )?;
+                edge.site_file,
+                edge.site_line,
+            ])?;
         Ok(self.conn.last_insert_rowid())
     }
 }
@@ -297,7 +360,9 @@ CREATE TABLE edges (
                     )),
     discovery       TEXT NOT NULL CHECK (discovery IN ('ast_pattern', 'manual', 'type_inference')),
     target_param    TEXT,
-    source_override INTEGER NOT NULL DEFAULT 0 CHECK (source_override IN (0, 1))
+    source_override INTEGER NOT NULL DEFAULT 0 CHECK (source_override IN (0, 1)),
+    site_file       TEXT,
+    site_line       INTEGER
 );
 
 CREATE TABLE contracts (
@@ -322,7 +387,9 @@ CREATE TABLE contracts (
     contract_role       TEXT CHECK (contract_role IN ('precondition', 'postcondition', NULL)),
     dependent_expr      TEXT,
     subject             TEXT,
-    edge_id             INTEGER REFERENCES edges(id)
+    edge_id             INTEGER REFERENCES edges(id),
+    param_min_micros    INTEGER,
+    param_max_micros    INTEGER
 );
 
 CREATE INDEX idx_contracts_node ON contracts(node_id);

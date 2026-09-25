@@ -31,6 +31,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 use ruff_python_ast::{self as ast, Expr, Number, Stmt, UnaryOp};
 
+use crate::bounds::{self, BoundKind, Micros};
 use crate::db::{
     ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
     VerificationLevel,
@@ -85,8 +86,14 @@ pub struct DataClassField {
     pub max_digits: Option<i64>,
     pub decimal_places: Option<i64>,
     pub max_length: Option<i64>,
-    pub max_value: Option<i64>,
-    pub min_value: Option<i64>,
+    /// Upper / lower bound in micros (see `bounds`).
+    pub max_value: Option<Micros>,
+    pub min_value: Option<Micros>,
+    /// Allowed values (`Literal["a", "b"]`, a project `Enum` type).
+    pub choices: Option<Vec<String>>,
+    /// pydantic strict validation for this field (`Field(strict=True)`,
+    /// `StrictInt`, ...): no numeric coercion.
+    pub strict: bool,
     pub source_file: String,
     pub source_line: u32,
 }
@@ -103,6 +110,48 @@ pub struct DataClass {
     /// Names bound by positional constructor arguments, in order, when that
     /// order is certain (see `positional_params`); `None` otherwise.
     pub positional: Option<Vec<String>>,
+    /// pydantic strict mode for the whole model (`model_config =
+    /// ConfigDict(strict=True)`, `class Config: strict = True`, or inherited).
+    pub strict: bool,
+}
+
+impl DataClass {
+    /// Whether numeric fields accept `int`, `float` and `Decimal` alike
+    /// (pydantic lax mode): then they carry no numeric type contract.
+    pub fn lax_numeric(&self, field: &DataClassField) -> bool {
+        self.kind == DataClassKind::Pydantic && !self.strict && !field.strict
+    }
+}
+
+/// Whether a class body turns on pydantic strict mode.
+fn strict_config(class_def: &ast::StmtClassDef) -> bool {
+    class_def.body.iter().any(|stmt| match stmt {
+        // model_config = ConfigDict(strict=True)  /  model_config = {"strict": True}
+        Stmt::Assign(a) if matches!(&a.targets[..], [Expr::Name(n)] if n.id.as_str() == "model_config") => {
+            config_is_strict(&a.value)
+        }
+        Stmt::AnnAssign(a) if matches!(a.target.as_ref(), Expr::Name(n) if n.id.as_str() == "model_config") => {
+            a.value.as_deref().is_some_and(config_is_strict)
+        }
+        // class Config: strict = True
+        Stmt::ClassDef(c) if c.name.as_str() == "Config" => c.body.iter().any(|s| {
+            matches!(s, Stmt::Assign(a)
+                if matches!(&a.targets[..], [Expr::Name(n)] if n.id.as_str() == "strict")
+                    && matches!(a.value.as_ref(), Expr::BooleanLiteral(b) if b.value))
+        }),
+        _ => false,
+    })
+}
+
+fn config_is_strict(value: &Expr) -> bool {
+    match value {
+        Expr::Call(c) => keyword_is_true(c, "strict"),
+        Expr::Dict(d) => d.items.iter().any(|item| {
+            matches!(&item.key, Some(Expr::StringLiteral(k)) if k.value.to_str() == "strict")
+                && matches!(&item.value, Expr::BooleanLiteral(b) if b.value)
+        }),
+        _ => false,
+    }
 }
 
 /// Collect top-level class definitions from a module. The module name is
@@ -199,6 +248,25 @@ pub fn resolve_data_classes_with(
         }
     }
 
+    // Strict mode: own configuration, or a strict project-local base.
+    let mut strict: HashSet<String> = candidates
+        .iter()
+        .filter(|c| strict_config(&c.class_def))
+        .map(candidate_qualified)
+        .collect();
+    loop {
+        let before = strict.len();
+        for c in candidates {
+            let name = candidate_qualified(c);
+            if !strict.contains(&name) && bases[&name].iter().any(|b| strict.contains(b)) {
+                strict.insert(name);
+            }
+        }
+        if strict.len() == before {
+            break;
+        }
+    }
+
     let mut result = Vec::new();
     for c in candidates {
         let qualified = candidate_qualified(c);
@@ -211,6 +279,7 @@ pub fn resolve_data_classes_with(
             let positional = if inherits { None } else { positional_params(&c.class_def, kind) };
             result.push(DataClass {
                 name: c.class_def.name.to_string(),
+                strict: strict.contains(&qualified),
                 qualified_name: qualified,
                 module: c.module.clone(),
                 kind,
@@ -413,6 +482,8 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
             max_length: None,
             max_value: None,
             min_value: None,
+            choices: info.choices,
+            strict: info.strict,
             source_file: candidate.source_file.clone(),
             source_line: line,
         };
@@ -437,6 +508,10 @@ struct AnnotationInfo<'a> {
     nullable: Option<bool>,
     /// `Field(...)` in `Annotated` metadata, or a `con*()` helper call.
     constraint_calls: Vec<&'a ast::ExprCall>,
+    /// `Literal[...]` values.
+    choices: Option<Vec<String>>,
+    /// A `Strict*` type.
+    strict: bool,
 }
 
 /// Type name and nullability an annotation states (`None` for `ClassVar[...]`).
@@ -452,6 +527,8 @@ fn analyze_annotation(expr: &Expr) -> Option<AnnotationInfo<'_>> {
         type_name: None,
         nullable: Some(false),
         constraint_calls: Vec::new(),
+        choices: None,
+        strict: false,
     };
     if walk_annotation(expr, &mut info) {
         Some(info)
@@ -474,7 +551,7 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                 "Annotated" => {
                     if let Expr::Tuple(t) = sub.slice.as_ref() {
                         let mut elts = t.elts.iter();
-                        let keep = elts.next().map_or(true, |base| walk_annotation(base, info));
+                        let keep = elts.next().is_none_or(|base| walk_annotation(base, info));
                         for meta in elts {
                             if let Expr::Call(call) = meta {
                                 if is_field_call(&call.func) {
@@ -496,6 +573,28 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                 }
                 "Final" | "Required" | "NotRequired" | "ReadOnly" => {
                     walk_annotation(&sub.slice, info)
+                }
+                "Literal" => {
+                    let values: Vec<&Expr> = match sub.slice.as_ref() {
+                        Expr::Tuple(t) => t.elts.iter().collect(),
+                        other => vec![other],
+                    };
+                    let none = values.iter().any(|v| matches!(v, Expr::NoneLiteral(_)));
+                    let values: Vec<&Expr> =
+                        values.into_iter().filter(|v| !matches!(v, Expr::NoneLiteral(_))).collect();
+                    if none {
+                        info.nullable = Some(true);
+                    }
+                    let strings = values.iter().all(|v| matches!(v, Expr::StringLiteral(_)));
+                    let ints = values.iter().all(|v| crate::value_analysis::int_literal(v).is_some());
+                    if !values.is_empty() && (strings || ints) {
+                        info.type_name = Some(if strings { "str" } else { "int" }.to_string());
+                        info.choices = values
+                            .iter()
+                            .map(|v| crate::resolve::literal_choice(v))
+                            .collect();
+                    }
+                    true
                 }
                 // Generic containers: record the container name only.
                 _ => {
@@ -540,7 +639,17 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
         }
         _ => {
             let name = last_segment(expr);
-            if name.as_deref() == Some("Any") {
+            let strict_type = match name.as_deref() {
+                Some("StrictInt") => Some("int"),
+                Some("StrictFloat") => Some("float"),
+                Some("StrictStr") => Some("str"),
+                Some("StrictBool") => Some("bool"),
+                _ => None,
+            };
+            if let Some(t) = strict_type {
+                info.type_name = Some(t.to_string());
+                info.strict = true;
+            } else if name.as_deref() == Some("Any") {
                 info.nullable = None;
             } else {
                 info.type_name = name;
@@ -589,26 +698,44 @@ fn is_field_call(func: &Expr) -> bool {
     )
 }
 
-/// Read pydantic-style constraint keywords from a call.
+/// Read pydantic-style constraint keywords from a call. Bounds may be int,
+/// float or `Decimal` literals; a strict `lt` / `gt` is the next integer on
+/// an `int` field and one millionth inside the bound otherwise (stricter
+/// than required, so conservative).
 fn apply_constraint_keywords(field: &mut DataClassField, call: &ast::ExprCall) {
+    let is_int = field.type_name.as_deref() == Some("int");
+    let step = if is_int { bounds::SCALE } else { 1 };
     for kw in &call.arguments.keywords {
         let Some(arg) = kw.arg.as_ref() else { continue };
         let value = int_literal(&kw.value);
+        let bound = |k: BoundKind| bounds::literal_bound(&kw.value, k);
         match arg.as_str() {
             "max_digits" => field.max_digits = value.or(field.max_digits),
             "decimal_places" => field.decimal_places = value.or(field.decimal_places),
             "max_length" => field.max_length = value.or(field.max_length),
-            "le" => field.max_value = value.or(field.max_value),
-            "lt" if field.type_name.as_deref() == Some("int") => {
-                field.max_value = value.map(|v| v - 1).or(field.max_value)
+            "le" => field.max_value = bound(BoundKind::RequiredMax).or(field.max_value),
+            "lt" => {
+                field.max_value = bound(BoundKind::RequiredMax)
+                    .map(|v| if is_int { floor_to_int(v - 1) } else { v - step })
+                    .or(field.max_value)
             }
-            "ge" => field.min_value = value.or(field.min_value),
-            "gt" if field.type_name.as_deref() == Some("int") => {
-                field.min_value = value.map(|v| v + 1).or(field.min_value)
+            "ge" => field.min_value = bound(BoundKind::RequiredMin).or(field.min_value),
+            "gt" => {
+                field.min_value = bound(BoundKind::RequiredMin)
+                    .map(|v| if is_int { floor_to_int(v) + step } else { v + step })
+                    .or(field.min_value)
+            }
+            "strict" => {
+                field.strict |= matches!(&kw.value, Expr::BooleanLiteral(b) if b.value);
             }
             _ => {}
         }
     }
+}
+
+/// The largest whole number (in micros) at most `v`.
+fn floor_to_int(v: Micros) -> Micros {
+    v.div_euclid(bounds::SCALE) * bounds::SCALE
 }
 
 /// An integer literal, including a negated one.
@@ -664,7 +791,8 @@ pub fn write_data_classes(
             };
 
             if let Some(t) = &field.type_name {
-                if VALUE_TYPES.contains(&t.as_str()) {
+                let numeric = matches!(t.as_str(), "Decimal" | "int" | "float");
+                if VALUE_TYPES.contains(&t.as_str()) && !(numeric && class.lax_numeric(field)) {
                     db.insert_contract(&ContractRecord {
                         param_type_name: Some(t.clone()),
                         ..base(ConstraintType::Type)
@@ -691,11 +819,14 @@ pub fn write_data_classes(
                 })?;
             }
             if field.max_value.is_some() || field.min_value.is_some() {
-                db.insert_contract(&ContractRecord {
-                    param_max_value: field.max_value.map(|v| v as f64),
-                    param_min_value: field.min_value.map(|v| v as f64),
-                    ..base(ConstraintType::Range)
-                })?;
+                db.insert_contract(&base(ConstraintType::Range).with_range(
+                    field.min_value,
+                    field.max_value,
+                    true,
+                ))?;
+            }
+            if let Some(choices) = &field.choices {
+                db.insert_contract(&base(ConstraintType::Choices).with_choices(choices))?;
             }
         }
     }
@@ -710,7 +841,7 @@ mod tests {
         let parsed =
             ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into());
         let stmts = match parsed.into_syntax() {
-            ruff_python_ast::Mod::Module(m) => m.body,
+            ruff_python_ast::Mod::Module(m) => m.body.to_vec(),
             _ => unreachable!(),
         };
         resolve_data_classes(&collect_classes(&stmts, src, "t.py"))
@@ -756,9 +887,9 @@ mod tests {
         let amount = field(&cs, "M", "amount");
         assert_eq!((amount.max_digits, amount.decimal_places), (Some(10), Some(2)));
         assert_eq!(field(&cs, "M", "name").max_length, Some(32));
-        assert_eq!(field(&cs, "M", "qty").max_value, Some(9));
+        assert_eq!(field(&cs, "M", "qty").max_value, Some(9_000_000));
         let pct = field(&cs, "M", "pct");
-        assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), Some(100)));
+        assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), Some(100_000_000)));
     }
 
     #[test]
@@ -781,16 +912,17 @@ mod tests {
             "class M(BaseModel):\n    a: int = Field(ge=0, le=10)\n    b: int = Field(gt=0)\n    c: float = Field(gt=0)\n",
         );
         let a = field(&cs, "M", "a");
-        assert_eq!((a.min_value, a.max_value), (Some(0), Some(10)));
-        assert_eq!(field(&cs, "M", "b").min_value, Some(1));
-        assert_eq!(field(&cs, "M", "c").min_value, None, "gt on a non-int has no integer bound");
+        assert_eq!((a.min_value, a.max_value), (Some(0), Some(10_000_000)));
+        assert_eq!(field(&cs, "M", "b").min_value, Some(1_000_000));
+        // gt on a non-int: one millionth above (stricter than required).
+        assert_eq!(field(&cs, "M", "c").min_value, Some(1));
     }
 
     fn module(src: &str, path: &str) -> Vec<ClassCandidate> {
         let stmts = match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
             .into_syntax()
         {
-            ruff_python_ast::Mod::Module(m) => m.body,
+            ruff_python_ast::Mod::Module(m) => m.body.to_vec(),
             _ => unreachable!(),
         };
         collect_classes(&stmts, src, path)

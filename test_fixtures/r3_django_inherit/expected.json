@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "four -> Payment.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Payment.amount"
+    },
+    {
+      "path": "restaurant_bad -> Restaurant.name",
+      "source_guarantee": "length ≤ 9",
+      "target_requirement": "length ≤ 5",
+      "target": "Restaurant.name"
+    },
+    {
+      "path": "four -> Grandchild.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Grandchild.amount"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+use crate::bounds::{self, BoundKind, Micros};
 use crate::db::{ContractRole, ConstraintType};
 
 /// A contract extracted from a docstring.
@@ -11,6 +12,9 @@ pub struct DocstringContract {
     pub dependent_expr: Option<String>,
     /// For range contracts: true for `>= N` (lower bound), false for `<= N`.
     pub is_lower_bound: bool,
+    /// For range contracts: the bound in micros (decimals allowed), rounded
+    /// conservatively for the clause's role.
+    pub range_micros: Option<Micros>,
     /// The name the clause constrains (`amount` in `precision(amount) <= 2`),
     /// as written. For preconditions this is the parameter, if it is one.
     pub subject: Option<String>,
@@ -49,6 +53,7 @@ fn contract(
         param_value,
         dependent_expr: None,
         is_lower_bound: false,
+        range_micros: None,
         subject: Some(subject.trim().to_string()),
     }
 }
@@ -110,22 +115,34 @@ fn parse_clause(clause: &str, role: ContractRole) -> Option<DocstringContract> {
         return Some(contract(ConstraintType::Nullability, role, name, Some(0)));
     }
 
-    // Pattern: NAME <= N (range max)
+    // Pattern: NAME <= N (range max); N may be a decimal
     if let Some((lhs, rhs)) = clause.split_once("<=") {
         if is_simple_name(lhs.trim()) {
-            if let Ok(n) = rhs.trim().parse::<i64>() {
-                return Some(contract(ConstraintType::Range, role, lhs, Some(n)));
+            let kind = match role {
+                ContractRole::Precondition => BoundKind::RequiredMax,
+                ContractRole::Postcondition => BoundKind::GuaranteedMax,
+            };
+            if let Some(m) = bounds::parse_decimal(rhs.trim(), kind) {
+                return Some(DocstringContract {
+                    range_micros: Some(m),
+                    ..contract(ConstraintType::Range, role, lhs, rhs.trim().parse::<i64>().ok())
+                });
             }
         }
     }
 
-    // Pattern: NAME >= N (range min)
+    // Pattern: NAME >= N (range min); N may be a decimal
     if let Some((lhs, rhs)) = clause.split_once(">=") {
         if is_simple_name(lhs.trim()) {
-            if let Ok(n) = rhs.trim().parse::<i64>() {
+            let kind = match role {
+                ContractRole::Precondition => BoundKind::RequiredMin,
+                ContractRole::Postcondition => BoundKind::GuaranteedMin,
+            };
+            if let Some(m) = bounds::parse_decimal(rhs.trim(), kind) {
                 return Some(DocstringContract {
                     is_lower_bound: true,
-                    ..contract(ConstraintType::Range, role, lhs, Some(n))
+                    range_micros: Some(m),
+                    ..contract(ConstraintType::Range, role, lhs, rhs.trim().parse::<i64>().ok())
                 });
             }
         }
@@ -159,6 +176,21 @@ mod tests {
         let result = parse_clause("value >= 42", ContractRole::Precondition);
         assert!(result.is_some());
         assert_eq!(result.unwrap().param_value, Some(42));
+    }
+
+    /// Decimal bounds (round 3): exact micros, rounded by role when inexact.
+    #[test]
+    fn test_parse_clause_decimal_bounds() {
+        let c = parse_clause("ratio <= 0.5", ContractRole::Precondition).unwrap();
+        assert_eq!((c.range_micros, c.param_value, c.is_lower_bound), (Some(500_000), None, false));
+        let c = parse_clause("result >= -1.25", ContractRole::Postcondition).unwrap();
+        assert_eq!((c.range_micros, c.is_lower_bound), (Some(-1_250_000), true));
+        let c = parse_clause("result <= 7", ContractRole::Postcondition).unwrap();
+        assert_eq!((c.range_micros, c.param_value), (Some(7_000_000), Some(7)));
+        // A requirement rounds to the stricter side, a guarantee to the weaker.
+        let req = parse_clause("x <= 0.1234567", ContractRole::Precondition).unwrap();
+        let ens = parse_clause("result <= 0.1234567", ContractRole::Postcondition).unwrap();
+        assert_eq!((req.range_micros, ens.range_micros), (Some(123_456), Some(123_457)));
     }
 
     #[test]

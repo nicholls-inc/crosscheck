@@ -18,21 +18,32 @@ fn db(fixture: &str) -> (TempDir, rusqlite::Connection) {
     (tmp, conn)
 }
 
+/// Display names of the nodes of `kind`, sorted (call-site nodes left out).
 fn names(conn: &rusqlite::Connection, kind: &str) -> Vec<String> {
     let mut v: Vec<String> = query_nodes(conn, kind)
         .into_iter()
+        .filter(|n| !n.qualified_name.as_deref().unwrap_or("").contains('@'))
         .map(|n| n.name)
         .collect();
     v.sort();
     v
 }
 
-/// `source -rel-> target [param] [override]` for every edge, sorted.
+/// `source -rel-> target [param] [override]` for every edge, sorted; a
+/// call-site node is written `name@`.
 fn edge_list(edges: &[EdgeRow]) -> Vec<String> {
     let mut v: Vec<String> = edges
         .iter()
         .map(|e| {
-            let mut s = format!("{} -{}-> {}", e.source_name, e.relationship, e.target_name);
+            let at = |site: bool| if site { "@" } else { "" };
+            let mut s = format!(
+                "{}{} -{}-> {}{}",
+                e.source_name,
+                at(e.source_is_site),
+                e.relationship,
+                e.target_name,
+                at(e.target_is_site)
+            );
             if let Some(p) = &e.target_param {
                 s.push_str(&format!(" [{p}]"));
             }
@@ -127,18 +138,19 @@ fn test_limits_qualified_call() {
 fn test_limits_literal_none() {
     let (_t, conn) = db("limits_literal_none");
     let edges = query_edges(&conn);
+    // `None`: nullable; trivially within precision / length / choices bounds.
     assert_eq!(
         override_rows(&conn, &edges, "make", "Invoice.total", "writes_to", None),
-        ["nullability=1"]
+        ["choices=[]", "length=0", "nullability=1", "precision=0"]
     );
     // Non-None literals are non-null.
     assert_eq!(
         override_rows(&conn, &edges, "make", "Invoice.customer", "writes_to", None),
-        ["length=1", "nullability=0", "type=str"]
+        ["choices=[\"x\"]", "length=1", "nullability=0", "type=str"]
     );
     assert_eq!(
         override_rows(&conn, &edges, "make", "Invoice.tax", "writes_to", None),
-        ["nullability=0", "precision=0", "type=Decimal"]
+        ["nullability=0", "precision=0", "range=0..0", "type=Decimal"]
     );
 }
 
@@ -169,7 +181,7 @@ fn test_limits_arith_unknown() {
     );
     assert_eq!(
         override_rows(&conn, &edges, "make", "Invoice.tax", "writes_to", None),
-        ["nullability=0", "precision=0", "type=Decimal"]
+        ["nullability=0", "precision=0", "range=0..0", "type=Decimal"]
     );
 }
 
@@ -178,9 +190,10 @@ fn test_limits_lower_bound() {
     let (_t, conn) = db("limits_lower_bound");
     let edges = query_edges(&conn);
     assert!(!the_edge(&edges, "adjust", "Stock.qty", "writes_to", None).source_override);
+    // An IntegerField has no type contract (Django converts numbers).
     assert_eq!(
         node_rows(&conn, "Stock.qty", "precondition"),
-        ["nullability=0", "range=0..1000", "type=int"]
+        ["nullability=0", "range=0..1000"]
     );
     // Docstring `result >= -50` / `result <= 500`: lower bound in param_min_value.
     assert_eq!(
@@ -262,22 +275,31 @@ fn test_limits_per_argument() {
     let edges = query_edges(&conn);
     assert_eq!(
         edge_list(&edges),
+        // Each call's result is its own call-site node (`name@`); argument
+        // edges go to the callee's own node and to the call site.
         sorted(&[
-            "combine -writes_to-> Invoice.total",
+            "combine@ -writes_to-> Invoice.total",
             "make -writes_to-> Invoice.tax [override]",
             "make -writes_to-> Invoice.customer [override]",
             "make -calls-> combine",
             "make -flows_to-> combine [amount] [override]",
-            "with_tax -flows_to-> combine [rate]",
+            "make -flows_to-> combine@ [amount] [override]",
+            "with_tax@ -flows_to-> combine [rate]",
+            "with_tax@ -flows_to-> combine@ [rate]",
             "make -calls-> with_tax",
             "make -flows_to-> with_tax [a] [override]",
+            "make -flows_to-> with_tax@ [a] [override]",
+            "combine@ -writes_to-> Invoice.total",
             "make_bad -writes_to-> Invoice.tax [override]",
             "make_bad -writes_to-> Invoice.customer [override]",
             "make_bad -calls-> combine",
-            "with_tax -flows_to-> combine [amount]",
+            "with_tax@ -flows_to-> combine [amount]",
+            "with_tax@ -flows_to-> combine@ [amount]",
             "make_bad -flows_to-> combine [rate] [override]",
+            "make_bad -flows_to-> combine@ [rate] [override]",
             "make_bad -calls-> with_tax",
             "make_bad -flows_to-> with_tax [a] [override]",
+            "make_bad -flows_to-> with_tax@ [a] [override]",
         ])
     );
     assert_eq!(

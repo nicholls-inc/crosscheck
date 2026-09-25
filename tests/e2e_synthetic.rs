@@ -57,7 +57,8 @@ class MyModel(models.Model):
 
     let choices = query_contract_by_type(&conn, "MyModel.status", "choices");
     assert_eq!(choices.len(), 1, "should have a choices contract");
-    assert_eq!(choices[0].param_choices.as_deref(), Some("A,I"));
+    // A JSON array (round 3); the legacy encoding was the comma list "A,I".
+    assert_eq!(choices[0].param_choices.as_deref(), Some(r#"["A","I"]"#));
 }
 
 #[test]

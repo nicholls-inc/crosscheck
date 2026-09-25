@@ -1,4 +1,5 @@
 pub mod body_analyzer;
+pub mod bounds;
 pub mod dataclass_extractor;
 pub mod db;
 pub mod defaults;

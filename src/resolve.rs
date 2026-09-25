@@ -11,6 +11,7 @@
 //! project resolve at all; builtins and third-party names resolve to nothing,
 //! which the edge discovery reads as "no edge".
 
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ruff_python_ast::{Expr, Stmt};
@@ -55,6 +56,8 @@ pub enum Import {
 pub enum DefKind {
     Function,
     Class,
+    /// A name bound exactly once, at top level, to a literal (`Q4 = Decimal("0.0001")`).
+    Constant,
 }
 
 /// Names a module defines and imports.
@@ -89,8 +92,131 @@ impl ModuleInfo {
             }
         }
         collect_imports(stmts, &mut info);
+        for name in module_constants(stmts).into_keys() {
+            if !info.imports.contains_key(&name) && !info.defs.contains_key(&name) {
+                info.defs.insert(name, DefKind::Constant);
+            }
+        }
         info
     }
+}
+
+/// Whether `expr` is a literal whose facts need no context: `None`, a bool,
+/// number or (non-f) string, a negated number, `Decimal("...")` /
+/// `Decimal(n)`, `"x" * n`, or a tuple / list of such literals.
+pub fn is_constant_literal(expr: &Expr) -> bool {
+    match expr {
+        Expr::NoneLiteral(_)
+        | Expr::BooleanLiteral(_)
+        | Expr::NumberLiteral(_)
+        | Expr::StringLiteral(_) => true,
+        Expr::UnaryOp(u) => {
+            matches!(u.op, ruff_python_ast::UnaryOp::USub | ruff_python_ast::UnaryOp::UAdd)
+                && matches!(u.operand.as_ref(), Expr::NumberLiteral(_))
+        }
+        // Containers of literals, and choice lists `[(value, label), ...]`
+        // (the label may be any expression, e.g. `_("Active")`).
+        Expr::Tuple(t) => t.elts.iter().all(|e| is_constant_literal(e) || is_choice_entry(e)),
+        Expr::List(l) => l.elts.iter().all(|e| is_constant_literal(e) || is_choice_entry(e)),
+        Expr::BinOp(b) => {
+            matches!(b.op, ruff_python_ast::Operator::Mult)
+                && matches!(
+                    (b.left.as_ref(), b.right.as_ref()),
+                    (Expr::StringLiteral(_), Expr::NumberLiteral(_))
+                        | (Expr::NumberLiteral(_), Expr::StringLiteral(_))
+                )
+        }
+        Expr::Call(c) => {
+            let decimal = match c.func.as_ref() {
+                Expr::Name(n) => n.id.as_str() == "Decimal",
+                Expr::Attribute(a) => {
+                    a.attr.as_str() == "Decimal"
+                        && matches!(a.value.as_ref(), Expr::Name(n) if n.id.as_str() == "decimal")
+                }
+                _ => false,
+            };
+            decimal
+                && c.arguments.keywords.is_empty()
+                && c.arguments.args.len() == 1
+                && matches!(
+                    &c.arguments.args[0],
+                    Expr::StringLiteral(_) | Expr::NumberLiteral(_) | Expr::UnaryOp(_)
+                )
+                && is_constant_literal(&c.arguments.args[0])
+        }
+        _ => false,
+    }
+}
+
+/// `(value, label)` with a literal value, or a named group `(label, [...])`.
+fn is_choice_entry(expr: &Expr) -> bool {
+    let elts: &[Expr] = match expr {
+        Expr::Tuple(t) => &t.elts[..],
+        Expr::List(l) => &l.elts[..],
+        _ => return false,
+    };
+    match elts {
+        // The value may also name a constant (`(OPEN, "Open")`).
+        [value, rest] => {
+            is_constant_literal(value)
+                || dotted_parts(value).is_some()
+                || matches!(rest, Expr::List(_) | Expr::Tuple(_)) && is_constant_literal(rest)
+        }
+        _ => false,
+    }
+}
+
+/// Names bound exactly once in `stmts` (not counting nested function and
+/// class bodies), by a simple `name = literal` / `name: T = literal`, and
+/// never declared `global` in a function: name -> the literal.
+pub fn module_constants(stmts: &[Stmt]) -> HashMap<String, Expr> {
+    single_assignments(stmts)
+        .into_iter()
+        .filter(|(_, v)| is_constant_literal(v))
+        .collect()
+}
+
+/// Names bound exactly once in `stmts` by a simple assignment (and in no
+/// other way, and never declared `global`), in source order, with the value.
+fn single_assignments(stmts: &[Stmt]) -> Vec<(String, Expr)> {
+    let flow = crate::flow::FunctionFlow::of(stmts);
+    let globals = global_names(stmts);
+    let mut out: Vec<(String, Expr, u32)> = flow
+        .assignments
+        .iter()
+        .filter(|(name, assigns)| {
+            assigns.len() == 1 && !flow.opaque.contains(*name) && !globals.contains(*name)
+        })
+        .map(|(name, assigns)| {
+            use ruff_text_size::Ranged;
+            (
+                name.clone(),
+                assigns[0].value.clone(),
+                assigns[0].value.range().start().to_u32(),
+            )
+        })
+        .collect();
+    out.sort_by(|a, b| (a.2, &a.0).cmp(&(b.2, &b.0)));
+    out.into_iter().map(|(n, v, _)| (n, v)).collect()
+}
+
+/// Names any function in `stmts` (at any depth) declares `global`.
+fn global_names(stmts: &[Stmt]) -> HashSet<String> {
+    use ruff_python_ast::visitor::{self, Visitor};
+    struct G(HashSet<String>);
+    impl<'a> Visitor<'a> for G {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if let Stmt::Global(g) = stmt {
+                self.0.extend(g.names.iter().map(|n| n.to_string()));
+            }
+            visitor::walk_stmt(self, stmt);
+        }
+    }
+    let mut g = G(HashSet::new());
+    for s in stmts {
+        g.visit_stmt(s);
+    }
+    g.0
 }
 
 /// Collect imports anywhere in the module (top level, `if`/`try` blocks,
@@ -215,6 +341,153 @@ pub struct ClassInfo {
     pub bases: Vec<Expr>,
     /// Method name → qualified function name, for methods defined in this class.
     pub methods: HashMap<String, String>,
+    /// Class-body constants (`FROZEN = "frozen"`, `STATUS = [...]`, enum members).
+    pub constants: HashMap<String, Expr>,
+    /// Attributes the class's own methods assign through `self` (instance
+    /// state that may shadow a class constant).
+    pub stored_attrs: HashSet<String>,
+    /// For enum-like classes (Django `TextChoices` / `IntegerChoices`, `enum.Enum`):
+    /// how member values are read.
+    pub enum_kind: Option<EnumKind>,
+    /// Whether instances are validated strictly (pydantic strict mode):
+    /// no numeric coercion.
+    pub strict: bool,
+    /// Names of `constants` in class-body order.
+    pub constant_order: Vec<String>,
+}
+
+/// An enum-like class: members are class-body constants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnumKind {
+    /// Django `TextChoices` / `IntegerChoices` / `Choices`: `NAME = value` or
+    /// `NAME = value, label`; `.choices` lists the values.
+    DjangoChoices,
+    /// `enum.Enum` and friends: `NAME = value`.
+    Enum,
+}
+
+impl ClassInfo {
+    /// A plain class with no recognised fields.
+    pub fn new(module: &str, name: &str, bases: Vec<Expr>) -> Self {
+        ClassInfo {
+            qualified: qualify(module, name),
+            module: module.to_string(),
+            name: name.to_string(),
+            kind: ClassKind::Plain,
+            fields: Vec::new(),
+            positional: None,
+            bases,
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            stored_attrs: HashSet::new(),
+            enum_kind: None,
+            strict: false,
+            constant_order: Vec::new(),
+        }
+    }
+
+    /// Record the class body: constants, `self.x = ...` stores, enum kind.
+    pub fn with_body(mut self, body: &[Stmt]) -> Self {
+        self.stored_attrs = self_stores(body);
+        self.enum_kind = self.bases.iter().find_map(|b| {
+            let parts = dotted_parts(b)?;
+            match parts.last()?.as_str() {
+                "TextChoices" | "IntegerChoices" | "Choices" => Some(EnumKind::DjangoChoices),
+                "Enum" | "StrEnum" | "IntEnum" | "IntFlag" | "Flag" => Some(EnumKind::Enum),
+                _ => None,
+            }
+        });
+        let is_enum = self.enum_kind.is_some();
+        for (name, value) in single_assignments(body) {
+            // Enum members `NAME = value, label` may have a non-literal label.
+            let member = is_enum
+                && matches!(&value, Expr::Tuple(t) if t.elts.first().is_some_and(is_constant_literal));
+            if member || is_constant_literal(&value) {
+                self.constant_order.push(name.clone());
+                self.constants.insert(name, value);
+            }
+        }
+        self
+    }
+
+    /// The value of enum member `name` (for Django choices, the first element
+    /// of `value, label`).
+    pub fn member_value(&self, name: &str) -> Option<&Expr> {
+        let kind = self.enum_kind?;
+        let expr = self.constants.get(name)?;
+        match (kind, expr) {
+            (EnumKind::DjangoChoices, Expr::Tuple(t)) if !t.elts.is_empty() => Some(&t.elts[0]),
+            _ => Some(expr),
+        }
+    }
+
+    /// Values of every enum member, in declaration order, as choice strings
+    /// (`None` if any member value is not a string or integer literal).
+    pub fn member_choices(&self) -> Option<Vec<String>> {
+        let mut out = Vec::new();
+        for name in &self.constant_order {
+            if name.starts_with('_') || name.chars().next().is_some_and(|c| c.is_lowercase()) {
+                continue;
+            }
+            out.push(literal_choice(self.member_value(name)?)?);
+        }
+        (!out.is_empty()).then_some(out)
+    }
+}
+
+/// A string or integer literal as a choice value (`"a"` -> `a`, `3` -> `3`).
+pub fn literal_choice(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::StringLiteral(s) => Some(s.value.to_string()),
+        Expr::NumberLiteral(n) => match &n.value {
+            ruff_python_ast::Number::Int(i) => i.as_i64().map(|v| v.to_string()),
+            _ => None,
+        },
+        Expr::UnaryOp(u) if matches!(u.op, ruff_python_ast::UnaryOp::USub) => {
+            literal_choice(&u.operand).filter(|s| s.chars().all(|c| c.is_ascii_digit())).map(|s| format!("-{s}"))
+        }
+        _ => None,
+    }
+}
+
+/// Attributes assigned as `<first param>.attr = ...` in the methods of a class body.
+fn self_stores(body: &[Stmt]) -> HashSet<String> {
+    use ruff_python_ast::visitor::{self, Visitor};
+    use ruff_python_ast::ExprContext;
+    struct S<'n> {
+        receiver: &'n str,
+        out: HashSet<String>,
+    }
+    impl<'a> Visitor<'a> for S<'_> {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Attribute(a) = expr {
+                if matches!(a.ctx, ExprContext::Store | ExprContext::Del)
+                    && matches!(a.value.as_ref(), Expr::Name(n) if n.id.as_str() == self.receiver)
+                {
+                    self.out.insert(a.attr.to_string());
+                }
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut out = HashSet::new();
+    for stmt in body {
+        if let Stmt::FunctionDef(f) = stmt {
+            let Some(first) = f.parameters.posonlyargs.iter().chain(f.parameters.args.iter()).next()
+            else {
+                continue;
+            };
+            let mut s = S {
+                receiver: first.parameter.name.as_str(),
+                out: HashSet::new(),
+            };
+            for st in &f.body {
+                s.visit_stmt(st);
+            }
+            out.extend(s.out);
+        }
+    }
+    out
 }
 
 /// What a name or dotted expression refers to.
@@ -223,6 +496,8 @@ pub enum Symbol {
     Module(String),
     Class(String),
     Function(String),
+    /// A module constant (`module.NAME`) or class constant (`module.Class.NAME`).
+    Constant(String),
 }
 
 /// Every module, class and function in the project.
@@ -233,6 +508,10 @@ pub struct ProjectIndex {
     pub functions: Vec<FunctionInfo>,
     /// Qualified function name → index into `functions`.
     pub function_ids: HashMap<String, usize>,
+    /// Module constants by qualified name (`module.NAME`).
+    pub constants: HashMap<String, Expr>,
+    /// Modules by last dotted segment, for suffix matching (built on first use).
+    by_last_segment: OnceCell<HashMap<String, Vec<String>>>,
 }
 
 const MAX_DEPTH: usize = 8;
@@ -260,12 +539,22 @@ impl ProjectIndex {
             return Some(name.as_str());
         }
         let dotted_path = format!(".{path}");
-        let candidates: Vec<&str> = self
-            .modules
-            .keys()
-            .filter(|m| !m.is_empty())
+        // A dotted suffix match in either direction shares the last segment.
+        let by_last = self.by_last_segment.get_or_init(|| {
+            let mut map: HashMap<String, Vec<String>> = HashMap::new();
+            for m in self.modules.keys().filter(|m| !m.is_empty()) {
+                let last = m.rsplit('.').next().unwrap_or(m);
+                map.entry(last.to_string()).or_default().push(m.clone());
+            }
+            map
+        });
+        let last = path.rsplit('.').next().unwrap_or(path);
+        let candidates: Vec<&str> = by_last
+            .get(last)
+            .into_iter()
+            .flatten()
             .filter(|m| m.ends_with(&dotted_path) || path.ends_with(&format!(".{m}")))
-            .map(|m| m.as_str())
+            .filter_map(|m| self.modules.get_key_value(m.as_str()).map(|(k, _)| k.as_str()))
             .collect();
         match candidates.len() {
             0 => None,
@@ -302,6 +591,7 @@ impl ProjectIndex {
         match info.defs.get(name) {
             Some(DefKind::Function) => return Some(Symbol::Function(qualify(module, name))),
             Some(DefKind::Class) => return Some(Symbol::Class(qualify(module, name))),
+            Some(DefKind::Constant) => return Some(Symbol::Constant(qualify(module, name))),
             None => {}
         }
         if let Some(imp) = info.imports.get(name) {
@@ -348,8 +638,11 @@ impl ProjectIndex {
                 }
                 Some(Symbol::Module(qualify(&path, attr)))
             }
-            Symbol::Class(q) => self.method(&q, attr).map(Symbol::Function),
-            Symbol::Function(_) => None,
+            Symbol::Class(q) => self
+                .method(&q, attr)
+                .map(Symbol::Function)
+                .or_else(|| self.class_constant(&q, attr).map(Symbol::Constant)),
+            Symbol::Function(_) | Symbol::Constant(_) => None,
         }
     }
 
@@ -374,6 +667,40 @@ impl ProjectIndex {
             Symbol::Class(q) => self.classes.get(&q),
             _ => None,
         }
+    }
+
+    /// The literal a constant symbol is bound to.
+    pub fn constant(&self, qualified: &str) -> Option<&Expr> {
+        if let Some(e) = self.constants.get(qualified) {
+            return Some(e);
+        }
+        let (class_q, name) = qualified.rsplit_once('.')?;
+        self.classes.get(class_q)?.constants.get(name)
+    }
+
+    /// Class constant `name` of class `class_q` (searching project-local
+    /// bases): its qualified name `defining_class.name`.
+    pub fn class_constant(&self, class_q: &str, name: &str) -> Option<String> {
+        let mut visited = HashSet::new();
+        let mut stack = vec![class_q.to_string()];
+        while let Some(q) = stack.pop() {
+            if visited.len() > 64 || !visited.insert(q.clone()) {
+                continue;
+            }
+            let Some(class) = self.classes.get(&q) else { continue };
+            if class.methods.contains_key(name) {
+                return None;
+            }
+            if class.constants.contains_key(name) {
+                return Some(qualify(&q, name));
+            }
+            for base in class.bases.iter().rev() {
+                if let Some(Symbol::Class(bq)) = self.resolve_expr(&class.module, base) {
+                    stack.push(bq);
+                }
+            }
+        }
+        None
     }
 
     /// Method `name` of class `class_q`, searching project-local bases.
@@ -447,7 +774,7 @@ mod tests {
         match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
             .into_syntax()
         {
-            ruff_python_ast::Mod::Module(m) => m.body,
+            ruff_python_ast::Mod::Module(m) => m.body.to_vec(),
             _ => unreachable!(),
         }
     }

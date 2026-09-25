@@ -91,7 +91,11 @@ fn test_choices_extraction() {
     let fields = extract_models(&stmts, "test.py", &defaults);
 
     assert_eq!(fields.len(), 1);
-    assert_eq!(fields[0].choices.as_deref(), Some("A,I"), "choices should be extracted as comma-separated values");
+    assert_eq!(
+        fields[0].choices,
+        Some(vec!["A".to_string(), "I".to_string()]),
+        "choices should be extracted as their values (written as a JSON array)"
+    );
 }
 
 #[test]

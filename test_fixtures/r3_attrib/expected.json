@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "five -> keep -> S.e",
+      "source_guarantee": "precision ≤ 5",
+      "target_requirement": "precision ≤ 3",
+      "target": "S.e"
+    }
+  ]
+}

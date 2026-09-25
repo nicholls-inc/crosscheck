@@ -10,12 +10,14 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct CheckerOutput {
+    #[serde(default)]
     pub summary: Summary,
+    #[serde(default)]
     pub results: Vec<CheckResult>,
     pub exit_code: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct Summary {
     pub contracts_checked: i64,
     pub edges_checked: i64,
@@ -29,6 +31,13 @@ pub struct NodeRef {
     pub name: String,
 }
 
+/// Location of the write or call expression of the failing hop.
+#[derive(Debug, Deserialize)]
+pub struct Site {
+    pub file: String,
+    pub line: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CheckResult {
     pub status: String,
@@ -37,6 +46,8 @@ pub struct CheckResult {
     pub target: NodeRef,
     pub path: Vec<String>,
     pub hop: Vec<String>,
+    #[serde(default)]
+    pub site: Option<Site>,
     pub source_guarantee: String,
     pub target_requirement: String,
     pub verification_level: String,
@@ -45,7 +56,13 @@ pub struct CheckResult {
 
 impl CheckResult {
     fn is_error(&self) -> bool {
-        self.severity == "error"
+        self.severity == "error" && !self.is_incomplete()
+    }
+
+    /// The run stopped before checking every path (e.g. the path budget
+    /// was exceeded); `suggestion` says why.
+    fn is_incomplete(&self) -> bool {
+        self.status == "incomplete"
     }
 
     /// Whether the failing hop should be shown separately from the full
@@ -95,9 +112,12 @@ pub fn render_text(output: &CheckerOutput, no_warnings: bool) -> String {
     let warnings: Vec<&CheckResult> = output
         .results
         .iter()
-        .filter(|r| !r.is_error())
+        .filter(|r| !r.is_error() && !r.is_incomplete())
         .collect();
 
+    for result in output.results.iter().filter(|r| r.is_incomplete()) {
+        out.push_str(&format!("\nINCOMPLETE  {}\n", result.suggestion));
+    }
     for result in errors.iter().chain(warnings.iter().filter(|_| !no_warnings)) {
         out.push('\n');
         out.push_str(&render_result(result));
@@ -138,6 +158,9 @@ fn render_result(result: &CheckResult) -> String {
             "       Failing hop: {}",
             result.hop.join(" \u{2192} ")
         ));
+    }
+    if let Some(site) = &result.site {
+        lines.push(format!("       At: {}:{}", site.file, site.line));
     }
     lines.push(format!(
         "       Path verification level: {}",
@@ -236,6 +259,22 @@ mod tests {
         let output = parse(BUG1_JSON).unwrap();
         let text = render_text(&output, false);
         assert!(text.ends_with("RESULT: 1 error, 0 warnings. Exit code 1.\n"));
+    }
+
+    #[test]
+    fn incomplete_result_is_reported_as_such() {
+        let json = r#"{"summary": {"contracts_checked": 5, "edges_checked": 7, "paths_checked": 0}, "results": [{"status": "incomplete", "severity": "error", "source": {"file": "", "line": 0, "name": ""}, "target": {"file": "", "line": 0, "name": ""}, "path": [], "hop": [], "site": {"file": "", "line": 0}, "source_guarantee": "", "target_requirement": "", "verification_level": "", "suggestion": "Path budget exceeded (--max-paths 10)."}], "exit_code": 2}"#;
+        let text = render_text(&parse(json).unwrap(), false);
+        assert!(text.contains("INCOMPLETE  Path budget exceeded (--max-paths 10)."), "{text}");
+        assert!(!text.contains("ERROR"), "{text}");
+        assert!(text.ends_with("RESULT: 0 errors, 0 warnings. Exit code 2.\n"), "{text}");
+    }
+
+    #[test]
+    fn site_is_shown() {
+        let json = BUG1_JSON.replace(r#""hop": ["#, r#""site": {"file": "billing/services.py", "line": 7}, "hop": ["#);
+        let text = render_text(&parse(&json).unwrap(), false);
+        assert!(text.contains("At: billing/services.py:7"), "{text}");
     }
 
     #[test]

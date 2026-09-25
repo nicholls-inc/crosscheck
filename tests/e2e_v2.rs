@@ -51,11 +51,11 @@ fn test_v2_django_bounds() {
     let (_t, conn) = db("v2_django_bounds");
     assert_eq!(
         node_rows(&conn, "Meter.reading", "precondition"),
-        ["nullability=0", "range=0..100", "type=int"]
+        ["nullability=0", "range=0..100"]
     );
     assert_eq!(
         node_rows(&conn, "Meter.count", "precondition"),
-        ["nullability=0", "range=0..", "type=int"]
+        ["nullability=0", "range=0.."]
     );
     let edges = query_edges(&conn);
     producer(&edges, "adjust_reading", "Meter.reading", "writes_to", None);
@@ -105,7 +105,7 @@ fn test_v2_namedtuple_attrs_ctor() {
     producer(&edges, "get_label", "Coord.label", "writes_to", None);
     assert_eq!(
         node_rows(&conn, "get_label", "postcondition"),
-        ["length=3", "nullability=1", "type=str"]
+        ["choices=[\"pos\"]", "length=3", "nullability=1", "type=str"]
     );
     assert_eq!(
         override_rows(
@@ -116,7 +116,7 @@ fn test_v2_namedtuple_attrs_ctor() {
             "writes_to",
             None
         ),
-        ["length=5", "nullability=0", "type=str"]
+        ["choices=[\"fixed\"]", "length=5", "nullability=0", "type=str"]
     );
 }
 
@@ -195,11 +195,11 @@ fn test_v2_pydantic_bounds() {
     let (_t, conn) = db("v2_pydantic_bounds");
     assert_eq!(
         node_rows(&conn, "Item.qty", "precondition"),
-        ["nullability=0", "range=1..", "type=int"]
+        ["nullability=0", "range=1.."]
     );
     assert_eq!(
         node_rows(&conn, "Item.pct", "precondition"),
-        ["nullability=0", "range=0..100", "type=int"]
+        ["nullability=0", "range=0..100"]
     );
 }
 

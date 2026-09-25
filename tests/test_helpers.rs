@@ -13,7 +13,7 @@ pub fn parse_python_stmts(source: &str) -> Vec<Stmt> {
     let parsed =
         ruff_python_parser::parse_unchecked(source, ruff_python_parser::Mode::Module.into());
     match parsed.into_syntax() {
-        ruff_python_ast::Mod::Module(module) => module.body,
+        ruff_python_ast::Mod::Module(module) => module.body.to_vec(),
         _ => panic!("Expected a Module"),
     }
 }
@@ -68,6 +68,11 @@ pub struct EdgeRow {
     pub discovery: String,
     pub target_param: Option<String>,
     pub source_override: bool,
+    /// The source is a call-site node (`qualified_name` = `f@file:line`).
+    pub source_is_site: bool,
+    /// The target is a call-site node.
+    pub target_is_site: bool,
+    pub site_line: Option<u32>,
 }
 
 // -- Query helpers --
@@ -134,9 +139,14 @@ fn contract_rows(
     .collect()
 }
 
-/// Query the node contracts (not edge override rows) of a node, by display name.
+/// Query the node contracts (not edge override rows) of a node, by display
+/// name. Call-site nodes (which copy their callee's rows) are left out.
 pub fn query_contracts_for(conn: &Connection, node_name: &str) -> Vec<ContractRow> {
-    contract_rows(conn, "n.name = ?1 AND c.edge_id IS NULL", &node_name)
+    contract_rows(
+        conn,
+        "n.name = ?1 AND c.edge_id IS NULL AND COALESCE(n.qualified_name, '') NOT LIKE '%@%'",
+        &node_name,
+    )
 }
 
 /// Query the override rows of an edge.
@@ -160,7 +170,9 @@ pub fn query_contract_by_type(
 pub fn query_edges(conn: &Connection) -> Vec<EdgeRow> {
     let mut stmt = conn
         .prepare(
-            "SELECT e.id, src.name, tgt.name, e.relationship, e.discovery, e.target_param, e.source_override
+            "SELECT e.id, src.name, tgt.name, e.relationship, e.discovery, e.target_param, e.source_override,
+                    COALESCE(src.qualified_name, '') LIKE '%@%', COALESCE(tgt.qualified_name, '') LIKE '%@%',
+                    e.site_line
              FROM edges e
              JOIN nodes src ON e.source_node_id = src.id
              JOIN nodes tgt ON e.target_node_id = tgt.id
@@ -176,6 +188,9 @@ pub fn query_edges(conn: &Connection) -> Vec<EdgeRow> {
             discovery: row.get(4)?,
             target_param: row.get(5)?,
             source_override: row.get::<_, i64>(6)? != 0,
+            source_is_site: row.get::<_, i64>(7)? != 0,
+            target_is_site: row.get::<_, i64>(8)? != 0,
+            site_line: row.get(9)?,
         })
     })
     .unwrap()
@@ -192,7 +207,8 @@ pub fn count_rows(conn: &Connection, table: &str) -> i64 {
 }
 
 /// The single edge `source -> target` with `relationship` (and, if given,
-/// `target_param`); panics unless exactly one matches.
+/// `target_param`) into the target's own node (argument edges into
+/// call-site nodes are ignored); panics unless exactly one matches.
 pub fn the_edge<'a>(
     edges: &'a [EdgeRow],
     source: &str,
@@ -205,6 +221,7 @@ pub fn the_edge<'a>(
         .filter(|e| {
             e.source_name == source
                 && e.target_name == target
+                && !e.target_is_site
                 && e.relationship == relationship
                 && (target_param.is_none() || e.target_param.as_deref() == target_param)
         })

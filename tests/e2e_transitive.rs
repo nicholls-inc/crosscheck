@@ -145,7 +145,10 @@ fn test_transitive_docstring_dominates_body() {
 fn test_transitive_v2_rows() {
     let (_tmp, conn) = transitive_db();
     let edges = query_edges(&conn);
-    assert_eq!(edges.len(), 3, "{edges:#?}");
+    // The returned call `split_energy(offpeak)` has a call-site node: one
+    // more argument edge, into it.
+    assert_eq!(edges.len(), 4, "{edges:#?}");
+    assert_eq!(edges.iter().filter(|e| e.target_is_site).count(), 1);
     the_edge(&edges, "compute_offpeak", "split_energy", "calls", None);
     assert_eq!(
         override_rows(&conn, &edges, "compute_offpeak", "split_energy", "flows_to", Some("offpeak")),

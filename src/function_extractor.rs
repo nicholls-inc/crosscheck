@@ -143,6 +143,54 @@ pub fn extract_functions(stmts: &[Stmt], source_file: &str, module: &str) -> Vec
     functions
 }
 
+/// Display (and qualified) name of the pseudo function holding a module's
+/// top-level code.
+pub fn module_function_name(module: &str) -> String {
+    format!("<module {module}>")
+}
+
+/// The top-level statements of a module (other than imports and `def` /
+/// `class` definitions) as the pseudo function `<module m>`, so writes and
+/// calls at module level are seen. `None` when there is no such code
+/// (only a docstring, `pass`, `__all__`).
+pub fn module_function(stmts: &[Stmt], source_file: &str, module: &str) -> Option<FunctionInfo> {
+    let body: Vec<Stmt> = stmts
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s,
+                Stmt::FunctionDef(_) | Stmt::ClassDef(_) | Stmt::Import(_) | Stmt::ImportFrom(_)
+            )
+        })
+        .cloned()
+        .collect();
+    let evaluates = |s: &Stmt| match s {
+        Stmt::Pass(_) => false,
+        Stmt::Expr(e) => !matches!(e.value.as_ref(), Expr::StringLiteral(_)),
+        _ => true,
+    };
+    if !body.iter().any(evaluates) {
+        return None;
+    }
+    let name = module_function_name(module);
+    Some(FunctionInfo {
+        qualified_name: name.clone(),
+        name,
+        module: module.to_string(),
+        class_name: None,
+        method_kind: MethodKind::Function,
+        params: Vec::new(),
+        return_annotation: None,
+        return_type: None,
+        is_return_optional: false,
+        tuple_element_type: None,
+        source_file: source_file.to_string(),
+        source_line: 0,
+        body,
+        docstring: None,
+    })
+}
+
 /// Extract info from a single function definition.
 fn extract_function_info(
     func_def: &ast::StmtFunctionDef,
@@ -201,7 +249,7 @@ fn extract_function_info(
         tuple_element_type,
         source_file: source_file.to_string(),
         source_line: func_def.range.start().to_u32(),
-        body: func_def.body.clone(),
+        body: func_def.body.to_vec(),
         docstring,
     }
 }
@@ -351,7 +399,10 @@ fn docstring_row(func: &FunctionInfo, dc: &DocstringContract, node_id: i64) -> C
             None
         }
     };
-    let range_bound = value(ConstraintType::Range).map(|v| v as f64);
+    let range = (dc.constraint_type == ConstraintType::Range)
+        .then_some(dc.range_micros)
+        .flatten();
+    let required = matches!(dc.role, ContractRole::Precondition);
     // A precondition clause constrains the parameter it names; a name that is
     // not a parameter (e.g. `result`) applies to every parameter.
     let subject = match dc.role {
@@ -366,8 +417,6 @@ fn docstring_row(func: &FunctionInfo, dc: &DocstringContract, node_id: i64) -> C
         param_decimal_places: value(ConstraintType::Precision),
         param_max_length: value(ConstraintType::Length),
         param_nullable: value(ConstraintType::Nullability),
-        param_min_value: range_bound.filter(|_| dc.is_lower_bound),
-        param_max_value: range_bound.filter(|_| !dc.is_lower_bound),
         dependent_expr: dc.dependent_expr.clone(),
         subject,
         ..ContractRecord::new(
@@ -377,6 +426,11 @@ fn docstring_row(func: &FunctionInfo, dc: &DocstringContract, node_id: i64) -> C
             VerificationLevel::Assumed,
             &func.source_file,
             func.source_line,
+        )
+        .with_range(
+            range.filter(|_| dc.is_lower_bound),
+            range.filter(|_| !dc.is_lower_bound),
+            required,
         )
     }
 }
@@ -469,7 +523,7 @@ mod tests {
             match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
                 .into_syntax()
             {
-                ruff_python_ast::Mod::Module(m) => m.body,
+                ruff_python_ast::Mod::Module(m) => m.body.to_vec(),
                 _ => unreachable!(),
             };
         extract_functions(&stmts, "m.py", "pkg.m")

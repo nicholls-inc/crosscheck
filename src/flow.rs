@@ -1,5 +1,6 @@
-//! Statement-order walk of a function body with None-narrowing, and the
-//! flow-insensitive facts collected from it (local assignments, returns).
+//! Statement-order walk of a function body with None-narrowing and
+//! reaching definitions, and the facts collected from it (local
+//! assignments, returns).
 //!
 //! Narrowing (a name is known to be non-None at a program point):
 //! - after `if x is None: <body that returns / raises / continues / breaks>`
@@ -8,18 +9,121 @@
 //!   of `if x is None:` / `if not x:`; conjunctions narrow every conjunct;
 //! - after `assert x is not None` / `assert x`.
 //!
-//! A narrowing is dropped when the name is rebound; entering a loop drops
-//! every name the loop rebinds, and after `with` / `try` / `match` blocks
-//! only narrowings from before the block that the block does not rebind
-//! survive.
+//! Reaching definitions: after a simple assignment `x = v` the value of `x`
+//! is that assignment's; after an `if`, the definitions of every branch that
+//! falls through (each with whether `x` is non-None on that path). So
+//! `v = d.get(k); if v is None: v = "x"` leaves `v` non-None.
+//!
+//! A narrowing (and the definition set) is dropped when the name is rebound
+//! other than by a simple assignment; entering a loop drops every name the
+//! loop rebinds, and after `with` / `try` / `match` blocks only narrowings
+//! from before the block that the block does not rebind survive. A name
+//! whose definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, ExprContext, Pattern, Stmt, UnaryOp};
 
-/// Names known to be non-None at a program point.
-pub type Narrowed = HashSet<String>;
+/// Where a local's value can come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Def {
+    /// The parameter's argument (the name was not rebound on this path).
+    Param,
+    /// The `i`-th simple assignment to the name, in walk order
+    /// (`FunctionFlow::assignments[name][i]`).
+    Assign(usize),
+}
+
+/// What is known about names at a program point.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Narrowed {
+    /// Names known to be non-None.
+    names: HashSet<String>,
+    /// Reaching definitions of locals, each with whether the value is known
+    /// non-None on its path. A name absent here may have any of its values.
+    defs: HashMap<String, Vec<(Def, bool)>>,
+}
+
+impl Narrowed {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether `name` is known non-None here.
+    pub fn contains(&self, name: &str) -> bool {
+        self.names.contains(name)
+            || self
+                .defs
+                .get(name)
+                .is_some_and(|d| !d.is_empty() && d.iter().all(|(_, nn)| *nn))
+    }
+
+    /// Names known non-None (for tests and diagnostics).
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.names.iter()
+    }
+
+    /// The definitions of `name` that reach this point, when known.
+    pub fn defs(&self, name: &str) -> Option<&[(Def, bool)]> {
+        self.defs.get(name).map(Vec::as_slice)
+    }
+
+    /// Mark names non-None.
+    pub fn extend(&mut self, names: impl IntoIterator<Item = String>) {
+        for name in names {
+            if let Some(d) = self.defs.get_mut(&name) {
+                for entry in d.iter_mut() {
+                    entry.1 = true;
+                }
+            }
+            self.names.insert(name);
+        }
+    }
+
+    /// Forget everything about `name` (rebound in an unknown way).
+    pub fn remove(&mut self, name: &str) {
+        self.names.remove(name);
+        self.defs.remove(name);
+    }
+
+    /// `name` now holds the value of `def`.
+    pub fn rebind(&mut self, name: &str, def: Def) {
+        self.names.remove(name);
+        self.defs.insert(name.to_string(), vec![(def, false)]);
+    }
+
+    /// Entry state: each of `params` holds its argument.
+    pub fn with_params<'p>(params: impl IntoIterator<Item = &'p str>) -> Self {
+        let mut n = Narrowed::new();
+        for p in params {
+            n.defs.insert(p.to_string(), vec![(Def::Param, false)]);
+        }
+        n
+    }
+
+    /// The state where control from any of `branches` meets.
+    pub fn join(branches: &[Narrowed]) -> Option<Narrowed> {
+        let (first, rest) = branches.split_first()?;
+        let mut out = first.clone();
+        for b in rest {
+            out.names.retain(|n| b.names.contains(n));
+            out.defs.retain(|name, defs| {
+                let Some(other) = b.defs.get(name) else {
+                    return false;
+                };
+                for &(d, nn) in other {
+                    match defs.iter_mut().find(|(x, _)| *x == d) {
+                        Some(entry) => entry.1 &= nn,
+                        None => defs.push((d, nn)),
+                    }
+                }
+                true
+            });
+        }
+        Some(out)
+    }
+}
 
 /// Callbacks of `walk_block`.
 pub trait FlowVisitor<'a> {
@@ -38,38 +142,62 @@ pub fn walk_block<'a, V: FlowVisitor<'a>>(
     narrowed: &Narrowed,
     v: &mut V,
 ) -> Narrowed {
+    walk(stmts, narrowed, v, &mut HashMap::new())
+}
+
+/// `counts`: simple assignments seen so far per name (the next `Def::Assign` index).
+fn walk<'a, V: FlowVisitor<'a>>(
+    stmts: &'a [Stmt],
+    narrowed: &Narrowed,
+    v: &mut V,
+    counts: &mut HashMap<String, usize>,
+) -> Narrowed {
     let mut n = narrowed.clone();
     for stmt in stmts {
         match stmt {
             Stmt::If(s) => {
                 v.header(&s.test, &n);
+                let mut ends = Vec::new();
                 let mut body_n = n.clone();
                 body_n.extend(positive(&s.test));
-                walk_block(&s.body, &body_n, v);
+                let end = walk(&s.body, &body_n, v, counts);
+                if !always_exits(&s.body) {
+                    ends.push(end);
+                }
                 let mut negated = negative(&s.test);
+                let mut has_else = false;
                 for clause in &s.elif_else_clauses {
                     let mut clause_n = n.clone();
                     clause_n.extend(negated.iter().cloned());
-                    match &clause.test {
+                    let end = match &clause.test {
                         Some(test) => {
                             v.header(test, &clause_n);
                             let mut bn = clause_n.clone();
                             bn.extend(positive(test));
-                            walk_block(&clause.body, &bn, v);
+                            let end = walk(&clause.body, &bn, v, counts);
                             negated.extend(negative(test));
+                            end
                         }
                         None => {
-                            walk_block(&clause.body, &clause_n, v);
+                            has_else = true;
+                            walk(&clause.body, &clause_n, v, counts)
                         }
+                    };
+                    if !always_exits(&clause.body) {
+                        ends.push(end);
                     }
                 }
-                if s.elif_else_clauses.is_empty() && always_exits(&s.body) {
-                    // Only the fall-through path reaches the next statement.
-                    n.extend(negative(&s.test));
+                if !has_else {
+                    // No branch taken: every test was false.
+                    let mut fall = n.clone();
+                    fall.extend(negated);
+                    ends.push(fall);
+                }
+                if let Some(joined) = Narrowed::join(&ends) {
+                    n = joined;
                 } else {
-                    for name in bound_names(std::slice::from_ref(stmt)) {
-                        n.remove(&name);
-                    }
+                    // Every branch exits: what follows is unreachable.
+                    remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 }
             }
             Stmt::Assert(a) => {
@@ -79,23 +207,23 @@ pub fn walk_block<'a, V: FlowVisitor<'a>>(
             Stmt::For(f) => {
                 v.header(&f.iter, &n);
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
-                walk_block(&f.body, &n, v);
-                walk_block(&f.orelse, &n, v);
+                walk(&f.body, &n, v, counts);
+                walk(&f.orelse, &n, v, counts);
             }
             Stmt::While(w) => {
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 v.header(&w.test, &n);
                 let mut body_n = n.clone();
                 body_n.extend(positive(&w.test));
-                walk_block(&w.body, &body_n, v);
-                walk_block(&w.orelse, &n, v);
+                walk(&w.body, &body_n, v, counts);
+                walk(&w.orelse, &n, v, counts);
             }
             Stmt::With(w) => {
                 for item in &w.items {
                     v.header(&item.context_expr, &n);
                 }
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
-                walk_block(&w.body, &n, v);
+                walk(&w.body, &n, v, counts);
             }
             Stmt::Try(t) => {
                 let after = {
@@ -103,20 +231,20 @@ pub fn walk_block<'a, V: FlowVisitor<'a>>(
                     remove_all(&mut a, bound_names(std::slice::from_ref(stmt)));
                     a
                 };
-                walk_block(&t.body, &n, v);
+                walk(&t.body, &n, v, counts);
                 for handler in &t.handlers {
                     let ast::ExceptHandler::ExceptHandler(h) = handler;
-                    walk_block(&h.body, &after, v);
+                    walk(&h.body, &after, v, counts);
                 }
-                walk_block(&t.orelse, &after, v);
-                walk_block(&t.finalbody, &after, v);
+                walk(&t.orelse, &after, v, counts);
+                walk(&t.finalbody, &after, v, counts);
                 n = after;
             }
             Stmt::Match(m) => {
                 v.header(&m.subject, &n);
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 for case in &m.cases {
-                    walk_block(&case.body, &n, v);
+                    walk(&case.body, &n, v, counts);
                 }
             }
             Stmt::FunctionDef(f) => {
@@ -127,7 +255,22 @@ pub fn walk_block<'a, V: FlowVisitor<'a>>(
             }
             _ => {
                 v.simple(stmt, &n);
+                let simple: Vec<String> = match stmt {
+                    Stmt::Assign(a) => simple_assign_targets(a)
+                        .map(|pairs| pairs.into_iter().map(|(name, _)| name).collect())
+                        .unwrap_or_default(),
+                    Stmt::AnnAssign(a) if a.value.is_some() => match a.target.as_ref() {
+                        Expr::Name(t) => vec![t.id.to_string()],
+                        _ => Vec::new(),
+                    },
+                    _ => Vec::new(),
+                };
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
+                for name in simple {
+                    let count = counts.entry(name.clone()).or_default();
+                    n.rebind(&name, Def::Assign(*count));
+                    *count += 1;
+                }
             }
         }
     }
@@ -415,12 +558,29 @@ pub struct FunctionFlow<'a> {
     /// Locals used other than as `**name`, `name[...]` reads or read-only
     /// dict methods; a dict bound to such a name may be mutated.
     pub escaping: HashSet<String>,
+    /// The state at the start of the body (walks of the body start here).
+    pub entry: Narrowed,
 }
 
 impl<'a> FunctionFlow<'a> {
     pub fn of(body: &'a [Stmt]) -> Self {
+        Self::with_entry(body, Narrowed::new())
+    }
+
+    /// The flow of an extracted function's body.
+    pub fn of_info(f: &'a crate::function_extractor::FunctionInfo) -> Self {
+        Self::of_function(&f.body, f.params.iter().map(|p| p.name.as_str()))
+    }
+
+    /// The flow of a function body whose parameters are `params`.
+    pub fn of_function<'p>(body: &'a [Stmt], params: impl IntoIterator<Item = &'p str>) -> Self {
+        Self::with_entry(body, Narrowed::with_params(params))
+    }
+
+    fn with_entry(body: &'a [Stmt], entry: Narrowed) -> Self {
         let mut flow = FunctionFlow {
             falls_through: falls_through(body),
+            entry: entry.clone(),
             ..Default::default()
         };
         let mut binders = Binders {
@@ -438,7 +598,7 @@ impl<'a> FunctionFlow<'a> {
             .collect();
         flow.opaque = binders.names;
         flow.opaque.extend(binders.imports);
-        walk_block(body, &Narrowed::new(), &mut flow);
+        walk_block(body, &entry, &mut flow);
         let mut uses = Uses {
             escaping: HashSet::new(),
         };
@@ -581,11 +741,11 @@ mod tests {
             match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
                 .into_syntax()
             {
-                ruff_python_ast::Mod::Module(m) => m.body,
+                ruff_python_ast::Mod::Module(m) => m.body.to_vec(),
                 _ => unreachable!(),
             };
         match stmts.into_iter().next() {
-            Some(Stmt::FunctionDef(f)) => f.body,
+            Some(Stmt::FunctionDef(f)) => f.body.to_vec(),
             _ => panic!("expected a function"),
         }
     }
@@ -598,7 +758,7 @@ mod tests {
                 if let Stmt::Expr(e) = stmt {
                     if let Expr::Call(c) = e.value.as_ref() {
                         if matches!(c.func.as_ref(), Expr::Name(f) if f.id.as_str() == "use") {
-                            let mut names: Vec<String> = n.iter().cloned().collect();
+                            let mut names: Vec<String> = n.names().cloned().collect();
                             names.sort();
                             self.0.push(names);
                         }

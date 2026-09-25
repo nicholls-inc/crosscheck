@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad -> R.ratio",
+      "source_guarantee": "range ≤ 0.7",
+      "target_requirement": "range ≤ 0.5",
+      "target": "R.ratio"
+    },
+    {
+      "path": "bad -> R.amt",
+      "source_guarantee": "range ≤ 11",
+      "target_requirement": "range ≤ 10",
+      "target": "R.amt"
+    },
+    {
+      "path": "bad -> R.amt2",
+      "source_guarantee": "range ≥ -1",
+      "target_requirement": "range ≥ 0",
+      "target": "R.amt2"
+    }
+  ]
+}

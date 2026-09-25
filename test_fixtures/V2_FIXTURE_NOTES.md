@@ -83,3 +83,22 @@ it.
   parameter itself, so it no longer suggests a second parameter.
 - Deduplication applies to warnings too; `.first()`/`.last()` match on any
   receiver. Both as assumed here.
+
+## Round 3 fixtures (`r3_*`)
+
+One fixture per adversarial repro (`r3_crash` .. `r3_nullable_target`,
+`docs/design/dataflow-v2.md` "Round 3") and per D6/D7 probe
+(`r3_module_level_django`, `r3_update_or_create`, `r3_create_kwargs_fwd`),
+plus `r3_django_inherit`, `r3_choices_forms`, `r3_literals` and
+`r3_numeric_types` for the extraction rules the repros only touch. Where a
+repro is a single bug, the fixture may add an `ok.py` with the corrected
+form, so an error on correct code fails the fixture.
+
+- Findings at different write sites are not merged: `r3_dedup` expects the
+  same error three times (one per site), `r3_update_or_create` likewise.
+- `r3_context` and `r3_noise` expect no errors; unresolved-dependent
+  warnings may still appear on paths that start at a call-site node.
+- `r3_choices_forms` requires the "no choices fact" warning for a write of
+  an unknown string into a field with choices.
+- Range bounds display as decimals (`range ≤ 0.7`); choices as
+  `choices in [a, x]`.

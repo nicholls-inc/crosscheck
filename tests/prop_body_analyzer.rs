@@ -32,14 +32,15 @@ fn precision_from_source(source: &str) -> Option<i64> {
 // -- Precision arithmetic properties --
 
 proptest! {
-    /// Addition/subtraction widens precision by 1: max(l, r) + 1
+    /// Addition/subtraction keeps the wider operand's places: max(l, r)
+    /// (a Decimal sum's exponent is the smaller exponent).
     #[test]
     fn prop_add_precision(l in 1..15i64, r in 1..15i64) {
         let source = format!(
             "def f(a, b):\n    return round(a, {}) + round(b, {})", l, r
         );
         let result = precision_from_source(&source);
-        let expected = l.max(r) + 1;
+        let expected = l.max(r);
         prop_assert_eq!(result, Some(expected));
     }
 
@@ -49,7 +50,7 @@ proptest! {
             "def f(a, b):\n    return round(a, {}) - round(b, {})", l, r
         );
         let result = precision_from_source(&source);
-        let expected = l.max(r) + 1;
+        let expected = l.max(r);
         prop_assert_eq!(result, Some(expected));
     }
 

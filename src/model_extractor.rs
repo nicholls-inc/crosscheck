@@ -1,6 +1,18 @@
+//! Django model field extraction.
+//!
+//! A class is a Django model when a base is `models.Model` (or `Model`,
+//! `django.db.models.Model`), or a project class that is one (abstract bases
+//! with `class Meta: abstract = True` and concrete multi-table parents alike;
+//! the project-level recognition lives in `extractor::Project::build`).
+//! Inherited fields are reported under the child (`Child.field`); a child
+//! field replaces a parent field of the same name.
+
+use std::collections::HashMap;
+
 use anyhow::Result;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
+use crate::bounds::{self, BoundKind, Micros};
 use crate::db::{
     ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
     VerificationLevel,
@@ -8,10 +20,10 @@ use crate::db::{
 use crate::defaults::FieldDefaults;
 
 /// Extracted model field information.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModelField {
     pub model_name: String,
-    /// Dotted module name of the defining file.
+    /// Dotted module name of the model that has the field (the child, for inherited fields).
     pub module: String,
     pub field_name: String,
     pub field_type: String,
@@ -20,53 +32,85 @@ pub struct ModelField {
     pub max_length: Option<i64>,
     pub null: Option<bool>,
     pub null_is_explicit: bool,
-    pub choices: Option<String>,
-    /// Integer lower / upper bounds from validators and positive field types.
-    pub min_value: Option<i64>,
-    pub max_value: Option<i64>,
+    /// Allowed values (`choices=`), when they could be read.
+    pub choices: Option<Vec<String>>,
+    /// The `choices=` expression, for project-level resolution (constants,
+    /// `SomeTextChoices.choices`).
+    pub choices_expr: Option<Expr>,
+    /// Lower / upper bounds (micros) from validators and positive field types.
+    pub min_value: Option<Micros>,
+    pub max_value: Option<Micros>,
     pub source_file: String,
     pub source_line: u32,
 }
 
-/// Extract Django model definitions from a parsed Python module.
+/// Extract Django model definitions from a parsed Python module: classes
+/// whose bases name `models.Model` directly (no project context; see
+/// `Project::build` for inheritance). Each field's `source_line` is the
+/// byte offset of its definition.
 pub fn extract_models(
     stmts: &[Stmt],
     source_file: &str,
-    defaults: &std::collections::HashMap<String, FieldDefaults>,
+    defaults: &HashMap<String, FieldDefaults>,
 ) -> Vec<ModelField> {
     let mut fields = Vec::new();
-
     for stmt in stmts {
         if let Stmt::ClassDef(class_def) = stmt {
-            // Check if this class inherits from models.Model
-            if is_django_model(class_def) {
-                let model_name = class_def.name.to_string();
-                for body_stmt in &class_def.body {
-                    if let Some(field) =
-                        extract_field_assignment(body_stmt, &model_name, source_file, defaults)
-                    {
-                        fields.push(field);
-                    }
-                }
+            let direct = class_def
+                .arguments
+                .as_ref()
+                .is_some_and(|args| args.args.iter().any(is_django_root));
+            if direct {
+                fields.extend(extract_model_class(class_def, source_file, defaults));
             }
         }
     }
-
     fields
 }
 
-/// Check if a class definition inherits from models.Model.
-fn is_django_model(class_def: &ast::StmtClassDef) -> bool {
+/// Whether a base-class expression names Django's `Model` itself.
+pub fn is_django_root(expr: &Expr) -> bool {
+    matches_dotted_name(expr, &["models", "Model"])
+        || matches_dotted_name(expr, &["django", "db", "models", "Model"])
+        || matches_name(expr, "Model")
+}
+
+/// Fields declared in the body of a model class (not inherited ones).
+/// `source_line` holds the byte offset of each field's definition.
+pub fn extract_model_class(
+    class_def: &ast::StmtClassDef,
+    source_file: &str,
+    defaults: &HashMap<String, FieldDefaults>,
+) -> Vec<ModelField> {
+    let model_name = class_def.name.to_string();
+    let constants = crate::resolve::module_constants(&class_def.body);
     class_def
-        .arguments
-        .as_ref()
-        .map(|args| {
-            args.args.iter().any(|arg| {
-                matches_dotted_name(arg, &["models", "Model"])
-                    || matches_name(arg, "Model")
-            })
+        .body
+        .iter()
+        .filter_map(|stmt| {
+            let mut f = extract_field_assignment(stmt, &model_name, source_file, defaults)?;
+            // Choices given by a class-body constant (`choices=STATUS`).
+            if f.choices.is_none() {
+                if let Some(Expr::Name(n)) = &f.choices_expr {
+                    f.choices = constants.get(n.id.as_str()).and_then(literal_choices);
+                }
+            }
+            Some(f)
         })
-        .unwrap_or(false)
+        .collect()
+}
+
+/// Whether the class body says `class Meta: abstract = True`.
+pub fn is_abstract(class_def: &ast::StmtClassDef) -> bool {
+    class_def.body.iter().any(|s| match s {
+        Stmt::ClassDef(meta) if meta.name.as_str() == "Meta" => meta.body.iter().any(|m| {
+            matches!(m, Stmt::Assign(a)
+                if a.targets.len() == 1
+                    && matches!(&a.targets[0], Expr::Name(n) if n.id.as_str() == "abstract")
+                    && matches!(a.value.as_ref(), Expr::BooleanLiteral(b) if b.value))
+        }),
+        _ => false,
+    })
 }
 
 /// Check if an expression is a dotted name like `models.Model`.
@@ -96,7 +140,7 @@ fn extract_field_assignment(
     stmt: &Stmt,
     model_name: &str,
     source_file: &str,
-    defaults: &std::collections::HashMap<String, FieldDefaults>,
+    defaults: &HashMap<String, FieldDefaults>,
 ) -> Option<ModelField> {
     if let Stmt::Assign(assign) = stmt {
         if assign.targets.len() == 1 {
@@ -138,7 +182,7 @@ fn extract_field_from_call(
     call: &ast::ExprCall,
     model_name: &str,
     source_file: &str,
-    defaults: &std::collections::HashMap<String, FieldDefaults>,
+    defaults: &HashMap<String, FieldDefaults>,
 ) -> Option<ModelField> {
     let field_type = get_field_type_name(&call.func)?;
 
@@ -156,6 +200,7 @@ fn extract_field_from_call(
         null: field_defaults.and_then(|d| d.null),
         null_is_explicit: false,
         choices: None,
+        choices_expr: None,
         min_value: None,
         max_value: None,
         source_file: source_file.to_string(),
@@ -180,7 +225,8 @@ fn extract_field_from_call(
                     field.null_is_explicit = true;
                 }
                 "choices" => {
-                    field.choices = extract_choices_value(&keyword.value);
+                    field.choices = literal_choices(&keyword.value);
+                    field.choices_expr = Some(keyword.value.clone());
                 }
                 "validators" => apply_validators(&mut field, &keyword.value),
                 _ => {}
@@ -194,11 +240,8 @@ fn extract_field_from_call(
         .into_iter()
         .flatten()
         .filter_map(|v| {
-            v.strip_prefix("MinValueValidator(")?
-                .strip_suffix(')')?
-                .trim()
-                .parse::<i64>()
-                .ok()
+            let arg = v.strip_prefix("MinValueValidator(")?.strip_suffix(')')?;
+            bounds::parse_decimal(arg, BoundKind::RequiredMin)
         })
         .max();
     let positive = matches!(
@@ -212,8 +255,9 @@ fn extract_field_from_call(
     Some(field)
 }
 
-/// Read `MinValueValidator(n)` / `MaxValueValidator(n)` (integer `n`) from a
-/// `validators=[...]` list. With several, the tightest bound wins (all apply).
+/// Read `MinValueValidator(n)` / `MaxValueValidator(n)` (`n` an int, float
+/// or `Decimal` literal) from a `validators=[...]` list. With several, the
+/// tightest bound wins (all apply).
 fn apply_validators(field: &mut ModelField, expr: &Expr) {
     let items: &[Expr] = match expr {
         Expr::List(l) => &l.elts,
@@ -234,10 +278,18 @@ fn apply_validators(field: &mut ModelField, expr: &Expr) {
                 .find(|k| k.arg.as_deref() == Some("limit_value"))
                 .map(|k| &k.value)
         });
-        let Some(value) = arg.and_then(crate::value_analysis::int_literal) else { continue };
+        let Some(arg) = arg else { continue };
         match name.as_str() {
-            "MinValueValidator" => field.min_value = Some(field.min_value.map_or(value, |m| m.max(value))),
-            "MaxValueValidator" => field.max_value = Some(field.max_value.map_or(value, |m| m.min(value))),
+            "MinValueValidator" => {
+                if let Some(v) = bounds::literal_bound(arg, BoundKind::RequiredMin) {
+                    field.min_value = Some(field.min_value.map_or(v, |m| m.max(v)));
+                }
+            }
+            "MaxValueValidator" => {
+                if let Some(v) = bounds::literal_bound(arg, BoundKind::RequiredMax) {
+                    field.max_value = Some(field.max_value.map_or(v, |m| m.min(v)));
+                }
+            }
             _ => {}
         }
     }
@@ -291,35 +343,48 @@ fn extract_bool_value(expr: &Expr) -> Option<bool> {
     }
 }
 
-/// Extract choices as comma-separated string.
-fn extract_choices_value(expr: &Expr) -> Option<String> {
-    if let Expr::List(list) = expr {
-        let choices: Vec<String> = list
-            .elts
-            .iter()
-            .filter_map(|elt| {
-                if let Expr::Tuple(tuple) = elt {
-                    tuple.elts.first().and_then(|e| {
-                        if let Expr::StringLiteral(s) = e {
-                            Some(s.value.to_string())
-                        } else {
-                            None
-                        }
-                    })
-                } else if let Expr::StringLiteral(s) = elt {
-                    Some(s.value.to_string())
-                } else {
-                    None
+/// Values of a literal `choices=` list or tuple: `[("a", "Active"), ...]`,
+/// `["a", "b"]`, and named groups `[("Group", [("a", "A"), ...]), ...]`.
+/// `None` unless every entry is readable.
+pub fn literal_choices(expr: &Expr) -> Option<Vec<String>> {
+    let items: &[Expr] = match expr {
+        Expr::List(l) => &l.elts,
+        Expr::Tuple(t) => &t.elts,
+        _ => return None,
+    };
+    let mut out = Vec::new();
+    for item in items {
+        let pair: Option<&[Expr]> = match item {
+            Expr::Tuple(t) => Some(&t.elts[..]),
+            Expr::List(l) => Some(&l.elts[..]),
+            _ => None,
+        };
+        match pair {
+            Some([first, second]) => {
+                // A named group `("Group", [(value, label), ...])`: its entries.
+                let group = matches!(second, Expr::List(_) | Expr::Tuple(_))
+                    .then(|| literal_choices(second))
+                    .flatten();
+                match group {
+                    Some(values) => out.extend(values),
+                    None => out.push(crate::resolve::literal_choice(first)?),
                 }
-            })
-            .collect();
-        if choices.is_empty() {
-            None
-        } else {
-            Some(choices.join(","))
+            }
+            Some(_) => return None,
+            None => out.push(crate::resolve::literal_choice(item)?),
         }
-    } else {
-        None
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Value type a Django field stores, for the type contract. Numeric fields
+/// accept `int`, `float` and `Decimal` alike (Django converts), so they have
+/// no type contract.
+fn type_contract(field_type: &str) -> Option<&'static str> {
+    match field_type {
+        "CharField" | "TextField" | "SlugField" => Some("str"),
+        "BooleanField" => Some("bool"),
+        _ => None,
     }
 }
 
@@ -328,9 +393,9 @@ fn extract_choices_value(expr: &Expr) -> Option<String> {
 pub fn write_model_fields(
     db: &ContractDb,
     fields: &[ModelField],
-    names: &std::collections::HashMap<String, String>,
-) -> Result<std::collections::HashMap<String, i64>> {
-    let mut ids = std::collections::HashMap::new();
+    names: &HashMap<String, String>,
+) -> Result<HashMap<String, i64>> {
+    let mut ids = HashMap::new();
     for field in fields {
         let qualified = field_qualified(field);
         if ids.contains_key(&qualified) {
@@ -393,33 +458,20 @@ pub fn write_model_fields(
         }
 
         // Insert choices constraint
-        if let Some(ref choices) = field.choices {
-            db.insert_contract(&ContractRecord {
-                param_choices: Some(choices.clone()),
-                ..base(ConstraintType::Choices)
-            })?;
+        if let Some(choices) = &field.choices {
+            db.insert_contract(&base(ConstraintType::Choices).with_choices(choices))?;
         }
 
         // Insert range constraint (lower and/or upper bound)
         if field.min_value.is_some() || field.max_value.is_some() {
-            db.insert_contract(&ContractRecord {
-                param_min_value: field.min_value.map(|v| v as f64),
-                param_max_value: field.max_value.map(|v| v as f64),
-                ..base(ConstraintType::Range)
-            })?;
+            db.insert_contract(&base(ConstraintType::Range).with_range(
+                field.min_value,
+                field.max_value,
+                true,
+            ))?;
         }
 
-        // Insert type constraint
-        let type_name = match field.field_type.as_str() {
-            "DecimalField" => Some("Decimal"),
-            "IntegerField" | "PositiveIntegerField" | "PositiveSmallIntegerField"
-            | "PositiveBigIntegerField" | "SmallIntegerField" | "BigIntegerField" => Some("int"),
-            "CharField" | "TextField" | "SlugField" => Some("str"),
-            "BooleanField" => Some("bool"),
-            "FloatField" => Some("float"),
-            _ => None,
-        };
-        if let Some(tn) = type_name {
+        if let Some(tn) = type_contract(&field.field_type) {
             db.insert_contract(&ContractRecord {
                 param_type_name: Some(tn.to_string()),
                 ..base(ConstraintType::Type)
@@ -434,15 +486,18 @@ pub fn write_model_fields(
 mod tests {
     use super::*;
 
-    fn fields(src: &str) -> Vec<ModelField> {
-        let stmts = match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
+    fn parse(src: &str) -> Vec<Stmt> {
+        match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
             .into_syntax()
         {
-            ruff_python_ast::Mod::Module(m) => m.body,
+            ruff_python_ast::Mod::Module(m) => m.body.to_vec(),
             _ => unreachable!(),
-        };
+        }
+    }
+
+    fn fields(src: &str) -> Vec<ModelField> {
         let defaults = crate::defaults::load_defaults("4.2").unwrap();
-        extract_models(&stmts, "app/models.py", &defaults)
+        extract_models(&parse(src), "app/models.py", &defaults)
     }
 
     #[test]
@@ -452,10 +507,64 @@ mod tests {
              a = models.IntegerField(validators=[MinValueValidator(0), validators.MaxValueValidator(100)])\n    \
              b = models.PositiveIntegerField()\n    \
              c = models.PositiveSmallIntegerField(validators=[MinValueValidator(5)])\n    \
-             d = models.IntegerField(validators=[MinValueValidator(Decimal('0.5'))])\n",
+             d = models.DecimalField(validators=[MinValueValidator(Decimal('0.5')), MaxValueValidator(9.99)])\n    \
+             e = models.IntegerField(validators=[MinValueValidator(limit)])\n",
         );
-        let bounds: Vec<(Option<i64>, Option<i64>)> = fs.iter().map(|f| (f.min_value, f.max_value)).collect();
-        assert_eq!(bounds, [(Some(0), Some(100)), (Some(0), None), (Some(5), None), (None, None)]);
+        let bounds: Vec<(Option<Micros>, Option<Micros>)> =
+            fs.iter().map(|f| (f.min_value, f.max_value)).collect();
+        assert_eq!(
+            bounds,
+            [
+                (Some(0), Some(100_000_000)),
+                (Some(0), None),
+                (Some(5_000_000), None),
+                (Some(500_000), Some(9_990_000)),
+                (None, None),
+            ]
+        );
         assert_eq!(field_qualified(&fs[0]), "app.models.M.a");
+    }
+
+    #[test]
+    fn test_choices_forms() {
+        let fs = fields(
+            "class M(models.Model):\n    \
+             STATUS = [('a', _('Active')), ('x', 'Expired')]\n    \
+             a = models.CharField(max_length=5, choices=[('a', 'Active'), ('x', 'Expired')])\n    \
+             b = models.CharField(max_length=5, choices=(('p', 'P'),))\n    \
+             c = models.CharField(max_length=5, choices=STATUS)\n    \
+             d = models.IntegerField(choices=[(1, 'One'), (2, 'Two')])\n    \
+             e = models.CharField(max_length=5, choices=[('Group', [('g1', 'G1'), ('g2', 'G2')]), ('o', 'O')])\n    \
+             f = models.CharField(max_length=5, choices=Status.choices)\n",
+        );
+        let choices: Vec<Option<Vec<String>>> = fs.iter().map(|f| f.choices.clone()).collect();
+        let v = |xs: &[&str]| Some(xs.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            choices,
+            [
+                v(&["a", "x"]),
+                v(&["p"]),
+                v(&["a", "x"]),
+                v(&["1", "2"]),
+                v(&["g1", "g2", "o"]),
+                None, // resolved with the project index
+            ]
+        );
+        assert!(fs[5].choices_expr.is_some());
+    }
+
+    #[test]
+    fn test_abstract_meta() {
+        let stmts = parse(
+            "class A(models.Model):\n    class Meta:\n        abstract = True\nclass B(models.Model):\n    class Meta:\n        ordering = ['x']\n",
+        );
+        let abstracts: Vec<bool> = stmts
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::ClassDef(c) => Some(is_abstract(c)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(abstracts, [true, false]);
     }
 }

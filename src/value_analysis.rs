@@ -17,14 +17,15 @@
 //! previous pass's summaries of callees; the first pass treats every call as
 //! unknown, so every pass is sound on its own.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast::{self as ast, BoolOp, Expr, Number, Operator, UnaryOp};
 
+use crate::bounds::{self, BoundKind, Micros};
 use crate::dataclass_extractor::VALUE_TYPES;
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
-use crate::flow::{self, FunctionFlow, Narrowed};
+use crate::flow::{self, Def, FunctionFlow, Narrowed};
 use crate::function_extractor::{strip_optional, FunctionInfo, MethodKind, ParamInfo, ParamKind};
 use crate::resolve::{dotted_parts, qualify, ClassInfo, ClassKind, ProjectIndex, Symbol};
 
@@ -87,15 +88,23 @@ pub struct ValueFacts {
     /// Upper bound on decimal places.
     pub precision: Option<Dep>,
     pub max_length: Option<i64>,
-    pub min_value: Option<i64>,
-    pub max_value: Option<i64>,
+    /// Lower / upper bound on the numeric value, in micros (see `bounds`).
+    pub min_value: Option<Micros>,
+    pub max_value: Option<Micros>,
+    /// The possible values, as choice strings (string and integer literals).
+    pub choices: Option<Vec<String>>,
 }
 
 impl ValueFacts {
+    /// `None`: nullable, and trivially within any precision, length or
+    /// choices bound (there is no value to exceed it).
     pub fn none_value() -> Self {
         ValueFacts {
             always_none: true,
             nullable: Some(true),
+            precision: Some(Dep::Lit(0)),
+            max_length: Some(0),
+            choices: Some(Vec::new()),
             ..Default::default()
         }
     }
@@ -161,8 +170,25 @@ impl ValueFacts {
                 _ => None,
             },
             max_length: both(a.max_length, b.max_length, i64::max),
-            min_value: both(a.min_value, b.min_value, i64::min),
-            max_value: both(a.max_value, b.max_value, i64::max),
+            min_value: match (a.min_value, b.min_value) {
+                (Some(x), Some(y)) => Some(x.min(y)),
+                _ => None,
+            },
+            max_value: match (a.max_value, b.max_value) {
+                (Some(x), Some(y)) => Some(x.max(y)),
+                _ => None,
+            },
+            choices: match (a.choices, b.choices) {
+                (Some(mut x), Some(y)) => {
+                    for v in y {
+                        if !x.contains(&v) {
+                            x.push(v);
+                        }
+                    }
+                    Some(x)
+                }
+                _ => None,
+            },
         }
     }
 
@@ -173,6 +199,7 @@ impl ValueFacts {
     /// The facts restricted to the non-None case.
     pub fn non_none_part(self) -> ValueFacts {
         if self.always_none {
+            // Unreachable as a value; nothing more is known.
             return ValueFacts::non_null();
         }
         ValueFacts {
@@ -285,6 +312,26 @@ pub struct Scope<'a> {
     pub class: Option<&'a ClassInfo>,
     memo: RefCell<HashMap<String, ValueFacts>>,
     visiting: RefCell<HashSet<String>>,
+    /// Facts of single assignments (`name`, index), for reaching definitions.
+    def_memo: RefCell<HashMap<(String, usize), ValueFacts>>,
+    def_visiting: RefCell<HashSet<(String, usize)>>,
+    /// Locals whose receiver class is being resolved (`v = v.m()` cycles).
+    receiving: RefCell<HashSet<String>>,
+    /// Nesting depth of `facts` / `receiver_class`; past `MAX_EVAL_DEPTH`
+    /// the value is unknown.
+    depth: Cell<usize>,
+}
+
+/// Recursion bound of the value analysis: deeper values are unknown.
+const MAX_EVAL_DEPTH: usize = 200;
+
+/// Decrements the scope's evaluation depth on drop.
+struct DepthGuard<'s>(&'s Cell<usize>);
+
+impl Drop for DepthGuard<'_> {
+    fn drop(&mut self) {
+        self.0.set(self.0.get() - 1);
+    }
 }
 
 impl<'a> Scope<'a> {
@@ -307,7 +354,20 @@ impl<'a> Scope<'a> {
             class,
             memo: RefCell::new(HashMap::new()),
             visiting: RefCell::new(HashSet::new()),
+            def_memo: RefCell::new(HashMap::new()),
+            def_visiting: RefCell::new(HashSet::new()),
+            receiving: RefCell::new(HashSet::new()),
+            depth: Cell::new(0),
         }
+    }
+
+    /// Enter one level of recursive evaluation; `None` past the bound.
+    fn enter(&self) -> Option<DepthGuard<'_>> {
+        if self.depth.get() >= MAX_EVAL_DEPTH {
+            return None;
+        }
+        self.depth.set(self.depth.get() + 1);
+        Some(DepthGuard(&self.depth))
     }
 
     fn param(&self, name: &str) -> Option<&'a ParamInfo> {
@@ -341,10 +401,14 @@ impl<'a> Scope<'a> {
 
     /// Facts about `expr` evaluated at a point with context `ctx`.
     pub fn facts(&self, expr: &Expr, ctx: &Ctx) -> ValueFacts {
+        let Some(_guard) = self.enter() else {
+            return ValueFacts::default();
+        };
         match expr {
             Expr::NoneLiteral(_) => ValueFacts::none_value(),
             Expr::StringLiteral(s) => ValueFacts {
                 max_length: Some(s.value.chars().count() as i64),
+                choices: Some(vec![s.value.to_string()]),
                 ..ValueFacts::typed("str")
             },
             Expr::FString(_) => ValueFacts::typed("str"),
@@ -356,14 +420,17 @@ impl<'a> Scope<'a> {
                         type_name: Some("int".to_string()),
                         weak_type: true,
                         precision: Some(Dep::Lit(0)),
-                        min_value: v,
-                        max_value: v,
+                        min_value: v.map(bounds::from_int),
+                        max_value: v.map(bounds::from_int),
+                        choices: v.map(|v| vec![v.to_string()]),
                         ..ValueFacts::non_null()
                     }
                 }
-                Number::Float(_) => ValueFacts {
+                Number::Float(f) => ValueFacts {
                     type_name: Some("float".to_string()),
                     weak_type: true,
+                    min_value: bounds::from_f64(*f, BoundKind::GuaranteedMin),
+                    max_value: bounds::from_f64(*f, BoundKind::GuaranteedMax),
                     ..ValueFacts::non_null()
                 },
                 Number::Complex { .. } => ValueFacts::non_null(),
@@ -407,7 +474,71 @@ impl<'a> Scope<'a> {
             ),
             Expr::Subscript(s) => self.subscript_facts(s, ctx),
             Expr::Named(n) => self.facts(&n.value, ctx),
+            Expr::Attribute(_) => self.attribute_facts(expr, ctx),
             _ => ValueFacts::default(),
+        }
+    }
+
+    /// `module.CONST`, `Class.CONST`, `self.CONST`, `Enum.MEMBER`.
+    fn attribute_facts(&self, expr: &Expr, ctx: &Ctx) -> ValueFacts {
+        let Expr::Attribute(attr) = expr else {
+            return ValueFacts::default();
+        };
+        if let Expr::Name(n) = attr.value.as_ref() {
+            if self.is_self(n.id.as_str()) && !ctx.shadowed.contains(n.id.as_str()) {
+                let Some(class) = self.class else {
+                    return ValueFacts::default();
+                };
+                let name = attr.attr.as_str();
+                if class.fields.iter().any(|f| f == name) || class.stored_attrs.contains(name) {
+                    return ValueFacts::default();
+                }
+                return match self.index.class_constant(&class.qualified, name) {
+                    Some(q) => self.constant_facts(&q),
+                    None => ValueFacts::default(),
+                };
+            }
+        }
+        let Some(parts) = dotted_parts(expr) else {
+            return ValueFacts::default();
+        };
+        if self.is_local(&parts[0], ctx) {
+            return ValueFacts::default();
+        }
+        match self.index.resolve_dotted(self.module, &parts) {
+            Some(Symbol::Constant(q)) => self.constant_facts(&q),
+            _ => ValueFacts::default(),
+        }
+    }
+
+    /// Facts of a module or class constant (an enum member's value).
+    fn constant_facts(&self, qualified: &str) -> ValueFacts {
+        let enum_class = qualified
+            .rsplit_once('.')
+            .and_then(|(c, _)| self.index.class(c))
+            .filter(|c| c.enum_kind.is_some());
+        let ctx = Ctx::default();
+        match enum_class {
+            Some(class) => {
+                let member = qualified.rsplit('.').next().unwrap_or_default();
+                let Some(value) = class.member_value(member) else {
+                    return ValueFacts::default();
+                };
+                let f = self.facts(value, &ctx);
+                match class.enum_kind {
+                    // A TextChoices / IntegerChoices member is its value.
+                    Some(crate::resolve::EnumKind::DjangoChoices) => f,
+                    // An Enum member is not its value; its choice is.
+                    _ => ValueFacts {
+                        choices: f.choices,
+                        ..ValueFacts::non_null()
+                    },
+                }
+            }
+            None => match self.index.constant(qualified) {
+                Some(e) => self.facts(e, &ctx),
+                None => ValueFacts::default(),
+            },
         }
     }
 
@@ -415,8 +546,34 @@ impl<'a> Scope<'a> {
         if ctx.shadowed.contains(name) {
             return ValueFacts::default();
         }
+        let reaching = ctx
+            .narrowed
+            .defs(name)
+            .filter(|_| !self.flow.opaque.contains(name) && !self.flow.unstable.contains(name));
         let facts = if self.is_self(name) {
             ValueFacts::non_null()
+        } else if let Some(defs) = reaching {
+            // Flow-sensitive: the definitions that reach this point.
+            ValueFacts::join_all(defs.iter().map(|&(d, non_none)| {
+                let f = match d {
+                    Def::Param => self
+                        .param(name)
+                        .map(|p| self.param_facts(p))
+                        .unwrap_or_default(),
+                    Def::Assign(i) => self.assignment_facts(name, i),
+                };
+                if non_none {
+                    f.non_none_part()
+                } else {
+                    f
+                }
+            }))
+            .unwrap_or_default()
+        } else if !self.is_local(name, ctx) {
+            match self.index.lookup(self.module, name) {
+                Some(Symbol::Constant(q)) => self.constant_facts(&q),
+                _ => ValueFacts::default(),
+            }
         } else {
             let param = self.param(name).map(|p| self.param_facts(p));
             let local = if self.flow.opaque.contains(name) {
@@ -438,6 +595,24 @@ impl<'a> Scope<'a> {
         } else {
             facts
         }
+    }
+
+    /// Facts of the `i`-th simple assignment to `name`.
+    fn assignment_facts(&self, name: &str, i: usize) -> ValueFacts {
+        let key = (name.to_string(), i);
+        if let Some(f) = self.def_memo.borrow().get(&key) {
+            return f.clone();
+        }
+        let Some(a) = self.flow.assignments.get(name).and_then(|v| v.get(i)) else {
+            return ValueFacts::default();
+        };
+        if !self.def_visiting.borrow_mut().insert(key.clone()) {
+            return ValueFacts::default(); // cyclic: unknown
+        }
+        let facts = self.facts(a.value, &Ctx::new(&a.narrowed));
+        self.def_visiting.borrow_mut().remove(&key);
+        self.def_memo.borrow_mut().insert(key, facts.clone());
+        facts
     }
 
     fn local_facts(&self, name: &str) -> ValueFacts {
@@ -492,13 +667,24 @@ impl<'a> Scope<'a> {
                 let Some(t) = f.numeric_type().map(str::to_string) else {
                     return ValueFacts::default();
                 };
-                let (min_value, max_value) = if matches!(u.op, UnaryOp::USub) {
-                    (
-                        f.max_value.and_then(i64::checked_neg),
-                        f.min_value.and_then(i64::checked_neg),
-                    )
+                let neg = matches!(u.op, UnaryOp::USub);
+                let (min_value, max_value) = if neg {
+                    (f.max_value.map(|v| -v), f.min_value.map(|v| -v))
                 } else {
                     (f.min_value, f.max_value)
+                };
+                let choices = match (neg, &f.choices) {
+                    (false, c) => c.clone(),
+                    (true, Some(c)) if t == "int" => Some(
+                        c.iter()
+                            .map(|v| match v.strip_prefix('-') {
+                                Some(p) => p.to_string(),
+                                None if v == "0" => v.clone(),
+                                None => format!("-{v}"),
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
                 };
                 ValueFacts {
                     nullable: f.nullable.filter(|n| !n),
@@ -507,6 +693,7 @@ impl<'a> Scope<'a> {
                     precision: f.precision,
                     min_value,
                     max_value,
+                    choices,
                     ..Default::default()
                 }
             }
@@ -565,19 +752,28 @@ impl<'a> Scope<'a> {
                 .then_some(false);
         let precision = match result_type {
             Some("int") => Some(Dep::Lit(0)),
-            Some("str") => None,
+            // Binary floating point: a sum of 2-place values need not have 2 places.
+            Some("str" | "float") => None,
             _ => match (b.op, l.precision.clone(), r.precision.clone()) {
-                // Conservative: one more place than the wider operand.
-                (Operator::Add | Operator::Sub, Some(x), Some(y)) => {
-                    Some(Dep::sum(Dep::max(x, y), Dep::Lit(1)))
-                }
+                // Decimal sum / difference: the exponent is the smaller one,
+                // so the places are those of the wider operand.
+                (Operator::Add | Operator::Sub, Some(x), Some(y)) => Some(Dep::max(x, y)),
                 (Operator::Mult, Some(x), Some(y)) => Some(Dep::sum(x, y)),
                 // Division (and anything else) has no decimal-place bound.
                 _ => None,
             },
         };
+        // `"ab" * n` with a literal count.
+        let repeat = |s: &ValueFacts, count: &Expr| {
+            let n = int_literal(count)?.max(0);
+            s.max_length?.checked_mul(n)
+        };
         let max_length = match (result_type, b.op, l.max_length, r.max_length) {
             (Some("str"), Operator::Add, Some(x), Some(y)) => Some(x + y),
+            (Some("str"), Operator::Mult, _, _) if l.type_name.as_deref() == Some("str") => {
+                repeat(&l, &b.right)
+            }
+            (Some("str"), Operator::Mult, _, _) => repeat(&r, &b.left),
             _ => None,
         };
         ValueFacts {
@@ -607,6 +803,17 @@ impl<'a> Scope<'a> {
                             min_value: (name == "len").then_some(0),
                             ..ValueFacts::typed("int")
                         }
+                    }
+                    "abs" if args.len() == 1 => {
+                        let f = self.facts(&args[0], ctx);
+                        return ValueFacts {
+                            type_name: f.numeric_type().map(str::to_string),
+                            weak_type: f.weak_type,
+                            precision: f.precision,
+                            min_value: Some(0),
+                            nullable: f.nullable.filter(|n| !n),
+                            ..Default::default()
+                        };
                     }
                     "float" => return ValueFacts::typed("float"),
                     "bool" => return ValueFacts::typed("bool"),
@@ -685,10 +892,17 @@ impl<'a> Scope<'a> {
             "first" | "last" if args.is_empty() && call.arguments.keywords.is_empty() => {
                 ValueFacts::nullable()
             }
-            m if STR_METHODS.contains(&m)
-                && self.facts(&attr.value, ctx).type_name.as_deref() == Some("str") =>
-            {
-                ValueFacts::typed("str")
+            m if STR_METHODS.contains(&m) => {
+                let base = self.facts(&attr.value, ctx);
+                if base.type_name.as_deref() != Some("str") {
+                    return ValueFacts::default();
+                }
+                // Stripping never lengthens a string (case mapping can).
+                let keeps_length = matches!(m, "strip" | "lstrip" | "rstrip");
+                ValueFacts {
+                    max_length: base.max_length.filter(|_| keeps_length && args.len() <= 1),
+                    ..ValueFacts::typed("str")
+                }
             }
             _ => ValueFacts::default(),
         }
@@ -783,6 +997,17 @@ impl<'a> Scope<'a> {
         if self.flow.opaque.contains(name) {
             return None;
         }
+        let _guard = self.enter()?;
+        // `v = v.method()`: resolving `v` needs `v` itself; unknown.
+        if !self.receiving.borrow_mut().insert(name.to_string()) {
+            return None;
+        }
+        let result = self.receiver_class_of_local(name);
+        self.receiving.borrow_mut().remove(name);
+        result
+    }
+
+    fn receiver_class_of_local(&self, name: &str) -> Option<(&'a ClassInfo, bool)> {
         let mut candidates: Vec<Option<&'a ClassInfo>> = Vec::new();
         if let Some(p) = self.param(name) {
             candidates.push(
@@ -883,35 +1108,51 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// The extracted function whose result `expr` is: a direct call, or a
-    /// local assigned exactly once, from such a call.
-    pub fn producer_of(&self, expr: &Expr, ctx: &Ctx) -> Option<String> {
+    /// The extracted function whose result `expr` is, with the call that
+    /// produces it: a direct call, or a local whose one reaching definition
+    /// is such a call.
+    pub fn producer_of<'e>(&self, expr: &'e Expr, ctx: &Ctx) -> Option<(String, &'e ast::ExprCall)>
+    where
+        'a: 'e,
+    {
         match expr {
             Expr::Call(c) => match self.callee(&c.func, ctx) {
-                Callee::Function { qualified, .. } => Some(qualified),
+                Callee::Function { qualified, .. } => Some((qualified, c)),
                 _ => None,
             },
             Expr::Name(n) => {
-                let name = n.id.as_str();
-                if ctx.shadowed.contains(name)
-                    || self.param(name).is_some()
-                    || self.is_self(name)
-                    || self.flow.opaque.contains(name)
-                {
-                    return None;
-                }
-                let [a] = self.flow.assignments.get(name)?.as_slice() else {
-                    return None;
-                };
+                let a = self.single_def(n.id.as_str(), ctx)?;
                 match a.value {
                     Expr::Call(c) => match self.callee(&c.func, &Ctx::new(&a.narrowed)) {
-                        Callee::Function { qualified, .. } => Some(qualified),
+                        Callee::Function { qualified, .. } => Some((qualified, c)),
                         _ => None,
                     },
                     _ => None,
                 }
             }
             _ => None,
+        }
+    }
+
+    /// The one assignment whose value a local holds here: the only reaching
+    /// definition, or (definitions unknown) the local's only assignment.
+    fn single_def(&self, name: &str, ctx: &Ctx) -> Option<&flow::Assignment<'a>> {
+        if ctx.shadowed.contains(name)
+            || self.is_self(name)
+            || self.flow.opaque.contains(name)
+            || self.flow.unstable.contains(name)
+        {
+            return None;
+        }
+        let assigns = self.flow.assignments.get(name)?;
+        match ctx.narrowed.defs(name) {
+            Some([(Def::Assign(i), _)]) => assigns.get(*i),
+            Some(_) => None,
+            None if self.param(name).is_some() => None,
+            None => match assigns.as_slice() {
+                [a] => Some(a),
+                _ => None,
+            },
         }
     }
 
@@ -931,16 +1172,10 @@ impl<'a> Scope<'a> {
                 .collect(),
             Expr::Name(n) => {
                 let name = n.id.as_str();
-                if ctx.shadowed.contains(name)
-                    || self.param(name).is_some()
-                    || self.flow.opaque.contains(name)
-                    || self.flow.escaping.contains(name)
-                {
+                if self.flow.escaping.contains(name) {
                     return None;
                 }
-                let [a] = self.flow.assignments.get(name)?.as_slice() else {
-                    return None;
-                };
+                let a = self.single_def(name, ctx)?;
                 match a.value {
                     Expr::Dict(_) => self.dict_items(a.value, &Ctx::new(&a.narrowed)),
                     _ => None,
@@ -1004,6 +1239,7 @@ fn binop_type(op: Operator, l: Option<&str>, r: Option<&str>) -> Option<&'static
     match (l?, r?) {
         ("str", "str") if matches!(op, Add) => Some("str"),
         ("str", _) if matches!(op, Mod) => Some("str"),
+        ("str", "int") | ("int", "str") if matches!(op, Mult) => Some("str"),
         ("Decimal", "Decimal" | "int") | ("int", "Decimal") if arith => Some("Decimal"),
         ("int", "int") if matches!(op, Add | Sub | Mult | FloorDiv | Mod) => Some("int"),
         ("int", "int") if matches!(op, Div) => Some("float"),
@@ -1012,39 +1248,51 @@ fn binop_type(op: Operator, l: Option<&str>, r: Option<&str>) -> Option<&'static
     }
 }
 
-/// `Decimal('1.25')` → 2 places; `Decimal(3)` → 0; other arguments unknown.
+/// `Decimal('1.25')` → 2 places, value 1.25; `Decimal(3)` → 0 places;
+/// other arguments unknown.
 fn decimal_ctor_facts(call: &ast::ExprCall, scope: &Scope, ctx: &Ctx) -> ValueFacts {
-    let precision = if call.arguments.keywords.is_empty() && call.arguments.args.len() == 1 {
-        match &call.arguments.args[0] {
-            Expr::StringLiteral(s) => decimal_literal_places(s.value.to_str()),
-            arg => {
-                let f = scope.facts(arg, ctx);
-                (f.type_name.as_deref() == Some("int")).then_some(0)
+    let mut facts = ValueFacts::typed("Decimal");
+    if !call.arguments.keywords.is_empty() || call.arguments.args.len() != 1 {
+        return facts;
+    }
+    match &call.arguments.args[0] {
+        Expr::StringLiteral(s) => {
+            let text = s.value.to_str();
+            facts.precision = decimal_literal_places(text).map(Dep::Lit);
+            facts.min_value = bounds::parse_decimal(text, BoundKind::GuaranteedMin);
+            facts.max_value = bounds::parse_decimal(text, BoundKind::GuaranteedMax);
+        }
+        arg => {
+            let f = scope.facts(arg, ctx);
+            if f.type_name.as_deref() == Some("int") {
+                facts.precision = Some(Dep::Lit(0));
+                facts.min_value = f.min_value;
+                facts.max_value = f.max_value;
             }
         }
-    } else {
-        None
-    };
-    ValueFacts {
-        precision: precision.map(Dep::Lit),
-        ..ValueFacts::typed("Decimal")
     }
+    facts
 }
 
-/// Decimal places of a plain decimal literal string (`"-12.340"` → 3).
-/// Exponent notation, `NaN`, `Infinity` and anything else give `None`.
+/// Decimal places of a decimal literal string (`"-12.340"` → 3,
+/// `"1e-4"` → 4, `"1.5E2"` → 0). `NaN`, `Infinity` and anything else give `None`.
 pub fn decimal_literal_places(text: &str) -> Option<i64> {
     let t = text.trim();
     let t = t.strip_prefix(['-', '+']).unwrap_or(t);
-    let (int_part, frac) = match t.split_once('.') {
+    let (mantissa, exp) = match t.find(['e', 'E']) {
+        Some(i) => (&t[..i], t[i + 1..].parse::<i64>().ok()?),
+        None => (t, 0),
+    };
+    let (int_part, frac) = match mantissa.split_once('.') {
         Some((i, f)) => (i, f),
-        None => (t, ""),
+        None => (mantissa, ""),
     };
     let digits = |s: &str| s.chars().all(|c| c.is_ascii_digit() || c == '_');
     if (int_part.is_empty() && frac.is_empty()) || !digits(int_part) || !digits(frac) {
         return None;
     }
-    Some(frac.chars().filter(|c| c.is_ascii_digit()).count() as i64)
+    let places = frac.chars().filter(|c| c.is_ascii_digit()).count() as i64;
+    Some(places.saturating_sub(exp).max(0))
 }
 
 /// An integer literal, including a negated one.
@@ -1110,7 +1358,7 @@ pub fn facts_rows(
             ..base(ConstraintType::Nullability)
         });
     }
-    if let (false, Some(p)) = (facts.always_none, &facts.precision) {
+    if let Some(p) = &facts.precision {
         rows.push(match p.as_static() {
             Some(v) => ContractRecord {
                 param_decimal_places: Some(v.max(0)),
@@ -1129,25 +1377,27 @@ pub fn facts_rows(
         });
     }
     if facts.min_value.is_some() || facts.max_value.is_some() {
-        rows.push(ContractRecord {
-            param_min_value: facts.min_value.map(|v| v as f64),
-            param_max_value: facts.max_value.map(|v| v as f64),
-            ..base(ConstraintType::Range)
-        });
+        let row = base(ConstraintType::Range).with_range(facts.min_value, facts.max_value, false);
+        if row.param_min_micros.is_some() || row.param_max_micros.is_some() {
+            rows.push(row);
+        }
+    }
+    if let Some(choices) = &facts.choices {
+        rows.push(base(ConstraintType::Choices).with_choices(choices));
     }
     rows
 }
 
+/// Bound on the summary fixpoint iterations.
+const MAX_SUMMARY_PASSES: usize = 64;
+
 /// Return-value summaries of every extracted function (EXTRACTED facts only:
 /// annotations and body; docstrings are not included).
 pub fn compute_summaries(index: &ProjectIndex) -> HashMap<String, ValueFacts> {
-    let flows: Vec<FunctionFlow> = index
-        .functions
-        .iter()
-        .map(|f| FunctionFlow::of(&f.body))
-        .collect();
+    let flows: Vec<FunctionFlow> = index.functions.iter().map(FunctionFlow::of_info).collect();
     let mut summaries: HashMap<String, ValueFacts> = HashMap::new();
-    for _ in 0..index.functions.len() + 2 {
+    // Every pass is sound on its own, so a cap only costs precision.
+    for _ in 0..(index.functions.len() + 2).min(MAX_SUMMARY_PASSES) {
         let next: HashMap<String, ValueFacts> = index
             .functions
             .iter()
@@ -1184,7 +1434,7 @@ mod tests {
     fn facts_of(files: &[(&str, &str)], func: &str) -> ValueFacts {
         let p = project(files);
         let f = p.index.function(func).expect("function");
-        let flow = FunctionFlow::of(&f.body);
+        let flow = FunctionFlow::of_info(f);
         let scope = Scope::new(&p.index, &p.summaries, Some(f), &flow);
         struct Last<'a>(Option<(&'a Expr, Narrowed)>);
         impl<'a> flow::FlowVisitor<'a> for Last<'a> {
@@ -1196,7 +1446,7 @@ mod tests {
             fn header(&mut self, _: &'a Expr, _: &Narrowed) {}
         }
         let mut last = Last(None);
-        flow::walk_block(&f.body, &Narrowed::new(), &mut last);
+        flow::walk_block(&f.body, &flow.entry, &mut last);
         let (expr, n) = last.0.expect("an expression statement");
         scope.facts(expr, &Ctx::new(&n))
     }
@@ -1224,7 +1474,10 @@ mod tests {
         assert_eq!(decimal_literal_places("0.001"), Some(3));
         assert_eq!(decimal_literal_places("-12.340"), Some(3));
         assert_eq!(decimal_literal_places("7"), Some(0));
-        assert_eq!(decimal_literal_places("1E-3"), None);
+        assert_eq!(decimal_literal_places("1E-3"), Some(3));
+        assert_eq!(decimal_literal_places("1e-4"), Some(4));
+        assert_eq!(decimal_literal_places("1.5E2"), Some(0));
+        assert_eq!(decimal_literal_places("1.25e-1"), Some(3));
         assert_eq!(decimal_literal_places("NaN"), None);
     }
 
@@ -1240,7 +1493,7 @@ mod tests {
         let f = one("def f():\n    -5\n");
         assert_eq!(
             (f.min_value, f.max_value, f.nullable),
-            (Some(-5), Some(-5), Some(false))
+            (Some(-5_000_000), Some(-5_000_000), Some(false))
         );
         assert!(f.weak_type, "numeric literals carry no type contract");
         let f = one("def f():\n    Decimal('0.25')\n");
@@ -1371,5 +1624,140 @@ mod tests {
             (s.nullable, s.type_name.as_deref()),
             (Some(true), Some("int"))
         );
+    }
+
+    /// Round 3 D1: rebinding a name to a method call on itself used to
+    /// recurse without bound (receiver class of `v` needs the class of
+    /// `v.m()`, which needs the receiver of `v`).
+    #[test]
+    fn test_self_referential_rebinding_terminates() {
+        for body in [
+            "def f(value):\n    value = value.strip()\n    return value\n",
+            "def f(x):\n    x = x.strip()\n",
+            "def f(x):\n    x = x.m(1)\n",
+            "def f(x):\n    y = 1\n    y = y.m()\n",
+            "def f(x):\n    x = x.strip()\n    return 1\n",
+            "def f(a, b):\n    a = b.m()\n    b = a.m()\n    return a.n()\n",
+            "def f(x):\n    x = f(x).m()\n    return x\n",
+            "y = 1\ny = y.m()\n",
+        ] {
+            let p = project(&[("code.py", body)]);
+            let _ = crate::edge_discovery::discover_project_edges(&p);
+            assert!(!p.summaries.is_empty(), "{body}");
+        }
+    }
+
+    /// Deeply nested expressions stay within the evaluation bound (and the
+    /// extractor's large stack); the value is then unknown.
+    #[test]
+    fn test_deep_expressions_are_bounded() {
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                let sum = vec!["x"; 3000].join(" + ");
+                let calls = format!("{}x{}", "g(".repeat(400), ")".repeat(400));
+                let src = format!(
+                    "def g(x):\n    return x\ndef f(x):\n    return {sum}\ndef h(x):\n    return {calls}\n"
+                );
+                let p = project(&[("code.py", &src)]);
+                let _ = crate::edge_discovery::discover_project_edges(&p);
+                p.summaries["code.f"].precision.clone()
+            })
+            .unwrap();
+        assert_eq!(handle.join().unwrap(), None);
+    }
+
+    #[test]
+    fn test_flow_sensitive_reassignment() {
+        // `v = d.get(k); if v is None: v = "x"`: never None afterwards.
+        let f = one("def f(d):\n    v = d.get('k')\n    if v is None:\n        v = 'unset'\n    v\n");
+        assert_eq!((f.nullable, f.max_length), (Some(false), None));
+        // The same through a parameter's `None` default.
+        let f = one("def f(p=None):\n    if p is None:\n        p = 'x'\n    p\n");
+        assert_eq!(f.nullable, Some(false));
+        // if / else rebinding both branches.
+        let f = one("def f(c):\n    if c:\n        v = 'ab'\n    else:\n        v = 'abcd'\n    v\n");
+        assert_eq!((f.nullable, f.max_length), (Some(false), Some(4)));
+        // A branch that does not rebind keeps the earlier value (nullable).
+        let f = one("def f(d, c):\n    v = d.get('k')\n    if c:\n        v = 'x'\n    v\n");
+        assert_eq!(f.nullable, Some(true));
+        // Straight-line rebinding: only the last value reaches.
+        let f = one("def f(d):\n    v = d.get('k')\n    v = 'abc'\n    v\n");
+        assert_eq!((f.nullable, f.max_length), (Some(false), Some(3)));
+        // Rebinding in a loop falls back to every assignment.
+        let f = one("def f(d, xs):\n    v = 'a'\n    for x in xs:\n        v = d.get(x)\n    v\n");
+        assert_eq!(f.nullable, Some(true));
+    }
+
+    #[test]
+    fn test_decimal_sum_keeps_places() {
+        let f = one("def f(a: Decimal, b: Decimal):\n    a.quantize(Decimal('0.01')) + b.quantize(Decimal('0.001'))\n");
+        assert_eq!(f.precision, Some(Dep::Lit(3)));
+        let f = one("def f(a: Decimal):\n    a.quantize(Decimal('0.01')) - Decimal('1.5')\n");
+        assert_eq!(f.precision, Some(Dep::Lit(2)));
+        // A float sum has no decimal-place bound.
+        assert_eq!(one("def f():\n    round(0.1, 1) + 0.25\n").precision, None);
+    }
+
+    #[test]
+    fn test_decidable_literals_and_constants() {
+        let f = one("def f():\n    'x' * 30\n");
+        assert_eq!((f.max_length, f.nullable, f.type_name.as_deref()), (Some(30), Some(false), Some("str")));
+        assert_eq!(one("def f():\n    3 * 'ab'\n").max_length, Some(6));
+        let f = one("def f():\n    Decimal('-1.00')\n");
+        assert_eq!(
+            (f.precision, f.min_value, f.max_value),
+            (Some(Dep::Lit(2)), Some(-1_000_000), Some(-1_000_000))
+        );
+        assert_eq!(one("def f(x: Decimal):\n    x.quantize(Decimal('1e-4'))\n").precision, Some(Dep::Lit(4)));
+        let f = one("def f():\n    None\n");
+        assert_eq!((f.precision, f.max_length, f.choices), (Some(Dep::Lit(0)), Some(0), Some(vec![])));
+        let f = one("def f():\n    0.7\n");
+        assert_eq!((f.min_value, f.max_value), (Some(700_000), Some(700_000)));
+        // Module constants (bound once to a literal) resolve, also imported.
+        let files = [
+            ("consts.py", "Q4 = Decimal('0.0001')\nNAME = 'frozen'\n"),
+            (
+                "code.py",
+                "from consts import Q4, NAME\nimport consts\nQ2 = Decimal('0.01')\nLATER = 'a'\nLATER = 'bb'\ndef f(x: Decimal):\n    x.quantize(Q4)\ndef g(x: Decimal):\n    x.quantize(Q2)\ndef h():\n    NAME\ndef i():\n    consts.NAME\ndef j():\n    LATER\n",
+            ),
+        ];
+        assert_eq!(facts_of(&files, "code.f").precision, Some(Dep::Lit(4)));
+        assert_eq!(facts_of(&files, "code.g").precision, Some(Dep::Lit(2)));
+        let h = facts_of(&files, "code.h");
+        assert_eq!((h.max_length, h.choices.clone()), (Some(6), Some(vec!["frozen".to_string()])));
+        assert_eq!(facts_of(&files, "code.i").max_length, Some(6));
+        assert_eq!(facts_of(&files, "code.j").max_length, None, "bound twice: not a constant");
+    }
+
+    #[test]
+    fn test_class_constants_and_enum_members() {
+        let files = [(
+            "code.py",
+            "from django.db import models\n\
+             class Status(models.TextChoices):\n    ACTIVE = 'active', 'Active'\n\
+             class Colour(Enum):\n    RED = 'red'\n\
+             class Job:\n    FROZEN = 'frozen'\n    RATE = Decimal('0.001')\n    def a(self):\n        self.FROZEN\n    def b(self):\n        Job.RATE\n\
+             class Mutable:\n    STATE = 'x'\n    def set(self):\n        self.STATE = 'longer'\n    def get(self):\n        self.STATE\n\
+             def s():\n    Status.ACTIVE\n\
+             def c():\n    Colour.RED\n",
+        )];
+        let a = facts_of(&files, "code.Job.a");
+        assert_eq!((a.max_length, a.choices), (Some(6), Some(vec!["frozen".to_string()])));
+        assert_eq!(facts_of(&files, "code.Job.b").precision, Some(Dep::Lit(3)));
+        assert_eq!(facts_of(&files, "code.Mutable.get").max_length, None, "instance state shadows");
+        let s = facts_of(&files, "code.s");
+        assert_eq!((s.max_length, s.choices), (Some(6), Some(vec!["active".to_string()])));
+        let c = facts_of(&files, "code.c");
+        assert_eq!((c.max_length, c.choices), (None, Some(vec!["red".to_string()])));
+    }
+
+    #[test]
+    fn test_choices_join() {
+        let f = one("def f(c):\n    'a' if c else 'b'\n");
+        assert_eq!(f.choices, Some(vec!["a".to_string(), "b".to_string()]));
+        let f = one("def f(c, d: str):\n    'a' if c else d\n");
+        assert_eq!(f.choices, None);
+        assert_eq!(one("def f():\n    -3\n").choices, Some(vec!["-3".to_string()]));
     }
 }

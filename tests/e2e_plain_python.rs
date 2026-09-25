@@ -130,7 +130,9 @@ fn test_data_flow_edges() {
     }
     // Builtins and methods (DISCOUNT_CODES.get, str.upper) produce no edges
     assert!(edges.iter().all(|e| e.discovery == "ast_pattern"));
-    assert_eq!(edges.len(), 17, "{edges:#?}");
+    // 17 edges into own nodes, plus 6 argument edges into call-site nodes.
+    assert_eq!(edges.len(), 23, "{edges:#?}");
+    assert_eq!(edges.iter().filter(|e| !e.target_is_site).count(), 17);
 }
 
 #[test]
