@@ -49,6 +49,8 @@ scripts/check-fixtures.sh
 - `closedStates_checkPath` (StateSearch.lean): the explored hop states are closed under successors, so every data path's hop checks occur among the checked states
 - `runChecker_sound_all` (Main.lean): **exit code 0 ⇒ every data path of the translated graph is stepwise sound**. This is the end-to-end guarantee of the executable; it is relative to the translated graph (extraction is untrusted) and the behaviour model.
 
+**Return contracts:** a non-Optional return annotation becomes a target node `f.<return>`; the function's return sites are checked against it and callers rely on it (assume-guarantee).
+
 **Checking algorithm:** `runChecker` (StateSearch.lean) explores composed hop states (the composed edge minus source preconditions) breadth-first from every function node over checked edges, checks each distinct state once, and verifies closure before reporting. Budgets: `--max-states` (default 2,000,000; `--max-paths` is an alias) and `--max-states-per-edge` (default 64, stops non-converging cycles); exceeding either gives exit 2 ("incomplete"). The path-based `runCheckerPaths` is kept as a reference. Findings are deduplicated (same finding, shortest witness path). Warnings: an unresolved dependent bound or a missing source guarantee, only where the target requirement could reject a value; none for paths headed by a call-site node that has incoming edges.
 
 **Data flow:** Python files -> Rust extractor -> SQLite -> Lean translation (Translation.lean) -> Checker -> JSON output to stdout. Exit codes: 0 = consistent, 1 = inconsistencies found, 2 = extraction/translation failure.
@@ -83,7 +85,7 @@ The trust boundary matters for correctness claims:
 
 Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, requirement and optionally the failing hop's target; required warnings). `scripts/check-fixtures.sh` runs the full pipeline on all of them.
 
-- `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path)
+- `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path; nullable: 4dp writes into 2dp fields, and `return None` under a non-Optional annotation reported at the return site `apply_discount -> apply_discount.<return>`)
 - `plain_python/`, `plain_python_clean/`: no Django (clean version must pass)
 - `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`: adversarial findings. Several include an `ok.py` with correct code so a false positive fails the fixture.
 - `V2_FIXTURE_NOTES.md`: how ambiguous verdicts were decided
