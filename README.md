@@ -57,13 +57,18 @@ cd prover && lake build && cd ..
 ```
 src/                        Rust extractor + CLI
 ├── main.rs                 CLI: crosscheck contracts check|generate-defaults
-├── extractor.rs            Top-level pipeline coordinator
-├── model_extractor.rs      Django model field constraint extraction
+├── report.rs               --format text rendering of the checker's JSON
+├── extractor.rs            Pipeline: parse, resolve, extract, write SQLite
+├── resolve.rs              Modules, imports, qualified and display names
+├── model_extractor.rs      Django model fields (inheritance, validators, choices)
 ├── dataclass_extractor.rs  dataclass / attrs / pydantic / NamedTuple / TypedDict fields
-├── function_extractor.rs   Function signature + type hint extraction
-├── body_analyzer.rs        Precision/nullability inference from function bodies
-├── docstring_parser.rs     requires/ensures clause extraction
-├── edge_discovery.rs       Write, call and data-flow edge detection + override loading
+├── function_extractor.rs   Signatures: per-parameter preconditions, return contracts
+├── value_analysis.rs       Contracts of an expression (precision, None, type, length, range, choices)
+├── flow.rs                 Narrowing and reaching definitions for nullability
+├── body_analyzer.rs        Return-value analysis
+├── bounds.rs               Exact numeric bounds (×10^6) with conservative rounding
+├── docstring_parser.rs     requires/ensures clauses
+├── edge_discovery.rs       writes_to / flows_to / calls edges, call-site nodes, overrides
 ├── source.rs               Byte offset → line number
 ├── defaults.rs             Django field defaults table
 └── db.rs                   SQLite schema + write logic
@@ -73,26 +78,23 @@ defaults/
 
 prover/                     Lean checker + proofs
 ├── ContractGraph/
-│   ├── Types.lean          Inductive types mirroring the SQLite schema
+│   ├── Types.lean          Types mirroring the SQLite schema
 │   ├── BehaviorModel.lean  Django + Python data class semantics (trusted axioms)
 │   ├── DependentExpr.lean  Parser/evaluator for dependent expressions
-│   ├── Translation.lean    SQLite → Lean proposition translation
-│   ├── Checker.lean        Consistency checker + checkEdge_sound theorem
-│   ├── Composition.lean    Contract composition + checkPath_sound theorem
+│   ├── Translation.lean    SQLite → graph (overrides, per-parameter filtering, micros)
+│   ├── Checker.lean        Constraint checks + checkEdge_sound, checkEdgeAll_sound
+│   ├── Composition.lean    Composition, checkPath, checkPath_sound(_noErrors), IsDataPath
+│   ├── Search.lean         Pruned, indexed search with budget; completeness
 │   ├── Diagnostics.lean    Structured error reporting
-│   └── Main.lean           Entry point, JSON output
-└── ContractGraphTest/
-    ├── BugReport1.lean     Field report Bug 1 reproduction
-    ├── DedupeTest.lean     One finding per contract pair, shortest path
-    ├── NullableDemo.lean   Precision + nullability on one edge
-    └── TransitiveDemo.lean Transitive inconsistency demo
+│   └── Main.lean           Entry point, JSON output, runChecker_sound_all
+└── ContractGraphTest/      #guard test modules (one per feature round)
 
-test_fixtures/
-├── bug1/                   Precision mismatch: quantize(6dp) → DecimalField(3dp)
-├── nullable/               Precision (4dp → 2dp) and nullability (return None → null=False)
-├── plain_python/           No Django: dataclass + pydantic targets, data-flow edges
-├── plain_python_clean/     Corrected plain_python, expected to pass (exit 0)
-└── transitive/             Graph-level: max(4,3)=4 > 3, invisible to pairwise checking
+test_fixtures/              one directory per scenario, each with expected.json
+├── bug1/, transitive/, nullable/          original PoC scenarios
+├── plain_python/, plain_python_clean/     no Django
+├── limits_*/                              v1 limitations, now fixed
+├── v2_*/                                  data-flow model v2
+└── r3_*/                                  adversarial findings (round 3)
 ```
 
 ## Test fixtures
@@ -154,47 +156,52 @@ Runs the extractor and the Lean checker on each fixture with an `expected.json` 
 
 ## Python support
 
-The extractor reads any Python project; Django is one source of target contracts among several.
+The extractor reads any Python project; Django is one source of target contracts among several. The design is in `docs/design/dataflow-v2.md`.
 
-**Target nodes** (kind `model`, checked as path ends):
+**Target nodes** (kind `model`, the ends of checked paths):
 
 | Declaration | Recognised by | Contracts per field |
 |-------------|---------------|---------------------|
-| Django model | base `models.Model` | `DecimalField`, `CharField`, `null`, `choices`, implicit defaults |
+| Django model | base `models.Model`, or a project model (abstract or concrete, across modules) | `DecimalField` precision, `CharField` length, `null`, `choices` (literal, constant, `TextChoices`/`IntegerChoices`), `MinValueValidator`/`MaxValueValidator`, `Positive*Field`, implicit defaults |
 | dataclass | `@dataclass`, `@dataclasses.dataclass(...)` | type, nullability |
 | attrs | `@attr.s`, `@attr.define`, `@attrs.define`, `@define`, `@frozen`, `@mutable` | type, nullability |
-| pydantic | base `BaseModel` | type, nullability, `Field(max_digits, decimal_places, max_length, le, lt)`, `Annotated[T, Field(...)]`, `condecimal`/`constr`/`conint`/`confloat` |
+| pydantic | base `BaseModel` | nullability, `Field(max_digits, decimal_places, max_length, ge, gt, le, lt)` with int, float or Decimal bounds, `Annotated[T, Field(...)]`, `con*()`, `Literal[...]`, Enum types; type only in strict mode |
 | `NamedTuple`, `TypedDict` | base class | type, nullability |
 
-Subclasses of these defined in the same project are recognised too, and inherit fields (a redefined field replaces the parent's). Nullability comes from the annotation: `Optional[T]`, `T | None` and `Union[T, None]` accept None, anything else does not; `Any` gives no nullability contract. `ClassVar` and `_private` names are not fields. `lt=n` is recorded as `le=n-1` on `int` fields and ignored on other types.
+Numeric bounds are exact to six decimal places and rounded conservatively beyond that. Django and non-strict pydantic numeric fields accept int, float and Decimal, so they carry no type contract.
 
-**Function contracts:** return annotation (value types `Decimal`, `int`, `str`, `float`, `bool`; `Optional[T]` gives type `T` plus nullable), body analysis (`quantize`, `round`, `Decimal('0.01')` literals, arithmetic, `return None`, traced through local variables), and docstring clauses:
+**Function contracts.** Postconditions describe the return value: return annotation, analysis of the `return` expressions, docstring `ensures:`. Preconditions are per parameter: the parameter's annotation and docstring `requires:` clauses about it. Value analysis understands `quantize`, `round`, `Decimal('...')` literals (including exponent notation), Decimal `+`/`-` (`max(p, q)` places) and `*` (`p + q`), local variables, module and class constants, literals, and None producers (`None`, `x if c else None`, `.get(k)`, `getattr(o, n, None)`, `next(it, None)`, `.pop(k, None)`, `re.match/search/fullmatch`, `.first()`/`.last()`, calls to nullable functions, `Optional` parameters). Nullability is flow-sensitive: `if x is None: return`, `if x:`, `assert x is not None` and reassignment in a branch all narrow. Docstring clauses:
 
 ```
 requires: precision(amount) <= 10
+requires: non_null(amount)      (also not_null(x), x is not None)
 ensures: precision(result) <= 4
 ensures: precision(result) <= max(input_precision, 2)
 ensures: len(result) <= 64
 ensures: result <= 100
-ensures: result >= 0            (lower bound; recorded, not yet checked)
+ensures: result >= 0
 ensures: nullable(result)
-requires: non_null(amount)      (also not_null(x), x is not None)
 ```
+
+A value derived from the parameter of a single-parameter function gets a dependent bound (`input_precision`) that is resolved along the path that reaches the function.
 
 **Edges:**
 
 | Pattern | Edge |
 |---------|------|
-| `Model.objects.create(f=v)`, `Cls(f=v)`, `Cls(v0, v1)` (positional, for dataclass/attrs/NamedTuple) | enclosing function `writes_to` `Cls.f` |
-| `Cls(f=g(...))`, or `x = g(...)` then `Cls(f=x)` | `g` `writes_to` `Cls.f` |
-| `h(g(...))`, or `x = g(...)` then `h(x)` | `g` `flows_to` `h` |
-| `h(...)` | caller `calls` `h` |
+| a write whose value is the result of `g(...)`: `Cls(f=g(...))`, `x = g(...); Cls(f=x)`, positional (dataclass/attrs/NamedTuple), `**{...}`, `Model.objects.create/update/update_or_create/get_or_create(defaults=...)`, `obj.f = ...`, `**kw` forwarders | `g` (call-site node) `writes_to` `Cls.f` |
+| a write of any other expression | enclosing function `writes_to` `Cls.f`, with the expression's own contracts (override) |
+| `h(..., g(...), ...)` | `g` (call-site node) `flows_to` `h`, bound to the parameter |
+| `h(..., expr, ...)` | enclosing function `flows_to` `h`, bound to the parameter, with `expr`'s contracts |
+| `h(...)` | caller `calls` `h` (structural, not checked) |
 
-Each inconsistency is reported once: when several paths reach the same pair of contracts, the shortest path is kept.
+Calls are resolved through imports (`import m as a`, `from m import x`, relative imports), `self.method()`, `cls.method()`, and methods on receivers of a known class. Every call whose value is used gets its own call-site node, so one helper used in two places does not create impossible paths. Module-level code is analysed as a pseudo function `<module m>`. Names are short when unique and module-qualified otherwise (`billing.records.Invoice.total`).
+
+**Checking.** Each hop of a path compares the source's guarantees with the target's requirements of the same kind, after composing dependent bounds along the path. Errors are reported once per finding with the shortest path, the failing hop and the write or call site. A hop where the target has a requirement but the source has no guarantee of that kind gives a warning, when the requirement could reject a value.
 
 **Trust:** the Python data class semantics in `BehaviorModel.lean` are trusted-not-proved like the Django ones. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is the annotation, which Python does not enforce at runtime; the claim is relative to a type-correct program. pydantic enforces its constraints on construction.
 
-**Not covered:** per-argument contracts (a function's preconditions apply to all of its parameters together), attribute assignment (`obj.field = v`), `**kwargs` construction, methods on data class instances, and cross-module name resolution beyond simple names.
+**Not covered:** a tuple return is one value (no per-element contracts); `@property` access and nested functions are not followed; values built inside comprehensions are unknown; a dependent bound is only produced for single-parameter functions; pydantic field aliases; DRF `ModelSerializer` writes; `max_digits` overflow of the integer part is not claimed. A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` is given.
 
 ## Output
 
@@ -232,4 +239,4 @@ RESULT: 1 error, 1 warning. Exit code 1.
 |------|---------|
 | 0 | All paths consistent |
 | 1 | One or more inconsistencies found |
-| 2 | Extraction or translation failure |
+| 2 | Extraction, parse or translation failure, or an incomplete check (budget exceeded, checker crashed) |
