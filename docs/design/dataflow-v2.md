@@ -159,3 +159,87 @@ NULL` when `target_param` is set.
   proved.
 - `enumeratePaths` ignores `calls` edges.
 - Hop attribution and the final-hop warning above.
+
+## Round 3 (adversarial findings)
+
+An independent adversarial run (54 small programs, 5 real projects) found
+the defects below. The fixes and the interface they need follow.
+
+### Call-site nodes (context sensitivity for results)
+
+A function's *result* is modelled per call site. Every call expression
+`f(args)` whose value is consumed (written, passed as an argument, or
+returned) gets its own node: kind `function`, `name` = f's display name,
+`qualified_name` = `<f qualified>@<file>:<line>`, `source_file`/`source_line`
+= the call expression, contracts = copies of f's return postconditions and
+parameter preconditions. Argument edges of that call go both to the call-site
+node (for the result) and to f's own node (for writes f makes internally
+from its parameters). Consumer edges (writes_to, flows_to) leave from the
+call-site node only. f's own node has no outgoing result edges. This removes
+impossible paths where two unrelated call sites of one helper were joined
+(`four -> keep -> Inv.total` when the 4dp value only reaches `wide`), and it
+locates every write.
+
+### Sites
+
+`edges` gains `site_file TEXT` and `site_line INTEGER`: the location of the
+write or call expression that produced the edge. JSON results gain
+`"site": {"file", "line"}` for the failing hop. Findings at different sites
+are not merged by deduplication.
+
+### Node locations in reports
+
+The checker reads `nodes.source_file/source_line`. `source` in a result is the
+path head node's location; for warnings `source` is the hop source node.
+
+### Exact numeric bounds
+
+`contracts` gains `param_min_micros INTEGER` and `param_max_micros INTEGER`:
+the bound times 10^6, exact when the literal has at most 6 decimal places,
+otherwise rounded in the conservative direction (a requirement rounds to the
+stricter side, a guarantee to the weaker side). The extractor fills them for
+every range row, including integer ones; `param_min_value`/`param_max_value`
+stay for readers. The checker uses the micros columns when present, else the
+legacy value times 10^6, and displays bounds as decimals (`range ≤ 0.5`).
+Float and Decimal bounds (`ge=0.0`, `le=Decimal("10")`, `condecimal(ge=...)`)
+are extracted.
+
+### Choices
+
+`param_choices` may be a JSON array of strings (starts with `[`); otherwise
+it is the legacy comma list. Writes of string literals (and of module or class
+constants bound to string literals) carry a choices fact with the possible
+values. Django `choices=` given as a list/tuple literal, a module or class
+constant bound to one, or `SomeTextChoices.choices` / `IntegerChoices` is
+extracted. A write with no choices fact into a field with choices warns.
+
+### Warnings that can matter only
+
+- "could not be resolved" fires only when the hop target has a precondition
+  of that kind, and shows that precondition as the requirement.
+- Missing nullability warns only when the target requires non-null.
+
+### Path budget
+
+Path enumeration prunes nodes that cannot reach a model node and runs one
+search per source. If the number of paths exceeds a budget (checker argument
+`--max-paths`, default 200000), the checker prints a JSON result with exit
+code 2 and an "incomplete" error; exit code 0 still implies every data path
+was checked. The CLI exits 2 whenever the checker output is not valid JSON
+(e.g. out of memory), in both output formats.
+
+### Extraction fixes
+
+Crash on `v = v.method()` (unguarded recursion in receiver resolution);
+Django models inheriting from project-local bases (abstract and concrete,
+fields inherited, across modules); module-level code analysed as a pseudo
+function named `<module m>`; `**kw` forwarders (`def build(**kw): return
+Cls(**kw)` makes `build(f=v)` a write of `v` to `Cls.f`);
+`update_or_create`/`get_or_create(defaults={...})`; Decimal `+`/`-` bound is
+`max(p, q)` (not `max(p, q) + 1`); flow-sensitive nullability for
+reassignment (`if v is None: v = "x"` leaves `v` non-null); pydantic and
+Django numeric fields accept int/float/Decimal (no strict type contract unless
+pydantic strict mode); decidable literals (`None` has precision 0 and length
+0; `"x" * 30` has length 30 and is non-null; `Decimal("-1.00")` has range
+-1; `Decimal("1e-4")` has 4 places; module constants resolve); parse errors
+make the run incomplete (exit 2) unless `--allow-parse-errors`.
