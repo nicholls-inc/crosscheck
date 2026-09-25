@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "make4dp -> combine -> Order.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "combine"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "combine -> Order.total",
+      "contains": "precision"
+    }
+  ]
+}
