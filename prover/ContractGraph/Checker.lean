@@ -17,8 +17,8 @@ def checkStaticBounds (sourceGuarantee targetRequirement : Int)
       sourceConstraint := source
       targetConstraint := target
       path := []
-      suggestion := s!"Source guarantees ≤ {sourceGuarantee}, " ++
-                    s!"target requires ≤ {targetRequirement}. " ++
+      suggestion := s!"Source guarantees ≤ {formatBoundValue source.kind sourceGuarantee}, " ++
+                    s!"target requires ≤ {formatBoundValue target.kind targetRequirement}. " ++
                     s!"Either tighten the source or widen the target."
     }
 
@@ -35,8 +35,8 @@ def checkLowerBounds (sourceGuarantee targetRequirement : Int)
       sourceConstraint := source
       targetConstraint := target
       path := []
-      suggestion := s!"Source guarantees ≥ {sourceGuarantee}, " ++
-                    s!"target requires ≥ {targetRequirement}. " ++
+      suggestion := s!"Source guarantees ≥ {formatBoundValue source.kind sourceGuarantee}, " ++
+                    s!"target requires ≥ {formatBoundValue target.kind targetRequirement}. " ++
                     s!"Either tighten the source or widen the target."
     }
 

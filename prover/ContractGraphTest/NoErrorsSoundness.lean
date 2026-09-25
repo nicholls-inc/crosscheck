@@ -47,8 +47,9 @@ def graph : ContractGraph :=
 #guard (checkPath [{ source := { make with postconditions := [c .precision 4] },
                      target := total, relationship := .writesTo }]).any (·.isError)
 
--- `runChecker` goes through the `partial` path enumeration, which the kernel
--- cannot unfold, so this concrete fact is checked by compiled evaluation
+-- `runChecker` goes through hash maps and fuel-bounded searches that the
+-- kernel does not evaluate efficiently, so this concrete fact is checked by
+-- compiled evaluation
 -- (test module only; the library has no `native_decide`).
 theorem graph_exit_zero : (runChecker graph).exitCode = 0 := by native_decide
 

@@ -53,6 +53,26 @@ instance : Min VerificationLevel where
 instance : Max VerificationLevel where
   max a b := if Ord.compare a b == .gt then a else b
 
+/-- Decimal display of a bound held in micros (value × 10^6), as used for
+    `range` / `rangeMin` bounds: `500000 ↦ "0.5"`, `-1000000 ↦ "-1"`. -/
+def formatMicros (m : Int) : String :=
+  let sign := if m < 0 then "-" else ""
+  let a := m.natAbs
+  let ip := a / 1000000
+  let fp := a % 1000000
+  if fp == 0 then s!"{sign}{ip}"
+  else
+    let raw := toString fp
+    let digits := "".pushn '0' (6 - raw.length) ++ raw  -- six digits, zero-padded
+    let trimmed := (digits.toList.reverse.dropWhile (· == '0')).reverse
+    s!"{sign}{ip}.{String.ofList trimmed}"
+
+/-- Display a static bound of kind `k`: range bounds are in micros. -/
+def formatBoundValue (k : ConstraintKind) (b : Int) : String :=
+  match k with
+  | .range | .rangeMin => formatMicros b
+  | _ => toString b
+
 /-- A dependent expression: postconditions that are functions of inputs. -/
 inductive DepExpr where
   | lit    : Int → DepExpr
@@ -91,6 +111,10 @@ structure Node where
   kind            : String
   preconditions   : List Constraint
   postconditions  : List Constraint
+  /-- Location of the node's definition (`nodes.source_file/source_line`);
+      empty/0 when unknown. -/
+  sourceFile      : String := ""
+  sourceLine      : Nat := 0
   deriving Repr
 
 /-- Relationship types for edges. -/
@@ -105,6 +129,10 @@ structure Edge where
   source : Node
   target : Node
   relationship : Relationship
+  /-- Location of the write or call expression that produced the edge
+      (`edges.site_file/site_line`); empty/0 when unknown. -/
+  siteFile : String := ""
+  siteLine : Nat := 0
   deriving Repr
 
 /-- Severity levels for diagnostics. -/
@@ -131,6 +159,13 @@ structure DiagnosticInfo where
   /-- Name of the node whose precondition failed (the hop target).
       Empty when not tagged. -/
   hopTarget        : String := ""
+  /-- Location of the hop source node (after composition: the intermediate
+      node's definition). Empty/0 when not tagged. -/
+  hopSourceFile    : String := ""
+  hopSourceLine    : Nat := 0
+  /-- Site (write or call expression) of the hop's edge. Empty/0 when unknown. -/
+  siteFile         : String := ""
+  siteLine         : Nat := 0
   deriving Repr
 
 /-- Result of a consistency check. -/
@@ -161,15 +196,29 @@ structure SourceLocation where
   name : String
   deriving Repr
 
+/-- Location of the write or call expression of a hop (`"site"` in JSON). -/
+structure SiteLocation where
+  file : String := ""
+  line : Nat := 0
+  deriving Repr
+
 /-- JSON-compatible result entry. -/
 structure ResultEntry where
   status : String
   severity : String
+  /-- Errors: the path head node (name and definition). Warnings: the hop
+      source node. -/
   source : SourceLocation
   target : SourceLocation
   path : List String
   /-- `[hop source name, hop target name]` of the failing hop. -/
   hop : List String := []
+  /-- Site of the failing hop's edge. -/
+  site : SiteLocation := {}
+  /-- Location of the source constraint (the guarantee). Not printed; used
+      by deduplication, which must not depend on the path head. -/
+  guaranteeFile : String := ""
+  guaranteeLine : Nat := 0
   sourceGuarantee : String
   targetRequirement : String
   verificationLevel : String

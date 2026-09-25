@@ -26,14 +26,14 @@ def formatBound (c : Constraint) : String :=
   match c.kind with
   | .precision | .length | .range =>
     match c.staticBound with
-    | some b => s!"{formatConstraintKind c.kind} ≤ {b}"
+    | some b => s!"{formatConstraintKind c.kind} ≤ {formatBoundValue c.kind b}"
     | none =>
       match c.depExpr with
       | some _ => s!"{formatConstraintKind c.kind} (dependent)"
       | none => s!"{formatConstraintKind c.kind} (unspecified)"
   | .rangeMin =>
     match c.staticBound with
-    | some b => s!"range ≥ {b}"
+    | some b => s!"range ≥ {formatMicros b}"
     | none =>
       match c.depExpr with
       | some _ => "range_min (dependent)"
@@ -52,23 +52,41 @@ def formatBound (c : Constraint) : String :=
     | some cs => s!"choices in [{", ".intercalate cs}]"
     | none => "choices (unspecified)"
 
-/-- Build a result entry from a diagnostic. `source.name` is the path head;
-    `target.name` is the hop target (the node whose precondition failed),
-    falling back to the path's last node for an untagged diagnostic.
-    `hop` is `[hop source, hop target]`. -/
+/-- Build a result entry from a diagnostic. `head` is the path head node
+    (`none`: unknown, then the source constraint's location is used).
+    - `source`: for an error, the path head (name and definition location);
+      for a warning, the hop source node (the head when untagged).
+    - `target.name` is the hop target (the node whose precondition failed),
+      falling back to the path's last node for an untagged diagnostic;
+      `target.file/line` is the failing requirement's location.
+    - `hop` is `[hop source, hop target]`; `site` is the hop edge's site. -/
 def buildResultEntry (diag : DiagnosticInfo) (pathNames : List String)
-    (verLevel : VerificationLevel) : ResultEntry :=
+    (verLevel : VerificationLevel) (head : Option Node := none) : ResultEntry :=
   let headName := pathNames.head?.getD "unknown"
   let lastName := pathNames.getLast?.getD "unknown"
   let hopSource := if diag.hopSource.isEmpty then headName else diag.hopSource
   let hopTarget := if diag.hopTarget.isEmpty then lastName else diag.hopTarget
+  -- A node without a recorded location (graphs built in Lean tests) falls
+  -- back to the source constraint's location.
+  let constraintLoc (name : String) : SourceLocation :=
+    { file := diag.sourceConstraint.sourceFile, line := diag.sourceConstraint.sourceLine,
+      name := name }
+  let headLoc : SourceLocation :=
+    match head with
+    | some n =>
+      if n.sourceFile.isEmpty then constraintLoc headName
+      else { file := n.sourceFile, line := n.sourceLine, name := headName }
+    | none => constraintLoc headName
+  let source : SourceLocation :=
+    match diag.severity with
+    | .error => headLoc
+    | .warning =>
+      if diag.hopSource.isEmpty then headLoc
+      else if diag.hopSourceFile.isEmpty then constraintLoc hopSource
+      else { file := diag.hopSourceFile, line := diag.hopSourceLine, name := hopSource }
   { status := "inconsistent"
     severity := toString diag.severity
-    source := {
-      file := diag.sourceConstraint.sourceFile
-      line := diag.sourceConstraint.sourceLine
-      name := headName
-    }
+    source := source
     target := {
       file := diag.targetConstraint.sourceFile
       line := diag.targetConstraint.sourceLine
@@ -76,6 +94,9 @@ def buildResultEntry (diag : DiagnosticInfo) (pathNames : List String)
     }
     path := pathNames
     hop := [hopSource, hopTarget]
+    site := { file := diag.siteFile, line := diag.siteLine }
+    guaranteeFile := diag.sourceConstraint.sourceFile
+    guaranteeLine := diag.sourceConstraint.sourceLine
     sourceGuarantee := formatBound diag.sourceConstraint
     targetRequirement := formatBound diag.targetConstraint
     verificationLevel := formatVerificationLevel verLevel
@@ -83,12 +104,14 @@ def buildResultEntry (diag : DiagnosticInfo) (pathNames : List String)
   }
 
 /-- Generate a warning for an unresolved dependent expression on a hop's
-    source node (`nodeName`); `hopTarget` is the node it flows into. -/
+    source node (`nodeName`); `hopTarget` is the node it flows into and `pre`
+    the precondition of `hopTarget` (same kind) that the unresolved bound
+    would be checked against. -/
 def unresolvedDepWarning (constraint : Constraint) (nodeName : String)
-    (hopTarget : String := "") : DiagnosticInfo :=
+    (hopTarget : String := "") (pre : Constraint := constraint) : DiagnosticInfo :=
   { severity := .warning
     sourceConstraint := constraint
-    targetConstraint := constraint
+    targetConstraint := pre
     path := [nodeName]
     suggestion := s!"Dependent expression on {nodeName} could not be resolved. " ++
                   s!"Check that upstream postconditions provide the required input bindings."

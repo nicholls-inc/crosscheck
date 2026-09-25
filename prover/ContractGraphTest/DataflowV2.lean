@@ -48,8 +48,9 @@ def warnings (o : CheckOutput) : List ResultEntry := o.results.filter (·.severi
 #guard isConsistent (checkConstraintPair (bound .rangeMin (-50)) (bound .range 0))
 #guard isConsistent (checkConstraintPair (bound .range 100) (bound .rangeMin 0))
 
-#guard formatBound (bound .rangeMin (-50)) == "range ≥ -50"
-#guard formatBound (bound .range 10) == "range ≤ 10"
+-- Range bounds are held in micros (value × 10^6) and displayed as decimals.
+#guard formatBound (bound .rangeMin (-50000000)) == "range ≥ -50"
+#guard formatBound (bound .range 10000000) == "range ≤ 10"
 #guard toString ConstraintKind.rangeMin == "range_min"
 
 -- A `range` row with both bounds yields an upper and a lower constraint.
@@ -59,12 +60,13 @@ def rangeRow (lo hi : Option Int) : ContractRow :=
 def kindsAndBounds (cs : List Constraint) : List (ConstraintKind × Option Int) :=
   cs.map fun c => (c.kind, c.staticBound)
 
+-- (`minValue`/`maxValue` are plain units; the constraints are in micros.)
 #guard kindsAndBounds (translateContractRow (rangeRow (some 0) (some 10)))
-  == [(.range, some 10), (.rangeMin, some 0)]
+  == [(.range, some 10000000), (.rangeMin, some 0)]
 #guard kindsAndBounds (translateContractRow (rangeRow (some (-5)) none))
-  == [(.rangeMin, some (-5))]
+  == [(.rangeMin, some (-5000000))]
 #guard kindsAndBounds (translateContractRow (rangeRow none (some 7)))
-  == [(.range, some 7)]
+  == [(.range, some 7000000)]
 
 -- The soundness theorem covers lower bounds: a consistent pair gives tr ≤ sg.
 example : constraintImplies (bound .rangeMin 5) (bound .rangeMin 0) :=
@@ -289,8 +291,8 @@ def callsOnlyGraph : ContractGraph :=
 /-! ## 7. Final-hop (and single-edge) missing-postcondition warning
 
 `make` guarantees only a type; the field requires precision ≤ 2, non-null,
-range ≥ 0, a type and choices. The precision, nullability and rangeMin
-requirements pass vacuously and warn; type and choices do not. -/
+range ≥ 0, a type and choices. The precision, nullability, rangeMin and
+choices requirements pass vacuously and warn; type does not. -/
 
 def finalHopGraph : ContractGraph :=
   buildGraph
@@ -314,7 +316,8 @@ def finalHopGraph : ContractGraph :=
                contains r.suggestion "'make'"))
   == [(1, ["make", "Invoice.total"], true, true),
       (2, ["make", "Invoice.total"], true, true),
-      (3, ["make", "Invoice.total"], true, true)]
+      (3, ["make", "Invoice.total"], true, true),
+      (5, ["make", "Invoice.total"], true, true)]
 #guard (errors (runChecker finalHopGraph)).isEmpty
 -- Warnings never affect the exit code.
 #guard (runChecker finalHopGraph).exitCode == 0
