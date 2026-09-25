@@ -197,11 +197,17 @@ def paramGraph : ContractGraph :=
 
 -- Only with_tax's value violates its parameter's requirement. The finding's
 -- target is the hop target `combine`, not the path end `Invoice.total`;
--- source stays the path head.
+-- source stays the path head. The path ends at the hop; the witness goes on
+-- to the model node.
 #guard (errors (runChecker paramGraph)).map
-    (fun r => (r.path, r.source.name, r.target.name, r.hop, r.target.line))
-  == [(["with_tax", "combine", "Invoice.total"], "with_tax", "combine",
+    (fun r => (r.path, r.witness, r.source.name, r.target.name, r.hop, r.target.line))
+  == [(["with_tax", "combine"], ["with_tax", "combine", "Invoice.total"], "with_tax", "combine",
        ["with_tax", "combine"], 3)]
+#guard contains (outputToJson (runChecker paramGraph))
+  "\"path\": [\"with_tax\", \"combine\"], \"witness\": [\"with_tax\", \"combine\", \"Invoice.total\"]"
+-- The path-based reference checker reports the same prefix.
+#guard (errors (runCheckerPaths paramGraph)).map (fun r => (r.path, r.witness))
+  == [(["with_tax", "combine"], ["with_tax", "combine", "Invoice.total"])]
 #guard (warnings (runChecker paramGraph)).isEmpty
 #guard contains (outputToJson (runChecker paramGraph)) "\"hop\": [\"with_tax\", \"combine\"]"
 

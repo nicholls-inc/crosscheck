@@ -504,7 +504,7 @@ def main():
         expected = sorted([
             ("make -> Invoice.fee", "precision ≤ 4", "precision ≤ 2",
              "Invoice.fee", ("make", "Invoice.fee")),
-            ("with_tax -> combine -> Invoice.fee", "precision ≤ 4", "precision ≤ 2",
+            ("with_tax -> combine", "precision ≤ 4", "precision ≤ 2",
              "combine", ("with_tax", "combine")),
             ("adjust -> Stock.qty", "range ≥ -50", "range ≥ 0",
              "Stock.qty", ("adjust", "Stock.qty")),
@@ -513,6 +513,9 @@ def main():
             print("      error:", f)
         check(found == expected, "v2: errors are the override, target_param and lower-bound findings")
         check(code == 1 and out["exit_code"] == 1, "v2: exit code 1")
+        check([r["witness"] for r in errors if r["hop"] == ["with_tax", "combine"]]
+              == [["with_tax", "combine", "Invoice.fee"]],
+              "v2: path ends at the failing hop; the witness goes on to the model")
         check(all(r["path"][0] != "caller" for r in results), "v2: calls edge is not followed")
         check(not any("make -> Invoice.total" == " -> ".join(r["path"]) for r in errors),
               "v2: make's 2dp write to Invoice.total is consistent (override, not its 6dp return)")

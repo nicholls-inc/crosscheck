@@ -45,6 +45,7 @@ def resultEntryToJson (r : ResultEntry) : String :=
   s!"\"source\": {sourceLocationToJson r.source}, " ++
   s!"\"target\": {sourceLocationToJson r.target}, " ++
   s!"\"path\": {stringListToJson r.path}, " ++
+  s!"\"witness\": {stringListToJson r.witness}, " ++
   s!"\"hop\": {stringListToJson r.hop}, " ++
   s!"\"site\": {siteLocationToJson r.site}, " ++
   s!"\"guarantee_at\": {siteLocationToJson (guaranteeAt r)}, " ++
@@ -78,17 +79,36 @@ def CheckResult.isConsistent : CheckResult → Bool
   | .consistent => true
   | .inconsistent _ => false
 
-/-- The result entries of one checked path: one per inconsistent result. -/
-def collectEntries (path : List Edge) (results : List CheckResult) : List ResultEntry :=
+/-- The prefix of a witness path up to and including a diagnostic's hop:
+    the first `n` edges when the hop's position `n` is known (the state
+    checker), else up to the first edge with the hop's source and target
+    names and site; the whole path when none matches (an untagged
+    diagnostic). -/
+def hopPrefix (path : List Edge) (d : DiagnosticInfo) (hopLen : Option Nat) : List Edge :=
+  match hopLen with
+  | some n => path.take n
+  | none =>
+    match path.findIdx? (fun e => e.source.name == d.hopSource && e.target.name == d.hopTarget &&
+        e.siteFile == d.siteFile && e.siteLine == d.siteLine) with
+    | some i => path.take (i + 1)
+    | none => path
+
+/-- The result entries of one checked path: one per inconsistent result.
+    Each entry's `path` ends at its failing hop's target (`hopPrefix`);
+    `witness` is the whole path. -/
+def collectEntries (path : List Edge) (results : List CheckResult) (hopLen : Option Nat := none) :
+    List ResultEntry :=
   if results.all (·.isConsistent) then [] else
-  let pathNames := pathNamesOf path
-  let verLevel := pathVerificationLevel path
+  let witness := pathNamesOf path
   let head := path.head?.map (·.source)
   results.filterMap fun r =>
     match r with
     | .consistent => none
     | .inconsistent diag =>
-      some (buildResultEntry { diag with path := pathNames } pathNames verLevel head)
+      let reported := hopPrefix path diag hopLen
+      let pathNames := pathNamesOf reported
+      some { buildResultEntry { diag with path := pathNames } pathNames
+               (pathVerificationLevel reported) head with witness := witness }
 
 /-- Collect all inconsistencies from path check results. -/
 def collectResults (pathResults : List (List Edge × List CheckResult))
@@ -326,8 +346,8 @@ theorem dedupeResults_keeps (rs : List ResultEntry) (e : ResultEntry) (he : e �
 
 /-- Every error result of a checked path yields an entry of severity "error". -/
 theorem collectEntries_error (path : List Edge) (rs : List CheckResult) (r : CheckResult)
-    (hr : r ∈ rs) (herr : r.isError = true) :
-    ∃ e ∈ collectEntries path rs, e.severity = "error" := by
+    (hr : r ∈ rs) (herr : r.isError = true) (hopLen : Option Nat := none) :
+    ∃ e ∈ collectEntries path rs hopLen, e.severity = "error" := by
   cases r with
   | consistent => cases herr
   | inconsistent d =>
@@ -481,12 +501,14 @@ def Dedupe.step (d : Dedupe) (r : ResultEntry) : Dedupe :=
     else d.push r
   | none => d.push r
 
-/-- `collectEntries`, computing the path (`path ()`) only when some result is
-    inconsistent. -/
-def guardedEntries (path : Unit → List Edge) (rs : List CheckResult) : List ResultEntry :=
-  if rs.all (·.isConsistent) then [] else collectEntries (path ()) rs
+/-- `collectEntries`, computing the path and the hop's position (`path ()`)
+    only when some result is inconsistent. -/
+def guardedEntries (path : Unit → List Edge × Nat) (rs : List CheckResult) : List ResultEntry :=
+  if rs.all (·.isConsistent) then [] else
+    let p := path ()
+    collectEntries p.1 rs (some p.2)
 
-theorem guardedEntries_error (path : Unit → List Edge) (rs : List CheckResult) (x : CheckResult)
+theorem guardedEntries_error (path : Unit → List Edge × Nat) (rs : List CheckResult) (x : CheckResult)
     (hx : x ∈ rs) (herr : x.isError = true) :
     ∃ e ∈ guardedEntries path rs, e.severity = "error" := by
   unfold guardedEntries
@@ -496,14 +518,14 @@ theorem guardedEntries_error (path : Unit → List Edge) (rs : List CheckResult)
     cases x with
     | consistent => cases herr
     | inconsistent _ => simp [CheckResult.isConsistent] at this
-  · exact collectEntries_error _ _ x hx herr
+  · exact collectEntries_error _ _ x hx herr _
 
 /-- The report entries of one state: those of its hop's results (without
     the warnings unless `warn`, see `warnFlags`), with the state's witness
     path. -/
 def stateEntries (st : StateSetup) (ex : Explored) (r : StateRec) (warn : Bool) :
     List ResultEntry :=
-  guardedEntries (fun _ => witnessOf st ex r)
+  guardedEntries (fun _ => witnessWithHop st ex r)
     (if warn then checkHop r.hop else dropWarnings (checkHop r.hop))
 
 /-- The deduplicated report of every explored state; `flags[i]` says whether

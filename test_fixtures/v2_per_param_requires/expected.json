@@ -2,7 +2,7 @@
   "exit_code": 1,
   "errors": [
     {
-      "path": "make4dp -> combine -> combine.<return>",
+      "path": "make4dp -> combine",
       "source_guarantee": "precision ≤ 4",
       "target_requirement": "precision ≤ 2",
       "target": "combine"

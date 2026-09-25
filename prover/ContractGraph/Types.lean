@@ -228,7 +228,12 @@ structure ResultEntry where
       source node. -/
   source : SourceLocation
   target : SourceLocation
+  /-- The witness data path up to and including the failing hop (it ends at
+      the hop target). -/
   path : List String
+  /-- The whole witness data path, from the head to a model node (printed as
+      `"witness"`). -/
+  witness : List String := []
   /-- `[hop source name, hop target name]` of the failing hop. -/
   hop : List String := []
   /-- Site of the failing hop's edge. -/

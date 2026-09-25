@@ -334,4 +334,10 @@ def continuationFrom (st : StateSetup) : Nat → Nat → List Edge
 def witnessOf (st : StateSetup) (ex : Explored) (r : StateRec) : List Edge :=
   prefixOf ex.recs r ++ continuationFrom st (st.numEdges + 1) r.hop.target.id
 
+/-- `witnessOf` with the number of its edges up to and including the
+    state's hop (the prefix length). -/
+def witnessWithHop (st : StateSetup) (ex : Explored) (r : StateRec) : List Edge × Nat :=
+  let pre := prefixOf ex.recs r
+  (pre ++ continuationFrom st (st.numEdges + 1) r.hop.target.id, pre.length)
+
 end ContractGraph
