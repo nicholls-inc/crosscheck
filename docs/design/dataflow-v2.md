@@ -53,7 +53,7 @@ function can write a 2dp value to one field and a 4dp value to another.
 
 A value derived from a parameter of F gets a *dependent* bound, written in the
 existing DepExpr grammar with `input_<kind>` (e.g. `max(3, input_precision)`
-for `x = p.quantize(Decimal('0.001')) if c else p`). `input_<kind>` binds to
+for `x = p.quantize(Decimal('0.001')) if p < 1 else p`, where `p` is F's only parameter). `input_<kind>` binds to
 whatever flows into F along the path being checked, so it is only emitted when
 F has exactly one parameter (ignoring `self`/`cls`). With more parameters, a
 parameter-derived precision/length/range is unknown. Nullability and type of a
@@ -85,7 +85,8 @@ branch None); `m.get(k)` with one argument or default `None`; `getattr(o, n, Non
 `next(it, None)`; `d.pop(k, None)`; `re.match/search/fullmatch(...)`;
 `qs.first()` / `qs.last()`; a call to an extracted function whose return is
 nullable (fixpoint across the project); a parameter annotated `Optional`.
-A function without a return annotation whose returns include any of these gets
+A literal other than `None` (string, number, f-string, `Decimal('...')`,
+container display) is non-null (0). A function without a return annotation whose returns include any of these gets
 a nullability-1 postcondition (EXTRACTED).
 
 ### Lower bounds

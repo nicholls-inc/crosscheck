@@ -72,3 +72,14 @@ requiring a specific receiver, matching how `PRICES.get(sku)` on a plain
 `limits_dict_get`. This fixture assumes the same name-based matching applies
 to any call chain ending in `.first()`/`.last()`, regardless of what precedes
 it.
+
+## Resolutions (orchestrator)
+
+- Non-`None` literals are non-null: reading (a). A literal's value is known,
+  so recording nullability 0 is a fact rather than a guess, and the spec now
+  says so. `v2_namedtuple_attrs_ctor` no longer requires a warning on
+  `make_point -> Point.label`.
+- The spec's dependent-bound example now uses a condition on the single
+  parameter itself, so it no longer suggests a second parameter.
+- Deduplication applies to warnings too; `.first()`/`.last()` match on any
+  receiver. Both as assumed here.
