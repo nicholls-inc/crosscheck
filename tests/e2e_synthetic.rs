@@ -223,3 +223,34 @@ def split(total: Decimal) -> tuple[Decimal, Decimal]:
         "tuple[Decimal, Decimal] should produce a single Decimal type postcondition"
     );
 }
+
+#[test]
+fn test_manual_override_edges_resolve_by_suffix_or_display_name() {
+    let fixture_dir = TempDir::new().unwrap();
+    let db_dir = TempDir::new().unwrap();
+    fs::create_dir(fixture_dir.path().join("billing")).unwrap();
+    fs::write(
+        fixture_dir.path().join("billing/models.py"),
+        "from django.db import models\nclass EnergyRecord(models.Model):\n    energy = models.DecimalField(max_digits=5, decimal_places=3)\n",
+    )
+    .unwrap();
+    fs::write(fixture_dir.path().join("billing/utils.py"), "def split_energy(x):\n    return x\n").unwrap();
+    let overrides = db_dir.path().join("overrides.toml");
+    fs::write(
+        &overrides,
+        "[[edges]]\nsource = \"pkg.billing.utils.split_energy\"\ntarget = \"EnergyRecord.energy\"\nrelationship = \"writes_to\"\n",
+    )
+    .unwrap();
+    let db_path = db_dir.path().join("contracts.sqlite");
+    let result =
+        crosscheck_contracts::extractor::extract(fixture_dir.path(), Some(&overrides), "4.2", Some(&db_path))
+            .unwrap();
+    let conn = rusqlite::Connection::open(result).unwrap();
+    let edges = query_edges(&conn);
+    assert_eq!(edges.len(), 1, "{edges:?}");
+    assert_eq!(
+        (edges[0].source_name.as_str(), edges[0].target_name.as_str(), edges[0].discovery.as_str()),
+        ("split_energy", "EnergyRecord.energy", "manual")
+    );
+    assert!(!edges[0].source_override);
+}

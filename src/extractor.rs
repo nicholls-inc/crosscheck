@@ -1,16 +1,256 @@
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::body_analyzer;
-use crate::dataclass_extractor;
-use crate::db::{ContractDb, Discovery, EdgeRecord, Relationship};
-use crate::defaults;
-use crate::docstring_parser;
-use crate::edge_discovery;
+use ruff_python_ast::Stmt;
+
+use crate::dataclass_extractor::{self, DataClass};
+use crate::db::{ContractDb, Discovery, EdgeRecord, NodeKind, NodeRecord, Relationship};
+use crate::defaults::{self, FieldDefaults};
+use crate::docstring_parser::{self, DocstringContract};
+use crate::edge_discovery::{self, DiscoveredEdge};
 use crate::function_extractor;
-use crate::model_extractor;
+use crate::model_extractor::{self, ModelField};
+use crate::resolve::{self, ClassInfo, ClassKind, ModuleInfo, ProjectIndex, Symbol};
 use crate::source;
+use crate::value_analysis::{self, ValueFacts};
+
+/// One parsed Python file.
+pub struct SourceModule {
+    /// Path relative to the application root (as recorded in `source_file`).
+    pub relative_path: String,
+    /// Dotted module name.
+    pub module: String,
+    pub is_package: bool,
+    pub source: String,
+    pub stmts: Vec<Stmt>,
+}
+
+impl SourceModule {
+    pub fn parse(relative_path: &str, source: String) -> Self {
+        let parsed =
+            ruff_python_parser::parse_unchecked(&source, ruff_python_parser::Mode::Module.into());
+        if !parsed.errors().is_empty() {
+            eprintln!(
+                "Warning: parse errors in {}: {}",
+                relative_path,
+                parsed.errors()[0]
+            );
+        }
+        let stmts = match parsed.into_syntax() {
+            ruff_python_ast::Mod::Module(module) => module.body,
+            _ => Vec::new(),
+        };
+        SourceModule {
+            relative_path: relative_path.to_string(),
+            module: resolve::module_name(relative_path),
+            is_package: relative_path.ends_with("__init__.py"),
+            source,
+            stmts,
+        }
+    }
+}
+
+/// Everything extracted from a project, before it is written to SQLite.
+pub struct Project {
+    pub modules: Vec<SourceModule>,
+    pub index: ProjectIndex,
+    pub model_fields: Vec<ModelField>,
+    pub data_classes: Vec<DataClass>,
+    /// Return-value summaries (EXTRACTED facts) per qualified function name.
+    pub summaries: HashMap<String, ValueFacts>,
+    /// Docstring clauses per qualified function name.
+    pub docstrings: HashMap<String, Vec<DocstringContract>>,
+}
+
+impl Project {
+    /// Parse and analyse `(relative path, source)` pairs with the Django 4.2 defaults.
+    pub fn from_sources(files: Vec<(String, String)>) -> Project {
+        let modules = files
+            .into_iter()
+            .map(|(p, s)| SourceModule::parse(&p, s))
+            .collect();
+        Project::from_parsed(modules)
+    }
+
+    /// Analyse parsed modules with the Django 4.2 defaults.
+    pub fn from_parsed(modules: Vec<SourceModule>) -> Project {
+        let defaults = defaults::load_defaults("4.2").unwrap_or_default();
+        Project::build(modules, &defaults)
+    }
+
+    pub fn build(
+        modules: Vec<SourceModule>,
+        field_defaults: &HashMap<String, FieldDefaults>,
+    ) -> Project {
+        let mut index = ProjectIndex::default();
+        let mut model_fields = Vec::new();
+        let mut candidates = Vec::new();
+
+        for m in &modules {
+            index.modules.insert(
+                m.module.clone(),
+                ModuleInfo::from_stmts(&m.module, m.is_package, &m.stmts),
+            );
+
+            // Functions (a later definition with the same qualified name replaces an earlier one)
+            for mut func in
+                function_extractor::extract_functions(&m.stmts, &m.relative_path, &m.module)
+            {
+                func.source_line = source::line_of(&m.source, func.source_line);
+                match index.function_ids.get(&func.qualified_name) {
+                    Some(&i) => index.functions[i] = func,
+                    None => {
+                        index
+                            .function_ids
+                            .insert(func.qualified_name.clone(), index.functions.len());
+                        index.functions.push(func);
+                    }
+                }
+            }
+
+            // Classes
+            for stmt in &m.stmts {
+                if let Stmt::ClassDef(c) = stmt {
+                    let qualified = resolve::qualify(&m.module, c.name.as_str());
+                    index.classes.insert(
+                        qualified.clone(),
+                        ClassInfo {
+                            qualified,
+                            module: m.module.clone(),
+                            name: c.name.to_string(),
+                            kind: ClassKind::Plain,
+                            fields: Vec::new(),
+                            positional: None,
+                            bases: c
+                                .arguments
+                                .as_ref()
+                                .map(|a| a.args.to_vec())
+                                .unwrap_or_default(),
+                            methods: HashMap::new(),
+                        },
+                    );
+                }
+            }
+
+            // Django model fields
+            let mut fields =
+                model_extractor::extract_models(&m.stmts, &m.relative_path, field_defaults);
+            for field in &mut fields {
+                field.source_line = source::line_of(&m.source, field.source_line);
+            }
+            model_fields.extend(fields);
+
+            candidates.extend(dataclass_extractor::collect_classes(
+                &m.stmts,
+                &m.source,
+                &m.relative_path,
+            ));
+        }
+
+        for func in &index.functions {
+            if let Some(class) = &func.class_name {
+                let q = resolve::qualify(&func.module, class);
+                if let Some(c) = index.classes.get_mut(&q) {
+                    let method = func
+                        .name
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&func.name)
+                        .to_string();
+                    c.methods.insert(method, func.qualified_name.clone());
+                }
+            }
+        }
+
+        for field in &model_fields {
+            let q = resolve::qualify(&field.module, &field.model_name);
+            if let Some(c) = index.classes.get_mut(&q) {
+                c.kind = ClassKind::Django;
+                if !c.fields.contains(&field.field_name) {
+                    c.fields.push(field.field_name.clone());
+                }
+            }
+        }
+
+        let data_classes = {
+            let idx = &index;
+            dataclass_extractor::resolve_data_classes_with(&candidates, &|c, base| match idx
+                .resolve_expr(&c.module, base)
+            {
+                Some(Symbol::Class(q)) => Some(q),
+                _ => None,
+            })
+        };
+        for dc in &data_classes {
+            if let Some(c) = index.classes.get_mut(&dc.qualified_name) {
+                if c.kind == ClassKind::Plain {
+                    c.kind = ClassKind::Data(dc.kind);
+                    c.fields = dc.fields.iter().map(|f| f.field_name.clone()).collect();
+                    c.positional = dc.positional.clone();
+                }
+            }
+        }
+
+        let docstrings = index
+            .functions
+            .iter()
+            .filter_map(|f| {
+                let doc = docstring_parser::parse_docstring(f.docstring.as_deref()?);
+                (!doc.is_empty()).then(|| (f.qualified_name.clone(), doc))
+            })
+            .collect();
+
+        let summaries = value_analysis::compute_summaries(&index);
+
+        Project {
+            modules,
+            index,
+            model_fields,
+            data_classes,
+            summaries,
+            docstrings,
+        }
+    }
+
+    /// Source text of a module by its relative path.
+    pub fn source_of(&self, relative_path: &str) -> &str {
+        self.modules
+            .iter()
+            .find(|m| m.relative_path == relative_path)
+            .map(|m| m.source.as_str())
+            .unwrap_or("")
+    }
+
+    /// `(qualified, short)` names of every node, for display-name selection.
+    fn node_names(&self) -> Vec<(String, String)> {
+        let mut seen = HashSet::new();
+        let mut names = Vec::new();
+        let mut add = |q: String, short: String| {
+            if seen.insert(q.clone()) {
+                names.push((q, short));
+            }
+        };
+        for f in &self.model_fields {
+            add(
+                model_extractor::field_qualified(f),
+                format!("{}.{}", f.model_name, f.field_name),
+            );
+        }
+        for c in &self.data_classes {
+            for f in &c.fields {
+                add(
+                    dataclass_extractor::field_qualified(f),
+                    format!("{}.{}", f.class_name, f.field_name),
+                );
+            }
+        }
+        for f in &self.index.functions {
+            add(f.qualified_name.clone(), f.name.clone());
+        }
+        names
+    }
+}
 
 /// Run the full extraction pipeline on a Python project directory (or a single .py file).
 ///
@@ -51,140 +291,63 @@ pub fn extract(
     // Load defaults
     let field_defaults = defaults::load_defaults(django_version)?;
 
-    // Find all Python files
-    let py_files = find_python_files(app_path)?;
-
-    let mut all_model_fields = Vec::new();
-    let mut all_functions = Vec::new();
-    let mut all_body_contracts = Vec::new();
-    let mut all_docstring_contracts = Vec::new();
-    let mut all_discovered_edges = Vec::new();
-    let mut all_class_candidates = Vec::new();
-
-    // Parse each file
+    // Parse all Python files
+    let mut py_files = find_python_files(app_path)?;
+    py_files.sort();
+    let mut modules = Vec::new();
     for py_file in &py_files {
         let source = std::fs::read_to_string(py_file)?;
-        let relative_path = py_file
+        let mut relative_path = py_file
             .strip_prefix(app_path)
             .unwrap_or(py_file)
             .to_string_lossy()
             .to_string();
-
-        let parsed = ruff_python_parser::parse_unchecked(
-            &source,
-            ruff_python_parser::Mode::Module.into(),
-        );
-        if !parsed.errors().is_empty() {
-            eprintln!(
-                "Warning: parse errors in {}: {}",
-                relative_path,
-                parsed.errors()[0]
-            );
+        if relative_path.is_empty() {
+            // A single file was given: name the module after the file.
+            relative_path = py_file
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
         }
-        let stmts = match parsed.syntax() {
-            ruff_python_ast::Mod::Module(module) => &module.body,
-            _ => continue,
-        };
-
-        // Extract models
-        let mut model_fields =
-            model_extractor::extract_models(stmts, &relative_path, &field_defaults);
-        for field in &mut model_fields {
-            field.source_line = source::line_of(&source, field.source_line);
-        }
-        all_model_fields.extend(model_fields);
-
-        // Collect class definitions; data classes are resolved project-wide below
-        all_class_candidates.extend(dataclass_extractor::collect_classes(
-            stmts,
-            &source,
-            &relative_path,
-        ));
-
-        // Extract functions
-        let mut functions = function_extractor::extract_functions(stmts, &relative_path);
-        for func in &mut functions {
-            func.source_line = source::line_of(&source, func.source_line);
-        }
-
-        // Analyze function bodies
-        for func in &functions {
-            let body_contracts = body_analyzer::analyze_body(&func.body);
-            if !body_contracts.is_empty() {
-                all_body_contracts.push((func.name.clone(), body_contracts));
-            }
-
-            // Parse docstrings
-            if let Some(ref docstring) = func.docstring {
-                let doc_contracts = docstring_parser::parse_docstring(docstring);
-                if !doc_contracts.is_empty() {
-                    all_docstring_contracts.push((func.name.clone(), doc_contracts));
-                }
-            }
-        }
-
-        all_functions.extend(functions);
-
-        // Discover edges via AST patterns
-        let edges = edge_discovery::discover_edges(stmts);
-        all_discovered_edges.extend(edges);
+        modules.push(SourceModule::parse(&relative_path, source));
     }
 
-    // Write model fields to database
-    model_extractor::write_model_fields(&db, &all_model_fields)?;
+    let project = Project::build(modules, &field_defaults);
+    let names = resolve::display_names(&project.node_names());
 
-    // Write functions to database
-    let node_ids = function_extractor::write_functions(
-        &db,
-        &all_functions,
-        &all_body_contracts,
-        &all_docstring_contracts,
-    )?;
-
-    // Build node ID lookup for models
-    let mut model_node_ids: HashMap<String, i64> = HashMap::new();
-    // We need to query back the node IDs for model fields
-    // For simplicity, build the map from what we know
-    for field in &all_model_fields {
-        let full_name = format!("{}.{}", field.model_name, field.field_name);
-        // The node ID was auto-assigned; we need to look it up
-        // This is a simplification - in production, write_model_fields should return IDs
-        if let Some(id) = lookup_node_id_by_name(&db_path, &full_name)? {
-            model_node_ids.insert(full_name, id);
-        }
+    // Nodes: model fields, data class fields, functions
+    let mut model_node_ids =
+        model_extractor::write_model_fields(&db, &project.model_fields, &names)?;
+    for (q, id) in dataclass_extractor::write_data_classes(&db, &project.data_classes, &names)? {
+        model_node_ids.entry(q).or_insert(id);
     }
+    let func_node_ids = write_functions(&db, &project, &names)?;
 
-    // Resolve and write plain-Python data classes (dataclass, attrs, pydantic, ...)
-    let data_classes = dataclass_extractor::resolve_data_classes(&all_class_candidates);
-    let data_class_ids = dataclass_extractor::write_data_classes(&db, &data_classes)?;
-    let data_class_field_count = data_class_ids.len();
-    model_node_ids.extend(data_class_ids);
-
-    // Map positional constructor arguments (`#<index>`) to declared field names
-    resolve_positional_fields(&mut all_discovered_edges, &data_classes);
-
-    // Write AST-discovered edges
-    write_discovered_edges(&db, &all_discovered_edges, &node_ids, &model_node_ids)?;
+    // Edges
+    let edges = dedupe(edge_discovery::discover_project_edges(&project));
+    let mut edge_count = write_edges(&db, &edges, &func_node_ids, &model_node_ids, &names)?;
 
     // Load and write manual overrides
     if let Some(overrides_path) = overrides_path {
         if overrides_path.exists() {
             let override_edges = edge_discovery::load_overrides(overrides_path)?;
-            write_discovered_edges(&db, &override_edges, &node_ids, &model_node_ids)?;
+            edge_count += write_edges(
+                &db,
+                &override_edges,
+                &func_node_ids,
+                &model_node_ids,
+                &names,
+            )?;
         }
     }
 
-    // Count actual edges written to the database
-    let edge_count: i64 = {
-        let conn = rusqlite::Connection::open(&db_path)?;
-        conn.query_row("SELECT COUNT(*) FROM edges", [], |row| row.get(0))?
-    };
-
+    let data_class_field_count: usize = project.data_classes.iter().map(|c| c.fields.len()).sum();
     eprintln!(
         "Extracted {} model fields, {} data class fields, {} functions, {} edges to {}",
-        all_model_fields.len(),
+        project.model_fields.len(),
         data_class_field_count,
-        all_functions.len(),
+        project.index.functions.len(),
         edge_count,
         db_path.display()
     );
@@ -192,30 +355,155 @@ pub fn extract(
     Ok(db_path)
 }
 
-/// Replace `#<index>` placeholder fields on constructor edges with the
-/// declared field at that position, for data classes whose constructors take
-/// fields positionally. Placeholders that cannot be mapped are left as-is and
-/// are dropped at edge resolution.
-fn resolve_positional_fields(
-    edges: &mut [edge_discovery::DiscoveredEdge],
-    classes: &[dataclass_extractor::DataClass],
-) {
-    for edge in edges.iter_mut() {
-        let Some(index) = edge
-            .target_field
-            .as_deref()
-            .and_then(|f| f.strip_prefix('#'))
-            .and_then(|i| i.parse::<usize>().ok())
-        else {
+/// Write function nodes with their pre- and postconditions.
+/// Returns qualified name → node ID.
+fn write_functions(
+    db: &ContractDb,
+    project: &Project,
+    names: &HashMap<String, String>,
+) -> Result<HashMap<String, i64>> {
+    let mut ids = HashMap::new();
+    for func in &project.index.functions {
+        let node_id = db.insert_node(&NodeRecord {
+            name: names
+                .get(&func.qualified_name)
+                .cloned()
+                .unwrap_or_else(|| func.name.clone()),
+            qualified_name: Some(func.qualified_name.clone()),
+            kind: NodeKind::Function,
+            source_file: func.source_file.clone(),
+            source_line: func.source_line,
+        })?;
+        ids.insert(func.qualified_name.clone(), node_id);
+
+        let doc = project
+            .docstrings
+            .get(&func.qualified_name)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let summary = project
+            .summaries
+            .get(&func.qualified_name)
+            .cloned()
+            .unwrap_or_default();
+        for row in function_extractor::precondition_rows(func, doc, node_id)
+            .into_iter()
+            .chain(function_extractor::postcondition_rows(
+                func, &summary, doc, node_id,
+            ))
+        {
+            db.insert_contract(&row)?;
+        }
+    }
+    Ok(ids)
+}
+
+/// Drop repeated edges that carry no override rows (e.g. the same producer
+/// written to the same field at two call sites).
+fn dedupe(edges: Vec<DiscoveredEdge>) -> Vec<DiscoveredEdge> {
+    let mut seen = HashSet::new();
+    edges
+        .into_iter()
+        .filter(|e| {
+            e.override_rows.is_some()
+                || seen.insert((
+                    e.source_function.clone(),
+                    e.target_name.clone(),
+                    e.target_field.clone(),
+                    e.relationship.clone(),
+                    e.target_param.clone(),
+                ))
+        })
+        .collect()
+}
+
+/// Write edges (and each edge's override rows, after the edge itself).
+/// Edges whose endpoints are not extracted nodes are dropped.
+fn write_edges(
+    db: &ContractDb,
+    edges: &[DiscoveredEdge],
+    func_node_ids: &HashMap<String, i64>,
+    model_node_ids: &HashMap<String, i64>,
+    names: &HashMap<String, String>,
+) -> Result<usize> {
+    let mut written = 0;
+    for edge in edges {
+        // Discovered edges carry qualified names; only manual overrides are
+        // matched loosely (display name or dotted suffix).
+        let lookup = |ids: &HashMap<String, i64>, name: &str| {
+            if edge.discovery == "manual" {
+                lookup(ids, names, name)
+            } else {
+                ids.get(name).copied()
+            }
+        };
+        let source_id = lookup(func_node_ids, &edge.source_function);
+        let target_id = match &edge.target_field {
+            Some(field) => lookup(model_node_ids, &format!("{}.{}", edge.target_name, field)),
+            None => lookup(model_node_ids, &edge.target_name)
+                .or_else(|| lookup(func_node_ids, &edge.target_name)),
+        };
+        let (Some(src_id), Some(tgt_id)) = (source_id, target_id) else {
             continue;
         };
-        let field = classes
-            .iter()
-            .find(|c| c.name == edge.target_name && c.kind.positional_fields())
-            .and_then(|c| c.fields.get(index));
-        if let Some(field) = field {
-            edge.target_field = Some(field.field_name.clone());
+        let relationship = match edge.relationship.as_str() {
+            "calls" => Relationship::Calls,
+            "writes_to" => Relationship::WritesTo,
+            "flows_to" => Relationship::FlowsTo,
+            _ => continue,
+        };
+        let discovery = match edge.discovery.as_str() {
+            "ast_pattern" => Discovery::AstPattern,
+            "manual" => Discovery::Manual,
+            "type_inference" => Discovery::TypeInference,
+            _ => continue,
+        };
+
+        let edge_id = db.insert_edge(&EdgeRecord {
+            source_node_id: src_id,
+            target_node_id: tgt_id,
+            relationship,
+            discovery,
+            target_param: edge.target_param.clone(),
+            source_override: edge.override_rows.is_some(),
+        })?;
+        written += 1;
+        for row in edge.override_rows.iter().flatten() {
+            let mut row = row.clone();
+            row.node_id = src_id;
+            row.edge_id = Some(edge_id);
+            db.insert_contract(&row)?;
         }
+    }
+    Ok(written)
+}
+
+/// A node ID by qualified name, else by display name, else by a unique
+/// dotted-suffix match (for manual overrides naming `pkg.module.func`
+/// or a short name).
+fn lookup(ids: &HashMap<String, i64>, names: &HashMap<String, String>, name: &str) -> Option<i64> {
+    if let Some(&id) = ids.get(name) {
+        return Some(id);
+    }
+    let by_display: Vec<i64> = ids
+        .iter()
+        .filter(|(q, _)| names.get(*q).map(String::as_str) == Some(name))
+        .map(|(_, &id)| id)
+        .collect();
+    if let [id] = by_display.as_slice() {
+        return Some(*id);
+    }
+    let suffix = |a: &str, b: &str| {
+        a.len() > b.len() && a.ends_with(b) && a[..a.len() - b.len()].ends_with('.')
+    };
+    let by_suffix: Vec<i64> = ids
+        .iter()
+        .filter(|(q, _)| suffix(q, name) || suffix(name, q))
+        .map(|(_, &id)| id)
+        .collect();
+    match by_suffix.as_slice() {
+        [id] => Some(*id),
+        _ => None,
     }
 }
 
@@ -245,79 +533,4 @@ fn find_python_files(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
         }
     }
     Ok(files)
-}
-
-/// Look up a node ID by name from the database.
-fn lookup_node_id_by_name(db_path: &Path, name: &str) -> Result<Option<i64>> {
-    let conn = rusqlite::Connection::open(db_path)?;
-    let mut stmt = conn.prepare("SELECT id FROM nodes WHERE name = ?1")?;
-    let result = stmt.query_row(rusqlite::params![name], |row| row.get(0));
-    match result {
-        Ok(id) => Ok(Some(id)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.into()),
-    }
-}
-
-/// Write discovered edges to the database.
-fn write_discovered_edges(
-    db: &ContractDb,
-    edges: &[edge_discovery::DiscoveredEdge],
-    func_node_ids: &HashMap<String, i64>,
-    model_node_ids: &HashMap<String, i64>,
-) -> Result<()> {
-    for edge in edges {
-        let source_id = func_node_ids
-            .get(&edge.source_function)
-            .or_else(|| find_by_suffix(func_node_ids, &edge.source_function));
-        let target_id = if let Some(field) = &edge.target_field {
-            let key = format!("{}.{}", edge.target_name, field);
-            model_node_ids
-                .get(&key)
-                .or_else(|| find_by_suffix(model_node_ids, &key))
-        } else {
-            // Try to find by full qualified name
-            model_node_ids
-                .get(&edge.target_name)
-                .or_else(|| find_by_suffix(model_node_ids, &edge.target_name))
-                .or_else(|| func_node_ids.get(&edge.target_name))
-                .or_else(|| find_by_suffix(func_node_ids, &edge.target_name))
-        };
-
-        if let (Some(&src_id), Some(&tgt_id)) = (source_id, target_id) {
-            let relationship = match edge.relationship.as_str() {
-                "calls" => Relationship::Calls,
-                "writes_to" => Relationship::WritesTo,
-                "flows_to" => Relationship::FlowsTo,
-                _ => continue,
-            };
-            let discovery = match edge.discovery.as_str() {
-                "ast_pattern" => Discovery::AstPattern,
-                "manual" => Discovery::Manual,
-                "type_inference" => Discovery::TypeInference,
-                _ => continue,
-            };
-
-            db.insert_edge(&EdgeRecord {
-                source_node_id: src_id,
-                target_node_id: tgt_id,
-                relationship,
-                discovery,
-            })?;
-        }
-    }
-
-    Ok(())
-}
-
-/// Find a node ID by checking if any key in the map is a suffix of the given name.
-/// This handles qualified override names like "pkg.module.func" matching stored
-/// short names like "func" or "Model.field".
-fn find_by_suffix<'a>(map: &'a HashMap<String, i64>, qualified_name: &str) -> Option<&'a i64> {
-    map.iter()
-        .find(|(key, _)| {
-            qualified_name.ends_with(key.as_str())
-                && qualified_name[..qualified_name.len() - key.len()].ends_with('.')
-        })
-        .map(|(_, id)| id)
 }

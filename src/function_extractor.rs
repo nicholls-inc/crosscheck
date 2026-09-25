@@ -1,15 +1,57 @@
-use anyhow::Result;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
-use crate::db::{
-    ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
-    VerificationLevel,
-};
+use crate::dataclass_extractor::{annotation_facts, VALUE_TYPES};
+use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
+use crate::docstring_parser::DocstringContract;
+use crate::resolve::qualify;
+use crate::value_analysis::{facts_rows, ValueFacts};
+
+/// How a parameter binds arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamKind {
+    PositionalOnly,
+    Normal,
+    KeywordOnly,
+    VarArgs,
+    VarKeywords,
+}
+
+/// One declared parameter.
+#[derive(Debug, Clone)]
+pub struct ParamInfo {
+    pub name: String,
+    pub kind: ParamKind,
+    pub annotation: Option<Expr>,
+    /// Value type from the annotation (`Optional[T]` → `T`), if it is one of `VALUE_TYPES`.
+    pub type_name: Option<String>,
+    /// From the annotation (`Optional` → true, other types → false, `Any`/none → unknown);
+    /// a `= None` default makes it true.
+    pub nullable: Option<bool>,
+}
+
+/// Whether and how a function is bound to a class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MethodKind {
+    Function,
+    Instance,
+    ClassMethod,
+    Static,
+}
 
 /// Extracted function information.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionInfo {
+    /// Short name: `f` for module-level functions, `Class.m` for methods.
     pub name: String,
+    /// `module.f` / `module.Class.m`.
+    pub qualified_name: String,
+    pub module: String,
+    /// Short name of the enclosing class, for methods.
+    pub class_name: Option<String>,
+    pub method_kind: MethodKind,
+    /// Every declared parameter, including `self` / `cls`.
+    pub params: Vec<ParamInfo>,
+    pub return_annotation: Option<Expr>,
     pub return_type: Option<String>,
     pub is_return_optional: bool,
     /// For `tuple[T, T, ...]` returns with uniform element types, the element type.
@@ -20,22 +62,77 @@ pub struct FunctionInfo {
     pub docstring: Option<String>,
 }
 
-/// Extract function definitions from a parsed Python module.
-pub fn extract_functions(stmts: &[Stmt], source_file: &str) -> Vec<FunctionInfo> {
+impl FunctionInfo {
+    /// Number of leading parameters bound implicitly when called through an
+    /// instance or class (`self` / `cls`).
+    pub fn implicit_params(&self) -> usize {
+        match self.method_kind {
+            MethodKind::Instance | MethodKind::ClassMethod => {
+                usize::from(self.params.first().is_some_and(|p| {
+                    matches!(p.kind, ParamKind::PositionalOnly | ParamKind::Normal)
+                }))
+            }
+            _ => 0,
+        }
+    }
+
+    /// The `self` / `cls` parameter name, if any.
+    pub fn self_name(&self) -> Option<&str> {
+        if self.implicit_params() == 1 {
+            Some(self.params[0].name.as_str())
+        } else {
+            None
+        }
+    }
+
+    /// Parameters other than `self` / `cls`.
+    pub fn value_params(&self) -> &[ParamInfo] {
+        &self.params[self.implicit_params()..]
+    }
+
+    /// Named parameters (not `*args` / `**kwargs`) other than `self` / `cls`.
+    pub fn named_value_params(&self) -> impl Iterator<Item = &ParamInfo> {
+        self.value_params()
+            .iter()
+            .filter(|p| !matches!(p.kind, ParamKind::VarArgs | ParamKind::VarKeywords))
+    }
+
+    /// The only parameter, when there is exactly one (ignoring `self` / `cls`)
+    /// and no `*args` / `**kwargs`: values derived from it may get bounds that
+    /// depend on the function's input.
+    pub fn single_param(&self) -> Option<&str> {
+        match self.value_params() {
+            [p] if matches!(
+                p.kind,
+                ParamKind::PositionalOnly | ParamKind::Normal | ParamKind::KeywordOnly
+            ) =>
+            {
+                Some(p.name.as_str())
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Extract function definitions (module level and methods of module-level
+/// classes) from a parsed Python module.
+pub fn extract_functions(stmts: &[Stmt], source_file: &str, module: &str) -> Vec<FunctionInfo> {
     let mut functions = Vec::new();
 
     for stmt in stmts {
         match stmt {
             Stmt::FunctionDef(func_def) => {
-                let info = extract_function_info(func_def, source_file);
-                functions.push(info);
+                functions.push(extract_function_info(func_def, source_file, module, None));
             }
             Stmt::ClassDef(class_def) => {
-                // Extract methods from classes too
                 for body_stmt in &class_def.body {
                     if let Stmt::FunctionDef(func_def) = body_stmt {
-                        let info = extract_function_info(func_def, source_file);
-                        functions.push(info);
+                        functions.push(extract_function_info(
+                            func_def,
+                            source_file,
+                            module,
+                            Some(class_def.name.as_str()),
+                        ));
                     }
                 }
             }
@@ -47,7 +144,12 @@ pub fn extract_functions(stmts: &[Stmt], source_file: &str) -> Vec<FunctionInfo>
 }
 
 /// Extract info from a single function definition.
-fn extract_function_info(func_def: &ast::StmtFunctionDef, source_file: &str) -> FunctionInfo {
+fn extract_function_info(
+    func_def: &ast::StmtFunctionDef,
+    source_file: &str,
+    module: &str,
+    class_name: Option<&str>,
+) -> FunctionInfo {
     // For Optional[T] / T | None, the type postcondition is T; nullability is
     // recorded separately via `is_return_optional`.
     let return_type = func_def
@@ -68,8 +170,32 @@ fn extract_function_info(func_def: &ast::StmtFunctionDef, source_file: &str) -> 
 
     let docstring = extract_docstring(&func_def.body);
 
+    let decorated = |name: &str| {
+        func_def
+            .decorator_list
+            .iter()
+            .any(|d| matches!(&d.expression, Expr::Name(n) if n.id.as_str() == name))
+    };
+    let method_kind = match class_name {
+        None => MethodKind::Function,
+        Some(_) if decorated("staticmethod") => MethodKind::Static,
+        Some(_) if decorated("classmethod") => MethodKind::ClassMethod,
+        Some(_) => MethodKind::Instance,
+    };
+
+    let name = match class_name {
+        Some(class) => format!("{class}.{}", func_def.name),
+        None => func_def.name.to_string(),
+    };
+
     FunctionInfo {
-        name: func_def.name.to_string(),
+        qualified_name: qualify(module, &name),
+        name,
+        module: module.to_string(),
+        class_name: class_name.map(str::to_string),
+        method_kind,
+        params: extract_params(&func_def.parameters),
+        return_annotation: func_def.returns.as_deref().cloned(),
         return_type,
         is_return_optional,
         tuple_element_type,
@@ -77,6 +203,47 @@ fn extract_function_info(func_def: &ast::StmtFunctionDef, source_file: &str) -> 
         source_line: func_def.range.start().to_u32(),
         body: func_def.body.clone(),
         docstring,
+    }
+}
+
+fn extract_params(params: &ast::Parameters) -> Vec<ParamInfo> {
+    let mut out = Vec::new();
+    let with_default = |p: &ast::ParameterWithDefault, kind: ParamKind| {
+        let mut info = param_info(&p.parameter, kind);
+        if matches!(p.default.as_deref(), Some(Expr::NoneLiteral(_))) {
+            info.nullable = Some(true);
+        }
+        info
+    };
+    for p in &params.posonlyargs {
+        out.push(with_default(p, ParamKind::PositionalOnly));
+    }
+    for p in &params.args {
+        out.push(with_default(p, ParamKind::Normal));
+    }
+    if let Some(p) = &params.vararg {
+        out.push(param_info(p, ParamKind::VarArgs));
+    }
+    for p in &params.kwonlyargs {
+        out.push(with_default(p, ParamKind::KeywordOnly));
+    }
+    if let Some(p) = &params.kwarg {
+        out.push(param_info(p, ParamKind::VarKeywords));
+    }
+    out
+}
+
+fn param_info(p: &ast::Parameter, kind: ParamKind) -> ParamInfo {
+    let (type_name, nullable) = match p.annotation.as_deref().and_then(annotation_facts) {
+        Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
+        None => (None, None),
+    };
+    ParamInfo {
+        name: p.name.to_string(),
+        kind,
+        annotation: p.annotation.as_deref().cloned(),
+        type_name,
+        nullable,
     }
 }
 
@@ -96,6 +263,7 @@ fn format_type_annotation(expr: &Expr) -> String {
             let items: Vec<String> = tuple.elts.iter().map(format_type_annotation).collect();
             items.join(", ")
         }
+        Expr::NoneLiteral(_) => "None".to_string(),
         _ => "unknown".to_string(),
     }
 }
@@ -114,7 +282,7 @@ fn is_optional_type(expr: &Expr) -> bool {
 }
 
 /// `Optional[T]`, `T | None` and `None | T` → `T`; anything else unchanged.
-fn strip_optional(expr: &Expr) -> &Expr {
+pub fn strip_optional(expr: &Expr) -> &Expr {
     match expr {
         Expr::Subscript(sub) if matches_name_str(&sub.value, "Optional") => &sub.slice,
         Expr::BinOp(binop) if matches!(binop.op, ast::Operator::BitOr) => {
@@ -146,7 +314,10 @@ fn uniform_tuple_element_type(expr: &Expr) -> Option<String> {
                     return None;
                 }
                 let first = format_type_annotation(&tuple.elts[0]);
-                if tuple.elts[1..].iter().all(|e| format_type_annotation(e) == first) {
+                if tuple.elts[1..]
+                    .iter()
+                    .all(|e| format_type_annotation(e) == first)
+                {
                     return Some(first);
                 }
             }
@@ -170,164 +341,206 @@ fn extract_docstring(body: &[Stmt]) -> Option<String> {
     None
 }
 
-/// Write extracted functions to the database.
-pub fn write_functions(
-    db: &ContractDb,
-    functions: &[FunctionInfo],
-    body_contracts: &[(String, Vec<crate::body_analyzer::BodyContract>)],
-    docstring_contracts: &[(String, Vec<crate::docstring_parser::DocstringContract>)],
-) -> Result<std::collections::HashMap<String, i64>> {
-    let mut node_ids = std::collections::HashMap::new();
-
-    for func in functions {
-        let node_id = db.insert_node(&NodeRecord {
-            name: func.name.clone(),
-            kind: NodeKind::Function,
-            source_file: func.source_file.clone(),
-            source_line: func.source_line,
-        })?;
-
-        node_ids.insert(func.name.clone(), node_id);
-
-        // Type annotation contracts
-        if let Some(ref return_type) = func.return_type {
-            // For tuple[T, T, ...] with uniform element types, use the element
-            // type as the postcondition — individual elements flow through
-            // writes_to edges, not the tuple itself.
-            let effective_type = if let Some(ref elem_type) = func.tuple_element_type {
-                elem_type.as_str()
-            } else {
-                return_type
-                    .split('[')
-                    .next()
-                    .unwrap_or(return_type)
-                    .trim()
-            };
-            // Only emit type postconditions for value types that are
-            // meaningful to compare against model field types. Model class
-            // names (e.g. EnergyRecord) aren't comparable to field value
-            // types (e.g. Decimal) — for writes_to edges, the field values
-            // are the ORM call arguments, not the returned model instance.
-            let value_types = ["Decimal", "int", "str", "float", "bool"];
-            if effective_type != "unknown" && value_types.contains(&effective_type) {
-                db.insert_contract(&ContractRecord {
-                    node_id,
-                    constraint_type: ConstraintType::Type,
-                    param_max_digits: None,
-                    param_decimal_places: None,
-                    param_max_length: None,
-                    param_nullable: None,
-                    param_type_name: Some(effective_type.to_string()),
-                    param_min_value: None,
-                    param_max_value: None,
-                    param_choices: None,
-                    source_file: func.source_file.clone(),
-                    source_line: func.source_line,
-                    is_implicit: false,
-                    verification_level: VerificationLevel::Extracted,
-                    contract_role: Some(ContractRole::Postcondition),
-                    dependent_expr: None,
-                })?;
-            }
+/// A docstring clause as a contract row (ASSUMED) on node `node_id`.
+fn docstring_row(func: &FunctionInfo, dc: &DocstringContract, node_id: i64) -> ContractRecord {
+    // Put the clause's bound in the column the checker reads for its kind.
+    let value = |kind: ConstraintType| {
+        if dc.constraint_type == kind {
+            dc.param_value
+        } else {
+            None
         }
+    };
+    let range_bound = value(ConstraintType::Range).map(|v| v as f64);
+    // A precondition clause constrains the parameter it names; a name that is
+    // not a parameter (e.g. `result`) applies to every parameter.
+    let subject = match dc.role {
+        ContractRole::Precondition => dc
+            .subject
+            .as_ref()
+            .filter(|s| func.named_value_params().any(|p| &p.name == *s))
+            .cloned(),
+        ContractRole::Postcondition => None,
+    };
+    ContractRecord {
+        param_decimal_places: value(ConstraintType::Precision),
+        param_max_length: value(ConstraintType::Length),
+        param_nullable: value(ConstraintType::Nullability),
+        param_min_value: range_bound.filter(|_| dc.is_lower_bound),
+        param_max_value: range_bound.filter(|_| !dc.is_lower_bound),
+        dependent_expr: dc.dependent_expr.clone(),
+        subject,
+        ..ContractRecord::new(
+            node_id,
+            dc.constraint_type.clone(),
+            dc.role.clone(),
+            VerificationLevel::Assumed,
+            &func.source_file,
+            func.source_line,
+        )
+    }
+}
 
-        // Nullability from Optional type
-        if func.is_return_optional {
-            db.insert_contract(&ContractRecord {
-                node_id,
-                constraint_type: ConstraintType::Nullability,
-                param_max_digits: None,
-                param_decimal_places: None,
-                param_max_length: None,
-                param_nullable: Some(1),
-                param_type_name: None,
-                param_min_value: None,
-                param_max_value: None,
-                param_choices: None,
-                source_file: func.source_file.clone(),
-                source_line: func.source_line,
-                is_implicit: false,
-                verification_level: VerificationLevel::Extracted,
-                contract_role: Some(ContractRole::Postcondition),
-                dependent_expr: None,
-            })?;
-        }
+/// The function's docstring `ensures:` clauses as postcondition rows.
+pub fn docstring_postcondition_rows(
+    func: &FunctionInfo,
+    doc: &[DocstringContract],
+    node_id: i64,
+) -> Vec<ContractRecord> {
+    doc.iter()
+        .filter(|dc| matches!(dc.role, ContractRole::Postcondition))
+        .map(|dc| docstring_row(func, dc, node_id))
+        .collect()
+}
 
-        // Docstring contracts (highest priority)
-        if let Some((_, doc_contracts)) = docstring_contracts.iter().find(|(n, _)| n == &func.name)
-        {
-            for dc in doc_contracts {
-                // Put the clause's bound in the column the checker reads for its kind.
-                let value = |kind: ConstraintType| {
-                    if dc.constraint_type.as_str() == kind.as_str() {
-                        dc.param_value
-                    } else {
-                        None
-                    }
-                };
-                let range_bound = value(ConstraintType::Range).map(|v| v as f64);
-                db.insert_contract(&ContractRecord {
-                    node_id,
-                    constraint_type: dc.constraint_type.clone(),
-                    param_max_digits: None,
-                    param_decimal_places: value(ConstraintType::Precision),
-                    param_max_length: value(ConstraintType::Length),
-                    param_nullable: value(ConstraintType::Nullability),
-                    param_type_name: None,
-                    param_min_value: range_bound.filter(|_| dc.is_lower_bound),
-                    param_max_value: range_bound.filter(|_| !dc.is_lower_bound),
-                    param_choices: None,
-                    source_file: func.source_file.clone(),
-                    source_line: func.source_line,
-                    is_implicit: false,
-                    verification_level: VerificationLevel::Assumed,
-                    contract_role: Some(dc.role.clone()),
-                    dependent_expr: dc.dependent_expr.clone(),
-                })?;
-            }
-        }
-
-        // Body analysis contracts (lower priority than docstring)
-        if let Some((_, body_cs)) = body_contracts.iter().find(|(n, _)| n == &func.name) {
-            for bc in body_cs {
-                // Skip if docstring already provides this constraint type + role
-                let dominated = docstring_contracts
-                    .iter()
-                    .find(|(n, _)| n == &func.name)
-                    .map(|(_, dcs)| {
-                        dcs.iter().any(|dc| {
-                            dc.constraint_type.as_str() == bc.constraint_type.as_str()
-                                && dc.role.as_str() == bc.role.as_str()
-                        })
-                    })
-                    .unwrap_or(false);
-                // An Optional return annotation already gave a nullability postcondition.
-                let duplicate = func.is_return_optional
-                    && bc.constraint_type.as_str() == ConstraintType::Nullability.as_str();
-
-                if !dominated && !duplicate {
-                    db.insert_contract(&ContractRecord {
-                        node_id,
-                        constraint_type: bc.constraint_type.clone(),
-                        param_max_digits: None,
-                        param_decimal_places: bc.param_value,
-                        param_max_length: None,
-                        param_nullable: bc.param_nullable,
-                        param_type_name: None,
-                        param_min_value: None,
-                        param_max_value: None,
-                        param_choices: None,
-                        source_file: func.source_file.clone(),
-                        source_line: func.source_line,
-                        is_implicit: false,
-                        verification_level: VerificationLevel::Extracted,
-                        contract_role: Some(bc.role.clone()),
-                        dependent_expr: None,
-                    })?;
-                }
-            }
+/// Postconditions of a function node: they describe its return value.
+/// Docstring `ensures:` clauses (ASSUMED) take precedence over extracted
+/// facts (`summary`, from the return annotation and body) of the same kind.
+pub fn postcondition_rows(
+    func: &FunctionInfo,
+    summary: &ValueFacts,
+    doc: &[DocstringContract],
+    node_id: i64,
+) -> Vec<ContractRecord> {
+    let mut rows = docstring_postcondition_rows(func, doc, node_id);
+    let documented: Vec<ConstraintType> = rows.iter().map(|r| r.constraint_type.clone()).collect();
+    for row in facts_rows(
+        summary,
+        node_id,
+        &func.source_file,
+        func.source_line,
+        VerificationLevel::Extracted,
+    ) {
+        if !documented.contains(&row.constraint_type) {
+            rows.push(row);
         }
     }
+    rows
+}
 
-    Ok(node_ids)
+/// Preconditions of a function node, one set per parameter (`subject`):
+/// the parameter's annotation (type; nullability 0 unless `Optional` or a
+/// `None` default) and docstring `requires:` clauses.
+pub fn precondition_rows(
+    func: &FunctionInfo,
+    doc: &[DocstringContract],
+    node_id: i64,
+) -> Vec<ContractRecord> {
+    let mut rows = Vec::new();
+    for param in func.named_value_params() {
+        let base = |kind: ConstraintType| ContractRecord {
+            subject: Some(param.name.clone()),
+            ..ContractRecord::new(
+                node_id,
+                kind,
+                ContractRole::Precondition,
+                VerificationLevel::Extracted,
+                &func.source_file,
+                func.source_line,
+            )
+        };
+        if let Some(t) = &param.type_name {
+            rows.push(ContractRecord {
+                param_type_name: Some(t.clone()),
+                ..base(ConstraintType::Type)
+            });
+        }
+        if let Some(nullable) = param.nullable {
+            rows.push(ContractRecord {
+                param_nullable: Some(nullable as i64),
+                ..base(ConstraintType::Nullability)
+            });
+        }
+    }
+    rows.extend(
+        doc.iter()
+            .filter(|dc| matches!(dc.role, ContractRole::Precondition))
+            .map(|dc| docstring_row(func, dc, node_id)),
+    );
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn funcs(src: &str) -> Vec<FunctionInfo> {
+        let stmts =
+            match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
+                .into_syntax()
+            {
+                ruff_python_ast::Mod::Module(m) => m.body,
+                _ => unreachable!(),
+            };
+        extract_functions(&stmts, "m.py", "pkg.m")
+    }
+
+    #[test]
+    fn test_names_and_params() {
+        let fs = funcs(
+            "def f(a: Decimal, b: Optional[str], c=None, *args, d: int, **kw): pass\n\
+             class P:\n    def m(self, x: int): pass\n    @staticmethod\n    def s(y): pass\n    @classmethod\n    def c(cls, z): pass\n",
+        );
+        let f = &fs[0];
+        assert_eq!(
+            (f.name.as_str(), f.qualified_name.as_str()),
+            ("f", "pkg.m.f")
+        );
+        let kinds: Vec<(&str, ParamKind, Option<&str>, Option<bool>)> = f
+            .params
+            .iter()
+            .map(|p| (p.name.as_str(), p.kind, p.type_name.as_deref(), p.nullable))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("a", ParamKind::Normal, Some("Decimal"), Some(false)),
+                ("b", ParamKind::Normal, Some("str"), Some(true)),
+                ("c", ParamKind::Normal, None, Some(true)),
+                ("args", ParamKind::VarArgs, None, None),
+                ("d", ParamKind::KeywordOnly, Some("int"), Some(false)),
+                ("kw", ParamKind::VarKeywords, None, None),
+            ]
+        );
+        assert_eq!(f.single_param(), None);
+        let m = &fs[1];
+        assert_eq!(
+            (m.name.as_str(), m.method_kind),
+            ("P.m", MethodKind::Instance)
+        );
+        assert_eq!(m.self_name(), Some("self"));
+        assert_eq!(m.single_param(), Some("x"));
+        assert_eq!(
+            (fs[2].method_kind, fs[2].implicit_params()),
+            (MethodKind::Static, 0)
+        );
+        assert_eq!(
+            (fs[3].method_kind, fs[3].self_name()),
+            (MethodKind::ClassMethod, Some("cls"))
+        );
+    }
+
+    #[test]
+    fn test_precondition_subjects() {
+        let fs = funcs(
+            "def combine(amount: Decimal, rate: Decimal):\n    \"\"\"requires: precision(amount) <= 2\n    requires: precision(result) <= 9\n    \"\"\"\n",
+        );
+        let doc = crate::docstring_parser::parse_docstring(fs[0].docstring.as_deref().unwrap());
+        let rows = precondition_rows(&fs[0], &doc, 1);
+        let summary: Vec<(&str, Option<&str>)> = rows
+            .iter()
+            .map(|r| (r.constraint_type.as_str(), r.subject.as_deref()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                ("type", Some("amount")),
+                ("nullability", Some("amount")),
+                ("type", Some("rate")),
+                ("nullability", Some("rate")),
+                ("precision", Some("amount")),
+                ("precision", None),
+            ]
+        );
+    }
 }

@@ -11,6 +11,9 @@ pub struct DocstringContract {
     pub dependent_expr: Option<String>,
     /// For range contracts: true for `>= N` (lower bound), false for `<= N`.
     pub is_lower_bound: bool,
+    /// The name the clause constrains (`amount` in `precision(amount) <= 2`),
+    /// as written. For preconditions this is the parameter, if it is one.
+    pub subject: Option<String>,
 }
 
 /// Parse docstring for requires/ensures clauses.
@@ -37,6 +40,7 @@ pub fn parse_docstring(docstring: &str) -> Vec<DocstringContract> {
 fn contract(
     constraint_type: ConstraintType,
     role: ContractRole,
+    subject: &str,
     param_value: Option<i64>,
 ) -> DocstringContract {
     DocstringContract {
@@ -45,40 +49,35 @@ fn contract(
         param_value,
         dependent_expr: None,
         is_lower_bound: false,
+        subject: Some(subject.trim().to_string()),
     }
 }
 
 /// Parse a single requires/ensures clause.
 ///
-/// Grammar (one clause per line):
-/// - `precision(result) <= N` or `precision(result) <= DEPEXPR`
-/// - `precision(NAME) <= N`
+/// Grammar (one clause per line; NAME is the constrained name, `result` for
+/// the return value, otherwise usually a parameter):
+/// - `precision(NAME) <= N` or `precision(NAME) <= DEPEXPR`
 /// - `len(NAME) <= N`
-/// - `nullable(result)`
+/// - `nullable(NAME)`
 /// - `non_null(NAME)`, `not_null(NAME)`, `NAME is not None`
 /// - `NAME <= N` (range upper bound)
 /// - `NAME >= N` (range lower bound)
 fn parse_clause(clause: &str, role: ContractRole) -> Option<DocstringContract> {
-    // Pattern: precision(result) <= N
-    if let Some(rest) = clause.strip_prefix("precision(result) <=") {
-        let rest = rest.trim();
-        // Check for dependent expression
-        if rest.contains("input_") || rest.contains("max(") || rest.contains("min(") {
-            return Some(DocstringContract {
-                dependent_expr: Some(rest.to_string()),
-                ..contract(ConstraintType::Precision, role, None)
-            });
-        }
-        if let Ok(n) = rest.parse::<i64>() {
-            return Some(contract(ConstraintType::Precision, role, Some(n)));
-        }
-    }
-
-    // Pattern: precision(input) <= N or precision(PARAM) <= N
-    if clause.starts_with("precision(") && clause.contains(") <=") {
-        if let Some(rest) = clause.split(") <=").nth(1) {
-            if let Ok(n) = rest.trim().parse::<i64>() {
-                return Some(contract(ConstraintType::Precision, role, Some(n)));
+    // Pattern: precision(NAME) <= N | DEPEXPR
+    if let Some(inner) = clause.strip_prefix("precision(") {
+        if let Some((name, rest)) = inner.split_once(") <=") {
+            if is_simple_name(name) {
+                let rest = rest.trim();
+                if rest.contains("input_") || rest.contains("max(") || rest.contains("min(") {
+                    return Some(DocstringContract {
+                        dependent_expr: Some(rest.to_string()),
+                        ..contract(ConstraintType::Precision, role, name, None)
+                    });
+                }
+                if let Ok(n) = rest.parse::<i64>() {
+                    return Some(contract(ConstraintType::Precision, role, name, Some(n)));
+                }
             }
         }
     }
@@ -88,15 +87,17 @@ fn parse_clause(clause: &str, role: ContractRole) -> Option<DocstringContract> {
         if let Some((name, rest)) = inner.split_once(") <=") {
             if is_simple_name(name) {
                 if let Ok(n) = rest.trim().parse::<i64>() {
-                    return Some(contract(ConstraintType::Length, role, Some(n)));
+                    return Some(contract(ConstraintType::Length, role, name, Some(n)));
                 }
             }
         }
     }
 
-    // Pattern: nullable(result)
-    if clause == "nullable(result)" {
-        return Some(contract(ConstraintType::Nullability, role, Some(1)));
+    // Pattern: nullable(NAME)
+    if let Some(name) = clause.strip_prefix("nullable(").and_then(|r| r.strip_suffix(')')) {
+        if is_simple_name(name) {
+            return Some(contract(ConstraintType::Nullability, role, name, Some(1)));
+        }
     }
 
     // Pattern: non_null(NAME), not_null(NAME), NAME is not None
@@ -105,26 +106,26 @@ fn parse_clause(clause: &str, role: ContractRole) -> Option<DocstringContract> {
         .or_else(|| clause.strip_prefix("not_null("))
         .and_then(|rest| rest.strip_suffix(')'))
         .or_else(|| clause.strip_suffix(" is not None"));
-    if non_null_arg.is_some_and(is_simple_name) {
-        return Some(contract(ConstraintType::Nullability, role, Some(0)));
+    if let Some(name) = non_null_arg.filter(|n| is_simple_name(n)) {
+        return Some(contract(ConstraintType::Nullability, role, name, Some(0)));
     }
 
     // Pattern: NAME <= N (range max)
     if let Some((lhs, rhs)) = clause.split_once("<=") {
         if is_simple_name(lhs.trim()) {
             if let Ok(n) = rhs.trim().parse::<i64>() {
-                return Some(contract(ConstraintType::Range, role, Some(n)));
+                return Some(contract(ConstraintType::Range, role, lhs, Some(n)));
             }
         }
     }
 
-    // Pattern: EXPR >= N (range min)
-    if clause.contains(">=") {
-        if let Some(rest) = clause.split(">=").nth(1) {
-            if let Ok(n) = rest.trim().parse::<i64>() {
+    // Pattern: NAME >= N (range min)
+    if let Some((lhs, rhs)) = clause.split_once(">=") {
+        if is_simple_name(lhs.trim()) {
+            if let Ok(n) = rhs.trim().parse::<i64>() {
                 return Some(DocstringContract {
                     is_lower_bound: true,
-                    ..contract(ConstraintType::Range, role, Some(n))
+                    ..contract(ConstraintType::Range, role, lhs, Some(n))
                 });
             }
         }
@@ -217,6 +218,22 @@ mod tests {
         assert_eq!((upper.param_value, upper.is_lower_bound), (Some(150), false));
         let lower = parse_clause("result >= 0", ContractRole::Postcondition).unwrap();
         assert_eq!((lower.param_value, lower.is_lower_bound), (Some(0), true));
+    }
+
+    #[test]
+    fn test_subjects() {
+        let c = parse_clause("precision(amount) <= 2", ContractRole::Precondition).unwrap();
+        assert_eq!(c.subject.as_deref(), Some("amount"));
+        let c = parse_clause("len(name) <= 5", ContractRole::Precondition).unwrap();
+        assert_eq!(c.subject.as_deref(), Some("name"));
+        let c = parse_clause("qty >= -3", ContractRole::Precondition).unwrap();
+        assert_eq!((c.subject.as_deref(), c.param_value, c.is_lower_bound), (Some("qty"), Some(-3), true));
+        let c = parse_clause("nullable(note)", ContractRole::Precondition).unwrap();
+        assert_eq!((c.subject.as_deref(), c.param_value), (Some("note"), Some(1)));
+        let c = parse_clause("x is not None", ContractRole::Precondition).unwrap();
+        assert_eq!(c.subject.as_deref(), Some("x"));
+        // A lower bound on something other than a plain name is not a range clause.
+        assert!(parse_clause("len(x) >= 3", ContractRole::Precondition).is_none());
     }
 
     #[test]

@@ -60,30 +60,28 @@ fn test_bug1_model_precision_3dp() {
     assert_eq!(c.verification_level, "EXTRACTED");
 }
 
+/// v2: the 6dp values are the arguments of `objects.create`, so they are the
+/// override rows of the two `writes_to` edges; `split_energy`'s own
+/// postconditions describe its return value (an EnergyRecord) and carry no
+/// precision.
 #[test]
 fn test_bug1_function_precision_6dp() {
     let (_tmp, conn) = bug1_db();
 
     let precision = query_contract_by_type(&conn, "split_energy", "precision");
     assert!(
-        !precision.is_empty(),
-        "split_energy should have a precision contract"
+        precision.iter().all(|c| c.contract_role.as_deref() != Some("postcondition")),
+        "split_energy's return value has no precision: {precision:?}"
     );
 
-    let postconditions: Vec<&ContractRow> = precision
-        .iter()
-        .filter(|c| c.contract_role.as_deref() == Some("postcondition"))
-        .collect();
-    assert_eq!(
-        postconditions.len(),
-        1,
-        "expected exactly 1 precision postcondition"
-    );
-    assert_eq!(
-        postconditions[0].param_decimal_places,
-        Some(6),
-        "body analyzer should infer 6dp from quantize(Decimal('0.000001'))"
-    );
+    let edges = query_edges(&conn);
+    for field in ["EnergyRecord.energy", "EnergyRecord.off_peak_energy"] {
+        assert_eq!(
+            override_rows(&conn, &edges, "split_energy", field, "writes_to", None),
+            ["nullability=0", "precision=6", "type=Decimal"],
+            "body analyzer should infer 6dp from quantize(Decimal('0.000001')) for {field}"
+        );
+    }
 }
 
 #[test]
@@ -105,6 +103,8 @@ fn test_bug1_writes_to_edges() {
     for edge in &writes_to {
         assert_eq!(edge.source_name, "split_energy");
         assert_eq!(edge.discovery, "ast_pattern");
+        assert!(edge.source_override, "the written values are expressions in split_energy");
+        assert_eq!(edge.target_param, None);
     }
 }
 

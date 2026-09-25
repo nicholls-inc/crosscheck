@@ -11,6 +11,8 @@ use crate::defaults::FieldDefaults;
 #[derive(Debug)]
 pub struct ModelField {
     pub model_name: String,
+    /// Dotted module name of the defining file.
+    pub module: String,
     pub field_name: String,
     pub field_type: String,
     pub max_digits: Option<i64>,
@@ -19,6 +21,9 @@ pub struct ModelField {
     pub null: Option<bool>,
     pub null_is_explicit: bool,
     pub choices: Option<String>,
+    /// Integer lower / upper bounds from validators and positive field types.
+    pub min_value: Option<i64>,
+    pub max_value: Option<i64>,
     pub source_file: String,
     pub source_line: u32,
 }
@@ -142,6 +147,7 @@ fn extract_field_from_call(
 
     let mut field = ModelField {
         model_name: model_name.to_string(),
+        module: crate::resolve::module_name(source_file),
         field_name: field_name.to_string(),
         field_type: field_type.clone(),
         max_digits: None,
@@ -150,6 +156,8 @@ fn extract_field_from_call(
         null: field_defaults.and_then(|d| d.null),
         null_is_explicit: false,
         choices: None,
+        min_value: None,
+        max_value: None,
         source_file: source_file.to_string(),
         source_line: call.range.start().to_u32(),
     };
@@ -174,12 +182,70 @@ fn extract_field_from_call(
                 "choices" => {
                     field.choices = extract_choices_value(&keyword.value);
                 }
+                "validators" => apply_validators(&mut field, &keyword.value),
                 _ => {}
             }
         }
     }
 
+    // Positive*Field: Django adds MinValueValidator(0) (see the defaults file).
+    let implicit_min = field_defaults
+        .and_then(|d| d.implicit_validators.as_ref())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| {
+            v.strip_prefix("MinValueValidator(")?
+                .strip_suffix(')')?
+                .trim()
+                .parse::<i64>()
+                .ok()
+        })
+        .max();
+    let positive = matches!(
+        field_type.as_str(),
+        "PositiveIntegerField" | "PositiveSmallIntegerField" | "PositiveBigIntegerField"
+    );
+    for bound in implicit_min.into_iter().chain(positive.then_some(0)) {
+        field.min_value = Some(field.min_value.map_or(bound, |m| m.max(bound)));
+    }
+
     Some(field)
+}
+
+/// Read `MinValueValidator(n)` / `MaxValueValidator(n)` (integer `n`) from a
+/// `validators=[...]` list. With several, the tightest bound wins (all apply).
+fn apply_validators(field: &mut ModelField, expr: &Expr) {
+    let items: &[Expr] = match expr {
+        Expr::List(l) => &l.elts,
+        Expr::Tuple(t) => &t.elts,
+        _ => return,
+    };
+    for item in items {
+        let Expr::Call(call) = item else { continue };
+        let name = match call.func.as_ref() {
+            Expr::Name(n) => n.id.to_string(),
+            Expr::Attribute(a) => a.attr.to_string(),
+            _ => continue,
+        };
+        let arg = call.arguments.args.first().or_else(|| {
+            call.arguments
+                .keywords
+                .iter()
+                .find(|k| k.arg.as_deref() == Some("limit_value"))
+                .map(|k| &k.value)
+        });
+        let Some(value) = arg.and_then(crate::value_analysis::int_literal) else { continue };
+        match name.as_str() {
+            "MinValueValidator" => field.min_value = Some(field.min_value.map_or(value, |m| m.max(value))),
+            "MaxValueValidator" => field.max_value = Some(field.max_value.map_or(value, |m| m.min(value))),
+            _ => {}
+        }
+    }
+}
+
+/// Qualified node name of a model field (`module.Model.field`).
+pub fn field_qualified(field: &ModelField) -> String {
+    crate::resolve::qualify(&field.module, &format!("{}.{}", field.model_name, field.field_name))
 }
 
 /// Get the field type name from a call expression (e.g., "DecimalField" from models.DecimalField).
@@ -257,39 +323,52 @@ fn extract_choices_value(expr: &Expr) -> Option<String> {
     }
 }
 
-/// Write extracted model fields to the database.
-pub fn write_model_fields(db: &ContractDb, fields: &[ModelField]) -> Result<()> {
+/// Write extracted model fields to the database. `names` maps a field's
+/// qualified name to its display name. Returns qualified name → node ID.
+pub fn write_model_fields(
+    db: &ContractDb,
+    fields: &[ModelField],
+    names: &std::collections::HashMap<String, String>,
+) -> Result<std::collections::HashMap<String, i64>> {
+    let mut ids = std::collections::HashMap::new();
     for field in fields {
-        let full_name = format!("{}.{}", field.model_name, field.field_name);
+        let qualified = field_qualified(field);
+        if ids.contains_key(&qualified) {
+            continue;
+        }
+        let full_name = names
+            .get(&qualified)
+            .cloned()
+            .unwrap_or_else(|| format!("{}.{}", field.model_name, field.field_name));
 
         // Insert node for the model field
         let node_id = db.insert_node(&NodeRecord {
             name: full_name,
+            qualified_name: Some(qualified.clone()),
             kind: NodeKind::Model,
             source_file: field.source_file.clone(),
             source_line: field.source_line,
         })?;
+        ids.insert(qualified, node_id);
+
+        let base = |constraint_type: ConstraintType| {
+            ContractRecord::new(
+                node_id,
+                constraint_type,
+                ContractRole::Precondition,
+                VerificationLevel::Extracted,
+                &field.source_file,
+                field.source_line,
+            )
+        };
 
         // Insert precision constraint for DecimalField
         if field.field_type == "DecimalField" {
             if let Some(decimal_places) = field.decimal_places {
                 db.insert_contract(&ContractRecord {
-                    node_id,
-                    constraint_type: ConstraintType::Precision,
                     param_max_digits: field.max_digits,
                     param_decimal_places: Some(decimal_places),
-                    param_max_length: None,
-                    param_nullable: None,
-                    param_type_name: None,
-                    param_min_value: None,
-                    param_max_value: None,
-                    param_choices: None,
-                    source_file: field.source_file.clone(),
-                    source_line: field.source_line,
-                    is_implicit: false,
-                    verification_level: VerificationLevel::Extracted,
-                    contract_role: Some(ContractRole::Precondition),
-                    dependent_expr: None,
+                    ..base(ConstraintType::Precision)
                 })?;
             }
         }
@@ -298,22 +377,8 @@ pub fn write_model_fields(db: &ContractDb, fields: &[ModelField]) -> Result<()> 
         if field.field_type == "CharField" || field.field_type == "SlugField" {
             if let Some(max_length) = field.max_length {
                 db.insert_contract(&ContractRecord {
-                    node_id,
-                    constraint_type: ConstraintType::Length,
-                    param_max_digits: None,
-                    param_decimal_places: None,
                     param_max_length: Some(max_length),
-                    param_nullable: None,
-                    param_type_name: None,
-                    param_min_value: None,
-                    param_max_value: None,
-                    param_choices: None,
-                    source_file: field.source_file.clone(),
-                    source_line: field.source_line,
-                    is_implicit: false,
-                    verification_level: VerificationLevel::Extracted,
-                    contract_role: Some(ContractRole::Precondition),
-                    dependent_expr: None,
+                    ..base(ConstraintType::Length)
                 })?;
             }
         }
@@ -321,52 +386,34 @@ pub fn write_model_fields(db: &ContractDb, fields: &[ModelField]) -> Result<()> 
         // Insert nullability constraint
         if let Some(null) = field.null {
             db.insert_contract(&ContractRecord {
-                node_id,
-                constraint_type: ConstraintType::Nullability,
-                param_max_digits: None,
-                param_decimal_places: None,
-                param_max_length: None,
                 param_nullable: Some(if null { 1 } else { 0 }),
-                param_type_name: None,
-                param_min_value: None,
-                param_max_value: None,
-                param_choices: None,
-                source_file: field.source_file.clone(),
-                source_line: field.source_line,
                 is_implicit: !field.null_is_explicit,
-                verification_level: VerificationLevel::Extracted,
-                contract_role: Some(ContractRole::Precondition),
-                dependent_expr: None,
+                ..base(ConstraintType::Nullability)
             })?;
         }
 
         // Insert choices constraint
         if let Some(ref choices) = field.choices {
             db.insert_contract(&ContractRecord {
-                node_id,
-                constraint_type: ConstraintType::Choices,
-                param_max_digits: None,
-                param_decimal_places: None,
-                param_max_length: None,
-                param_nullable: None,
-                param_type_name: None,
-                param_min_value: None,
-                param_max_value: None,
                 param_choices: Some(choices.clone()),
-                source_file: field.source_file.clone(),
-                source_line: field.source_line,
-                is_implicit: false,
-                verification_level: VerificationLevel::Extracted,
-                contract_role: Some(ContractRole::Precondition),
-                dependent_expr: None,
+                ..base(ConstraintType::Choices)
+            })?;
+        }
+
+        // Insert range constraint (lower and/or upper bound)
+        if field.min_value.is_some() || field.max_value.is_some() {
+            db.insert_contract(&ContractRecord {
+                param_min_value: field.min_value.map(|v| v as f64),
+                param_max_value: field.max_value.map(|v| v as f64),
+                ..base(ConstraintType::Range)
             })?;
         }
 
         // Insert type constraint
         let type_name = match field.field_type.as_str() {
             "DecimalField" => Some("Decimal"),
-            "IntegerField" | "PositiveIntegerField" | "SmallIntegerField"
-            | "BigIntegerField" => Some("int"),
+            "IntegerField" | "PositiveIntegerField" | "PositiveSmallIntegerField"
+            | "PositiveBigIntegerField" | "SmallIntegerField" | "BigIntegerField" => Some("int"),
             "CharField" | "TextField" | "SlugField" => Some("str"),
             "BooleanField" => Some("bool"),
             "FloatField" => Some("float"),
@@ -374,25 +421,41 @@ pub fn write_model_fields(db: &ContractDb, fields: &[ModelField]) -> Result<()> 
         };
         if let Some(tn) = type_name {
             db.insert_contract(&ContractRecord {
-                node_id,
-                constraint_type: ConstraintType::Type,
-                param_max_digits: None,
-                param_decimal_places: None,
-                param_max_length: None,
-                param_nullable: None,
                 param_type_name: Some(tn.to_string()),
-                param_min_value: None,
-                param_max_value: None,
-                param_choices: None,
-                source_file: field.source_file.clone(),
-                source_line: field.source_line,
-                is_implicit: false,
-                verification_level: VerificationLevel::Extracted,
-                contract_role: Some(ContractRole::Precondition),
-                dependent_expr: None,
+                ..base(ConstraintType::Type)
             })?;
         }
     }
 
-    Ok(())
+    Ok(ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fields(src: &str) -> Vec<ModelField> {
+        let stmts = match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
+            .into_syntax()
+        {
+            ruff_python_ast::Mod::Module(m) => m.body,
+            _ => unreachable!(),
+        };
+        let defaults = crate::defaults::load_defaults("4.2").unwrap();
+        extract_models(&stmts, "app/models.py", &defaults)
+    }
+
+    #[test]
+    fn test_validator_and_positive_bounds() {
+        let fs = fields(
+            "class M(models.Model):\n    \
+             a = models.IntegerField(validators=[MinValueValidator(0), validators.MaxValueValidator(100)])\n    \
+             b = models.PositiveIntegerField()\n    \
+             c = models.PositiveSmallIntegerField(validators=[MinValueValidator(5)])\n    \
+             d = models.IntegerField(validators=[MinValueValidator(Decimal('0.5'))])\n",
+        );
+        let bounds: Vec<(Option<i64>, Option<i64>)> = fs.iter().map(|f| (f.min_value, f.max_value)).collect();
+        assert_eq!(bounds, [(Some(0), Some(100)), (Some(0), None), (Some(5), None), (None, None)]);
+        assert_eq!(field_qualified(&fs[0]), "app.models.M.a");
+    }
 }

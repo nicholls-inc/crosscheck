@@ -1,315 +1,560 @@
-use ruff_python_ast::{self as ast, Expr, Stmt};
+//! Edge discovery (data-flow model v2, `docs/design/dataflow-v2.md`).
+//!
+//! | Code | Edge |
+//! |------|------|
+//! | `Cls(f=g(...))`, `x = g(...); Cls(f=x)`, likewise `objects.create`, `**{...}`, positional, `obj.f = g(...)` | `g writes_to Cls.f` |
+//! | `Cls(f=expr)` etc., `expr` not a call to an extracted function | `F writes_to Cls.f`, override = contracts of `expr` in F |
+//! | `h(..., g(...), ...)`, or via a local bound to `g(...)` | `g flows_to h`, `target_param` = the parameter it binds |
+//! | `h(..., expr, ...)`, `expr` not such a call | `F flows_to h`, `target_param` set, override = contracts of `expr` |
+//! | `h(...)` | `F calls h` (structural, not checked) |
+//!
+//! `F` is the enclosing function. Names are resolved through `resolve`; a
+//! call or class that does not resolve to something extracted gives no edge.
+
+use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{self as ast, BoolOp, Expr, Stmt};
+use ruff_text_size::Ranged;
 use serde::Deserialize;
-use std::collections::HashMap;
+
+use crate::db::{ConstraintType, ContractRecord, VerificationLevel};
+use crate::extractor::Project;
+use crate::flow::{self, FlowVisitor, FunctionFlow, Narrowed};
+use crate::function_extractor::{self, FunctionInfo, ParamKind};
+use crate::resolve::ClassInfo;
+use crate::value_analysis::{facts_rows, Callee, Ctx, Scope};
 
 /// A discovered edge between two nodes in the contract graph.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DiscoveredEdge {
+    /// Qualified name of the source function.
     pub source_function: String,
+    /// Qualified name of the target function, or of the target class when
+    /// `target_field` is set.
     pub target_name: String,
     pub target_field: Option<String>,
     pub relationship: String,
     pub discovery: String,
+    /// For `flows_to`: the callee parameter the value binds.
+    pub target_param: Option<String>,
+    /// `Some(rows)`: on this edge the source's postconditions are `rows`
+    /// (`source_override = 1`); their `node_id` / `edge_id` are set on insert.
+    pub override_rows: Option<Vec<ContractRecord>>,
 }
 
-/// Discover edges from ORM/constructor write patterns and function calls in function bodies.
-///
-/// Relationships:
-/// - `writes_to`: a function writes a field, via `Model.objects.create(field=...)` or a
-///   constructor call `Cls(field=...)` / `Cls(a, b)`. When the written value is the result
-///   of another function (`Cls(field=g(...))`, or `x = g(...)` then `Cls(field=x)`), a
-///   `writes_to` edge from `g` to the field is emitted as well.
-/// - `calls`: a function calls another function (caller → callee).
-/// - `flows_to`: the result of one function is passed as an argument to another
-///   (`h(g(...))`, or `x = g(...)` then `h(x)`), edge `g → h`.
-pub fn discover_edges(stmts: &[Stmt]) -> Vec<DiscoveredEdge> {
-    let mut edges = Vec::new();
-
-    for stmt in stmts {
-        match stmt {
-            Stmt::FunctionDef(func_def) => discover_edges_in_function(func_def, &mut edges),
-            Stmt::ClassDef(class_def) => {
-                for body_stmt in &class_def.body {
-                    if let Stmt::FunctionDef(func_def) = body_stmt {
-                        discover_edges_in_function(func_def, &mut edges);
-                    }
-                }
-            }
-            _ => {}
+impl DiscoveredEdge {
+    fn new(source: &str, target: &str, field: Option<&str>, relationship: &str) -> Self {
+        DiscoveredEdge {
+            source_function: source.to_string(),
+            target_name: target.to_string(),
+            target_field: field.map(str::to_string),
+            relationship: relationship.to_string(),
+            discovery: "ast_pattern".to_string(),
+            target_param: None,
+            override_rows: None,
         }
     }
+}
 
+/// Discover edges in a single module, as the unnamed module `""` (so
+/// qualified names are the bare names). Convenience for tests.
+pub fn discover_edges(stmts: &[Stmt]) -> Vec<DiscoveredEdge> {
+    let project = Project::from_parsed(vec![crate::extractor::SourceModule {
+        relative_path: String::new(),
+        module: String::new(),
+        is_package: false,
+        source: String::new(),
+        stmts: stmts.to_vec(),
+    }]);
+    discover_project_edges(&project)
+}
+
+/// Discover the edges of every extracted function in the project.
+pub fn discover_project_edges(project: &Project) -> Vec<DiscoveredEdge> {
+    let mut edges = Vec::new();
+    for func in &project.index.functions {
+        let flow = FunctionFlow::of(&func.body);
+        let scope = Scope::new(&project.index, &project.summaries, Some(func), &flow);
+        let doc = project
+            .docstrings
+            .get(&func.qualified_name)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let mut walker = EdgeWalker {
+            project,
+            scope: &scope,
+            func,
+            source: project.source_of(&func.source_file),
+            doc_rows: function_extractor::docstring_postcondition_rows(func, doc, 0),
+            return_call: None,
+            edges: Vec::new(),
+        };
+        flow::walk_block(&func.body, &Narrowed::new(), &mut walker);
+        edges.extend(walker.edges);
+    }
     edges
 }
 
-/// Per-function discovery context.
-struct Ctx<'a> {
-    func_name: &'a str,
-    /// Local variables bound exactly once to the result of a function call: name → callee.
-    call_bindings: HashMap<String, String>,
+enum Target<'a> {
+    Field(&'a ClassInfo, &'a str),
+    /// A callee (qualified name) and the parameter the value binds.
+    Function(&'a str, &'a str),
 }
 
-fn discover_edges_in_function(func_def: &ast::StmtFunctionDef, edges: &mut Vec<DiscoveredEdge>) {
-    let func_name = func_def.name.to_string();
-    let mut bindings: HashMap<String, Option<String>> = HashMap::new();
-    collect_call_bindings(&func_def.body, &mut bindings);
-    let ctx = Ctx {
-        func_name: &func_name,
-        call_bindings: bindings
-            .into_iter()
-            .filter_map(|(name, callee)| callee.map(|c| (name, c)))
-            .collect(),
-    };
-    discover_edges_in_body(&func_def.body, &ctx, edges);
+struct EdgeWalker<'a, 's> {
+    project: &'a Project,
+    scope: &'s Scope<'a>,
+    func: &'a FunctionInfo,
+    source: &'a str,
+    /// The enclosing function's docstring `ensures:` rows (ASSUMED).
+    doc_rows: Vec<ContractRecord>,
+    /// The call that is the value of the `return` statement being scanned.
+    return_call: Option<*const ast::ExprCall>,
+    edges: Vec<DiscoveredEdge>,
 }
 
-/// Record `name = callee(...)` bindings. A name assigned more than once, or
-/// assigned anything other than a direct function call, maps to `None`.
-fn collect_call_bindings(stmts: &[Stmt], out: &mut HashMap<String, Option<String>>) {
-    for stmt in stmts {
+impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
+    fn simple(&mut self, stmt: &'a Stmt, narrowed: &Narrowed) {
+        let ctx = Ctx::new(narrowed);
         match stmt {
-            Stmt::Assign(assign) => {
-                for target in &assign.targets {
-                    if let Expr::Name(n) = target {
-                        let callee = match assign.value.as_ref() {
-                            Expr::Call(call) => is_function_call(&call.func),
-                            _ => None,
-                        };
-                        bind(out, &n.id, callee);
-                    }
+            Stmt::Assign(a) => {
+                self.scan(&a.value, &ctx);
+                for target in &a.targets {
+                    self.scan_target(target, &ctx);
+                    self.assign(target, Some(&a.value), &ctx);
                 }
             }
-            Stmt::AnnAssign(ann) => {
-                if let Expr::Name(n) = ann.target.as_ref() {
-                    let callee = match ann.value.as_deref() {
-                        Some(Expr::Call(call)) => is_function_call(&call.func),
+            Stmt::AnnAssign(a) => {
+                if let Some(value) = &a.value {
+                    self.scan(value, &ctx);
+                    self.scan_target(&a.target, &ctx);
+                    self.assign(&a.target, Some(value), &ctx);
+                }
+            }
+            Stmt::AugAssign(a) => {
+                self.scan(&a.value, &ctx);
+                self.scan_target(&a.target, &ctx);
+                // `obj.f += v`: the stored value is not derivable here.
+                self.assign(&a.target, None, &ctx);
+            }
+            Stmt::Return(r) => {
+                if let Some(value) = &r.value {
+                    self.return_call = match value.as_ref() {
+                        Expr::Call(c) => Some(c as *const _),
                         _ => None,
                     };
-                    bind(out, &n.id, callee);
+                    self.scan(value, &ctx);
+                    self.return_call = None;
                 }
             }
-            Stmt::AugAssign(aug) => {
-                if let Expr::Name(n) = aug.target.as_ref() {
-                    bind(out, &n.id, None);
+            Stmt::Expr(e) => self.scan(&e.value, &ctx),
+            Stmt::Raise(r) => {
+                for e in r.exc.iter().chain(r.cause.iter()) {
+                    self.scan(e, &ctx);
                 }
             }
-            Stmt::For(for_stmt) => {
-                if let Expr::Name(n) = for_stmt.target.as_ref() {
-                    bind(out, &n.id, None);
-                }
-                collect_call_bindings(&for_stmt.body, out);
-            }
-            Stmt::If(if_stmt) => {
-                collect_call_bindings(&if_stmt.body, out);
-                for clause in &if_stmt.elif_else_clauses {
-                    collect_call_bindings(&clause.body, out);
+            Stmt::Assert(a) => {
+                self.scan(&a.test, &ctx);
+                if let Some(msg) = &a.msg {
+                    self.scan(msg, &ctx.narrow(flow::negative(&a.test)));
                 }
             }
-            Stmt::While(w) => collect_call_bindings(&w.body, out),
-            Stmt::With(w) => collect_call_bindings(&w.body, out),
-            Stmt::Try(t) => {
-                collect_call_bindings(&t.body, out);
-                for handler in &t.handlers {
-                    let ast::ExceptHandler::ExceptHandler(h) = handler;
-                    collect_call_bindings(&h.body, out);
+            Stmt::Delete(d) => {
+                for t in &d.targets {
+                    self.scan_target(t, &ctx);
                 }
-                collect_call_bindings(&t.orelse, out);
-                collect_call_bindings(&t.finalbody, out);
             }
             _ => {}
         }
     }
-}
 
-fn bind(out: &mut HashMap<String, Option<String>>, name: &str, callee: Option<String>) {
-    out.entry(name.to_string())
-        .and_modify(|existing| *existing = None)
-        .or_insert(callee);
-}
-
-/// The function whose result `expr` is, if it is a direct call or a bound local.
-fn value_source(expr: &Expr, ctx: &Ctx) -> Option<String> {
-    match expr {
-        Expr::Call(call) => is_function_call(&call.func),
-        Expr::Name(n) => ctx.call_bindings.get(n.id.as_str()).cloned(),
-        _ => None,
+    fn header(&mut self, expr: &'a Expr, narrowed: &Narrowed) {
+        self.scan(expr, &Ctx::new(narrowed));
     }
 }
 
-fn edge(source: &str, target: &str, field: Option<String>, relationship: &str) -> DiscoveredEdge {
-    DiscoveredEdge {
-        source_function: source.to_string(),
-        target_name: target.to_string(),
-        target_field: field,
-        relationship: relationship.to_string(),
-        discovery: "ast_pattern".to_string(),
+/// Immediate child expressions of an expression.
+struct Children<'a>(Vec<&'a Expr>);
+
+impl<'a> Visitor<'a> for Children<'a> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        self.0.push(expr);
     }
 }
 
-/// Discover edges within a function body.
-fn discover_edges_in_body(stmts: &[Stmt], ctx: &Ctx, edges: &mut Vec<DiscoveredEdge>) {
-    for stmt in stmts {
-        discover_edges_in_stmt(stmt, ctx, edges);
-    }
+fn target_names(expr: &Expr) -> Vec<String> {
+    flow::bound_names_in_expr(expr).into_iter().collect()
 }
 
-/// Discover edges in a single statement.
-fn discover_edges_in_stmt(stmt: &Stmt, ctx: &Ctx, edges: &mut Vec<DiscoveredEdge>) {
-    match stmt {
-        Stmt::Expr(expr_stmt) => {
-            discover_edges_in_expr(&expr_stmt.value, ctx, edges);
-        }
-        Stmt::Assign(assign) => {
-            discover_edges_in_expr(&assign.value, ctx, edges);
-        }
-        Stmt::AnnAssign(ann_assign) => {
-            if let Some(value) = &ann_assign.value {
-                discover_edges_in_expr(value, ctx, edges);
-            }
-        }
-        Stmt::Return(ret) => {
-            if let Some(value) = &ret.value {
-                discover_edges_in_expr(value, ctx, edges);
-            }
-        }
-        Stmt::If(if_stmt) => {
-            discover_edges_in_body(&if_stmt.body, ctx, edges);
-            for clause in &if_stmt.elif_else_clauses {
-                discover_edges_in_body(&clause.body, ctx, edges);
-            }
-        }
-        Stmt::For(for_stmt) => {
-            discover_edges_in_body(&for_stmt.body, ctx, edges);
-        }
-        Stmt::While(while_stmt) => {
-            discover_edges_in_body(&while_stmt.body, ctx, edges);
-        }
-        Stmt::With(with_stmt) => {
-            discover_edges_in_body(&with_stmt.body, ctx, edges);
-        }
-        Stmt::Try(try_stmt) => {
-            discover_edges_in_body(&try_stmt.body, ctx, edges);
-            for handler in &try_stmt.handlers {
-                let ast::ExceptHandler::ExceptHandler(h) = handler;
-                discover_edges_in_body(&h.body, ctx, edges);
-            }
-        }
-        _ => {}
+impl<'a, 's> EdgeWalker<'a, 's> {
+    fn line_of(&self, expr: &Expr) -> u32 {
+        crate::source::line_of(self.source, expr.range().start().to_u32())
     }
-}
 
-/// Emit `writes_to` edges for one written field: from the enclosing function,
-/// and from the function that produced the value, if any.
-fn push_write(
-    edges: &mut Vec<DiscoveredEdge>,
-    ctx: &Ctx,
-    model_name: &str,
-    field: String,
-    value: &Expr,
-) {
-    if let Some(producer) = value_source(value, ctx) {
-        edges.push(edge(&producer, model_name, Some(field.clone()), "writes_to"));
-    }
-    edges.push(edge(ctx.func_name, model_name, Some(field), "writes_to"));
-}
-
-/// Discover edges in an expression.
-fn discover_edges_in_expr(expr: &Expr, ctx: &Ctx, edges: &mut Vec<DiscoveredEdge>) {
-    match expr {
-        // Pattern 1: Model.objects.create(field=expr)
-        Expr::Call(call) => {
-            if let Some(model_name) = is_objects_create(&call.func) {
-                for keyword in &call.arguments.keywords {
-                    if let Some(field_name) = &keyword.arg {
-                        push_write(edges, ctx, &model_name, field_name.to_string(), &keyword.value);
-                    }
+    /// Find and handle every call in `expr`.
+    fn scan(&mut self, expr: &'a Expr, ctx: &Ctx) {
+        match expr {
+            Expr::Call(call) => {
+                self.handle_call(call, ctx);
+                self.scan(&call.func, ctx);
+                for arg in call.arguments.args.iter() {
+                    self.scan(arg, ctx);
+                }
+                for kw in call.arguments.keywords.iter() {
+                    self.scan(&kw.value, ctx);
                 }
             }
-            // Pattern 2: Model(field=expr) -- constructor call.
-            // Positional arguments are emitted with a `#<index>` placeholder
-            // field; the extractor maps them to declared fields for data
-            // classes whose constructors take fields in order.
-            else if let Some(model_name) = is_model_constructor(&call.func) {
-                for (index, arg) in call.arguments.args.iter().enumerate() {
+            Expr::If(i) => {
+                self.scan(&i.test, ctx);
+                self.scan(&i.body, &ctx.narrow(flow::positive(&i.test)));
+                self.scan(&i.orelse, &ctx.narrow(flow::negative(&i.test)));
+            }
+            Expr::BoolOp(b) => {
+                let mut c = ctx.clone();
+                for v in &b.values {
+                    self.scan(v, &c);
+                    c = match b.op {
+                        BoolOp::And => c.narrow(flow::positive(v)),
+                        BoolOp::Or => c.narrow(flow::negative(v)),
+                    };
+                }
+            }
+            Expr::Lambda(l) => {
+                let names: Vec<String> = l
+                    .parameters
+                    .as_ref()
+                    .map(|p| p.iter().map(|p| p.name().to_string()).collect())
+                    .unwrap_or_default();
+                self.scan(&l.body, &ctx.shadow(names));
+            }
+            Expr::ListComp(_) | Expr::SetComp(_) | Expr::Generator(_) | Expr::DictComp(_) => {
+                // Comprehension variables shadow the function's names.
+                let c = ctx.shadow(target_names(expr));
+                let mut children = Children(Vec::new());
+                visitor::walk_expr(&mut children, expr);
+                for child in children.0 {
+                    self.scan(child, &c);
+                }
+            }
+            _ => {
+                let mut children = Children(Vec::new());
+                visitor::walk_expr(&mut children, expr);
+                for child in children.0 {
+                    self.scan(child, ctx);
+                }
+            }
+        }
+    }
+
+    /// Scan the evaluated parts of an assignment target (`f(x).attr = ...`).
+    fn scan_target(&mut self, target: &'a Expr, ctx: &Ctx) {
+        match target {
+            Expr::Attribute(a) => self.scan(&a.value, ctx),
+            Expr::Subscript(s) => {
+                self.scan(&s.value, ctx);
+                self.scan(&s.slice, ctx);
+            }
+            Expr::Tuple(t) => t.elts.iter().for_each(|e| self.scan_target(e, ctx)),
+            Expr::List(l) => l.elts.iter().for_each(|e| self.scan_target(e, ctx)),
+            Expr::Starred(s) => self.scan_target(&s.value, ctx),
+            _ => {}
+        }
+    }
+
+    /// Attribute assignment `obj.f = value` to a field of a known class.
+    /// `value` is `None` when the stored value is not derivable.
+    fn assign(&mut self, target: &'a Expr, value: Option<&'a Expr>, ctx: &Ctx) {
+        match target {
+            Expr::Attribute(attr) => {
+                let Some((class, true)) = self.scope.receiver_class(&attr.value, ctx) else {
+                    return;
+                };
+                let field = attr.attr.as_str();
+                if !class.kind.has_fields() || !class.fields.iter().any(|f| f == field) {
+                    return;
+                }
+                match value {
+                    Some(v) => self.emit(Target::Field(class, field), v, ctx, false),
+                    None => self.push(
+                        &self.func.qualified_name.clone(),
+                        &Target::Field(class, field),
+                        Some(Vec::new()),
+                    ),
+                }
+            }
+            Expr::Tuple(t) => {
+                let values = match value {
+                    Some(Expr::Tuple(v))
+                        if v.elts.len() == t.elts.len()
+                            && !v.elts.iter().any(|e| matches!(e, Expr::Starred(_))) =>
+                    {
+                        Some(&v.elts)
+                    }
+                    _ => None,
+                };
+                for (i, elt) in t.elts.iter().enumerate() {
+                    self.assign(elt, values.map(|v| &v[i]), ctx);
+                }
+            }
+            Expr::List(l) => l.elts.iter().for_each(|e| self.assign(e, None, ctx)),
+            Expr::Starred(s) => self.assign(&s.value, None, ctx),
+            _ => {}
+        }
+    }
+
+    fn handle_call(&mut self, call: &'a ast::ExprCall, ctx: &Ctx) {
+        let is_return = self.return_call == Some(call as *const _);
+        if let Some((class, method)) = self.scope.objects_call(call, ctx) {
+            // Model.objects.create(f=v), Model.objects.filter(...).update(f=v)
+            if method == "create" || method == "update" {
+                self.keyword_writes(class, call, ctx, is_return);
+            }
+            return;
+        }
+        match self.scope.callee(&call.func, ctx) {
+            Callee::Class(class) if class.kind.has_fields() => {
+                // Positional arguments bind the constructor's positional
+                // parameters, when their order is known (dataclass, attrs, NamedTuple).
+                for (i, arg) in call.arguments.args.iter().enumerate() {
                     if matches!(arg, Expr::Starred(_)) {
                         break;
                     }
-                    push_write(edges, ctx, &model_name, format!("#{index}"), arg);
-                }
-                for keyword in &call.arguments.keywords {
-                    if let Some(field_name) = &keyword.arg {
-                        push_write(edges, ctx, &model_name, field_name.to_string(), &keyword.value);
+                    let param = class.positional.as_ref().and_then(|p| p.get(i));
+                    if let Some(field) = param.and_then(|p| class.fields.iter().find(|f| *f == p)) {
+                        self.emit(Target::Field(class, field), arg, ctx, is_return);
                     }
                 }
+                self.keyword_writes(class, call, ctx, is_return);
             }
-            // Pattern 3: function_call(args) -- function-to-function call,
-            // plus data flow from any argument that is another function's result.
-            else if let Some(callee_name) = is_function_call(&call.func) {
-                edges.push(edge(ctx.func_name, &callee_name, None, "calls"));
-                let values = call
-                    .arguments
-                    .args
-                    .iter()
-                    .chain(call.arguments.keywords.iter().map(|k| &k.value));
-                for value in values {
-                    if let Some(producer) = value_source(value, ctx) {
-                        if producer != callee_name {
-                            edges.push(edge(&producer, &callee_name, None, "flows_to"));
+            Callee::Class(class) => {
+                if let Some(init) = self.project.index.method(&class.qualified, "__init__") {
+                    let implicit = self
+                        .project
+                        .index
+                        .function(&init)
+                        .map_or(0, |f| f.implicit_params());
+                    self.function_call(&init, implicit, call, ctx);
+                }
+            }
+            Callee::Function {
+                qualified,
+                implicit,
+            } => self.function_call(&qualified, implicit, call, ctx),
+            Callee::Unknown => {}
+        }
+    }
+
+    /// Keyword arguments (and `**{...}` expansions) of a constructor-like call.
+    fn keyword_writes(
+        &mut self,
+        class: &'a ClassInfo,
+        call: &'a ast::ExprCall,
+        ctx: &Ctx,
+        is_return: bool,
+    ) {
+        let has = |f: &str| class.fields.iter().find(|x| *x == f);
+        for kw in call.arguments.keywords.iter() {
+            match &kw.arg {
+                Some(name) => {
+                    if let Some(field) = has(name.as_str()) {
+                        self.emit(Target::Field(class, field), &kw.value, ctx, is_return);
+                    }
+                }
+                None => {
+                    for (key, value, c) in self.scope.dict_items(&kw.value, ctx).unwrap_or_default()
+                    {
+                        if let Some(field) = has(&key) {
+                            self.emit(Target::Field(class, field), value, &c, is_return);
                         }
                     }
                 }
             }
-            // Recurse into call arguments
-            for arg in &call.arguments.args {
-                discover_edges_in_expr(arg, ctx, edges);
+        }
+    }
+
+    /// A call to an extracted function: a `calls` edge, and a `flows_to`
+    /// edge per argument bound to a named parameter.
+    fn function_call(
+        &mut self,
+        callee_q: &str,
+        implicit: usize,
+        call: &'a ast::ExprCall,
+        ctx: &Ctx,
+    ) {
+        let Some(callee) = self.project.index.function(callee_q) else {
+            return;
+        };
+        let callee: &'a FunctionInfo = callee;
+        self.edges.push(DiscoveredEdge::new(
+            &self.func.qualified_name,
+            callee_q,
+            None,
+            "calls",
+        ));
+        let Some(params) = callee.params.get(implicit..) else {
+            return;
+        };
+        // An explicit `self` (`Cls.method(obj, ...)`) is not a value parameter.
+        let self_param = if implicit == 0 {
+            callee.self_name()
+        } else {
+            None
+        };
+        let positional: Vec<&'a str> = params
+            .iter()
+            .take_while(|p| matches!(p.kind, ParamKind::PositionalOnly | ParamKind::Normal))
+            .map(|p| p.name.as_str())
+            .collect();
+        let by_keyword = |name: &str| {
+            params
+                .iter()
+                .find(|p| {
+                    p.name == name && matches!(p.kind, ParamKind::Normal | ParamKind::KeywordOnly)
+                })
+                .map(|p| p.name.as_str())
+                .filter(|p| Some(*p) != self_param)
+        };
+        for (i, arg) in call.arguments.args.iter().enumerate() {
+            if matches!(arg, Expr::Starred(_)) {
+                break; // later positions are unknown
             }
-            for keyword in &call.arguments.keywords {
-                discover_edges_in_expr(&keyword.value, ctx, edges);
+            if let Some(param) = positional.get(i).filter(|p| Some(**p) != self_param) {
+                self.emit_flow(callee, param, arg, ctx);
             }
         }
-        _ => {}
-    }
-}
-
-/// Check if expression is Model.objects.create.
-fn is_objects_create(expr: &Expr) -> Option<String> {
-    if let Expr::Attribute(attr) = expr {
-        if attr.attr.as_str() == "create" {
-            if let Expr::Attribute(inner) = attr.value.as_ref() {
-                if inner.attr.as_str() == "objects" {
-                    if let Expr::Name(name) = inner.value.as_ref() {
-                        return Some(name.id.to_string());
+        for kw in call.arguments.keywords.iter() {
+            match &kw.arg {
+                Some(name) => {
+                    if let Some(param) = by_keyword(name.as_str()) {
+                        self.emit_flow(callee, param, &kw.value, ctx);
+                    }
+                }
+                None => {
+                    for (key, value, c) in self.scope.dict_items(&kw.value, ctx).unwrap_or_default()
+                    {
+                        if let Some(param) = by_keyword(&key) {
+                            self.emit_flow(callee, param, value, &c);
+                        }
                     }
                 }
             }
         }
     }
-    None
-}
 
-/// Check if expression is a Model constructor call (capitalized name).
-fn is_model_constructor(expr: &Expr) -> Option<String> {
-    if let Expr::Name(name) = expr {
-        let first = name.id.chars().next()?;
-        if first.is_uppercase() {
-            return Some(name.id.to_string());
+    fn emit_flow(&mut self, callee: &'a FunctionInfo, param: &'a str, value: &'a Expr, ctx: &Ctx) {
+        self.emit(
+            Target::Function(&callee.qualified_name, param),
+            value,
+            ctx,
+            false,
+        );
+    }
+
+    /// Emit the edge carrying `value` into `target`.
+    fn emit(&mut self, target: Target<'a>, value: &'a Expr, ctx: &Ctx, is_return: bool) {
+        if let Some(producer) = self.scope.producer_of(value, ctx) {
+            if matches!(target, Target::Function(h, _) if h == producer) {
+                return; // `h(h(x))`: no self-loop
+            }
+            // A local narrowed to non-None here: the producer's postconditions
+            // with nullability replaced.
+            let narrowed = matches!(value, Expr::Name(n) if ctx.narrowed.contains(n.id.as_str()));
+            let rows = (narrowed
+                && self
+                    .project
+                    .summaries
+                    .get(&producer)
+                    .and_then(|s| s.nullable)
+                    != Some(false))
+            .then(|| self.narrowed_copy(&producer, value));
+            self.push(&producer, &target, rows);
+            return;
+        }
+        if matches!(target, Target::Function(h, _) if h == self.func.qualified_name) {
+            return; // recursion: no self-loop
+        }
+        let facts = self.scope.facts(value, ctx);
+        let mut rows = facts_rows(
+            &facts,
+            0,
+            &self.func.source_file,
+            self.line_of(value),
+            VerificationLevel::Extracted,
+        );
+        if is_return && matches!(target, Target::Field(..)) {
+            self.add_docstring_rows(&mut rows);
+        }
+        self.push(&self.func.qualified_name.clone(), &target, Some(rows));
+    }
+
+    /// F's docstring `ensures:` rows (ASSUMED) for kinds the extraction did not
+    /// determine; a static docstring precision is also added next to a bound
+    /// that depends on F's input.
+    fn add_docstring_rows(&self, rows: &mut Vec<ContractRecord>) {
+        let extracted = rows.clone();
+        for doc in &self.doc_rows {
+            let same: Vec<&ContractRecord> = extracted
+                .iter()
+                .filter(|r| r.constraint_type == doc.constraint_type)
+                .collect();
+            let add = same.is_empty()
+                || (doc.constraint_type == ConstraintType::Precision
+                    && doc.dependent_expr.is_none()
+                    && same.iter().all(|r| r.dependent_expr.is_some()));
+            if add {
+                rows.push(doc.clone());
+            }
         }
     }
-    None
-}
 
-/// Check if expression is a function call (lowercase or underscore name).
-/// Complement of `is_model_constructor`: lowercase = function, uppercase = model.
-/// Calls to builtins like `len()`, `print()` are emitted but silently dropped
-/// during edge resolution when they don't match any extracted function name.
-fn is_function_call(expr: &Expr) -> Option<String> {
-    if let Expr::Name(name) = expr {
-        let first = name.id.chars().next()?;
-        if first.is_lowercase() || first == '_' {
-            return Some(name.id.to_string());
-        }
+    /// The producer's node postconditions with nullability set to non-null.
+    fn narrowed_copy(&self, producer: &str, value: &Expr) -> Vec<ContractRecord> {
+        let Some(func) = self.project.index.function(producer) else {
+            return Vec::new();
+        };
+        let summary = self
+            .project
+            .summaries
+            .get(producer)
+            .cloned()
+            .unwrap_or_default();
+        let doc = self
+            .project
+            .docstrings
+            .get(producer)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let mut rows: Vec<ContractRecord> =
+            function_extractor::postcondition_rows(func, &summary, doc, 0)
+                .into_iter()
+                .filter(|r| r.constraint_type != ConstraintType::Nullability)
+                .collect();
+        rows.push(ContractRecord {
+            param_nullable: Some(0),
+            ..ContractRecord::new(
+                0,
+                ConstraintType::Nullability,
+                crate::db::ContractRole::Postcondition,
+                VerificationLevel::Extracted,
+                &self.func.source_file,
+                self.line_of(value),
+            )
+        });
+        rows
     }
-    None
+
+    fn push(&mut self, source: &str, target: &Target<'a>, rows: Option<Vec<ContractRecord>>) {
+        let mut edge = match target {
+            Target::Field(class, field) => {
+                DiscoveredEdge::new(source, &class.qualified, Some(field), "writes_to")
+            }
+            Target::Function(h, param) => DiscoveredEdge {
+                target_param: Some(param.to_string()),
+                ..DiscoveredEdge::new(source, h, None, "flows_to")
+            },
+        };
+        edge.override_rows = rows;
+        self.edges.push(edge);
+    }
 }
 
 // --- Override loading ---
@@ -338,11 +583,8 @@ pub fn load_overrides(path: &std::path::Path) -> anyhow::Result<Vec<DiscoveredEd
         .edges
         .into_iter()
         .map(|e| DiscoveredEdge {
-            source_function: e.source,
-            target_name: e.target,
-            target_field: None,
-            relationship: e.relationship,
             discovery: "manual".to_string(),
+            ..DiscoveredEdge::new(&e.source, &e.target, None, &e.relationship)
         })
         .collect())
 }
@@ -351,94 +593,318 @@ pub fn load_overrides(path: &std::path::Path) -> anyhow::Result<Vec<DiscoveredEd
 mod tests {
     use super::*;
 
-    /// Helper: parse a Python expression and return it.
-    fn parse_expr(source: &str) -> Expr {
-        let parsed = ruff_python_parser::parse_unchecked(
-            source,
-            ruff_python_parser::Mode::Module.into(),
+    fn edges(files: &[(&str, &str)]) -> Vec<DiscoveredEdge> {
+        let project = Project::from_sources(
+            files
+                .iter()
+                .map(|(p, s)| (p.to_string(), s.to_string()))
+                .collect(),
         );
-        match parsed.into_syntax() {
-            ruff_python_ast::Mod::Module(module) => {
-                if let Stmt::Expr(expr_stmt) = &module.body[0] {
-                    (*expr_stmt.value).clone()
-                } else {
-                    panic!("expected expression statement");
-                }
-            }
-            _ => panic!("expected module"),
+        discover_project_edges(&project)
+    }
+
+    /// `(source, target[.field], relationship, target_param, override?)`
+    fn summary(es: &[DiscoveredEdge]) -> Vec<(String, String, String, Option<String>, bool)> {
+        let mut v: Vec<_> = es
+            .iter()
+            .map(|e| {
+                let target = match &e.target_field {
+                    Some(f) => format!("{}.{f}", e.target_name),
+                    None => e.target_name.clone(),
+                };
+                (
+                    e.source_function.clone(),
+                    target,
+                    e.relationship.clone(),
+                    e.target_param.clone(),
+                    e.override_rows.is_some(),
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    fn row_kinds(e: &DiscoveredEdge) -> Vec<String> {
+        let mut kinds: Vec<String> = e
+            .override_rows
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                let v = r
+                    .param_decimal_places
+                    .map(|p| p.to_string())
+                    .or(r.param_nullable.map(|n| n.to_string()))
+                    .or(r.param_type_name.clone())
+                    .or(r.param_max_length.map(|n| n.to_string()))
+                    .or(r.dependent_expr.clone())
+                    .unwrap_or_default();
+                format!("{}={v}", r.constraint_type.as_str())
+            })
+            .collect();
+        kinds.sort();
+        kinds
+    }
+
+    const RECORDS: &str = "from pydantic import BaseModel, Field\nclass Invoice(BaseModel):\n    total: Decimal = Field(decimal_places=2)\n    tax: Decimal\n";
+
+    fn owned(
+        v: &[(&str, &str, &str, Option<&str>, bool)],
+    ) -> Vec<(String, String, String, Option<String>, bool)> {
+        let mut v: Vec<_> = v
+            .iter()
+            .map(|(a, b, c, d, e)| {
+                (
+                    a.to_string(),
+                    b.to_string(),
+                    c.to_string(),
+                    d.map(str::to_string),
+                    *e,
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn test_writes_producer_vs_override() {
+        let es = edges(&[
+            ("records.py", RECORDS),
+            (
+                "code.py",
+                "from records import Invoice\ndef g(a):\n    return a\ndef make(a, b):\n    x = g(a)\n    return Invoice(total=x, tax=b.quantize(Decimal('0.1')))\n",
+            ),
+        ]);
+        assert_eq!(
+            summary(&es),
+            owned(&[
+                ("code.g", "records.Invoice.total", "writes_to", None, false),
+                ("code.make", "records.Invoice.tax", "writes_to", None, true),
+                ("code.make", "code.g", "calls", None, false),
+                ("code.make", "code.g", "flows_to", Some("a"), true),
+            ])
+        );
+        let tax = es
+            .iter()
+            .find(|e| e.target_field.as_deref() == Some("tax"))
+            .unwrap();
+        assert_eq!(
+            row_kinds(tax),
+            ["nullability=0", "precision=1", "type=Decimal"]
+        );
+    }
+
+    #[test]
+    fn test_kwargs_dicts_positional_and_attribute_writes() {
+        let es = edges(&[
+            ("records.py", "from dataclasses import dataclass\n@dataclass\nclass P:\n    a: int\n    b: str\n"),
+            (
+                "code.py",
+                "from records import P\ndef k():\n    d = {'a': 1, 'b': 'x'}\n    return P(**d)\ndef lit():\n    return P(**{'a': 2})\ndef pos():\n    return P(3, 'y')\ndef attr(p: P):\n    p.b = None\ndef local():\n    p = P(1, 'z')\n    p.a = 5\ndef mutated():\n    d = {'a': 1}\n    d['b'] = 'q'\n    return P(**d)\n",
+            ),
+        ]);
+        let targets = |src: &str| {
+            let mut v: Vec<String> = es
+                .iter()
+                .filter(|e| e.source_function == src && e.relationship == "writes_to")
+                .map(|e| e.target_field.clone().unwrap())
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(targets("code.k"), ["a", "b"]);
+        assert_eq!(targets("code.lit"), ["a"]);
+        assert_eq!(targets("code.pos"), ["a", "b"]);
+        assert_eq!(targets("code.attr"), ["b"]);
+        assert_eq!(targets("code.local"), ["a", "a", "b"]);
+        assert!(
+            targets("code.mutated").is_empty(),
+            "a mutated dict is not expanded"
+        );
+        let none_write = es
+            .iter()
+            .find(|e| e.source_function == "code.attr")
+            .unwrap();
+        assert_eq!(row_kinds(none_write), ["nullability=1"]);
+    }
+
+    #[test]
+    fn test_positional_writes_skip_private_parameters() {
+        let es = edges(&[
+            ("records.py", "from dataclasses import dataclass, field\n@dataclass\nclass P:\n    a: int\n    _b: int\n    c: str\n@dataclass\nclass Q:\n    a: int\n    b: int = field(init=False)\n    c: str = ''\n"),
+            ("code.py", "from records import P, Q\ndef f():\n    P(1, 2, 'x')\n    Q(1, 'y')\n"),
+        ]);
+        let mut fields: Vec<String> = es
+            .iter()
+            .filter(|e| e.relationship == "writes_to")
+            .map(|e| format!("{}.{}", e.target_name, e.target_field.as_deref().unwrap()))
+            .collect();
+        fields.sort();
+        // P: `_b` is a constructor parameter (not an extracted field), so 'x' binds `c`.
+        // Q: `init=False` makes the order uncertain: no positional writes.
+        assert_eq!(fields, ["records.P.a", "records.P.c"]);
+    }
+
+    #[test]
+    fn test_flows_to_target_params() {
+        let es = edges(&[(
+            "code.py",
+            "def h(a, b=0, *args, c=1, **kw):\n    pass\ndef g():\n    return 1\ndef f(x):\n    h(g(), x, 5, c=g(), zz=x)\n    h(*x, b=1)\n",
+        )]);
+        let flows: Vec<(String, Option<String>, bool)> = {
+            let mut v: Vec<_> = es
+                .iter()
+                .filter(|e| e.relationship == "flows_to")
+                .map(|e| {
+                    (
+                        e.source_function.clone(),
+                        e.target_param.clone(),
+                        e.override_rows.is_some(),
+                    )
+                })
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            flows,
+            [
+                ("code.f".to_string(), Some("b".to_string()), true),
+                ("code.f".to_string(), Some("b".to_string()), true),
+                ("code.g".to_string(), Some("a".to_string()), false),
+                ("code.g".to_string(), Some("c".to_string()), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_methods_and_django() {
+        let es = edges(&[
+            (
+                "models.py",
+                "from django.db import models\nclass R(models.Model):\n    kwh = models.DecimalField(max_digits=5, decimal_places=3)\n    def fix(self, v):\n        self.kwh = v\n",
+            ),
+            (
+                "code.py",
+                "from models import R\nclass Pricer:\n    def rounded(self, a):\n        return a\n    def make(self, a):\n        return R.objects.create(kwh=self.rounded(a))\ndef load(pk):\n    r = R.objects.get(pk=pk)\n    r.kwh = 1\n    R.objects.filter(pk=pk).update(kwh=2)\n",
+            ),
+        ]);
+        let s = summary(&es);
+        for want in [
+            (
+                "code.Pricer.rounded",
+                "models.R.kwh",
+                "writes_to",
+                None,
+                false,
+            ),
+            (
+                "code.Pricer.make",
+                "code.Pricer.rounded",
+                "flows_to",
+                Some("a"),
+                true,
+            ),
+            ("code.load", "models.R.kwh", "writes_to", None, true),
+            ("models.R.fix", "models.R.kwh", "writes_to", None, true),
+        ] {
+            let want = owned(&[want]).remove(0);
+            assert!(s.contains(&want), "missing {want:?} in {s:?}");
         }
-    }
-
-    // -- is_objects_create tests --
-
-    #[test]
-    fn test_objects_create_match() {
-        let expr = parse_expr("Model.objects.create(a=1)");
-        if let Expr::Call(call) = &expr {
-            assert_eq!(is_objects_create(&call.func), Some("Model".to_string()));
-        } else {
-            panic!("expected call");
-        }
+        assert_eq!(
+            s.iter()
+                .filter(|e| e.0 == "code.load" && e.2 == "writes_to")
+                .count(),
+            2
+        );
     }
 
     #[test]
-    fn test_objects_filter_no_match() {
-        let expr = parse_expr("Model.objects.filter(a=1)");
-        if let Expr::Call(call) = &expr {
-            assert_eq!(is_objects_create(&call.func), None);
-        } else {
-            panic!("expected call");
-        }
+    fn test_docstring_ensures_on_returned_write() {
+        let es = edges(&[
+            ("models.py", "from django.db import models\nclass R(models.Model):\n    kwh = models.DecimalField(max_digits=5, decimal_places=3)\n"),
+            (
+                "code.py",
+                "from models import R\ndef rec(v):\n    \"\"\"ensures: precision(result) <= 5\"\"\"\n    return R.objects.create(kwh=v)\ndef other(v):\n    \"\"\"ensures: precision(result) <= 5\"\"\"\n    R.objects.create(kwh=v)\n",
+            ),
+        ]);
+        let rows = |src: &str| {
+            let e = es
+                .iter()
+                .find(|e| e.source_function == src && e.relationship == "writes_to")
+                .unwrap();
+            row_kinds(e)
+        };
+        // `v` depends on rec's only input; the static docstring bound is added.
+        assert_eq!(
+            rows("code.rec"),
+            ["precision=5", "precision=input_precision"]
+        );
+        // Not the returned call: docstrings describe the return value only.
+        assert_eq!(rows("code.other"), ["precision=input_precision"]);
     }
 
     #[test]
-    fn test_plain_create_no_match() {
-        // obj.create() without .objects. should not match
-        let expr = parse_expr("obj.create(a=1)");
-        if let Expr::Call(call) = &expr {
-            assert_eq!(is_objects_create(&call.func), None);
-        } else {
-            panic!("expected call");
-        }
-    }
-
-    // -- is_model_constructor tests --
-
-    #[test]
-    fn test_uppercase_is_model() {
-        let expr = parse_expr("Model");
-        assert_eq!(is_model_constructor(&expr), Some("Model".to_string()));
-    }
-
-    #[test]
-    fn test_lowercase_not_model() {
-        let expr = parse_expr("helper");
-        assert_eq!(is_model_constructor(&expr), None);
-    }
-
-    #[test]
-    fn test_underscore_not_model() {
-        let expr = parse_expr("_Foo");
-        assert_eq!(is_model_constructor(&expr), None);
-    }
-
-    // -- is_function_call tests --
-
-    #[test]
-    fn test_lowercase_is_function() {
-        let expr = parse_expr("helper");
-        assert_eq!(is_function_call(&expr), Some("helper".to_string()));
+    fn test_narrowed_producer_local_copies_postconditions() {
+        let es = edges(&[
+            ("records.py", RECORDS),
+            (
+                "code.py",
+                "from records import Invoice\nP = {}\ndef find(k):\n    return P.get(k)\ndef make(k):\n    p = find(k)\n    if p is None:\n        raise ValueError()\n    return Invoice(total=p)\ndef unsafe(k):\n    p = find(k)\n    return Invoice(total=p)\n",
+            ),
+        ]);
+        let writes: Vec<&DiscoveredEdge> = es
+            .iter()
+            .filter(|e| e.relationship == "writes_to")
+            .collect();
+        assert_eq!(writes.len(), 2);
+        assert!(writes.iter().all(|e| e.source_function == "code.find"));
+        let narrowed = writes
+            .iter()
+            .find(|e| e.override_rows.is_some())
+            .expect("narrowed copy");
+        assert_eq!(row_kinds(narrowed), ["nullability=0"]);
+        assert_eq!(
+            writes.iter().filter(|e| e.override_rows.is_none()).count(),
+            1
+        );
     }
 
     #[test]
-    fn test_underscore_prefix_is_function() {
-        let expr = parse_expr("_private");
-        assert_eq!(is_function_call(&expr), Some("_private".to_string()));
+    fn test_function_local_import_and_unbound_method() {
+        let es = edges(&[
+            (
+                "helpers.py",
+                "def label(a):\n    return a\nclass C:\n    def m(self, v):\n        return v\n",
+            ),
+            (
+                "code.py",
+                "def f(x, c):\n    from helpers import label, C\n    label(x)\n    C.m(c, x)\n",
+            ),
+        ]);
+        let flows: Vec<(String, Option<String>)> = {
+            let mut v: Vec<_> = es
+                .iter()
+                .filter(|e| e.relationship == "flows_to")
+                .map(|e| (e.target_name.clone(), e.target_param.clone()))
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            flows,
+            [
+                ("helpers.C.m".to_string(), Some("v".to_string())),
+                ("helpers.label".to_string(), Some("a".to_string())),
+            ]
+        );
     }
 
     #[test]
-    fn test_uppercase_not_function() {
-        let expr = parse_expr("Model");
-        assert_eq!(is_function_call(&expr), None);
+    fn test_unresolved_calls_give_no_edges() {
+        let es = edges(&[("code.py", "import helpers\ndef f(x, obj):\n    len(x)\n    helpers.nothing(x)\n    obj.method(x)\n    Unknown(a=x)\n")]);
+        assert!(es.is_empty(), "{es:?}");
     }
 }

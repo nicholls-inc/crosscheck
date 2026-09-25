@@ -137,3 +137,30 @@ fn test_transitive_docstring_dominates_body() {
         "the single precision postcondition should be the dependent-expression one from the docstring"
     );
 }
+
+/// v2 rows: the argument of `split_energy(offpeak)` is an expression in
+/// compute_offpeak (override, bound to parameter `offpeak`), and the value
+/// written by split_energy depends on its only input.
+#[test]
+fn test_transitive_v2_rows() {
+    let (_tmp, conn) = transitive_db();
+    let edges = query_edges(&conn);
+    assert_eq!(edges.len(), 3, "{edges:#?}");
+    the_edge(&edges, "compute_offpeak", "split_energy", "calls", None);
+    assert_eq!(
+        override_rows(&conn, &edges, "compute_offpeak", "split_energy", "flows_to", Some("offpeak")),
+        ["nullability=0", "precision=4", "type=Decimal"]
+    );
+    assert_eq!(
+        override_rows(&conn, &edges, "split_energy", "EnergyRecord.energy", "writes_to", None),
+        ["nullability=0", "precision=max(3, input_precision)", "type=Decimal"]
+    );
+    assert_eq!(
+        node_rows(&conn, "split_energy", "precondition"),
+        [
+            "offpeak: nullability=0",
+            "offpeak: precision=10 [ASSUMED]",
+            "offpeak: type=Decimal",
+        ]
+    );
+}

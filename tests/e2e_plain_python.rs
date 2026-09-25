@@ -104,12 +104,33 @@ fn test_data_flow_edges() {
     // Positional dataclass construction: LineItem(sku, with_tax(price), quantity)
     assert!(has_edge(&edges, "with_tax", "LineItem.unit_price", "writes_to"));
     assert!(has_edge(&edges, "build_line_item", "LineItem.quantity", "writes_to"));
-    // The enclosing function still has its own edges
-    assert!(has_edge(&edges, "record_invoice", "InvoiceRecord.total", "writes_to"));
+    // v2: a value produced by another function is written by that function
+    // only; the enclosing function keeps its `calls` edges and passes its own
+    // expressions on through `flows_to` edges with override rows.
+    assert!(!has_edge(&edges, "record_invoice", "InvoiceRecord.total", "writes_to"));
     assert!(has_edge(&edges, "record_invoice", "normalise", "calls"));
+    let e = the_edge(&edges, "with_tax", "normalise", "flows_to", Some("amount"));
+    assert!(!e.source_override);
+    assert_eq!(
+        override_rows(&conn, &edges, "build_line_item", "LineItem.sku", "writes_to", None),
+        ["nullability=0", "type=str"]
+    );
+    assert_eq!(
+        override_rows(&conn, &edges, "record_invoice", "customer_label", "flows_to", Some("first")),
+        ["nullability=0", "type=str"]
+    );
+    // Producer edges carry no override.
+    for (src, tgt) in [
+        ("lookup_discount", "InvoiceRecord.discount_pct"),
+        ("customer_label", "InvoiceRecord.customer"),
+        ("normalise", "InvoiceRecord.total"),
+        ("with_tax", "LineItem.unit_price"),
+    ] {
+        assert!(!the_edge(&edges, src, tgt, "writes_to", None).source_override, "{src} -> {tgt}");
+    }
     // Builtins and methods (DISCOUNT_CODES.get, str.upper) produce no edges
     assert!(edges.iter().all(|e| e.discovery == "ast_pattern"));
-    assert_eq!(edges.len(), 16);
+    assert_eq!(edges.len(), 17, "{edges:#?}");
 }
 
 #[test]

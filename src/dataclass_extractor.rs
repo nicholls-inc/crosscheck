@@ -19,6 +19,7 @@
 //! | `max_digits` / `decimal_places`          | precision                        |
 //! | `max_length`                             | length                           |
 //! | `le=N`, or `lt=N` on an `int` field      | range (upper bound N, or N - 1)  |
+//! | `ge=N`, or `gt=N` on an `int` field      | range (lower bound N, or N + 1)  |
 //!
 //! Field nodes use kind `model`, so the checker treats them as path targets
 //! exactly like Django model fields. Constructor calls such as
@@ -36,7 +37,7 @@ use crate::db::{
 };
 
 /// Value types whose names are comparable with function type postconditions.
-const VALUE_TYPES: [&str; 5] = ["Decimal", "int", "str", "float", "bool"];
+pub const VALUE_TYPES: [&str; 5] = ["Decimal", "int", "str", "float", "bool"];
 
 /// Which Python construct declared the class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +63,8 @@ impl DataClassKind {
 #[derive(Debug, Clone)]
 pub struct ClassCandidate {
     pub class_def: ast::StmtClassDef,
+    /// Dotted module name of the defining file.
+    pub module: String,
     pub source_file: String,
     /// Line number of the class statement (1-based).
     pub source_line: u32,
@@ -73,6 +76,8 @@ pub struct ClassCandidate {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DataClassField {
     pub class_name: String,
+    /// Module-qualified class name (`billing.records.Invoice`).
+    pub class_qualified: String,
     pub field_name: String,
     pub type_name: Option<String>,
     /// `None` when the annotation says nothing about None (e.g. `Any`).
@@ -81,6 +86,7 @@ pub struct DataClassField {
     pub decimal_places: Option<i64>,
     pub max_length: Option<i64>,
     pub max_value: Option<i64>,
+    pub min_value: Option<i64>,
     pub source_file: String,
     pub source_line: u32,
 }
@@ -89,17 +95,26 @@ pub struct DataClassField {
 #[derive(Debug, Clone)]
 pub struct DataClass {
     pub name: String,
+    /// Module-qualified class name.
+    pub qualified_name: String,
+    pub module: String,
     pub kind: DataClassKind,
     pub fields: Vec<DataClassField>,
+    /// Names bound by positional constructor arguments, in order, when that
+    /// order is certain (see `positional_params`); `None` otherwise.
+    pub positional: Option<Vec<String>>,
 }
 
-/// Collect top-level class definitions from a module.
+/// Collect top-level class definitions from a module. The module name is
+/// derived from `source_file` (a path relative to the application root).
 pub fn collect_classes(stmts: &[Stmt], source: &str, source_file: &str) -> Vec<ClassCandidate> {
+    let module = crate::resolve::module_name(source_file);
     stmts
         .iter()
         .filter_map(|stmt| match stmt {
             Stmt::ClassDef(class_def) => Some(ClassCandidate {
                 class_def: class_def.clone(),
+                module: module.clone(),
                 source_file: source_file.to_string(),
                 source_line: crate::source::line_of(source, class_def.range.start().to_u32()),
                 body_lines: class_def
@@ -122,30 +137,58 @@ fn stmt_start(stmt: &Stmt) -> u32 {
     }
 }
 
-/// Recognise data classes across the whole project and resolve inheritance.
+/// Qualified name of a candidate class.
+pub fn candidate_qualified(c: &ClassCandidate) -> String {
+    crate::resolve::qualify(&c.module, c.class_def.name.as_str())
+}
+
+/// Recognise data classes, resolving base classes by name within the
+/// defining module only.
 pub fn resolve_data_classes(candidates: &[ClassCandidate]) -> Vec<DataClass> {
-    let by_name: HashMap<&str, &ClassCandidate> = candidates
+    let local: HashSet<String> = candidates.iter().map(candidate_qualified).collect();
+    resolve_data_classes_with(candidates, &|c: &ClassCandidate, base: &Expr| {
+        let q = crate::resolve::qualify(&c.module, &dotted_name(base)?);
+        local.contains(&q).then_some(q)
+    })
+}
+
+/// Recognise data classes across the whole project and resolve inheritance.
+/// `resolve_base` maps a base-class expression of a candidate to the
+/// qualified name of a project class, if it is one.
+pub fn resolve_data_classes_with(
+    candidates: &[ClassCandidate],
+    resolve_base: &dyn Fn(&ClassCandidate, &Expr) -> Option<String>,
+) -> Vec<DataClass> {
+    let by_name: HashMap<String, &ClassCandidate> =
+        candidates.iter().map(|c| (candidate_qualified(c), c)).collect();
+    let bases: HashMap<String, Vec<String>> = candidates
         .iter()
-        .map(|c| (c.class_def.name.as_str(), c))
+        .map(|c| {
+            let resolved = c
+                .class_def
+                .arguments
+                .as_ref()
+                .map(|args| args.args.iter().filter_map(|b| resolve_base(c, b)).collect())
+                .unwrap_or_default();
+            (candidate_qualified(c), resolved)
+        })
         .collect();
 
     let mut kinds: HashMap<String, DataClassKind> = HashMap::new();
     for c in candidates {
         if let Some(kind) = direct_kind(&c.class_def) {
-            kinds.insert(c.class_def.name.to_string(), kind);
+            kinds.insert(candidate_qualified(c), kind);
         }
     }
     // Propagate recognition to project-local subclasses until a fixed point.
     loop {
         let mut changed = false;
         for c in candidates {
-            let name = c.class_def.name.to_string();
+            let name = candidate_qualified(c);
             if kinds.contains_key(&name) {
                 continue;
             }
-            let inherited = base_names(&c.class_def)
-                .iter()
-                .find_map(|b| kinds.get(b.as_str()).copied());
+            let inherited = bases[&name].iter().find_map(|b| kinds.get(b).copied());
             if let Some(kind) = inherited {
                 kinds.insert(name, kind);
                 changed = true;
@@ -158,11 +201,22 @@ pub fn resolve_data_classes(candidates: &[ClassCandidate]) -> Vec<DataClass> {
 
     let mut result = Vec::new();
     for c in candidates {
-        let name = c.class_def.name.to_string();
-        if let Some(&kind) = kinds.get(&name) {
+        let qualified = candidate_qualified(c);
+        if let Some(&kind) = kinds.get(&qualified) {
             let mut visiting = HashSet::new();
-            let fields = fields_with_inheritance(&name, &by_name, &kinds, &mut visiting);
-            result.push(DataClass { name, kind, fields });
+            let fields = fields_with_inheritance(&qualified, &by_name, &bases, &kinds, &mut visiting);
+            // Inherited fields come first in the constructor; only classes
+            // without project-local data class bases get a positional order.
+            let inherits = bases[&qualified].iter().any(|b| kinds.contains_key(b));
+            let positional = if inherits { None } else { positional_params(&c.class_def, kind) };
+            result.push(DataClass {
+                name: c.class_def.name.to_string(),
+                qualified_name: qualified,
+                module: c.module.clone(),
+                kind,
+                fields,
+                positional,
+            });
         }
     }
     result
@@ -171,7 +225,8 @@ pub fn resolve_data_classes(candidates: &[ClassCandidate]) -> Vec<DataClass> {
 /// Fields of `name`, parents first; a child field replaces a parent field of the same name.
 fn fields_with_inheritance(
     name: &str,
-    by_name: &HashMap<&str, &ClassCandidate>,
+    by_name: &HashMap<String, &ClassCandidate>,
+    bases: &HashMap<String, Vec<String>>,
     kinds: &HashMap<String, DataClassKind>,
     visiting: &mut HashSet<String>,
 ) -> Vec<DataClassField> {
@@ -182,9 +237,9 @@ fn fields_with_inheritance(
         return Vec::new();
     }
     let mut fields: Vec<DataClassField> = Vec::new();
-    for base in base_names(&candidate.class_def) {
-        if kinds.contains_key(&base) {
-            for f in fields_with_inheritance(&base, by_name, kinds, visiting) {
+    for base in &bases[name] {
+        if kinds.contains_key(base) {
+            for f in fields_with_inheritance(base, by_name, bases, kinds, visiting) {
                 fields.retain(|existing| existing.field_name != f.field_name);
                 fields.push(f);
             }
@@ -199,9 +254,83 @@ fn fields_with_inheritance(
     }
     // Inherited fields are reported under the child's class name.
     for f in &mut fields {
-        f.class_name = name.to_string();
+        f.class_name = candidate.class_def.name.to_string();
+        f.class_qualified = name.to_string();
     }
     fields
+}
+
+/// The constructor's positional parameters of a data class, in order, when
+/// they can be read off the class body with certainty: every annotated
+/// attribute except `ClassVar` (including `_private` names, which are
+/// constructor parameters but not extracted fields). `None` for kinds without
+/// positional construction, and whenever `init=False`, `kw_only`, `KW_ONLY`
+/// or an attrs field without an annotation make the order uncertain.
+pub fn positional_params(class_def: &ast::StmtClassDef, kind: DataClassKind) -> Option<Vec<String>> {
+    if !kind.positional_fields() {
+        return None;
+    }
+    let mut attrs_classic = false; // `@attr.s` without auto_attribs: only attr.ib() are fields
+    for dec in &class_def.decorator_list {
+        let (target, call) = match &dec.expression {
+            Expr::Call(call) => (call.func.as_ref(), Some(call)),
+            other => (other, None),
+        };
+        let name = dotted_name(target).unwrap_or_default();
+        if matches!(name.as_str(), "attr.s" | "attr.attrs") {
+            attrs_classic = !call.is_some_and(|c| keyword_is_true(c, "auto_attribs"));
+        }
+        if let Some(call) = call {
+            if keyword_is_true(call, "kw_only") || keyword_is(call, "init", false) {
+                return None;
+            }
+        }
+    }
+    let mut params = Vec::new();
+    for stmt in &class_def.body {
+        match stmt {
+            Stmt::AnnAssign(ann) => {
+                let Expr::Name(target) = ann.target.as_ref() else { continue };
+                if last_segment(&ann.annotation).as_deref() == Some("KW_ONLY") {
+                    return None;
+                }
+                if analyze_annotation(&ann.annotation).is_none() {
+                    continue; // ClassVar
+                }
+                let field_call = match ann.value.as_deref() {
+                    Some(Expr::Call(call)) if is_field_call(&call.func) => Some(call),
+                    _ => None,
+                };
+                if let Some(call) = field_call {
+                    if keyword_is(call, "init", false) || keyword_is_true(call, "kw_only") {
+                        return None;
+                    }
+                } else if attrs_classic {
+                    continue; // not an attrs field
+                }
+                params.push(target.id.to_string());
+            }
+            Stmt::Assign(assign) if kind == DataClassKind::Attrs => {
+                // `x = attr.ib()` without an annotation: a field this
+                // extractor does not model.
+                if matches!(assign.value.as_ref(), Expr::Call(c) if is_field_call(&c.func)) {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(params)
+}
+
+fn keyword_is(call: &ast::ExprCall, name: &str, value: bool) -> bool {
+    call.arguments.keywords.iter().any(|k| {
+        k.arg.as_deref() == Some(name) && matches!(&k.value, Expr::BooleanLiteral(b) if b.value == value)
+    })
+}
+
+fn keyword_is_true(call: &ast::ExprCall, name: &str) -> bool {
+    keyword_is(call, name, true)
 }
 
 /// Recognise a class from its own decorators and bases (no project lookup).
@@ -275,6 +404,7 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
         };
         let mut field = DataClassField {
             class_name: class_name.clone(),
+            class_qualified: candidate_qualified(candidate),
             field_name,
             type_name: info.type_name,
             nullable: info.nullable,
@@ -282,6 +412,7 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
             decimal_places: None,
             max_length: None,
             max_value: None,
+            min_value: None,
             source_file: candidate.source_file.clone(),
             source_line: line,
         };
@@ -306,6 +437,13 @@ struct AnnotationInfo<'a> {
     nullable: Option<bool>,
     /// `Field(...)` in `Annotated` metadata, or a `con*()` helper call.
     constraint_calls: Vec<&'a ast::ExprCall>,
+}
+
+/// Type name and nullability an annotation states (`None` for `ClassVar[...]`).
+/// Nullability is `Some(true)` for `Optional[T]` / `T | None`, `Some(false)` for
+/// other types and `None` for `Any`.
+pub fn annotation_facts(expr: &Expr) -> Option<(Option<String>, Option<bool>)> {
+    analyze_annotation(expr).map(|info| (info.type_name, info.nullable))
 }
 
 /// Analyse an annotation. Returns `None` for `ClassVar[...]`.
@@ -464,6 +602,10 @@ fn apply_constraint_keywords(field: &mut DataClassField, call: &ast::ExprCall) {
             "lt" if field.type_name.as_deref() == Some("int") => {
                 field.max_value = value.map(|v| v - 1).or(field.max_value)
             }
+            "ge" => field.min_value = value.or(field.min_value),
+            "gt" if field.type_name.as_deref() == Some("int") => {
+                field.min_value = value.map(|v| v + 1).or(field.min_value)
+            }
             _ => {}
         }
     }
@@ -481,38 +623,44 @@ fn int_literal(expr: &Expr) -> Option<i64> {
     }
 }
 
+/// Qualified node name of a data class field.
+pub fn field_qualified(field: &DataClassField) -> String {
+    format!("{}.{}", field.class_qualified, field.field_name)
+}
+
 /// Write data class fields as `model` nodes with precondition contracts.
-/// Returns a map from `Class.field` to node ID.
-pub fn write_data_classes(db: &ContractDb, classes: &[DataClass]) -> Result<HashMap<String, i64>> {
+/// `names` maps a field's qualified name to its display name.
+/// Returns a map from qualified field name to node ID.
+pub fn write_data_classes(
+    db: &ContractDb,
+    classes: &[DataClass],
+    names: &HashMap<String, String>,
+) -> Result<HashMap<String, i64>> {
     let mut ids = HashMap::new();
     for class in classes {
         for field in &class.fields {
-            let full_name = format!("{}.{}", field.class_name, field.field_name);
+            let qualified = field_qualified(field);
             let node_id = db.insert_node(&NodeRecord {
-                name: full_name.clone(),
+                name: names
+                    .get(&qualified)
+                    .cloned()
+                    .unwrap_or_else(|| format!("{}.{}", field.class_name, field.field_name)),
+                qualified_name: Some(qualified.clone()),
                 kind: NodeKind::Model,
                 source_file: field.source_file.clone(),
                 source_line: field.source_line,
             })?;
-            ids.insert(full_name, node_id);
+            ids.insert(qualified, node_id);
 
-            let base = |constraint_type: ConstraintType| ContractRecord {
-                node_id,
-                constraint_type,
-                param_max_digits: None,
-                param_decimal_places: None,
-                param_max_length: None,
-                param_nullable: None,
-                param_type_name: None,
-                param_min_value: None,
-                param_max_value: None,
-                param_choices: None,
-                source_file: field.source_file.clone(),
-                source_line: field.source_line,
-                is_implicit: false,
-                verification_level: VerificationLevel::Extracted,
-                contract_role: Some(ContractRole::Precondition),
-                dependent_expr: None,
+            let base = |constraint_type: ConstraintType| {
+                ContractRecord::new(
+                    node_id,
+                    constraint_type,
+                    ContractRole::Precondition,
+                    VerificationLevel::Extracted,
+                    &field.source_file,
+                    field.source_line,
+                )
             };
 
             if let Some(t) = &field.type_name {
@@ -542,9 +690,10 @@ pub fn write_data_classes(db: &ContractDb, classes: &[DataClass]) -> Result<Hash
                     ..base(ConstraintType::Length)
                 })?;
             }
-            if let Some(max) = field.max_value {
+            if field.max_value.is_some() || field.min_value.is_some() {
                 db.insert_contract(&ContractRecord {
-                    param_max_value: Some(max as f64),
+                    param_max_value: field.max_value.map(|v| v as f64),
+                    param_min_value: field.min_value.map(|v| v as f64),
                     ..base(ConstraintType::Range)
                 })?;
             }
@@ -624,6 +773,67 @@ mod tests {
         let id = field(&cs, "Child", "id");
         assert_eq!(id.source_line, 2, "inherited field keeps the parent's location");
         assert_eq!(field(&cs, "Child", "note").nullable, Some(true));
+    }
+
+    #[test]
+    fn test_lower_bounds() {
+        let cs = classes(
+            "class M(BaseModel):\n    a: int = Field(ge=0, le=10)\n    b: int = Field(gt=0)\n    c: float = Field(gt=0)\n",
+        );
+        let a = field(&cs, "M", "a");
+        assert_eq!((a.min_value, a.max_value), (Some(0), Some(10)));
+        assert_eq!(field(&cs, "M", "b").min_value, Some(1));
+        assert_eq!(field(&cs, "M", "c").min_value, None, "gt on a non-int has no integer bound");
+    }
+
+    fn module(src: &str, path: &str) -> Vec<ClassCandidate> {
+        let stmts = match ruff_python_parser::parse_unchecked(src, ruff_python_parser::Mode::Module.into())
+            .into_syntax()
+        {
+            ruff_python_ast::Mod::Module(m) => m.body,
+            _ => unreachable!(),
+        };
+        collect_classes(&stmts, src, path)
+    }
+
+    #[test]
+    fn test_same_name_in_two_modules() {
+        let src = "class Invoice(BaseModel):\n    total: Decimal = Field(decimal_places=2)\n";
+        let mut candidates = module(src, "billing/records.py");
+        candidates.extend(module(&src.replace("places=2", "places=6"), "shop/records.py"));
+        let cs = resolve_data_classes(&candidates);
+        let places: Vec<(String, Option<i64>)> = cs
+            .iter()
+            .map(|c| (field_qualified(&c.fields[0]), c.fields[0].decimal_places))
+            .collect();
+        assert_eq!(
+            places,
+            [
+                ("billing.records.Invoice.total".to_string(), Some(2)),
+                ("shop.records.Invoice.total".to_string(), Some(6)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_positional_params() {
+        let pos = |src: &str| classes(src)[0].positional.clone();
+        assert_eq!(
+            pos("@dataclass\nclass A:\n    x: int\n    _y: int\n    c: ClassVar[int] = 0\n    z: str\n"),
+            Some(vec!["x".to_string(), "_y".to_string(), "z".to_string()])
+        );
+        assert_eq!(pos("@dataclass\nclass A:\n    x: int\n    y: int = field(init=False)\n"), None);
+        assert_eq!(pos("@dataclass(kw_only=True)\nclass A:\n    x: int\n"), None);
+        assert_eq!(pos("@dataclass\nclass A:\n    x: int\n    _: KW_ONLY\n    y: int\n"), None);
+        assert_eq!(
+            pos("@attr.s\nclass P:\n    a: str = attr.ib()\n    note: str\n    b: int = attr.ib()\n"),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(pos("@attr.s\nclass P:\n    a = attr.ib()\n"), None);
+        assert_eq!(pos("class T(NamedTuple):\n    a: int\n    b: str\n"), Some(vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(pos("class M(BaseModel):\n    a: int\n"), None);
+        let cs = classes("@dataclass\nclass B:\n    a: int\n@dataclass\nclass C(B):\n    b: int\n");
+        assert_eq!(cs[1].positional, None, "inherited order is not modelled");
     }
 
     #[test]

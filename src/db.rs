@@ -20,7 +20,7 @@ impl NodeKind {
 }
 
 /// Constraint types matching the SQL CHECK constraint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConstraintType {
     Precision,
     Nullability,
@@ -117,13 +117,17 @@ impl Discovery {
 
 /// A node to be inserted.
 pub struct NodeRecord {
+    /// Display name: the short name when unique in the project, else the qualified name.
     pub name: String,
+    /// Module-qualified name (`billing.records.Invoice.total`), always set by the extractor.
+    pub qualified_name: Option<String>,
     pub kind: NodeKind,
     pub source_file: String,
     pub source_line: u32,
 }
 
 /// A contract to be inserted.
+#[derive(Debug, Clone)]
 pub struct ContractRecord {
     pub node_id: i64,
     pub constraint_type: ConstraintType,
@@ -141,6 +145,43 @@ pub struct ContractRecord {
     pub verification_level: VerificationLevel,
     pub contract_role: Option<ContractRole>,
     pub dependent_expr: Option<String>,
+    /// For preconditions: the parameter the row constrains (`None` = every parameter).
+    pub subject: Option<String>,
+    /// For edge override rows: the edge whose source postconditions this row replaces.
+    pub edge_id: Option<i64>,
+}
+
+impl ContractRecord {
+    /// A row of the given kind and role with every parameter column empty.
+    pub fn new(
+        node_id: i64,
+        constraint_type: ConstraintType,
+        role: ContractRole,
+        level: VerificationLevel,
+        source_file: &str,
+        source_line: u32,
+    ) -> Self {
+        ContractRecord {
+            node_id,
+            constraint_type,
+            param_max_digits: None,
+            param_decimal_places: None,
+            param_max_length: None,
+            param_nullable: None,
+            param_type_name: None,
+            param_min_value: None,
+            param_max_value: None,
+            param_choices: None,
+            source_file: source_file.to_string(),
+            source_line,
+            is_implicit: false,
+            verification_level: level,
+            contract_role: Some(role),
+            dependent_expr: None,
+            subject: None,
+            edge_id: None,
+        }
+    }
 }
 
 /// An edge to be inserted.
@@ -149,6 +190,10 @@ pub struct EdgeRecord {
     pub target_node_id: i64,
     pub relationship: Relationship,
     pub discovery: Discovery,
+    /// For `flows_to`: the callee parameter the value binds (`None` = all preconditions).
+    pub target_param: Option<String>,
+    /// When true, the source's postconditions on this edge are the rows with `edge_id` = this edge.
+    pub source_override: bool,
 }
 
 /// Database wrapper for the contract graph.
@@ -167,9 +212,11 @@ impl ContractDb {
     /// Insert a node and return its ID.
     pub fn insert_node(&self, node: &NodeRecord) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO nodes (name, kind, source_file, source_line) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO nodes (name, qualified_name, kind, source_file, source_line)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![
                 node.name,
+                node.qualified_name,
                 node.kind.as_str(),
                 node.source_file,
                 node.source_line,
@@ -186,8 +233,8 @@ impl ContractDb {
                 param_max_length, param_nullable, param_type_name,
                 param_min_value, param_max_value, param_choices,
                 source_file, source_line, is_implicit, verification_level,
-                contract_role, dependent_expr
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                contract_role, dependent_expr, subject, edge_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             rusqlite::params![
                 contract.node_id,
                 contract.constraint_type.as_str(),
@@ -205,6 +252,8 @@ impl ContractDb {
                 contract.verification_level.as_str(),
                 contract.contract_role.as_ref().map(|r| r.as_str()),
                 contract.dependent_expr,
+                contract.subject,
+                contract.edge_id,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -213,13 +262,16 @@ impl ContractDb {
     /// Insert an edge.
     pub fn insert_edge(&self, edge: &EdgeRecord) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO edges (source_node_id, target_node_id, relationship, discovery)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO edges (source_node_id, target_node_id, relationship, discovery,
+                                target_param, source_override)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 edge.source_node_id,
                 edge.target_node_id,
                 edge.relationship.as_str(),
                 edge.discovery.as_str(),
+                edge.target_param,
+                edge.source_override as i64,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -228,11 +280,24 @@ impl ContractDb {
 
 const SCHEMA: &str = r#"
 CREATE TABLE nodes (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL,
-    kind        TEXT NOT NULL CHECK (kind IN ('model', 'function', 'field')),
-    source_file TEXT NOT NULL,
-    source_line INTEGER NOT NULL
+    id             INTEGER PRIMARY KEY,
+    name           TEXT NOT NULL,
+    kind           TEXT NOT NULL CHECK (kind IN ('model', 'function', 'field')),
+    source_file    TEXT NOT NULL,
+    source_line    INTEGER NOT NULL,
+    qualified_name TEXT
+);
+
+CREATE TABLE edges (
+    id              INTEGER PRIMARY KEY,
+    source_node_id  INTEGER NOT NULL REFERENCES nodes(id),
+    target_node_id  INTEGER NOT NULL REFERENCES nodes(id),
+    relationship    TEXT NOT NULL CHECK (relationship IN (
+                        'calls', 'writes_to', 'flows_to'
+                    )),
+    discovery       TEXT NOT NULL CHECK (discovery IN ('ast_pattern', 'manual', 'type_inference')),
+    target_param    TEXT,
+    source_override INTEGER NOT NULL DEFAULT 0 CHECK (source_override IN (0, 1))
 );
 
 CREATE TABLE contracts (
@@ -255,20 +320,13 @@ CREATE TABLE contracts (
     verification_level  TEXT NOT NULL DEFAULT 'EXTRACTED'
                         CHECK (verification_level IN ('PROVED', 'TESTED', 'EXTRACTED', 'ASSUMED')),
     contract_role       TEXT CHECK (contract_role IN ('precondition', 'postcondition', NULL)),
-    dependent_expr      TEXT
-);
-
-CREATE TABLE edges (
-    id              INTEGER PRIMARY KEY,
-    source_node_id  INTEGER NOT NULL REFERENCES nodes(id),
-    target_node_id  INTEGER NOT NULL REFERENCES nodes(id),
-    relationship    TEXT NOT NULL CHECK (relationship IN (
-                        'calls', 'writes_to', 'flows_to'
-                    )),
-    discovery       TEXT NOT NULL CHECK (discovery IN ('ast_pattern', 'manual', 'type_inference'))
+    dependent_expr      TEXT,
+    subject             TEXT,
+    edge_id             INTEGER REFERENCES edges(id)
 );
 
 CREATE INDEX idx_contracts_node ON contracts(node_id);
+CREATE INDEX idx_contracts_edge ON contracts(edge_id);
 CREATE INDEX idx_edges_source ON edges(source_node_id);
 CREATE INDEX idx_edges_target ON edges(target_node_id);
 "#;
