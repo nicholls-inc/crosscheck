@@ -22,6 +22,24 @@ def checkStaticBounds (sourceGuarantee targetRequirement : Int)
                     s!"Either tighten the source or widen the target."
     }
 
+/-- Check consistency between static lower bounds on a single edge.
+    Source guarantees value ≥ S, target requires value ≥ T.
+    Consistent iff S ≥ T. -/
+def checkLowerBounds (sourceGuarantee targetRequirement : Int)
+    (source target : Constraint) : CheckResult :=
+  if targetRequirement ≤ sourceGuarantee then
+    .consistent
+  else
+    .inconsistent {
+      severity := .error
+      sourceConstraint := source
+      targetConstraint := target
+      path := []
+      suggestion := s!"Source guarantees ≥ {sourceGuarantee}, " ++
+                    s!"target requires ≥ {targetRequirement}. " ++
+                    s!"Either tighten the source or widen the target."
+    }
+
 /-- Check nullability consistency.
     null=True (source) + null=False (target) → inconsistent. -/
 def checkNullability (sourceNullable targetNullable : Bool)
@@ -77,6 +95,10 @@ def checkConstraintPair (source target : Constraint) : CheckResult :=
       match source.staticBound, target.staticBound with
       | some sg, some tr => checkStaticBounds sg tr source target
       | _, _ => .consistent  -- missing bounds: cannot check
+    | .rangeMin =>
+      match source.staticBound, target.staticBound with
+      | some sg, some tr => checkLowerBounds sg tr source target
+      | _, _ => .consistent
     | .nullability =>
       match source.staticBound, target.staticBound with
       | some sn, some tn =>
@@ -107,14 +129,27 @@ def checkEdge (source target : Node) : CheckResult :=
 def checkEdgeFull (edge : Edge) : CheckResult :=
   checkEdge edge.source edge.target
 
+/-- Record the hop (source and target node names) on an inconsistent result.
+    Consistent results are unchanged. -/
+def tagHop (hopSource hopTarget : String) : CheckResult → CheckResult
+  | .consistent => .consistent
+  | .inconsistent d => .inconsistent { d with hopSource := hopSource, hopTarget := hopTarget }
+
+/-- Tagging never turns an inconsistent result into a consistent one, or back. -/
+theorem tagHop_eq_consistent (s t : String) (r : CheckResult) :
+    tagHop s t r = .consistent ↔ r = .consistent := by
+  cases r <;> simp [tagHop]
+
 /-- Check every matching constraint pair between source postconditions and
     target preconditions, returning one result per pair. Unlike `checkEdge`,
     this does not stop at the first inconsistency, so an edge that violates
-    several constraint kinds (e.g. precision and nullability) reports each one. -/
+    several constraint kinds (e.g. precision and nullability) reports each one.
+    Each inconsistency is tagged (`tagHop`) with the source and target node
+    names, so a report on a multi-hop path names the hop that failed. -/
 def checkEdgeAll (source target : Node) : List CheckResult :=
   let pairs := source.postconditions.flatMap fun post =>
     target.preconditions.map fun pre => (post, pre)
-  pairs.map fun (post, pre) => checkConstraintPair post pre
+  pairs.map fun (post, pre) => tagHop source.name target.name (checkConstraintPair post pre)
 
 /-- `checkEdgeAll` applied to an edge's source and target. -/
 def checkEdgeAllFull (edge : Edge) : List CheckResult :=
@@ -127,6 +162,10 @@ def constraintImplies (c d : Constraint) : Prop :=
   | .precision | .length | .range =>
     match c.staticBound, d.staticBound with
     | some sg, some tr => sg ≤ tr
+    | _, _ => True
+  | .rangeMin =>
+    match c.staticBound, d.staticBound with
+    | some sg, some tr => tr ≤ sg
     | _, _ => True
   | .nullability =>
     match c.staticBound, d.staticBound with
@@ -163,8 +202,8 @@ theorem pair_sound (c d : Constraint) (hk : c.kind = d.kind)
   unfold constraintImplies checkConstraintPair at *
   simp only [kind_bne_false hk, Bool.false_eq_true, ↓reduceIte] at h
   intro hk'
-  rcases c with ⟨ck, csb, _, ctn, ccl, _, _, _⟩
-  rcases d with ⟨dk, dsb, _, dtn, dcl, _, _, _⟩
+  rcases c with ⟨ck, csb, _, ctn, ccl, _, _, _, _⟩
+  rcases d with ⟨dk, dsb, _, dtn, dcl, _, _, _, _⟩
   simp only at hk hk' ⊢ h
   subst hk
   cases ck <;> simp_all
@@ -187,6 +226,8 @@ theorem pair_sound (c d : Constraint) (hk : c.kind = d.kind)
     cases csb <;> cases dsb <;> simp_all [checkStaticBounds]
   · -- choices
     cases ccl <;> cases dcl <;> simp_all [checkChoicesSubset]
+  · -- rangeMin
+    cases csb <;> cases dsb <;> simp_all [checkLowerBounds]
 
 theorem foldl_consistent (pairs : List (Constraint × Constraint))
     (h : pairs.foldl (fun (acc : CheckResult) (post, pre) =>
@@ -240,6 +281,7 @@ theorem checkEdgeAll_sound (source target : Node)
   intro c hc d hd hk
   have h_mem := mem_pairs source target c d hc hd
   have h_pair : checkConstraintPair c d = .consistent := by
+    rw [← tagHop_eq_consistent source.name target.name]
     apply h
     unfold checkEdgeAll
     exact List.mem_map.mpr ⟨(c, d), h_mem, rfl⟩

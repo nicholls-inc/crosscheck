@@ -1,6 +1,6 @@
 -- DedupeTest.lean
 -- runChecker reports a finding once, under the shortest path that reaches it.
--- Mirrors test_fixtures/plain_python/: record_invoice calls customer_label,
+-- Mirrors test_fixtures/plain_python/: record_invoice passes a value to customer_label,
 -- whose result is written to InvoiceRecord.customer.
 
 import ContractGraph.Types
@@ -33,7 +33,9 @@ def customerField : Node :=
 def graph : ContractGraph :=
   { nodes := [recordInvoice, customerLabel, customerField]
     edges := [
-      { source := recordInvoice, target := customerLabel, relationship := .calls },
+      -- v2: a `calls` edge is not followed, so the prefix edge is a data edge
+      -- (record_invoice passes a value to customer_label).
+      { source := recordInvoice, target := customerLabel, relationship := .flowsTo },
       { source := customerLabel, target := customerField, relationship := .writesTo }
     ] }
 

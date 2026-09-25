@@ -10,6 +10,7 @@ inductive ConstraintKind where
   | range
   | length
   | choices
+  | rangeMin  -- lower bound on a numeric value (`range` is the upper bound)
   deriving Repr, BEq, Hashable, Inhabited, DecidableEq
 
 /-- Explicit ToString ensures s!"input_{kind}" produces "input_precision", etc.,
@@ -22,6 +23,7 @@ instance : ToString ConstraintKind where
     | .range       => "range"
     | .length      => "length"
     | .choices     => "choices"
+    | .rangeMin    => "range_min"
 
 /-- Verification levels, ordered from strongest to weakest. -/
 inductive VerificationLevel where
@@ -71,6 +73,9 @@ structure Constraint where
   sourceFile        : String
   sourceLine        : Nat
   verificationLevel : VerificationLevel
+  /-- For a function precondition: the parameter it constrains. `none` means
+      every parameter (legacy rows). Postconditions leave it `none`. -/
+  subject           : Option String := none
   deriving Repr
 
 /-- Contract role: precondition or postcondition. -/
@@ -120,6 +125,12 @@ structure DiagnosticInfo where
   targetConstraint : Constraint
   path             : List String
   suggestion       : String
+  /-- Name of the source node of the hop that produced this diagnostic
+      (after composition: the intermediate node). Empty when not tagged. -/
+  hopSource        : String := ""
+  /-- Name of the node whose precondition failed (the hop target).
+      Empty when not tagged. -/
+  hopTarget        : String := ""
   deriving Repr
 
 /-- Result of a consistency check. -/
@@ -148,6 +159,8 @@ structure ResultEntry where
   source : SourceLocation
   target : SourceLocation
   path : List String
+  /-- `[hop source name, hop target name]` of the failing hop. -/
+  hop : List String := []
   sourceGuarantee : String
   targetRequirement : String
   verificationLevel : String

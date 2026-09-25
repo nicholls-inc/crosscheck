@@ -45,38 +45,58 @@ def composeContracts (source target : Node) : List Constraint :=
         -- Preserve the unresolved postcondition and downgrade verification level.
         { postcon with verificationLevel := .extracted }
 
-/-- Collect warnings for any postconditions with unresolved dependent expressions
-    after composition. The spec mandates WARNING-severity diagnostics for these. -/
-def collectUnresolvedWarnings (composed : List Constraint) (nodeName : String)
-    : List CheckResult :=
-  composed.filterMap fun c =>
+/-- Warnings for a hop's source postconditions whose dependent expression is
+    still unresolved (no upstream binding: the path starts at this node, or the
+    upstream postconditions lack the input kind). WARNING severity. -/
+def collectUnresolvedWarnings (source target : Node) : List CheckResult :=
+  source.postconditions.filterMap fun c =>
     match c.depExpr, c.staticBound with
     | some _, none =>
-      some (.inconsistent (unresolvedDepWarning c nodeName))
+      some (.inconsistent (unresolvedDepWarning c source.name target.name))
     | _, _ => none
 
-/-- Collect warnings for constraint kinds required by the next target but absent
-    from the composed postconditions. When an intermediate node has no postcondition
-    for a required kind, the downstream check passes vacuously — this warns about that. -/
-def collectMissingPostconditionWarnings (composedPostconditions : List Constraint)
-    (nextTarget : Node) (intermediateNodeName : String) : List CheckResult :=
-  let composedKinds := composedPostconditions.map (·.kind)
-  nextTarget.preconditions.filterMap fun pre =>
-    if composedKinds.contains pre.kind then none
-    else some (.inconsistent (missingPostconditionWarning pre intermediateNodeName))
+/-- Constraint kinds whose requirement passes vacuously when the source has no
+    postcondition of that kind, and which therefore warn. -/
+def warnsWhenMissing : ConstraintKind → Bool
+  | .precision | .length | .range | .rangeMin | .nullability => true
+  | .type | .choices => false
 
-/-- Check consistency across a multi-hop path by composing
-    contracts at each step. Each hop contributes one result per constraint pair
-    (`checkEdgeAllFull`), so several inconsistencies on the same edge are all
-    reported. Non-partial: terminates by decreasing path length. -/
+/-- Warnings for target preconditions (of a kind in `warnsWhenMissing`) that no
+    source postcondition of the same kind addresses: the check for them passes
+    vacuously. Applied on every hop, including the last one and single-edge
+    paths; on later hops `source` is the composed intermediate node. -/
+def collectMissingPostconditionWarnings (source target : Node) : List CheckResult :=
+  let sourceKinds := source.postconditions.map (·.kind)
+  target.preconditions.filterMap fun pre =>
+    if warnsWhenMissing pre.kind && !sourceKinds.contains pre.kind then
+      some (.inconsistent (missingPostconditionWarning pre source.name target.name))
+    else none
+
+/-- Results for one hop: one per constraint pair (`checkEdgeAllFull`, tagged
+    with the hop), then the hop's warnings. -/
+def checkHop (edge : Edge) : List CheckResult :=
+  checkEdgeAllFull edge ++
+    (collectUnresolvedWarnings edge.source edge.target ++
+     collectMissingPostconditionWarnings edge.source edge.target)
+
+/-- Check consistency across a multi-hop path by composing contracts at each
+    step. Each hop contributes `checkHop` results, so several inconsistencies
+    on the same edge are all reported, plus that hop's warnings.
+
+    Composition goes through the NEXT edge's copy of the intermediate node
+    (`nextEdge.source`): that copy carries the postconditions for this
+    particular outgoing edge (a per-edge override), while `edge.target` carries
+    the preconditions filtered for the incoming edge. The composed node keeps
+    `edge.target`'s id, name, kind and preconditions.
+    Non-partial: terminates by decreasing path length. -/
 def checkPath (path : List Edge) : List CheckResult :=
   match path with
   | [] => [.consistent]
-  | [edge] => checkEdgeAllFull edge
+  | [edge] => checkHop edge
   | edge :: nextEdge :: remainingEdges =>
-    let edgeResults := checkEdgeAllFull edge
-    -- Compose contracts through the edge
-    let composedPostconditions := composeContracts edge.source edge.target
+    let edgeResults := checkHop edge
+    -- Compose upstream guarantees through the next edge's copy of the node
+    let composedPostconditions := composeContracts edge.source nextEdge.source
     let composedNode : Node := {
       id := edge.target.id
       name := edge.target.name
@@ -84,18 +104,13 @@ def checkPath (path : List Edge) : List CheckResult :=
       preconditions := edge.target.preconditions
       postconditions := composedPostconditions
     }
-    -- Emit warnings for unresolved dependent expressions and missing postconditions
-    let unresolvedWarnings := collectUnresolvedWarnings composedPostconditions edge.target.name
-    let missingWarnings := collectMissingPostconditionWarnings composedPostconditions nextEdge.target edge.target.name
-    let allWarnings := unresolvedWarnings ++ missingWarnings
     -- Continue checking with composed node as source
     let updatedEdge : Edge := {
       source := composedNode
       target := nextEdge.target
       relationship := nextEdge.relationship
     }
-    let restPath := checkPath (updatedEdge :: remainingEdges)
-    edgeResults ++ (allWarnings ++ restPath)
+    edgeResults ++ checkPath (updatedEdge :: remainingEdges)
 termination_by path.length
 decreasing_by simp_wf
 
@@ -110,13 +125,20 @@ partial def findAllSimplePaths (edges : List Edge) (src tgt : Node)
       let subPaths := findAllSimplePaths edges edge.target tgt (src.id :: visited)
       subPaths.map fun subPath => edge :: subPath
 
-/-- Enumerate all paths from function nodes to model nodes. -/
+/-- Edges that carry data and are checked: `writes_to` and `flows_to`.
+    `calls` edges are structural only. -/
+def checkedEdges (edges : List Edge) : List Edge :=
+  edges.filter (fun e => e.relationship != .calls)
+
+/-- Enumerate all paths from function nodes to model nodes, following only
+    data edges (`calls` edges stay in the graph but are not followed). -/
 def enumeratePaths (graph : ContractGraph) : List (List Edge) :=
   let modelNodes := graph.nodes.filter (·.kind == "model")
   let functionNodes := graph.nodes.filter (·.kind == "function")
+  let edges := checkedEdges graph.edges
   functionNodes.flatMap fun src =>
     modelNodes.flatMap fun tgt =>
-      findAllSimplePaths graph.edges src tgt
+      findAllSimplePaths edges src tgt
 
 /-- Check all paths and collect results with unresolved-dep warnings. -/
 def checkAllPaths (graph : ContractGraph) : List (List Edge × List CheckResult) :=
@@ -151,6 +173,12 @@ def composedGuaranteeImplies (source target : Node) : Prop :=
 --     composedGuaranteeImplies (path.head hne).source (path.getLast hne).target := by
 --   sorry
 
+/-- If every `checkHop` result is consistent, so is every per-pair result. -/
+theorem checkHop_consistent (edge : Edge)
+    (h : ∀ r ∈ checkHop edge, r = CheckResult.consistent) :
+    ∀ r ∈ checkEdgeAllFull edge, r = CheckResult.consistent := by
+  intro r hr; apply h; unfold checkHop; exact List.mem_append_left _ hr
+
 /-- CORRECTED SOUNDNESS THEOREM (single-edge case).
     The original `checkPath_sound` was false for multi-hop paths because
     `composedGuaranteeImplies` relates the original source's postconditions to the
@@ -164,7 +192,7 @@ theorem checkPath_sound_single (edge : Edge)
     (h : ∀ r ∈ checkPath [edge], r = CheckResult.consistent) :
     composedGuaranteeImplies edge.source edge.target := by
   unfold checkPath at h
-  exact checkEdgeAll_sound edge.source edge.target h
+  exact checkEdgeAll_sound edge.source edge.target (checkHop_consistent edge h)
 
 /-- CORRECTED SOUNDNESS THEOREM (first-edge guarantee).
     For any non-empty path, if checkPath returns all consistent, then the first edge's
@@ -176,24 +204,26 @@ theorem checkPath_sound_first_edge (path : List Edge) (hne : path ≠ [])
   match path, hne with
   | [edge], _ =>
     unfold checkPath at h
-    exact checkEdgeAll_sound edge.source edge.target h
+    exact checkEdgeAll_sound edge.source edge.target (checkHop_consistent edge h)
   | edge :: _ :: _, _ =>
     simp only [List.head_cons]
-    have h1 : ∀ r ∈ checkEdgeAllFull edge, r = .consistent := by
+    have h1 : ∀ r ∈ checkHop edge, r = .consistent := by
       intro r hr; apply h; unfold checkPath; exact List.mem_append_left _ hr
-    exact checkEdgeAll_sound edge.source edge.target h1
+    exact checkEdgeAll_sound edge.source edge.target (checkHop_consistent edge h1)
 
 /-- Stepwise soundness predicate for multi-hop paths.
     Mirrors checkPath's recursive structure exactly: at each step, the current
     source's postconditions imply the current target's preconditions, and the
-    remaining path is stepwise-sound with the composed intermediate node. -/
+    remaining path is stepwise-sound with the composed intermediate node, whose
+    postconditions are the next edge's copy of the node (`nextEdge.source`,
+    carrying any per-edge override) composed with the upstream guarantees. -/
 def stepwiseSound (path : List Edge) : Prop :=
   match path with
   | [] => True
   | [edge] => composedGuaranteeImplies edge.source edge.target
   | edge :: nextEdge :: remainingEdges =>
     composedGuaranteeImplies edge.source edge.target ∧
-    let composedPostconditions := composeContracts edge.source edge.target
+    let composedPostconditions := composeContracts edge.source nextEdge.source
     let composedNode : Node := {
       id := edge.target.id
       name := edge.target.name
@@ -210,15 +240,15 @@ def stepwiseSound (path : List Edge) : Prop :=
 termination_by path.length
 decreasing_by simp_wf
 
-/-- Helper: if all elements of as ++ (bs ++ cs) satisfy a predicate,
-    then all elements of as and all elements of cs satisfy it. -/
-private theorem forall_consistent_of_append_append
-    (as bs cs : List CheckResult)
-    (h : ∀ r ∈ (as ++ (bs ++ cs)), r = CheckResult.consistent) :
-    (∀ r ∈ as, r = CheckResult.consistent) ∧ ∀ r ∈ cs, r = CheckResult.consistent := by
+/-- Helper: if all elements of as ++ bs are consistent, so are all elements
+    of as and all elements of bs. -/
+private theorem forall_consistent_of_append
+    (as bs : List CheckResult)
+    (h : ∀ r ∈ (as ++ bs), r = CheckResult.consistent) :
+    (∀ r ∈ as, r = CheckResult.consistent) ∧ ∀ r ∈ bs, r = CheckResult.consistent := by
   constructor
   · intro r hr; apply h; exact List.mem_append_left _ hr
-  · intro r hr; apply h; simp [List.mem_append]; right; right; exact hr
+  · intro r hr; apply h; exact List.mem_append_right _ hr
 
 set_option maxHeartbeats 400000 in
 /--
@@ -238,21 +268,21 @@ Match on path, hne for three cases with termination_by path.length.
 
 Case [] (empty path): contradiction with hne.
 
-Case [edge] (single edge): Unfold checkPath to get checkEdgeAllFull edge.
-  The hypothesis gives every per-pair result consistent. Apply
-  checkEdgeAll_sound.
+Case [edge] (single edge): Unfold checkPath to get checkHop edge, which is
+  checkEdgeAllFull edge ++ warnings. checkHop_consistent gives every per-pair
+  result consistent. Apply checkEdgeAll_sound.
 
 Case edge :: nextEdge :: rest (multi-hop): checkPath produces
-  edgeResults ++ (warnings ++ restPath) where
-  edgeResults = checkEdgeAllFull edge and
-  restPath = checkPath (updatedEdge :: rest).
+  checkHop edge ++ restPath where
+  restPath = checkPath (updatedEdge :: rest), and updatedEdge's source is
+  edge.target with postconditions composeContracts edge.source nextEdge.source.
 
-  Step 1: Apply forall_consistent_of_append_append to h to extract:
-    h1 : ∀ r ∈ checkEdgeAllFull edge, r = .consistent
+  Step 1: Apply forall_consistent_of_append to h to extract:
+    h1 : ∀ r ∈ checkHop edge, r = .consistent
     h2 : ∀ r ∈ checkPath (updatedEdge :: rest), r = .consistent
 
-  Step 2 (first conjunct): Apply checkEdgeAll_sound to h1
-    to get composedGuaranteeImplies edge.source edge.target.
+  Step 2 (first conjunct): Apply checkHop_consistent then checkEdgeAll_sound
+    to h1 to get composedGuaranteeImplies edge.source edge.target.
 
   Step 3 (second conjunct): Apply checkPath_sound recursively on
     (updatedEdge :: rest) with h2. The termination obligation is
@@ -270,21 +300,19 @@ theorem checkPath_sound (path : List Edge) (hne : path ≠ [])
   | [edge], _ =>
     unfold stepwiseSound
     unfold checkPath at h
-    exact checkEdgeAll_sound edge.source edge.target h
+    exact checkEdgeAll_sound edge.source edge.target (checkHop_consistent edge h)
   | edge :: nextEdge :: rest, _ =>
     unfold checkPath at h
-    have ⟨h1, h2⟩ := forall_consistent_of_append_append
-      (checkEdgeAllFull edge)
-      (collectUnresolvedWarnings (composeContracts edge.source edge.target) edge.target.name ++
-       collectMissingPostconditionWarnings (composeContracts edge.source edge.target) nextEdge.target edge.target.name)
+    have ⟨h1, h2⟩ := forall_consistent_of_append
+      (checkHop edge)
       (checkPath
         ({ source := { id := edge.target.id, name := edge.target.name, kind := edge.target.kind,
                        preconditions := edge.target.preconditions,
-                       postconditions := composeContracts edge.source edge.target },
+                       postconditions := composeContracts edge.source nextEdge.source },
            target := nextEdge.target, relationship := nextEdge.relationship } :: rest))
       h
     unfold stepwiseSound
-    exact ⟨checkEdgeAll_sound _ _ h1,
+    exact ⟨checkEdgeAll_sound _ _ (checkHop_consistent edge h1),
            checkPath_sound _ (List.cons_ne_nil _ _) h2⟩
 termination_by path.length
 

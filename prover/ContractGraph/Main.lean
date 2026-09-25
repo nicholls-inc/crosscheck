@@ -30,6 +30,7 @@ private def resultEntryToJson (r : ResultEntry) : String :=
   s!"\"source\": {sourceLocationToJson r.source}, " ++
   s!"\"target\": {sourceLocationToJson r.target}, " ++
   s!"\"path\": {stringListToJson r.path}, " ++
+  s!"\"hop\": {stringListToJson r.hop}, " ++
   s!"\"source_guarantee\": \"{jsonEscape r.sourceGuarantee}\", " ++
   s!"\"target_requirement\": \"{jsonEscape r.targetRequirement}\", " ++
   s!"\"verification_level\": \"{r.verificationLevel}\", " ++
@@ -64,12 +65,13 @@ def collectResults (pathResults : List (List Edge × List CheckResult))
 
 /-- Two entries report the same inconsistency when everything except the
     path matches: the same source constraint against the same target
-    constraint on the same target node. -/
+    constraint on the same hop (`target.name` is the hop target; `hop` also
+    names the hop source). -/
 def sameFinding (a b : ResultEntry) : Bool :=
   a.severity == b.severity &&
   a.source.file == b.source.file && a.source.line == b.source.line &&
   a.target.file == b.target.file && a.target.line == b.target.line &&
-  a.target.name == b.target.name &&
+  a.target.name == b.target.name && a.hop == b.hop &&
   a.sourceGuarantee == b.sourceGuarantee &&
   a.targetRequirement == b.targetRequirement &&
   a.suggestion == b.suggestion
