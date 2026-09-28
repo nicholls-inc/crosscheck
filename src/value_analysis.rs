@@ -1719,16 +1719,23 @@ impl<'a> Scope<'a> {
     }
 
     /// Whether the elements iterable `iter` yields may be None, when known.
-    /// A parameter says so by its element annotation (`list[Decimal]`: no;
-    /// `list[Optional[Line]]`: yes); only that is consulted for a parameter,
-    /// since `element_class` strips `Optional` from the element type. The
-    /// elements of a queryset or a bulk-written local (`element_class`) are
-    /// model instances, never None.
+    /// A parameter with a collection annotation says so by its element
+    /// annotation (`list[Decimal]`: no; `list[Optional[Line]]`: yes), and only
+    /// that is consulted, since `element_class` strips `Optional` from the
+    /// element type. The annotation describes the parameter only while the
+    /// body does not rebind it (`xs = [None]`): a rebound parameter is unknown.
+    /// Otherwise the elements of a queryset or of a bulk-written name
+    /// (`element_class`) are model instances, never None.
     fn element_nullable(&self, iter: &Expr, ctx: &Ctx) -> Option<bool> {
         if let Expr::Name(n) = iter {
-            if let Some(p) = self.param(n.id.as_str()) {
-                let element = collection_element(p.annotation.as_ref()?)?;
-                return crate::function_extractor::annotation_nullability(element, &[]);
+            let name = n.id.as_str();
+            if let Some(p) = self.param(name) {
+                if ctx.shadowed.contains(name) || self.flow.binds(name) || self.flow.unstable.contains(name) {
+                    return None;
+                }
+                if let Some(element) = p.annotation.as_ref().and_then(|a| collection_element(a)) {
+                    return crate::function_extractor::annotation_nullability(element, &[]);
+                }
             }
         }
         self.element_class(iter, ctx).map(|_| false)
@@ -3029,6 +3036,20 @@ mod tests {
         assert_eq!(typed("List[Line]"), Some(false));
         assert_eq!(typed("List[Optional[Line]]"), None);
         assert_eq!(typed("Optional[List[Optional[Decimal]]]"), None);
+        assert_eq!(typed("List[\"Optional[Line]\"]"), None);
+        assert_eq!(typed("List[Any]"), None);
+        assert_eq!(typed("List[T]"), None);
+        let body = |sig: &str, body: &str| {
+            let src = format!(
+                "from django.db import models\nfrom decimal import Decimal\nfrom typing import List\n\nclass Line(models.Model):\n    n = models.IntegerField()\n\ndef f({sig}):\n{body}    max(xs, key=lambda l: l.n)\n"
+            );
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        // A rebound parameter is no longer described by its annotation.
+        assert_eq!(body("xs: List[Decimal]", "    xs = [None]\n"), None);
+        assert_eq!(body("xs: List[Decimal]", "    xs += [None]\n"), None);
+        // An unannotated parameter bulk-written as a model's instances.
+        assert_eq!(body("xs", "    Line.objects.bulk_create(xs)\n"), Some(false));
         // Augmented assignment: never None afterwards (flow-insensitively).
         let f = one("def f(xs):\n    total = 0\n    for x in xs:\n        total += x\n    total\n");
         assert_eq!((f.nullable, f.precision), (Some(false), None));
