@@ -51,7 +51,8 @@ impl Dep {
 
     pub fn sum(a: Dep, b: Dep) -> Dep {
         match (a, b) {
-            (Dep::Lit(x), Dep::Lit(y)) => Dep::Lit(x + y),
+            // Saturating: a larger bound on places is still an upper bound.
+            (Dep::Lit(x), Dep::Lit(y)) => Dep::Lit(x.saturating_add(y)),
             (a, Dep::Lit(0)) | (Dep::Lit(0), a) => a,
             (a, b) => Dep::Add(Box::new(a), Box::new(b)),
         }
@@ -1004,7 +1005,7 @@ impl<'a> Scope<'a> {
             s.max_length?.checked_mul(n)
         };
         let max_length = match (result_type, b.op, l.max_length, r.max_length) {
-            (Some("str"), Operator::Add, Some(x), Some(y)) => Some(x + y),
+            (Some("str"), Operator::Add, Some(x), Some(y)) => Some(x.saturating_add(y)),
             (Some("str"), Operator::Mult, _, _) if l.type_name.as_deref() == Some("str") => {
                 repeat(&l, &b.right)
             }
@@ -1365,7 +1366,7 @@ impl<'a> Scope<'a> {
     }
 
     /// `min(a, b, ...)` / `max(a, b, ...)`: one of the arguments (their
-    /// join, never None); `min(xs)`: never None (unless `default=None`).
+    /// join, never None); `min(xs)`: an element of `xs`.
     fn min_max_facts(&self, call: &ast::ExprCall, ctx: &Ctx) -> ValueFacts {
         let args = &call.arguments.args;
         let default_none = call.arguments.keywords.iter().any(|k| {
@@ -1400,6 +1401,14 @@ impl<'a> Scope<'a> {
         // `max(<generator>)` / `max([a, b])`: one of the elements (an empty
         // iterable raises, unless a `default=` is given, which joins in).
         if let [only] = &args[..] {
+            // Two or more literal elements are compared with each other, so
+            // a None among them raises; one element (or a comprehension or
+            // other iterable, which may yield just one) is returned as is:
+            // `max([None])` is None.
+            let compared = matches!(only,
+                Expr::List(ast::ExprList { elts, .. })
+                | Expr::Tuple(ast::ExprTuple { elts, .. })
+                | Expr::Set(ast::ExprSet { elts, .. }) if elts.len() >= 2);
             let elements = match only {
                 Expr::Generator(ast::ExprGenerator { elt, .. })
                 | Expr::ListComp(ast::ExprListComp { elt, .. })
@@ -1426,15 +1435,18 @@ impl<'a> Scope<'a> {
                     Some(d) => ValueFacts::join(e, d),
                     None => e,
                 };
-                // Elements of unknown nullability: as for `max(xs)` (None does
-                // not compare with other values).
-                if f.nullable.is_none() {
+                if f.nullable.is_none() && compared {
                     f.nullable = Some(false);
                 }
                 return f;
             }
         }
-        ValueFacts::non_null()
+        // `max(xs)`: an element of `xs`, which may be None when `xs` has
+        // exactly one element, unless its elements cannot be None.
+        match args.first().and_then(|xs| self.element_nullable(xs, ctx)) {
+            Some(false) => ValueFacts::non_null(),
+            _ => ValueFacts::default(),
+        }
     }
 
     fn round_facts(&self, call: &ast::ExprCall, ctx: &Ctx) -> ValueFacts {
@@ -1449,8 +1461,13 @@ impl<'a> Scope<'a> {
             };
         }
         let value_type = self.facts(&args[0], ctx).numeric_type().map(str::to_string);
+        // A rounded float is still a binary float (`round(0.1234, 2)` is
+        // 0.11999...), so it has no decimal-place bound.
+        let is_float = value_type.as_deref() == Some("float");
         ValueFacts {
-            precision: int_literal(&args[1]).map(|n| Dep::Lit(n.max(0))),
+            precision: int_literal(&args[1])
+                .filter(|_| !is_float)
+                .map(|n| Dep::Lit(n.max(0))),
             type_name: value_type,
             ..ValueFacts::non_null()
         }
@@ -1698,28 +1715,19 @@ impl<'a> Scope<'a> {
     /// `list[C]`, `QuerySet[C]`, `Iterable[C]`, `tuple[C, ...]` ... (also
     /// `Optional[...]`): `C`.
     fn collection_class(&self, annotation: &Expr) -> Option<&'a ClassInfo> {
-        let Expr::Subscript(s) = strip_optional(annotation) else { return None };
-        let head = dotted_parts(&s.value)?;
-        if matches!(head.last().map(String::as_str), Some("tuple" | "Tuple")) {
-            return match s.slice.as_ref() {
-                Expr::Tuple(t) => match &t.elts[..] {
-                    [elem, Expr::EllipsisLiteral(_)] => self.annotation_class(self.module, elem),
-                    _ => None,
-                },
-                _ => None,
-            };
+        self.annotation_class(self.module, collection_element(annotation)?)
+    }
+
+    /// Whether the elements iterable `iter` yields may be None, when known:
+    /// instances of a known class (`element_class`) are not; a parameter
+    /// annotated as a collection says so by its element annotation.
+    fn element_nullable(&self, iter: &Expr, ctx: &Ctx) -> Option<bool> {
+        if self.element_class(iter, ctx).is_some() {
+            return Some(false);
         }
-        let collection = matches!(
-            head.last().map(String::as_str),
-            Some(
-                "list" | "List" | "Sequence" | "Iterable" | "Iterator" | "Collection" | "QuerySet"
-                    | "set" | "Set" | "frozenset" | "FrozenSet" | "MutableSequence" | "AbstractSet"
-            )
-        );
-        if !collection {
-            return None;
-        }
-        self.annotation_class(self.module, &s.slice)
+        let Expr::Name(n) = iter else { return None };
+        let annotation = self.param(n.id.as_str())?.annotation.as_ref()?;
+        crate::function_extractor::annotation_nullability(collection_element(annotation)?, &[])
     }
 
     /// The model whose `objects.bulk_update(name, ...)` / `bulk_create(name)`
@@ -2355,6 +2363,30 @@ pub fn strip_await(expr: &Expr) -> &Expr {
 }
 
 /// Result type of a binary operation on value types, if known.
+/// The element annotation of a collection annotation: `C` of `list[C]`,
+/// `QuerySet[C]`, `Iterable[C]`, `tuple[C, ...]` ... (also `Optional[...]`).
+fn collection_element(annotation: &Expr) -> Option<&Expr> {
+    let Expr::Subscript(s) = strip_optional(annotation) else { return None };
+    let head = dotted_parts(&s.value)?;
+    if matches!(head.last().map(String::as_str), Some("tuple" | "Tuple")) {
+        return match s.slice.as_ref() {
+            Expr::Tuple(t) => match &t.elts[..] {
+                [elem, Expr::EllipsisLiteral(_)] => Some(elem),
+                _ => None,
+            },
+            _ => None,
+        };
+    }
+    let collection = matches!(
+        head.last().map(String::as_str),
+        Some(
+            "list" | "List" | "Sequence" | "Iterable" | "Iterator" | "Collection" | "QuerySet"
+                | "set" | "Set" | "frozenset" | "FrozenSet" | "MutableSequence" | "AbstractSet"
+        )
+    );
+    collection.then_some(s.slice.as_ref())
+}
+
 fn binop_type(op: Operator, l: Option<&str>, r: Option<&str>) -> Option<&'static str> {
     use Operator::*;
     let arith = matches!(op, Add | Sub | Mult | Div | FloorDiv | Mod);
@@ -2962,7 +2994,7 @@ mod tests {
             "a % b",
             "'%s' % a",
             "sum(xs)",
-            "max(xs)",
+            "max([a, b])",
             "min(a, b)",
             "len(xs)",
             "list(xs)",
@@ -2976,6 +3008,11 @@ mod tests {
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, Some(false), "{expr}");
         }
         assert_eq!(one("def f(xs):\n    min(xs, default=None)\n").nullable, Some(true));
+        // One element is returned without a comparison: `max([None])` is None.
+        for expr in ["max(xs)", "max([a])", "min(x for x in xs)"] {
+            let src = format!("def f(a, xs):\n    {expr}\n");
+            assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, None, "{expr}");
+        }
         // Augmented assignment: never None afterwards (flow-insensitively).
         let f = one("def f(xs):\n    total = 0\n    for x in xs:\n        total += x\n    total\n");
         assert_eq!((f.nullable, f.precision), (Some(false), None));

@@ -391,9 +391,15 @@ fn type_contract(field_type: &str) -> Option<&'static str> {
 /// is checked against them.
 pub fn requirement_facts(field: &ModelField) -> crate::value_analysis::ValueFacts {
     use crate::value_analysis::{Dep, ValueFacts};
+    // A FloatField read is a binary float: arithmetic on it rounds, so it
+    // gets no exact interval bounds. Weak: the type carries no contract.
+    let float = field.field_type == "FloatField";
     ValueFacts {
         nullable: field.null,
-        type_name: type_contract(&field.field_type).map(str::to_string),
+        type_name: type_contract(&field.field_type)
+            .or(float.then_some("float"))
+            .map(str::to_string),
+        weak_type: float,
         precision: (field.field_type == "DecimalField")
             .then_some(field.decimal_places)
             .flatten()

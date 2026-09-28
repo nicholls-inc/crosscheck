@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [
+    {
+      "path": "combine -> Total.total",
+      "contains": "range"
+    },
+    {
+      "path": "peak -> Total.n",
+      "contains": "nullability"
+    },
+    {
+      "path": "peak_literal -> Total.n",
+      "contains": "nullability"
+    }
+  ]
+}
