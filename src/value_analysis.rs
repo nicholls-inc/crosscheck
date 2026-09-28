@@ -3048,6 +3048,18 @@ mod tests {
         // A rebound parameter is no longer described by its annotation.
         assert_eq!(body("xs: List[Decimal]", "    xs = [None]\n"), None);
         assert_eq!(body("xs: List[Decimal]", "    xs += [None]\n"), None);
+        for rebind in [
+            "    for xs in [[None]]:\n        pass\n",
+            "    with open('f') as xs:\n        pass\n",
+            "    xs, y = [None], 1\n",
+            "    if (xs := [None]):\n        pass\n",
+            "    try:\n        pass\n    except Exception as xs:\n        pass\n",
+            "    match 1:\n        case xs:\n            pass\n",
+            "    del xs\n    xs = [None]\n",
+            "    def xs():\n        pass\n",
+        ] {
+            assert_eq!(body("xs: List[Decimal]", rebind), None, "{rebind}");
+        }
         // An unannotated parameter bulk-written as a model's instances.
         assert_eq!(body("xs", "    Line.objects.bulk_create(xs)\n"), Some(false));
         // Augmented assignment: never None afterwards (flow-insensitively).
