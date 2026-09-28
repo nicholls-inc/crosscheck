@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A three-layer pipeline that extracts implicit contracts from Python code (Django models and plain-Python data classes: dataclass, attrs, pydantic, NamedTuple, TypedDict), translates them into Lean propositions, and checks consistency across component boundaries with machine-checked soundness proofs. PoC stage targeting a three-node graph (function A -> function B -> data model field).
+A three-layer pipeline that extracts implicit contracts from Python code (Django models and plain-Python data classes: dataclass, attrs, pydantic, NamedTuple, TypedDict), translates them into Lean propositions, and checks consistency across component boundaries with machine-checked soundness proofs. Research prototype: it began as a three-node PoC (function A -> function B -> data model field) and now checks real-scale graphs with a state-based checker.
 
 ## Build commands
 
@@ -22,8 +22,10 @@ cd prover && lake build
 # Run Lean checker directly on a SQLite database
 ./prover/.lake/build/bin/contract-graph-checker /path/to/contracts.sqlite
 
-# Check Lean proofs only (no executable build)
-cd prover && lake build ContractGraph
+# Check Lean proofs only (no executable link). ContractGraph.Main holds the
+# end-to-end theorems (runChecker_sound_all, exit-code lemmas) and is not
+# imported by the ContractGraph library root, so name it explicitly.
+cd prover && lake build ContractGraph ContractGraph.Main
 ```
 
 ```bash
@@ -47,20 +49,20 @@ scripts/check-fixtures.sh
 - `checkPath_sound(_noErrors)` (Composition.lean): multi-hop stepwise soundness (`stepwiseSound`: each hop is sound w.r.t. the composed intermediate postconditions, composed through the next edge's copy of the node so per-edge overrides apply)
 - `enumeratePaths_complete` (Search.lean): every `IsDataPath` (a simple path over non-`calls` edges from a function node to a model node) is enumerated
 - `closedStates_checkPath` (StateSearch.lean): the explored hop states are closed under successors, so every data path's hop checks occur among the checked states
-- `runChecker_sound_all` (Main.lean): **exit code 0 ⇒ every data path of the translated graph is stepwise sound**. This is the end-to-end guarantee of the executable; it is relative to the translated graph (extraction is untrusted) and the behaviour model.
+- `runChecker_sound_all` (Main.lean): **exit code 0 ⇒ every data path of the translated graph is stepwise sound**. This is the end-to-end guarantee of the executable. It is relative to the translated graph: extraction is untrusted, and no theorem yet links the checked constraints to the `BehaviorModel.lean` semantics (see Trust model). A data path runs from a function node to a model node; a `flows_to` edge into a callee that never reaches a model node is not checked.
 
 **Return contracts:** a non-Optional return annotation becomes a target node `f.<return>`; the function's return sites are checked against it and callers rely on it (assume-guarantee).
 
-**Checking algorithm:** `runChecker` (StateSearch.lean) explores composed hop states (the composed edge minus source preconditions) breadth-first from every function node over checked edges, checks each distinct state once, and verifies closure before reporting. Budgets: `--max-states` (default 2,000,000; `--max-paths` is an alias) and `--max-states-per-edge` (default 64, stops non-converging cycles); exceeding either gives exit 2 ("incomplete"). The path-based `runCheckerPaths` is kept as a reference. Findings are deduplicated (same finding, shortest witness path). Warnings: an unresolved dependent bound or a missing source guarantee, only where the target requirement could reject a value; none for paths headed by a call-site node that has incoming edges.
+**Checking algorithm:** `runChecker` (StateSearch.lean) explores composed hop states (the composed edge minus source preconditions) breadth-first from every function node over checked edges, checks each distinct state once, and verifies closure before reporting. Budgets: `--max-states` (default 2,000,000; `--max-paths` is an alias) and `--max-states-per-edge` (default 64, stops non-converging cycles); exceeding either gives exit 2 ("incomplete"). The path-based `runCheckerPaths` is kept as a reference. Findings are deduplicated (same finding, shortest witness path): results with the same source, target, hop, site and bounds are one finding, so two upstream origins that produce the same bound on the same hop are reported once, with the shortest path's origin in `guarantee_at`. Warnings: an unresolved dependent bound or a missing source guarantee, only where the target requirement could reject a value; none for paths headed by a call-site node that has incoming edges.
 
-**Data flow:** Python files -> Rust extractor -> SQLite -> Lean translation (Translation.lean) -> Checker -> JSON output to stdout. Exit codes: 0 = consistent, 1 = inconsistencies found, 2 = extraction/translation failure.
+**Data flow:** Python files -> Rust extractor -> SQLite -> Lean translation (Translation.lean) -> Checker -> JSON output to stdout. Exit codes: 0 = every data path consistent, 1 = inconsistencies found, 2 = extraction or translation failure (including an unreadable database or a malformed contract row) **or an incomplete run** (a `--max-states` / `--max-states-per-edge` budget was exceeded, so nothing is verified).
 
 ## Trust model
 
 The trust boundary matters for correctness claims:
-- **Proved (Lean kernel verifies):** Checker logic, composition, soundness theorems
-- **Proved relative to behavior model:** Translation from SQLite to Lean propositions
-- **Trusted-not-proved:** `BehaviorModel.lean` (~100 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program)
+- **Proved (Lean kernel verifies):** Checker logic, composition, soundness theorems (about `constraintImplies` on the translated constraints)
+- **Not proved:** Translation from SQLite to Lean propositions (`Translation.lean` has no theorems). It rejects malformed rows (exit 2) rather than dropping them.
+- **Trusted-not-proved, documentation only:** `BehaviorModel.lean` (~100 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program). No theorem references its definitions yet: it states the semantics the extractor and `constraintImplies` are meant to follow, it is not a premise of `runChecker_sound_all`.
 - **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
 
 ## Key design patterns
@@ -87,7 +89,7 @@ Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, req
 
 - `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path; nullable: 4dp writes into 2dp fields, and `return None` under a non-Optional annotation reported at the return site `apply_discount -> apply_discount.<return>`)
 - `plain_python/`, `plain_python_clean/`: no Django (clean version must pass)
-- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`: adversarial findings. Several include an `ok.py` with correct code so a false positive fails the fixture.
+- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`, `r6_*`, `r7_*`: adversarial findings; `r8_*`: findings from the pr-swarm review of PR #3. Several include an `ok.py` with correct code so a false positive fails the fixture.
 - `V2_FIXTURE_NOTES.md`: how ambiguous verdicts were decided
 
 Design: `docs/design/dataflow-v2.md` (model, SQLite interface, and the round 3/5 addenda). Adversarial reports and repros from each round were kept outside the repo; their findings are recorded in the addenda and as fixtures.

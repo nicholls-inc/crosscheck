@@ -2,7 +2,7 @@
 
 A three-layer pipeline that extracts implicit contracts from Python application code (Django models, dataclasses, attrs, pydantic, `NamedTuple`, `TypedDict`), translates them into Lean propositions, and checks their consistency across component boundaries with machine-checked soundness guarantees.
 
-**Status:** PoC — targets a three-node graph (function A → function B → data model field) to demonstrate that graph-level consistency checking catches bugs that pairwise checking structurally misses. The target can be a Django model field or a field of a plain-Python data class; see [Python support](#python-support).
+**Status:** research prototype. It began as a three-node PoC (function A → function B → data model field) demonstrating that graph-level consistency checking catches bugs that pairwise checking structurally misses, and now checks real-scale graphs with a state-based checker. The target can be a Django model field or a field of a plain-Python data class; see [Python support](#python-support).
 
 ## Architecture
 
@@ -28,8 +28,8 @@ Python project (.py files)
 |-----------|------------|
 | Lean kernel | Absolute — accepts or rejects the proof |
 | Checker + proofs | Proved — soundness theorems are machine-checked |
-| Translation | Proved relative to the Django behavior model |
-| Django behavior model | Trusted-not-proved — ~100 lines, auditable, version-pinned |
+| Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
+| Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
 
 ## Quick start
@@ -123,6 +123,15 @@ cargo test --test e2e_transitive
 cargo test --test e2e_nullable
 cargo test --test e2e_plain_python
 cargo test --test e2e_synthetic
+cargo test --test e2e_v2
+cargo test --test e2e_limits
+cargo test --test e2e_round5
+cargo test --test e2e_round6
+cargo test --test e2e_review_fixes
+
+# CLI behaviour (fake checker) and the text report (needs the Lean checker built)
+cargo test --test e2e_cli
+cargo test --test e2e_text_format
 
 # Run only the property-based tests
 cargo test --test prop_docstring_parser
@@ -139,11 +148,11 @@ E2e tests run the Rust extractor against the test fixtures and verify the SQLite
 # Type-check all proofs, build the checker and the test modules
 cd prover && lake build
 
-# Type-check proofs only (no executable)
-cd prover && lake build ContractGraph
+# Type-check proofs only (no executable link); Main holds the end-to-end theorems
+cd prover && lake build ContractGraph ContractGraph.Main
 ```
 
-`lake build` verifies the soundness theorems (`checkEdge_sound`, `checkPath_sound`) and the test modules in `ContractGraphTest/` (BugReport1, DedupeTest, NullableDemo, TransitiveDemo, SoundnessDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
+`lake build` verifies the soundness theorems — per edge and per path (`checkEdge_sound`, `checkEdgeAll_sound`, `checkPath_sound(_noErrors)`), completeness of the search (`enumeratePaths_complete`, `closedStates_checkPath`) and the end-to-end `runChecker_sound_all` (exit 0 ⇒ every data path is stepwise sound) — and the test modules in `ContractGraphTest/` (BugReport1, DataflowV2, DedupeTest, NoErrorsSoundness, NullableDemo, Round3, Round5, Round6, SoundnessDemo, StateSearch, TransitiveDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
 
 ### Full pipeline on every fixture
 
@@ -255,8 +264,8 @@ RESULT: 1 error, 1 warning. Exit code 1.
 
 | Code | Meaning |
 |------|---------|
-| 0 | All paths consistent |
+| 0 | Every data path (function → model node) consistent |
 | 1 | One or more inconsistencies found |
-| 2 | Extraction, parse or translation failure, or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded, checker crashed or produced no JSON) |
+| 2 | Extraction, parse or translation failure (including an unreadable database or a malformed contract row), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
 
 `--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.

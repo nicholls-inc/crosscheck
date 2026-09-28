@@ -1,6 +1,11 @@
 -- NullableDemo.lean
 -- Multi-constraint mismatch on one edge: precision and nullability.
--- Mirrors test_fixtures/nullable/ (apply_discount -> Invoice.total).
+-- A hand-built graph, not the nullable fixture's verdict: it puts both
+-- inconsistencies on one write edge to show that checkEdgeAll reports every
+-- constraint kind where checkEdge stops at the first. The pipeline on
+-- test_fixtures/nullable/ reports the None at the return contract
+-- (apply_discount -> apply_discount.<return>) instead, since apply_discount
+-- returns None but never writes it (see test_fixtures/V2_FIXTURE_NOTES.md).
 
 import ContractGraph.Types
 import ContractGraph.Checker
@@ -75,7 +80,7 @@ def inconsistentKinds (results : List CheckResult) : List ConstraintKind :=
 -- checkEdgeAll reports every inconsistent pair on the edge.
 #guard inconsistentKinds (checkEdgeAllFull edge) == [.precision, .nullability]
 
--- The full pipeline reports both, with exit code 1.
+-- runChecker on this graph reports both, with exit code 1.
 #guard (runChecker nullableGraph).results.length == 2
 #guard (runChecker nullableGraph).exitCode == 1
 

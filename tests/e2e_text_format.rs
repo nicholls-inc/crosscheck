@@ -6,7 +6,7 @@
 //! Skipped (with an explanation) if either the CLI binary or the Lean
 //! checker binary has not been built yet.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 /// Cargo builds the crate's own binary before running this test and
@@ -85,8 +85,4 @@ fn text_format_on_transitive_fixture() {
         "got:\n{stdout}"
     );
     assert_eq!(output.status.code(), Some(1));
-
-    // Sanity check that the fixture path is a real, existing directory
-    // relative to the crate root the test runner uses.
-    assert!(Path::new("test_fixtures/transitive").is_dir());
 }

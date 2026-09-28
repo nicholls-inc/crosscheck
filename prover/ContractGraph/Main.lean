@@ -118,7 +118,10 @@ def collectResults (pathResults : List (List Edge × List CheckResult))
 /-- Two entries report the same inconsistency when everything except the
     path (and so the path head) matches: the same source constraint (by
     location and bound) against the same target constraint, on the same hop
-    at the same site. -/
+    at the same site. The display origin of a composed bound
+    (`guaranteeAtFile/Line`) is not compared: two upstream origins that
+    produce the same bound on the same hop are one finding, reported with the
+    kept (shortest) path's origin. -/
 def sameFinding (a b : ResultEntry) : Bool :=
   a.severity == b.severity &&
   a.guaranteeFile == b.guaranteeFile && a.guaranteeLine == b.guaranteeLine &&
