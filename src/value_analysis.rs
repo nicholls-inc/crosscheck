@@ -1718,16 +1718,20 @@ impl<'a> Scope<'a> {
         self.annotation_class(self.module, collection_element(annotation)?)
     }
 
-    /// Whether the elements iterable `iter` yields may be None, when known:
-    /// instances of a known class (`element_class`) are not; a parameter
-    /// annotated as a collection says so by its element annotation.
+    /// Whether the elements iterable `iter` yields may be None, when known.
+    /// A parameter says so by its element annotation (`list[Decimal]`: no;
+    /// `list[Optional[Line]]`: yes); only that is consulted for a parameter,
+    /// since `element_class` strips `Optional` from the element type. The
+    /// elements of a queryset or a bulk-written local (`element_class`) are
+    /// model instances, never None.
     fn element_nullable(&self, iter: &Expr, ctx: &Ctx) -> Option<bool> {
-        if self.element_class(iter, ctx).is_some() {
-            return Some(false);
+        if let Expr::Name(n) = iter {
+            if let Some(p) = self.param(n.id.as_str()) {
+                let element = collection_element(p.annotation.as_ref()?)?;
+                return crate::function_extractor::annotation_nullability(element, &[]);
+            }
         }
-        let Expr::Name(n) = iter else { return None };
-        let annotation = self.param(n.id.as_str())?.annotation.as_ref()?;
-        crate::function_extractor::annotation_nullability(collection_element(annotation)?, &[])
+        self.element_class(iter, ctx).map(|_| false)
     }
 
     /// The model whose `objects.bulk_update(name, ...)` / `bulk_create(name)`
@@ -3013,6 +3017,18 @@ mod tests {
             let src = format!("def f(a, xs):\n    {expr}\n");
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, None, "{expr}");
         }
+        // Unless the element annotation excludes None; a project class element
+        // that may be None stays unknown (Optional is not stripped).
+        let typed = |ann: &str| {
+            let src = format!(
+                "from dataclasses import dataclass\nfrom decimal import Decimal\nfrom typing import List, Optional\n\n@dataclass\nclass Line:\n    n: int\n\ndef f(xs: {ann}):\n    max(xs, key=lambda l: l.n)\n"
+            );
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        assert_eq!(typed("List[Decimal]"), Some(false));
+        assert_eq!(typed("List[Line]"), Some(false));
+        assert_eq!(typed("List[Optional[Line]]"), None);
+        assert_eq!(typed("Optional[List[Optional[Decimal]]]"), None);
         // Augmented assignment: never None afterwards (flow-insensitively).
         let f = one("def f(xs):\n    total = 0\n    for x in xs:\n        total += x\n    total\n");
         assert_eq!((f.nullable, f.precision), (Some(false), None));
