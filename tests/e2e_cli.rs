@@ -142,6 +142,34 @@ fn deeply_nested_code_does_not_crash() {
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
+/// An edge whose endpoint is not an extracted node is dropped with a warning
+/// (not silently): one manual override names a function that does not exist.
+#[test]
+fn dropped_override_edge_is_reported() {
+    let tmp = TempDir::new().unwrap();
+    let checker = fake_checker(tmp.path(), &format!("printf '%s' '{VALID}'\nexit 0"));
+    let app = app(tmp.path(), "def f(x):\n    return x\n\ndef g(y):\n    return f(y)\n");
+    let overrides = tmp.path().join("overrides.toml");
+    std::fs::write(
+        &overrides,
+        "[[edges]]\nsource = \"g\"\ntarget = \"f\"\nrelationship = \"calls\"\n\n\
+         [[edges]]\nsource = \"g\"\ntarget = \"nowhere\"\nrelationship = \"calls\"\n",
+    )
+    .unwrap();
+    let out = run(
+        &app,
+        &checker,
+        &tmp.path().join("c.sqlite"),
+        &["--overrides", overrides.to_str().unwrap()],
+    );
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("Warning: 1 manual override edge(s) dropped: an endpoint matches no extracted node"),
+        "{err}"
+    );
+    assert!(!err.contains("discovered edge(s) dropped"), "{err}");
+}
+
 fn alive(pid: i32) -> bool {
     // Signal 0: existence check. A zombie still exists until reaped, so also
     // look at its state.

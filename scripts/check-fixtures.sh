@@ -76,4 +76,44 @@ PY
   then :; else failed=1; cat "$tmp/$name.err" >&2; fi
 done
 
+# A database the checker cannot translate faithfully fails with exit code 2
+# (not 1, "inconsistencies found", and not a check that silently skips the
+# constraint): a malformed contract value, or a file that is not SQLite.
+expect_exit_2() {
+  local label=$1 db=$2
+  set +e
+  "$checker" "$db" >"$tmp/$label.out" 2>"$tmp/$label.err"
+  local code=$?
+  set -e
+  if [ "$code" -eq 2 ] && grep -q '^Error:' "$tmp/$label.err"; then
+    echo "ok   $label: exit 2"
+  else
+    echo "FAIL $label: exit $code, expected 2 with an error on stderr"
+    cat "$tmp/$label.err" >&2
+    failed=1
+  fi
+}
+corrupt() {
+  python3 - "$tmp/r3_choices_forms.sqlite" "$tmp/$1.sqlite" "$2" "$3" <<'PY'
+import shutil, sqlite3, sys
+src, dst, col, val = sys.argv[1:5]
+shutil.copy(src, dst)
+db = sqlite3.connect(dst)
+if col == "param_choices":
+    n = db.execute("UPDATE contracts SET param_choices = ? WHERE id = "
+                   "(SELECT MIN(id) FROM contracts WHERE param_choices IS NOT NULL)", (val,)).rowcount
+else:
+    n = db.execute(f"UPDATE contracts SET {col} = ? WHERE id = "
+                   "(SELECT MIN(id) FROM contracts WHERE constraint_type = 'range')", (val,)).rowcount
+db.commit()
+sys.exit(0 if n == 1 else 1)
+PY
+}
+corrupt malformed_choices param_choices '["a"'
+expect_exit_2 malformed_choices "$tmp/malformed_choices.sqlite"
+corrupt malformed_decimal param_max_decimal '1e-3'
+expect_exit_2 malformed_decimal "$tmp/malformed_decimal.sqlite"
+echo "not a database" >"$tmp/garbage.sqlite"
+expect_exit_2 not_sqlite "$tmp/garbage.sqlite"
+
 exit "$failed"
