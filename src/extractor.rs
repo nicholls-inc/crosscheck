@@ -782,13 +782,27 @@ pub fn extract_with(
         names: &names,
     };
     let edges = dedupe(discovered.edges);
-    let mut edge_count = write_edges(&db, &edges, &ids)?;
+    let (mut edge_count, dropped) = write_edges(&db, &edges, &ids)?;
+    // Discovered edges name nodes by the qualified names they were written
+    // under, so a drop means the discoverer and the writers disagree: an
+    // edge, and the check on it, silently missing.
+    if dropped > 0 {
+        eprintln!(
+            "Warning: {dropped} discovered edge(s) dropped: an endpoint is not an extracted node"
+        );
+    }
 
     // Load and write manual overrides
     if let Some(overrides_path) = overrides_path {
         if overrides_path.exists() {
             let override_edges = edge_discovery::load_overrides(overrides_path)?;
-            edge_count += write_edges(&db, &override_edges, &ids)?;
+            let (written, dropped) = write_edges(&db, &override_edges, &ids)?;
+            edge_count += written;
+            if dropped > 0 {
+                eprintln!(
+                    "Warning: {dropped} manual override edge(s) dropped: an endpoint matches no extracted node"
+                );
+            }
         }
     }
     db.finish()?;
@@ -989,9 +1003,15 @@ struct NodeIds<'a> {
 }
 
 /// Write edges (and each edge's override rows, after the edge itself).
-/// Edges whose endpoints are not extracted nodes are dropped.
-fn write_edges(db: &ContractDb, edges: &[DiscoveredEdge], ids: &NodeIds) -> Result<usize> {
+/// Edges whose endpoints are not extracted nodes are dropped. Returns
+/// (edges written, edges dropped for an unknown endpoint).
+fn write_edges(
+    db: &ContractDb,
+    edges: &[DiscoveredEdge],
+    ids: &NodeIds,
+) -> Result<(usize, usize)> {
     let mut written = 0;
+    let mut dropped = 0;
     for edge in edges {
         // Discovered edges carry qualified names; only manual overrides are
         // matched loosely (display name or dotted suffix).
@@ -1013,6 +1033,7 @@ fn write_edges(db: &ContractDb, edges: &[DiscoveredEdge], ids: &NodeIds) -> Resu
                 .or_else(|| lookup(ids.functions, &edge.target_name)),
         };
         let (Some(src_id), Some(tgt_id)) = (source_id, target_id) else {
+            dropped += 1;
             continue;
         };
         let relationship = match edge.relationship.as_str() {
@@ -1046,7 +1067,7 @@ fn write_edges(db: &ContractDb, edges: &[DiscoveredEdge], ids: &NodeIds) -> Resu
             db.insert_contract(&row)?;
         }
     }
-    Ok(written)
+    Ok((written, dropped))
 }
 
 /// A node ID by qualified name, else by display name, else by a unique
