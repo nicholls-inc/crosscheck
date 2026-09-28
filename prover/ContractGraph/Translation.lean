@@ -193,8 +193,9 @@ def parseJsonStringArray (s : String) : Option (List String) :=
   | _ => none
 
 /-- `param_choices`: a JSON array of strings when it starts with `[`
-    (malformed JSON gives no choices list: the requirement is not checked),
-    otherwise the legacy comma-separated list. -/
+    (`none` if malformed; `readContractGraph` rejects a database holding
+    such a row, see `ContractRow.malformed`), otherwise the legacy
+    comma-separated list. -/
 def parseChoices (s : String) : Option (List String) :=
   if s.trimAscii.toString.startsWith "[" then parseJsonStringArray s
   else some (s.splitOn ",")
@@ -293,6 +294,21 @@ def ContractRow.lowerScaled (row : ContractRow) (scale : Nat) : Option Int :=
 /-- A row's upper bound at scale `scale`. -/
 def ContractRow.upperScaled (row : ContractRow) (scale : Nat) : Option Int :=
   scaledBound row.maxDecimal row.maxMicros row.maxReal row.maxValue true (!row.isGuarantee) scale
+
+/-- Why a contract row cannot be translated faithfully, if it cannot: a
+    `param_choices` value that starts like a JSON array but is not one, or an
+    exact decimal bound that is not a decimal. Translation would read such a
+    value as no constraint at all (dropping it silently), so
+    `readContractGraph` rejects the database instead (exit code 2). -/
+def ContractRow.malformed (row : ContractRow) : Option String :=
+  let loc := s!"{row.sourceFile}:{row.sourceLine} ({row.constraintType})"
+  if row.choices.any (fun s => (parseChoices s).isNone) then
+    some s!"malformed param_choices at {loc}"
+  else if row.minDecimal.any (fun s => (parseDecimal s).isNone) then
+    some s!"malformed param_min_decimal at {loc}"
+  else if row.maxDecimal.any (fun s => (parseDecimal s).isNone) then
+    some s!"malformed param_max_decimal at {loc}"
+  else none
 
 /-- A row's lower bound in micros. -/
 def ContractRow.lowerMicros (row : ContractRow) : Option Int := row.lowerScaled 6
@@ -591,12 +607,17 @@ def buildGraph
     2. Read all rows from nodes, contracts, edges tables
     3. Group node contracts by node_id and contract_role; attach per-edge
        rows and target_param filtering to each edge's endpoint copies
-    4. Construct the typed ContractGraph structure -/
+    4. Construct the typed ContractGraph structure
+
+    Throws when a contract row is malformed (`ContractRow.malformed`): a
+    constraint that cannot be read is an error, not an absent constraint. -/
 def readContractGraph (dbPath : String) : IO ContractGraph := do
   let db ← openWith dbPath .readonly
   let nodeRows ← readNodes db
   let contractRows ← readContracts db
   let edgeRows ← readEdges db
+  if let some msg := contractRows.findSome? ContractRow.malformed then
+    throw (IO.userError s!"cannot translate the database: {msg}")
   return buildGraph nodeRows contractRows edgeRows
 
 end ContractGraph

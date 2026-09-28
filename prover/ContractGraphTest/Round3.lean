@@ -276,6 +276,15 @@ def depRow (kind e : String) : ContractRow :=
 #guard parseChoices "[\"a\"" == none
 #guard parseChoices "[\"a\",]" == none
 
+-- A malformed value is rejected when the database is read, not translated
+-- as "no constraint" (`readContractGraph` fails, exit code 2).
+#guard (({ nodeId := 1, constraintType := "choices", choices := some "[\"a\"" } : ContractRow).malformed).isSome
+#guard (({ nodeId := 1, constraintType := "choices", choices := some "[\"a\"]" } : ContractRow).malformed).isNone
+#guard (({ nodeId := 1, constraintType := "choices", choices := some "a,b" } : ContractRow).malformed).isNone
+#guard (({ nodeId := 1, constraintType := "range", maxDecimal := some "1e-3" } : ContractRow).malformed).isSome
+#guard (({ nodeId := 1, constraintType := "range", minDecimal := some "x" } : ContractRow).malformed).isSome
+#guard (({ nodeId := 1, constraintType := "range", minDecimal := some "-0.25", maxDecimal := some "10" } : ContractRow).malformed).isNone
+
 /-- status: CharField(choices=[("a", ...), ("x", ...)]), JSON-encoded. -/
 def choicesGraph (written : Option String) : ContractGraph :=
   buildGraph

@@ -866,8 +866,13 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln s!"Error: database file not found: {dbPath}"
         return 2
       else do
-        -- Read the contract graph from SQLite
-        let graph ← readContractGraph dbPath
+        -- Read the contract graph from SQLite. A database that cannot be
+        -- read or translated is a translation failure (exit code 2), not an
+        -- uncaught exception (which the runtime reports as exit code 1).
+        let read ← (some <$> readContractGraph dbPath).tryCatch fun e => do
+          IO.eprintln s!"Error: {e}"
+          pure none
+        let some graph := read | return 2
         -- Run the checker pipeline
         let output := runChecker graph opts.maxStates opts.maxPerEdge
         -- Output JSON to stdout
