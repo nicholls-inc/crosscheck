@@ -223,12 +223,20 @@ struct CheckerRun {
 /// Run the checker, collecting its output. While it runs, an interrupt
 /// (SIGINT / SIGTERM / SIGHUP) to this process kills it too.
 fn run_checker(mut command: Command) -> std::io::Result<CheckerRun> {
-    let mut child = command
+    signals::begin_spawn();
+    let spawned = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
-    signals::set_child(child.id());
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(e) => {
+            signals::end_spawn(None);
+            return Err(e);
+        }
+    };
+    signals::end_spawn(Some(child.id()));
     let mut out = child.stdout.take().expect("piped stdout");
     let mut err = child.stderr.take().expect("piped stderr");
     let err_reader = std::thread::spawn(move || {
@@ -265,19 +273,52 @@ fn find_lean_binary() -> Option<PathBuf> {
 /// minutes and use gigabytes).
 #[cfg(unix)]
 mod signals {
-    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
     /// PID of the running checker, or 0.
     static CHILD: AtomicI32 = AtomicI32::new(0);
+    /// Between `begin_spawn` and `end_spawn`: a child may exist whose PID is
+    /// not yet in `CHILD`.
+    static SPAWNING: AtomicBool = AtomicBool::new(false);
+    /// A signal that arrived while `SPAWNING` (0: none).
+    static PENDING: AtomicI32 = AtomicI32::new(0);
 
     extern "C" fn on_signal(sig: libc::c_int) {
         let pid = CHILD.load(Ordering::SeqCst);
-        // Only async-signal-safe calls here: kill(2) and _exit(2).
+        // Only async-signal-safe calls here: atomics, kill(2) and _exit(2).
         unsafe {
             if pid > 0 {
                 libc::kill(pid, libc::SIGKILL);
+            } else if SPAWNING.load(Ordering::SeqCst) {
+                // The child may already exist with its PID unrecorded:
+                // `end_spawn` kills it and exits.
+                PENDING.store(sig, Ordering::SeqCst);
+                return;
             }
             libc::_exit(128 + sig);
+        }
+    }
+
+    pub fn begin_spawn() {
+        SPAWNING.store(true, Ordering::SeqCst);
+    }
+
+    /// Record the spawned child (if any), then act on a signal that arrived
+    /// during the spawn. `CHILD` is set before `SPAWNING` is cleared, so a
+    /// signal at any point either sees the PID or is left in `PENDING`.
+    pub fn end_spawn(pid: Option<u32>) {
+        if let Some(pid) = pid {
+            set_child(pid);
+        }
+        SPAWNING.store(false, Ordering::SeqCst);
+        let sig = PENDING.swap(0, Ordering::SeqCst);
+        if sig != 0 {
+            unsafe {
+                if let Some(pid) = pid {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+                libc::_exit(128 + sig);
+            }
         }
     }
 
@@ -299,4 +340,6 @@ mod signals {
 mod signals {
     pub fn install() {}
     pub fn set_child(_pid: u32) {}
+    pub fn begin_spawn() {}
+    pub fn end_spawn(_pid: Option<u32>) {}
 }
