@@ -65,6 +65,8 @@ The trust boundary matters for correctness claims:
 - **Trusted-not-proved, documentation only:** `BehaviorModel.lean` (~100 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program). No theorem references its definitions yet: it states the semantics the extractor and `constraintImplies` are meant to follow, it is not a premise of `runChecker_sound_all`.
 - **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
 
+`BehaviorModel.lean` and the statements of the soundness theorems are protected surfaces: a change to either needs a stated rationale in the PR (see `.claude/rules/protected-surfaces.md`).
+
 ## Key design patterns
 
 **Dependent expressions:** Postconditions can be functions of inputs (e.g., `max(input_precision, 3)`). The `DepExpr` type, parser (`parseDepExpr`), and evaluator (`evalDepExpr`) in DependentExpr.lean handle this. The grammar: `expr := literal | "input_" name | func "(" expr "," expr ")"` where func is max/min/add/sub.
