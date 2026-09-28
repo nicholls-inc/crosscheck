@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "split_energy -> EnergyRecord.energy",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 3"
+    },
+    {
+      "path": "split_energy -> EnergyRecord.off_peak_energy",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 3"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Pricer.rounded -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2"
+    }
+  ]
+}

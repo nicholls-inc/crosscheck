@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "get_label -> Coord.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ]
+}

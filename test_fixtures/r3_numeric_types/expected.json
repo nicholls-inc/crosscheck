@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "as_float -> StrictModel.price",
+      "source_guarantee": "type = float",
+      "target_requirement": "type = Decimal",
+      "target": "StrictModel.price"
+    },
+    {
+      "path": "as_decimal -> StrictField.count",
+      "source_guarantee": "type = Decimal",
+      "target_requirement": "type = int",
+      "target": "StrictField.count"
+    },
+    {
+      "path": "as_float -> Row.price",
+      "source_guarantee": "type = float",
+      "target_requirement": "type = Decimal",
+      "target": "Row.price"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [
+    {
+      "path": "make -> Invoice.total",
+      "contains": "precision"
+    }
+  ]
+}

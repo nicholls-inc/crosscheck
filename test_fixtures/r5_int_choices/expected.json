@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "set_tier_bad -> Plan.tier",
+      "source_guarantee": "choices in [5]",
+      "target_requirement": "choices in [1, 2]",
+      "target": "Plan.tier"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad -> P.x",
+      "source_guarantee": "range ≤ 0.1234568",
+      "target_requirement": "range ≤ 0.1234567",
+      "target": "P.x"
+    },
+    {
+      "path": "bad -> P.y",
+      "source_guarantee": "range ≥ 0.1234566",
+      "target_requirement": "range ≥ 0.1234567",
+      "target": "P.y"
+    }
+  ]
+}

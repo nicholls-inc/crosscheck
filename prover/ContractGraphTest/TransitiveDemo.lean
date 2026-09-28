@@ -60,11 +60,12 @@ def energyFieldNode : Node :=
     ]
     postconditions := [] }
 
-/-- Edge: compute_offpeak → split_energy -/
+/-- Edge: compute_offpeak flows_to split_energy (its result is split_energy's argument).
+    v2: a `calls` edge would not be followed by `enumeratePaths`. -/
 def edge1 : Edge :=
   { source := computeOffpeakNode
     target := splitEnergyNode
-    relationship := .calls }
+    relationship := .flowsTo }
 
 /-- Edge: split_energy → EnergyRecord.energy -/
 def edge2 : Edge :=
@@ -123,5 +124,13 @@ def transitiveGraph : ContractGraph :=
   IO.println s!"  Paths checked: {output.summary.pathsChecked}"
   IO.println s!"  Results: {output.results.length}"
   IO.println (outputToJson output)
+
+-- The composed path carries the error; the edge split_energy → field checked
+-- alone cannot resolve max(input_precision, 3) and only warns.
+#guard (runChecker transitiveGraph).exitCode == 1
+#guard ((runChecker transitiveGraph).results.filter (·.severity == "error")).map (·.path)
+  == [["compute_offpeak", "split_energy", "EnergyRecord.energy"]]
+#guard ((runChecker transitiveGraph).results.filter (·.severity == "warning")).map (·.path)
+  == [["split_energy", "EnergyRecord.energy"]]
 
 end ContractGraphTest.TransitiveDemo

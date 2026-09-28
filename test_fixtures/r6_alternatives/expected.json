@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "apply -> StockItem.qty",
+      "source_guarantee": "range ≥ -1",
+      "target_requirement": "range ≥ 0",
+      "target": "StockItem.qty"
+    },
+    {
+      "path": "local_defs -> StockItem.code",
+      "source_guarantee": "length ≤ 9",
+      "target_requirement": "length ≤ 6",
+      "target": "StockItem.code"
+    },
+    {
+      "path": "fee_of -> StockItem.fee",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "StockItem.fee"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "apply -> StockItem.qty",
+      "contains": "range"
+    }
+  ]
+}

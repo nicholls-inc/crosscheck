@@ -1,0 +1,41 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "repeated_bad -> Entry.label",
+      "source_guarantee": "length ≤ 30",
+      "target_requirement": "length ≤ 10",
+      "target": "Entry.label"
+    },
+    {
+      "path": "negative_bad -> Entry.amount",
+      "source_guarantee": "range ≥ -1",
+      "target_requirement": "range ≥ 0",
+      "target": "Entry.amount"
+    },
+    {
+      "path": "sci -> Entry.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Entry.amount"
+    },
+    {
+      "path": "const_bad -> Entry.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Entry.amount"
+    },
+    {
+      "path": "long_const_bad -> Entry.label",
+      "source_guarantee": "length ≤ 30",
+      "target_requirement": "length ≤ 10",
+      "target": "Entry.label"
+    },
+    {
+      "path": "Runner.rate_entry -> Entry.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Entry.amount"
+    }
+  ]
+}

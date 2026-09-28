@@ -1,8 +1,15 @@
 pub mod body_analyzer;
+pub mod bounds;
+pub mod dataclass_extractor;
 pub mod db;
 pub mod defaults;
 pub mod docstring_parser;
 pub mod edge_discovery;
 pub mod extractor;
+pub mod flow;
 pub mod function_extractor;
 pub mod model_extractor;
+pub mod report;
+pub mod resolve;
+pub mod source;
+pub mod value_analysis;

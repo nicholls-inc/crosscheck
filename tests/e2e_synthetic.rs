@@ -57,7 +57,8 @@ class MyModel(models.Model):
 
     let choices = query_contract_by_type(&conn, "MyModel.status", "choices");
     assert_eq!(choices.len(), 1, "should have a choices contract");
-    assert_eq!(choices[0].param_choices.as_deref(), Some("A,I"));
+    // A JSON array (round 3); the legacy encoding was the comma list "A,I".
+    assert_eq!(choices[0].param_choices.as_deref(), Some(r#"["A","I"]"#));
 }
 
 #[test]
@@ -85,18 +86,23 @@ def compute(x: Decimal) -> Optional[Decimal]:
         "Optional[Decimal] return should produce nullability postcondition"
     );
 
-    // Optional[Decimal] does NOT produce a Decimal type postcondition — the effective
-    // type from split('[') is "Optional", which isn't in the value_types list.
-    // Only bare Decimal or tuple[Decimal, ...] produce type postconditions.
+    // Optional[Decimal] produces a Decimal type postcondition for the non-None
+    // value; the None case is carried by the nullability postcondition above.
     let type_contracts = query_contract_by_type(&conn, "compute", "type");
     let decimal_post: Vec<_> = type_contracts
         .iter()
+        .filter(|c| c.contract_role.as_deref() == Some("postcondition"))
         .filter(|c| c.param_type_name.as_deref() == Some("Decimal"))
         .collect();
-    assert!(
-        decimal_post.is_empty(),
-        "Optional[Decimal] should not produce Decimal type postcondition (effective type is Optional)"
+    assert_eq!(
+        decimal_post.len(),
+        1,
+        "Optional[Decimal] should produce one Decimal type postcondition"
     );
+
+    // The `return None` path and the Optional annotation give one nullability
+    // postcondition, not two.
+    assert_eq!(postconditions.len(), 1, "expected a single nullability postcondition");
 }
 
 #[test]
@@ -217,4 +223,35 @@ def split(total: Decimal) -> tuple[Decimal, Decimal]:
         1,
         "tuple[Decimal, Decimal] should produce a single Decimal type postcondition"
     );
+}
+
+#[test]
+fn test_manual_override_edges_resolve_by_suffix_or_display_name() {
+    let fixture_dir = TempDir::new().unwrap();
+    let db_dir = TempDir::new().unwrap();
+    fs::create_dir(fixture_dir.path().join("billing")).unwrap();
+    fs::write(
+        fixture_dir.path().join("billing/models.py"),
+        "from django.db import models\nclass EnergyRecord(models.Model):\n    energy = models.DecimalField(max_digits=5, decimal_places=3)\n",
+    )
+    .unwrap();
+    fs::write(fixture_dir.path().join("billing/utils.py"), "def split_energy(x):\n    return x\n").unwrap();
+    let overrides = db_dir.path().join("overrides.toml");
+    fs::write(
+        &overrides,
+        "[[edges]]\nsource = \"pkg.billing.utils.split_energy\"\ntarget = \"EnergyRecord.energy\"\nrelationship = \"writes_to\"\n",
+    )
+    .unwrap();
+    let db_path = db_dir.path().join("contracts.sqlite");
+    let result =
+        crosscheck_contracts::extractor::extract(fixture_dir.path(), Some(&overrides), "4.2", Some(&db_path))
+            .unwrap();
+    let conn = rusqlite::Connection::open(result).unwrap();
+    let edges = query_edges(&conn);
+    assert_eq!(edges.len(), 1, "{edges:?}");
+    assert_eq!(
+        (edges[0].source_name.as_str(), edges[0].target_name.as_str(), edges[0].discovery.as_str()),
+        ("split_energy", "EnergyRecord.energy", "manual")
+    );
+    assert!(!edges[0].source_override);
 }

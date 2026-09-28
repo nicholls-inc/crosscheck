@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad_status -> Order.status",
+      "source_guarantee": "choices in [pending]",
+      "target_requirement": "choices in [active, expired]",
+      "target": "Order.status"
+    },
+    {
+      "path": "bad_level -> Order.level",
+      "source_guarantee": "choices in [3]",
+      "target_requirement": "choices in [1, 2]",
+      "target": "Order.level"
+    },
+    {
+      "path": "bad_colour -> Order.colour",
+      "source_guarantee": "choices in [green]",
+      "target_requirement": "choices in [red, blue]",
+      "target": "Order.colour"
+    },
+    {
+      "path": "bad_ticket -> Ticket.kind",
+      "source_guarantee": "choices in [epic]",
+      "target_requirement": "choices in [bug, task]",
+      "target": "Ticket.kind"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "any_size -> Order.size",
+      "contains": "choices"
+    }
+  ]
+}

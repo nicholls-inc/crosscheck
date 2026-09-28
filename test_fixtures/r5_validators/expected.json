@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "four -> AfterPayment.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "AfterPayment.amount"
+    },
+    {
+      "path": "four -> OtherFieldPayment.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "OtherFieldPayment.amount"
+    },
+    {
+      "path": "four -> StrictPayment.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "StrictPayment.amount"
+    }
+  ]
+}

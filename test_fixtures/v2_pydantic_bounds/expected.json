@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "make_qty -> Item.qty",
+      "source_guarantee": "range ≥ 0",
+      "target_requirement": "range ≥ 1"
+    }
+  ]
+}

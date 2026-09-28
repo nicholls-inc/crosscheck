@@ -1,0 +1,41 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "full -> Battery.level",
+      "source_guarantee": "range ≤ 101",
+      "target_requirement": "range ≤ 100",
+      "target": "Battery.level"
+    },
+    {
+      "path": "full -> Battery.voltage_mv",
+      "source_guarantee": "range ≤ 5000",
+      "target_requirement": "range ≤ 4400",
+      "target": "Battery.voltage_mv"
+    },
+    {
+      "path": "full -> Battery.code",
+      "source_guarantee": "length ≤ 5",
+      "target_requirement": "length ≤ 4",
+      "target": "Battery.code"
+    },
+    {
+      "path": "load -> Settings.workers",
+      "source_guarantee": "range ≥ 0",
+      "target_requirement": "range ≥ 1",
+      "target": "Settings.workers"
+    },
+    {
+      "path": "load -> Settings.region",
+      "source_guarantee": "length ≤ 12",
+      "target_requirement": "length ≤ 9",
+      "target": "Settings.region"
+    },
+    {
+      "path": "hero -> Hero.name",
+      "source_guarantee": "length ≤ 9",
+      "target_requirement": "length ≤ 8",
+      "target": "Hero.name"
+    }
+  ]
+}

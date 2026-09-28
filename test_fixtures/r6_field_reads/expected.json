@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "audit_short -> AuditLog.short_ref",
+      "source_guarantee": "length ≤ 12",
+      "target_requirement": "length ≤ 6",
+      "target": "AuditLog.short_ref"
+    },
+    {
+      "path": "audit_rate -> AuditLog.rate",
+      "source_guarantee": "precision ≤ 2",
+      "target_requirement": "precision ≤ 1",
+      "target": "AuditLog.rate"
+    },
+    {
+      "path": "audit_rate -> AuditLog.points",
+      "source_guarantee": "range ≥ -1",
+      "target_requirement": "range ≥ 0",
+      "target": "AuditLog.points"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [
+    {
+      "path": "clamp_floor -> Invoice.total",
+      "contains": "precision"
+    }
+  ]
+}

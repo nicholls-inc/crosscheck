@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad -> Price.amount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Price.amount"
+    },
+    {
+      "path": "bad_fee -> Fee.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Fee.amount"
+    },
+    {
+      "path": "point_bad -> Point.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Point.label"
+    }
+  ]
+}

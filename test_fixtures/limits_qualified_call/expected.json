@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "label -> Invoice.customer",
+      "source_guarantee": "length ≤ 64",
+      "target_requirement": "length ≤ 32"
+    }
+  ]
+}

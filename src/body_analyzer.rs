@@ -1,6 +1,22 @@
-use ruff_python_ast::{self as ast, Expr, Stmt};
+//! Return-value contracts of a function body, without project context.
+//!
+//! The extractor itself uses `value_analysis::Scope::return_facts` with the
+//! whole project in view; `analyze_body` runs the same analysis on a bare
+//! body (no parameters, imports or other functions known), which is what
+//! the property tests exercise.
 
-use crate::db::{ContractRole, ConstraintType};
+use std::collections::HashMap;
+
+use ruff_python_ast::Stmt;
+#[cfg(test)]
+use ruff_python_ast::Expr;
+
+use crate::db::{ConstraintType, ContractRole};
+use crate::flow::FunctionFlow;
+use crate::resolve::ProjectIndex;
+#[cfg(test)]
+use crate::value_analysis::decimal_literal_places;
+use crate::value_analysis::{Scope, ValueFacts};
 
 /// A contract inferred from function body analysis.
 #[derive(Debug)]
@@ -11,231 +27,47 @@ pub struct BodyContract {
     pub param_nullable: Option<i64>,
 }
 
-/// Analyze a function body to infer contracts.
+/// Analyze a function body to infer postconditions of its return value:
+/// nullability (a `None` return, a None producer, or falling off the end
+/// of a value-returning body) and a static decimal-place bound.
 pub fn analyze_body(body: &[Stmt]) -> Vec<BodyContract> {
+    let index = ProjectIndex::default();
+    let summaries: HashMap<String, ValueFacts> = HashMap::new();
+    let flow = FunctionFlow::of(body);
+    let facts = Scope::new(&index, &summaries, None, &flow).return_facts();
+
     let mut contracts = Vec::new();
-
-    // Collect all return statements
-    let returns = collect_returns(body);
-
-    if returns.is_empty() {
-        return contracts;
-    }
-
-    // Check for None returns (nullability)
-    let has_none_return = returns.iter().any(is_none_return);
-    if has_none_return {
+    if let Some(nullable) = facts.nullable {
         contracts.push(BodyContract {
             constraint_type: ConstraintType::Nullability,
             role: ContractRole::Postcondition,
             param_value: None,
-            param_nullable: Some(1),
+            param_nullable: Some(nullable as i64),
         });
     }
-
-    // Check for precision patterns across all return expressions
-    let precisions: Vec<Option<i64>> = returns
-        .iter()
-        .filter_map(|r| r.as_ref())
-        .map(|expr| analyze_precision(expr))
-        .collect();
-
-    // Take the weakest (largest) precision bound
-    if !precisions.is_empty() && precisions.iter().all(|p| p.is_some()) {
-        let max_precision = precisions.iter().filter_map(|p| *p).max().unwrap_or(0);
+    if let (false, Some(p)) = (facts.always_none, facts.precision.and_then(|p| p.as_static())) {
         contracts.push(BodyContract {
             constraint_type: ConstraintType::Precision,
             role: ContractRole::Postcondition,
-            param_value: Some(max_precision),
+            param_value: Some(p),
             param_nullable: None,
         });
     }
-
     contracts
 }
 
-/// Collect all return expressions from a function body.
-fn collect_returns(stmts: &[Stmt]) -> Vec<Option<&Expr>> {
-    let mut returns = Vec::new();
-    for stmt in stmts {
-        collect_returns_from_stmt(stmt, &mut returns);
-    }
-    returns
-}
-
-/// Recursively collect return expressions from a statement.
-fn collect_returns_from_stmt<'a>(stmt: &'a Stmt, returns: &mut Vec<Option<&'a Expr>>) {
-    match stmt {
-        Stmt::Return(ret) => {
-            returns.push(ret.value.as_deref());
-        }
-        Stmt::If(if_stmt) => {
-            for s in &if_stmt.body {
-                collect_returns_from_stmt(s, returns);
-            }
-            for s in &if_stmt.elif_else_clauses {
-                for stmt in &s.body {
-                    collect_returns_from_stmt(stmt, returns);
-                }
-            }
-        }
-        Stmt::For(for_stmt) => {
-            for s in &for_stmt.body {
-                collect_returns_from_stmt(s, returns);
-            }
-        }
-        Stmt::While(while_stmt) => {
-            for s in &while_stmt.body {
-                collect_returns_from_stmt(s, returns);
-            }
-        }
-        Stmt::Try(try_stmt) => {
-            for s in &try_stmt.body {
-                collect_returns_from_stmt(s, returns);
-            }
-            for handler in &try_stmt.handlers {
-                let ast::ExceptHandler::ExceptHandler(h) = handler;
-                for s in &h.body {
-                    collect_returns_from_stmt(s, returns);
-                }
-            }
-            for s in &try_stmt.orelse {
-                collect_returns_from_stmt(s, returns);
-            }
-            for s in &try_stmt.finalbody {
-                collect_returns_from_stmt(s, returns);
-            }
-        }
-        Stmt::With(with_stmt) => {
-            for s in &with_stmt.body {
-                collect_returns_from_stmt(s, returns);
-            }
-        }
-        _ => {}
-    }
-}
-
 /// Check if a return expression is None.
+#[cfg(test)]
 fn is_none_return(expr: &Option<&Expr>) -> bool {
-    match expr {
-        Some(Expr::NoneLiteral(_)) => true,
-        None => true, // bare `return`
-        _ => false,
-    }
+    matches!(expr, Some(Expr::NoneLiteral(_)) | None)
 }
 
-/// Analyze an expression for precision patterns.
-/// Returns the number of decimal places if a precision pattern is detected.
-fn analyze_precision(expr: &Expr) -> Option<i64> {
-    match expr {
-        // Tuple return: analyze each element and take the max
-        Expr::Tuple(tuple) => {
-            let precisions: Vec<Option<i64>> =
-                tuple.elts.iter().map(analyze_precision).collect();
-            if precisions.iter().all(|p| p.is_some()) {
-                precisions.into_iter().flatten().max()
-            } else {
-                None
-            }
-        }
-        // Method call: check for .quantize() or round()
-        Expr::Call(call) => analyze_call_precision(call),
-        // Binary operation: precision widening
-        Expr::BinOp(binop) => analyze_binop_precision(binop),
-        // Name reference: no precision info
-        _ => None,
-    }
-}
-
-/// Analyze a call expression for precision patterns.
-fn analyze_call_precision(call: &ast::ExprCall) -> Option<i64> {
-    match call.func.as_ref() {
-        // value.quantize(Decimal('0.001'))
-        Expr::Attribute(attr) if attr.attr.as_str() == "quantize" => {
-            if let Some(arg) = call.arguments.args.first() {
-                extract_decimal_precision(arg)
-            } else {
-                None
-            }
-        }
-        // round(value, n)
-        Expr::Name(name) if name.id.as_str() == "round" => {
-            if call.arguments.args.len() >= 2 {
-                if let Expr::NumberLiteral(num) = &call.arguments.args[1] {
-                    match &num.value {
-                        ast::Number::Int(i) => i.as_i64(),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        }
-        // For other calls (e.g. Model.objects.create(field=val.quantize(...))),
-        // analyze keyword argument values for precision patterns.
-        _ => {
-            let kwarg_precisions: Vec<i64> = call
-                .arguments
-                .keywords
-                .iter()
-                .filter_map(|kw| {
-                    kw.arg.as_ref()?; // skip **kwargs
-                    analyze_precision(&kw.value)
-                })
-                .collect();
-            if kwarg_precisions.is_empty() {
-                None
-            } else {
-                kwarg_precisions.into_iter().max()
-            }
-        }
-    }
-}
-
-/// Extract precision from a Decimal('0.001') style argument.
+/// Decimal places of a `Decimal('0.001')` call expression.
+#[cfg(test)]
 fn extract_decimal_precision(expr: &Expr) -> Option<i64> {
     match expr {
-        Expr::Call(call) => {
-            // Decimal('0.001')
-            if let Some(arg) = call.arguments.args.first() {
-                if let Expr::StringLiteral(s) = arg {
-                    let val = s.value.to_string();
-                    if let Some(dot_pos) = val.find('.') {
-                        let decimal_part = &val[dot_pos + 1..];
-                        // Count significant digits
-                        Some(
-                            decimal_part
-                                .trim_end_matches('0')
-                                .len()
-                                .max(decimal_part.len())
-                                as i64,
-                        )
-                    } else {
-                        Some(0)
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Analyze binary operation for precision widening.
-fn analyze_binop_precision(binop: &ast::ExprBinOp) -> Option<i64> {
-    let left_prec = analyze_precision(&binop.left);
-    let right_prec = analyze_precision(&binop.right);
-
-    match (left_prec, right_prec) {
-        (Some(l), Some(r)) => match binop.op {
-            ast::Operator::Add | ast::Operator::Sub => Some(l.max(r) + 1),
-            ast::Operator::Mult => Some(l + r),
-            ast::Operator::Div => Some(l + r), // conservative estimate
+        Expr::Call(call) => match call.arguments.args.first() {
+            Some(Expr::StringLiteral(s)) => decimal_literal_places(s.value.to_str()),
             _ => None,
         },
         _ => None,
@@ -376,5 +208,85 @@ mod tests {
             .iter()
             .find(|c| c.constraint_type.as_str() == "precision");
         assert_eq!(precision.unwrap().param_value, Some(7));
+    }
+
+    fn precision_of(contracts: &[BodyContract]) -> Option<i64> {
+        contracts
+            .iter()
+            .find(|c| c.constraint_type.as_str() == "precision")
+            .and_then(|c| c.param_value)
+    }
+
+    #[test]
+    fn test_precision_traced_through_local_variable() {
+        let cs = analyze_function(
+            "def f(a):\n    x = a.quantize(Decimal('0.0001'))\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), Some(4));
+    }
+
+    /// Postconditions describe the return value only: an object built from
+    /// a 4dp value has no precision of its own (the write edge carries it).
+    #[test]
+    fn test_constructed_object_has_no_precision() {
+        let cs = analyze_function(
+            "def f(a):\n    x = a.quantize(Decimal('0.0001'))\n    return Invoice(total=x)\n",
+        );
+        assert_eq!(precision_of(&cs), None);
+    }
+
+    #[test]
+    fn test_fall_through_and_none_producers_are_nullable() {
+        let nullable = |src: &str| {
+            analyze_function(src)
+                .iter()
+                .find(|c| c.constraint_type.as_str() == "nullability")
+                .and_then(|c| c.param_nullable)
+        };
+        assert_eq!(nullable("def f(x):\n    if x:\n        return 'a'\n"), Some(1));
+        assert_eq!(nullable("def f(d, k):\n    return d.get(k)\n"), Some(1));
+        assert_eq!(nullable("def f(x):\n    return 'a'\n"), Some(0));
+        assert_eq!(nullable("def f(x):\n    return x\n"), None);
+    }
+
+    #[test]
+    fn test_none_return_does_not_hide_precision() {
+        let cs = analyze_function(
+            "def f(a):\n    if a is None:\n        return None\n    return a.quantize(Decimal('0.01'))\n",
+        );
+        assert_eq!(precision_of(&cs), Some(2));
+        assert!(cs.iter().any(|c| c.constraint_type.as_str() == "nullability"));
+    }
+
+    #[test]
+    fn test_quantize_with_named_step() {
+        let cs = analyze_function(
+            "def f(a):\n    step = Decimal('0.001')\n    return a.quantize(step)\n",
+        );
+        assert_eq!(precision_of(&cs), Some(3));
+    }
+
+    #[test]
+    fn test_reassignment_takes_max_and_unknown_poisons() {
+        let cs = analyze_function(
+            "def f(a, b):\n    x = a.quantize(Decimal('0.1'))\n    if b:\n        x = a.quantize(Decimal('0.001'))\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), Some(3));
+        let cs = analyze_function(
+            "def f(a, b):\n    x = a.quantize(Decimal('0.1'))\n    if b:\n        x = a\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), None);
+    }
+
+    #[test]
+    fn test_loop_growth_is_not_bounded() {
+        let cs = analyze_function(
+            "def f(a, n):\n    x = Decimal('0.1')\n    while n:\n        x = x * Decimal('0.1')\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), None);
+        let cs = analyze_function(
+            "def f(xs):\n    x = Decimal('0.1')\n    for x in xs:\n        pass\n    return x\n",
+        );
+        assert_eq!(precision_of(&cs), None);
     }
 }

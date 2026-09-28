@@ -60,30 +60,28 @@ fn test_bug1_model_precision_3dp() {
     assert_eq!(c.verification_level, "EXTRACTED");
 }
 
+/// v2: the 6dp values are the arguments of `objects.create`, so they are the
+/// override rows of the two `writes_to` edges; `split_energy`'s own
+/// postconditions describe its return value (an EnergyRecord) and carry no
+/// precision.
 #[test]
 fn test_bug1_function_precision_6dp() {
     let (_tmp, conn) = bug1_db();
 
     let precision = query_contract_by_type(&conn, "split_energy", "precision");
     assert!(
-        !precision.is_empty(),
-        "split_energy should have a precision contract"
+        precision.iter().all(|c| c.contract_role.as_deref() != Some("postcondition")),
+        "split_energy's return value has no precision: {precision:?}"
     );
 
-    let postconditions: Vec<&ContractRow> = precision
-        .iter()
-        .filter(|c| c.contract_role.as_deref() == Some("postcondition"))
-        .collect();
-    assert_eq!(
-        postconditions.len(),
-        1,
-        "expected exactly 1 precision postcondition"
-    );
-    assert_eq!(
-        postconditions[0].param_decimal_places,
-        Some(6),
-        "body analyzer should infer 6dp from quantize(Decimal('0.000001'))"
-    );
+    let edges = query_edges(&conn);
+    for field in ["EnergyRecord.energy", "EnergyRecord.off_peak_energy"] {
+        assert_eq!(
+            override_rows(&conn, &edges, "split_energy", field, "writes_to", None),
+            ["nullability=0", "precision=6", "type=Decimal"],
+            "body analyzer should infer 6dp from quantize(Decimal('0.000001')) for {field}"
+        );
+    }
 }
 
 #[test]
@@ -91,9 +89,17 @@ fn test_bug1_writes_to_edges() {
     let (_tmp, conn) = bug1_db();
 
     let edges = query_edges(&conn);
+    // The `return` of split_energy (annotated `-> EnergyRecord`) is a write
+    // to its return contract node (round 6).
+    let returns: Vec<&EdgeRow> = edges
+        .iter()
+        .filter(|e| e.relationship == "writes_to" && e.target_name.ends_with(".<return>"))
+        .collect();
+    assert_eq!(returns.len(), 1, "one return site");
+    assert_eq!(returns[0].target_name, "split_energy.<return>");
     let writes_to: Vec<&EdgeRow> = edges
         .iter()
-        .filter(|e| e.relationship == "writes_to")
+        .filter(|e| e.relationship == "writes_to" && !e.target_name.ends_with(".<return>"))
         .collect();
 
     assert_eq!(writes_to.len(), 2, "expected 2 writes_to edges");
@@ -105,6 +111,8 @@ fn test_bug1_writes_to_edges() {
     for edge in &writes_to {
         assert_eq!(edge.source_name, "split_energy");
         assert_eq!(edge.discovery, "ast_pattern");
+        assert!(edge.source_override, "the written values are expressions in split_energy");
+        assert_eq!(edge.target_param, None);
     }
 }
 
@@ -141,21 +149,12 @@ fn test_bug1_implicit_null_defaults() {
 fn test_bug1_type_contracts() {
     let (_tmp, conn) = bug1_db();
 
-    // Model fields should have type=Decimal precondition (from DecimalField)
+    // A DecimalField accepts int, float and Decimal alike (Django converts),
+    // so it has no type contract (round 3, F4).
     let model_type = query_contract_by_type(&conn, "EnergyRecord.energy", "type");
-    let decimal_types: Vec<&ContractRow> = model_type
-        .iter()
-        .filter(|c| c.param_type_name.as_deref() == Some("Decimal"))
-        .collect();
-    assert_eq!(
-        decimal_types.len(),
-        1,
-        "EnergyRecord.energy should have a Decimal type contract"
-    );
-    assert_eq!(
-        decimal_types[0].contract_role.as_deref(),
-        Some("precondition"),
-        "model field type should be a precondition"
+    assert!(
+        model_type.is_empty(),
+        "EnergyRecord.energy (numeric field) should have no type contract, got {model_type:?}"
     );
 
     // split_energy returns EnergyRecord (a model class name), which is intentionally

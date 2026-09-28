@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "optional_read -> Wallet.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Wallet.label"
+    },
+    {
+      "path": "min_or_none -> Wallet.points",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Wallet.points"
+    }
+  ]
+}

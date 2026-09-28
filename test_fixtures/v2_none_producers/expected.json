@@ -1,0 +1,30 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "pick_ternary -> Bag.ternary",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "pick_matched -> Bag.matched",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "pick_attr -> Bag.attr",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "pick_next -> Bag.nxt",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "pick_latest -> Bag.latest",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ]
+}

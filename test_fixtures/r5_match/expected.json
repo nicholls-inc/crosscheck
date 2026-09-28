@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "rate_partial -> Band.rate",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Band.rate"
+    },
+    {
+      "path": "rate_guarded -> Band.rate",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Band.rate"
+    },
+    {
+      "path": "rate_4dp -> Band.rate",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Band.rate"
+    }
+  ]
+}

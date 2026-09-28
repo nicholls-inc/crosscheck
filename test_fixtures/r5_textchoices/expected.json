@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Invoice.cancel -> Invoice.status",
+      "source_guarantee": "choices in [cancl]",
+      "target_requirement": "choices in [draft, paid]",
+      "target": "Invoice.status"
+    }
+  ]
+}

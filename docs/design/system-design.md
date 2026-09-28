@@ -315,7 +315,7 @@ return value.quantize(Decimal('0.000001')) # → ensures: precision(result) <= 6
 return round(value, 3)                     # → ensures: precision(result) <= 3
 
 # Pattern 3: Arithmetic on Decimal values → precision widening
-return a + b    # → ensures: precision(result) <= max(prec_a, prec_b) + 1
+return a + b    # → ensures: precision(result) <= max(prec_a, prec_b)   (Decimal exponent of a sum is min(e_a, e_b); corrected in round 3, was "+ 1")
 return a * b    # → ensures: precision(result) <= prec_a + prec_b
 
 # Pattern 4: None return in any code path → nullable postcondition

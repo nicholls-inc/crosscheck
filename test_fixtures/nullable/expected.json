@@ -1,0 +1,21 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "apply_discount -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2"
+    },
+    {
+      "path": "apply_discount -> Invoice.discount",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2"
+    },
+    {
+      "path": "apply_discount -> apply_discount.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "apply_discount.<return>"
+    }
+  ]
+}

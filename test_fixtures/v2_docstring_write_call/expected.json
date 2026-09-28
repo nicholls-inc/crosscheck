@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "record_reading -> Reading.kwh",
+      "source_guarantee": "precision ≤ 5",
+      "target_requirement": "precision ≤ 3"
+    }
+  ]
+}

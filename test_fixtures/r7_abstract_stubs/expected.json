@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Legacy.fee -> Settlement.fee",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Settlement.fee"
+    },
+    {
+      "path": "Flat.price -> Settlement.fee",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Settlement.fee"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "Rounds.price -> Settlement.fee",
+      "contains": "precision"
+    }
+  ]
+}

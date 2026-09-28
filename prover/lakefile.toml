@@ -1,6 +1,7 @@
 name = "ContractGraph"
 version = "0.1.0"
 leanVersion = "v4.28.0"
+defaultTargets = ["ContractGraph", "contract-graph-checker", "ContractGraphTest"]
 
 [[require]]
 name = "leansqlite"

@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "rate_for -> Quote.rate",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Quote.rate"
+    },
+    {
+      "path": "rate_for -> Quote.rate",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Quote.rate"
+    },
+    {
+      "path": "quote_default -> Quote.rate",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Quote.rate"
+    },
+    {
+      "path": "quote_default -> Quote.label",
+      "source_guarantee": "length ≤ 9",
+      "target_requirement": "length ≤ 8",
+      "target": "Quote.label"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "quote_override -> Quote.label",
+      "contains": "length"
+    }
+  ]
+}

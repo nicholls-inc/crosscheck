@@ -1,6 +1,7 @@
 -- BehaviorModel.lean
 -- TRUSTED-NOT-PROVED. These definitions are axiomatized claims about
--- Django's runtime behavior. Version: Django 4.2 / 5.x.
+-- Django's runtime behavior (Django 4.2 / 5.x) and about plain-Python data
+-- classes (dataclasses, attrs, NamedTuple, TypedDict, pydantic v2).
 
 namespace ContractGraph.BehaviorModel
 
@@ -41,5 +42,59 @@ def maxValueAccepts (limit : Int) (value : Int) : Prop :=
 /-- choices accepts only listed values. -/
 def choicesAccepts (validChoices : List String) (value : String) : Prop :=
   value ∈ validChoices
+
+/-! ## Plain-Python data classes
+
+Fields of `@dataclass`, attrs, `NamedTuple` and `TypedDict` classes carry
+their contract in the type annotation only. Python does not enforce it at
+runtime; the claim is that a well-typed program (as a type checker such as
+mypy or pyright accepts it) never stores a value outside the annotation.
+pydantic v2 `BaseModel` fields are enforced by validation at construction. -/
+
+/-- `x: T` (no `None` in the annotation) accepts only non-None values;
+    `Optional[T]`, `T | None` and `Union[T, None]` accept None. -/
+def annotationAcceptsNull (annotationAllowsNone : Bool) (isNull : Bool) : Prop :=
+  isNull = true → annotationAllowsNone = true
+
+/-- pydantic `Field(max_digits=m, decimal_places=d)` / `condecimal(...)`:
+    validation rejects values with more fractional or total digits,
+    the same predicate as Django's DecimalField. -/
+def pydanticDecimalAccepts (maxDigits decimalPlaces : Nat)
+    (totalDigits fractionalDigits integerDigits : Nat) : Prop :=
+  decimalFieldAccepts maxDigits decimalPlaces totalDigits fractionalDigits integerDigits
+
+/-- pydantic `Field(max_length=n)` / `constr(max_length=n)` on `str`. -/
+def pydanticMaxLengthAccepts (maxLength : Nat) (actualLength : Nat) : Prop :=
+  actualLength ≤ maxLength
+
+/-- pydantic `Field(le=n)`; `Field(lt=n)` on `int` is extracted as `le=n-1`. -/
+def pydanticLeAccepts (limit : Int) (value : Int) : Prop :=
+  value ≤ limit
+
+/-! ## Numeric bounds, scaled to integers
+
+Range bounds (`le`/`ge`, `MinValueValidator`/`MaxValueValidator`,
+`PositiveIntegerField`, `condecimal(ge=...)`, on int, float and Decimal
+fields) are compared as integers value × 10^D, with one D per database: the
+most decimal places of any exact decimal bound (`param_min_decimal`/
+`param_max_decimal`), and at least 6 when a bound is only given in micros
+(`param_*_micros`, value × 10^6) or as a REAL. The claim is that for bounds
+with at most D decimal places, `v ≤ b ↔ v·10^D ≤ b·10^D` (and likewise `≥`),
+so decimal and micros bounds compare exactly at any size; that the
+extractor's micros for a bound with more than 6 places are rounded toward
+the requirement's stricter side and the guarantee's weaker side; and that
+legacy REAL bounds, multiplied by 10^D and rounded the same way (a product
+within 10^-4 of an integer is taken as that integer, floating-point noise
+such as 0.3 × 10^6), denote bounds with at most D decimal places. The
+functions below state the comparison with the scaled integers (named
+"micros" for the common case D = 6). -/
+
+/-- `v ≤ limit`, both in micros. -/
+def maxValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
+  valueMicros ≤ limitMicros
+
+/-- `v ≥ limit`, both in micros. -/
+def minValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
+  valueMicros ≥ limitMicros
 
 end ContractGraph.BehaviorModel

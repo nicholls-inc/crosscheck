@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Engine.price -> Quote.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Quote.total"
+    },
+    {
+      "path": "PreciseTariff.price -> Quote.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Quote.total"
+    },
+    {
+      "path": "Discounted.price -> Quote.total",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Quote.total"
+    },
+    {
+      "path": "Discounted.price -> Quote.total",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Quote.total"
+    }
+  ]
+}

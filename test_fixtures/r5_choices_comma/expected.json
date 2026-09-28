@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bad -> Plan.tier",
+      "source_guarantee": "choices in [3]",
+      "target_requirement": "choices in [1, 2]",
+      "target": "Plan.tier"
+    },
+    {
+      "path": "bad -> Plan.code",
+      "source_guarantee": "choices in [a]",
+      "target_requirement": "choices in [a,b, c]",
+      "target": "Plan.code"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "parse_kwh -> parse_kwh.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "parse_kwh.<return>"
+    },
+    {
+      "path": "label -> label.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "label.<return>"
+    },
+    {
+      "path": "unit -> unit.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "unit.<return>"
+    },
+    {
+      "path": "as_text -> as_text.<return>",
+      "source_guarantee": "type = int",
+      "target_requirement": "type = str",
+      "target": "as_text.<return>"
+    },
+    {
+      "path": "maybe -> Reading.kwh",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Reading.kwh"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Meter.bump -> Meter.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2"
+    },
+    {
+      "path": "correct -> Reading.kwh",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 3"
+    }
+  ]
+}

@@ -137,3 +137,49 @@ fn test_transitive_docstring_dominates_body() {
         "the single precision postcondition should be the dependent-expression one from the docstring"
     );
 }
+
+/// v2 rows: the argument of `split_energy(offpeak)` is an expression in
+/// compute_offpeak (override, bound to parameter `offpeak`), and the value
+/// written by split_energy depends on its only input.
+#[test]
+fn test_transitive_v2_rows() {
+    let (_tmp, conn) = transitive_db();
+    let edges = query_edges(&conn);
+    // The returned call `split_energy(offpeak)` has a call-site node: one
+    // more argument edge, into it. Round 6: both functions are annotated, so
+    // each `return` is an edge into its return contract node.
+    assert_eq!(edges.len(), 7, "{edges:#?}");
+    assert_eq!(edges.iter().filter(|e| e.target_is_site).count(), 1);
+    // `return split_energy(offpeak)`: from the call-site node.
+    let ret = the_edge(&edges, "split_energy", "compute_offpeak.<return>", "writes_to", None);
+    assert!(ret.source_is_site && !ret.source_override);
+    the_edge(&edges, "split_energy", "split_energy.<return>", "writes_to", None);
+    the_edge(&edges, "compute_offpeak", "split_energy", "calls", None);
+    assert_eq!(
+        override_rows(&conn, &edges, "compute_offpeak", "split_energy", "flows_to", Some("offpeak")),
+        ["nullability=0", "precision=4", "type=Decimal"]
+    );
+    // Round 6: `energy_val` has two reaching definitions, one edge each (the
+    // same site): 3 places, and the input's places.
+    let mut alternatives: Vec<Vec<String>> = edges
+        .iter()
+        .filter(|e| e.source_name == "split_energy" && e.target_name == "EnergyRecord.energy")
+        .map(|e| render_rows(&query_edge_contracts(&conn, e.id)))
+        .collect();
+    alternatives.sort();
+    assert_eq!(
+        alternatives,
+        [
+            vec!["nullability=0", "precision=3", "type=Decimal"],
+            vec!["nullability=0", "precision=input_precision", "type=Decimal"],
+        ]
+    );
+    assert_eq!(
+        node_rows(&conn, "split_energy", "precondition"),
+        [
+            "offpeak: nullability=0",
+            "offpeak: precision=10 [ASSUMED]",
+            "offpeak: type=Decimal",
+        ]
+    );
+}

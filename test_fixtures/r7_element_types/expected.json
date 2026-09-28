@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "vat_total -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Invoice.total"
+    },
+    {
+      "path": "vat_total_start -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Invoice.total"
+    },
+    {
+      "path": "largest_vat -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Invoice.total"
+    },
+    {
+      "path": "last_vat -> Invoice.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Invoice.total"
+    }
+  ]
+}

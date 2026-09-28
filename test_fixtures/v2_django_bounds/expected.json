@@ -1,0 +1,10 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "adjust_reading -> Meter.reading",
+      "source_guarantee": "range ≥ -10",
+      "target_requirement": "range ≥ 0"
+    }
+  ]
+}

@@ -5,3 +5,6 @@ target/
 prover/.lake/
 
 .env
+
+# Claude Code agent worktrees
+.claude/worktrees/

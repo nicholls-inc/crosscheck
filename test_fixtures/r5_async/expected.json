@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "fetch -> R.rate",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 4",
+      "target": "R.rate"
+    },
+    {
+      "path": "fetch -> R.rate",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 4",
+      "target": "R.rate"
+    },
+    {
+      "path": "fetch -> FxRate.rate",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 4",
+      "target": "FxRate.rate"
+    },
+    {
+      "path": "fetch -> FxRate.rate",
+      "source_guarantee": "precision ≤ 6",
+      "target_requirement": "precision ≤ 4",
+      "target": "FxRate.rate"
+    }
+  ]
+}

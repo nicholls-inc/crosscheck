@@ -1,0 +1,27 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "plain -> record",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "record"
+    },
+    {
+      "path": "cached -> record",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "record"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "log_event -> record",
+      "contains": "null"
+    },
+    {
+      "path": "log_event_typed -> record",
+      "contains": "null"
+    }
+  ]
+}

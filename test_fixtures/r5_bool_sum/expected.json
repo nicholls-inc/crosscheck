@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "Parser.number -> Customer.account_code",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Customer.account_code"
+    },
+    {
+      "path": "code_bad -> Customer.account_code",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Customer.account_code"
+    },
+    {
+      "path": "code_local -> Customer.account_code",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Customer.account_code"
+    },
+    {
+      "path": "totals -> Totals.subtotal",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Totals.subtotal"
+    },
+    {
+      "path": "totals_list -> Totals.subtotal",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Totals.subtotal"
+    }
+  ]
+}
