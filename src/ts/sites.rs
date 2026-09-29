@@ -6,8 +6,10 @@ use std::collections::HashMap;
 use oxc_allocator::Vec as ArenaVec;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{walk, Visit};
+use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::GetSpan;
 use oxc_syntax::scope::ScopeFlags;
+use oxc_syntax::symbol::SymbolId;
 
 use super::types::{self, FileId, Shape, TypeIndex};
 use super::ParsedModule;
@@ -102,22 +104,22 @@ pub struct Site {
 
 /// Every site in one module (not a `.d.ts`).
 pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a>) -> Vec<Site> {
-    let mut bindings = Bindings::default();
-    bindings.visit_program(&module.program);
+    // Real scopes: every identifier reference resolves to the binding it names,
+    // so no shadowing, hoisting or block rule is modelled here.
+    let scoping = SemanticBuilder::new().build(&module.program).semantic.into_scoping();
     let mut v = SiteVisitor {
         index,
         file,
         module,
-        bindings: bindings.0,
-        frames: vec![Frame::new(
-            FunctionRef {
-                qualified: format!("{}.<module>", module.rel),
-                short: format!("<module {}>", module.rel),
-                file: module.rel.clone(),
-                line: 1,
-            },
-            Span::new(0, module.source.len() as u32),
-        )],
+        scoping,
+        sources: HashMap::new(),
+        typed: HashMap::new(),
+        frames: vec![FunctionRef {
+            qualified: format!("{}.<module>", module.rel),
+            short: format!("<module {}>", module.rel),
+            file: module.rel.clone(),
+            line: 1,
+        }],
         guards: HashMap::new(),
         sites: Vec::new(),
     };
@@ -128,40 +130,17 @@ pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a
 /// Functions whose first argument is the function they wrap.
 const WRAPPERS: [&str; 4] = ["useCallback", "useMemo", "memo", "forwardRef"];
 
-/// Offsets of every binding identifier in a file, by name: parameters,
-/// variables, function, class and import names, catch parameters.
-#[derive(Default)]
-struct Bindings(HashMap<String, Vec<u32>>);
-
-impl<'a> Visit<'a> for Bindings {
-    fn visit_binding_identifier(&mut self, id: &BindingIdentifier<'a>) {
-        self.0.entry(id.name.as_str().to_string()).or_default().push(id.span.start);
-    }
-}
-
-/// A function (named or anonymous) and the facts it binds, each with the
-/// offset of its binding identifier.
-struct Frame {
-    function: FunctionRef,
-    span: Span,
-    /// `const v = JSON.parse(..)` bindings.
-    sources: HashMap<String, (RuntimeSource, u32)>,
-    /// Parameters and `const`s with an annotation: what the name guarantees.
-    typed: HashMap<String, (ValueFacts, u32)>,
-}
-
-impl Frame {
-    fn new(function: FunctionRef, span: Span) -> Frame {
-        Frame { function, span, sources: HashMap::new(), typed: HashMap::new() }
-    }
-}
-
 struct SiteVisitor<'i, 'a> {
     index: &'i TypeIndex<'a>,
     file: FileId,
     module: &'i ParsedModule<'a>,
-    bindings: HashMap<String, Vec<u32>>,
-    frames: Vec<Frame>,
+    scoping: Scoping,
+    /// `const v = JSON.parse(..)` bindings.
+    sources: HashMap<SymbolId, RuntimeSource>,
+    /// Parameters and variables with an annotation: what the binding guarantees.
+    typed: HashMap<SymbolId, ValueFacts>,
+    /// Enclosing functions, innermost last: sites are attributed to the top.
+    frames: Vec<FunctionRef>,
     /// Guard evidence per cast (by the cast's span start), found from the
     /// statement after `const v = <cast>`.
     guards: HashMap<u32, HashMap<String, ValueFacts>>,
@@ -180,31 +159,27 @@ impl<'a> SiteVisitor<'_, 'a> {
             .join(" ")
     }
 
-    fn frame(&mut self) -> &mut Frame {
-        self.frames.last_mut().expect("module frame")
-    }
-
     /// Enter a named function. Its qualified name carries the line, so two
     /// same-named functions in one file (methods of two classes) stay two nodes.
     fn push_function(&mut self, name: &str, span: Span, params: Option<&FormalParameters<'a>>) {
         let line = self.line(span.start);
-        let function = FunctionRef {
+        self.frames.push(FunctionRef {
             qualified: format!("{}.{name}@{line}", self.module.rel),
             short: name.to_string(),
             file: self.module.rel.clone(),
             line,
-        };
-        self.push_scope(function, span, params);
+        });
+        self.record_params(params);
     }
 
     /// Enter an anonymous function, attributed to the enclosing named function.
-    fn push_anonymous(&mut self, span: Span, params: Option<&FormalParameters<'a>>) {
-        let function = self.frames.last().expect("module frame").function.clone();
-        self.push_scope(function, span, params);
+    fn push_anonymous(&mut self, params: Option<&FormalParameters<'a>>) {
+        let function = self.frames.last().expect("module frame").clone();
+        self.frames.push(function);
+        self.record_params(params);
     }
 
-    fn push_scope(&mut self, function: FunctionRef, span: Span, params: Option<&FormalParameters<'a>>) {
-        let mut frame = Frame::new(function, span);
+    fn record_params(&mut self, params: Option<&FormalParameters<'a>>) {
         for p in params.into_iter().flat_map(|p| p.items.iter()) {
             let (BindingPattern::BindingIdentifier(id), Some(ann)) = (&p.pattern, &p.type_annotation) else {
                 continue;
@@ -213,23 +188,13 @@ impl<'a> SiteVisitor<'_, 'a> {
             if p.optional {
                 facts.nullable = Some(true);
             }
-            frame.typed.insert(id.name.as_str().to_string(), (facts, id.span.start));
+            self.typed.insert(id.symbol_id(), facts);
         }
-        self.frames.push(frame);
     }
 
-    /// The innermost recorded binding of `name`, read through `pick`. It is
-    /// trusted only when no other binding of `name` lies anywhere inside the
-    /// frame that holds it, so shadowing, hoisting and `var` never need
-    /// modelling: any second binding in reach makes the name unknown.
-    fn lookup<T>(&self, name: &str, pick: impl Fn(&Frame) -> Option<(T, u32)>) -> Option<T> {
-        let frame = self.frames.iter().rev().find(|f| pick(f).is_some())?;
-        let (found, at) = pick(frame)?;
-        let others = self.bindings.get(name).into_iter().flatten();
-        let shadowed = others
-            .filter(|&&o| o != at)
-            .any(|&o| frame.span.start <= o && o < frame.span.end);
-        (!shadowed).then_some(found)
+    /// The binding a reference resolves to; `None` for a global.
+    fn symbol(&self, id: &IdentifierReference<'a>) -> Option<SymbolId> {
+        self.scoping.get_reference(id.reference_id()).symbol_id()
     }
 
     /// The runtime source behind a cast operand: the call itself, or a
@@ -244,8 +209,7 @@ impl<'a> SiteVisitor<'_, 'a> {
                 }
                 Expression::CallExpression(c) => return RuntimeSource::of_call(c),
                 Expression::Identifier(id) => {
-                    let name = id.name.as_str();
-                    return self.lookup(name, |f| f.sources.get(name).copied());
+                    return self.symbol(id).and_then(|s| self.sources.get(&s).copied());
                 }
                 _ => return None,
             }
@@ -299,10 +263,7 @@ impl<'a> SiteVisitor<'_, 'a> {
             ..Default::default()
         };
         match x.without_parentheses() {
-            Expression::Identifier(id) => {
-                let name = id.name.as_str();
-                self.lookup(name, |f| f.typed.get(name).cloned())
-            }
+            Expression::Identifier(id) => self.symbol(id).and_then(|s| self.typed.get(&s).cloned()),
             Expression::StringLiteral(s) => Some(one(s.value.as_str().to_string())),
             Expression::NumericLiteral(n) => Some(one(types::numeric_text(n))),
             Expression::TemplateLiteral(t) if t.expressions.is_empty() => Some(one(
@@ -486,7 +447,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
             let name = id.name.as_str().to_string();
             if let Some(ann) = &d.type_annotation {
                 let facts = self.index.resolve(self.file, &ann.type_annotation).facts();
-                self.frame().typed.insert(name.clone(), (facts, id.span.start));
+                self.typed.insert(id.symbol_id(), facts);
             }
             let init = d.init.as_ref();
             // Only JSON.parse: tsc narrows a `string | null` binding by control
@@ -495,7 +456,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
             if decl.kind == VariableDeclarationKind::Const {
                 if let Some(Expression::CallExpression(c)) = init.map(Expression::without_parentheses) {
                     if RuntimeSource::of_call(c) == Some(RuntimeSource::JsonParse) {
-                        self.frame().sources.insert(name.clone(), (RuntimeSource::JsonParse, id.span.start));
+                        self.sources.insert(id.symbol_id(), RuntimeSource::JsonParse);
                     }
                 }
             }
@@ -511,13 +472,13 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     }
 
     fn visit_function(&mut self, f: &Function<'a>, flags: ScopeFlags) {
-        self.push_anonymous(f.span, Some(&f.params));
+        self.push_anonymous(Some(&f.params));
         walk::walk_function(self, f, flags);
         self.frames.pop();
     }
 
     fn visit_arrow_function_expression(&mut self, f: &ArrowFunctionExpression<'a>) {
-        self.push_anonymous(f.span, Some(&f.params));
+        self.push_anonymous(Some(&f.params));
         walk::walk_arrow_function_expression(self, f);
         self.frames.pop();
     }
@@ -527,7 +488,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
         if let Some(source) = self.site_source(&e.expression).filter(|_| !intermediate) {
             let target = self.target(&e.type_annotation);
             self.sites.push(Site {
-                function: self.frames.last().expect("module frame").function.clone(),
+                function: self.frames.last().expect("module frame").clone(),
                 line: self.line(e.span.start),
                 source,
                 target,
@@ -708,10 +669,10 @@ export function outer(client: string, xs: (string | null)[]) {
             "interface S { client: string; }
 export function fnDecl(client: 'a') { { function client() {} const s = JSON.parse('') as S; return s.client === client ? s : null; } }
 export function classDecl(client: 'a') { { class client {} const s = JSON.parse('') as S; return s.client === client ? s : null; } }
-export function lateConst(client: 'a') {
+export function lateConst(client: 'a') { {
   const f = () => { const s = JSON.parse('') as S; return s.client === client ? s : null; };
   const client = 'x' as string | null;
-  return f;
+  return f; }
 }
 export function varInBlock(client: 'a', c: boolean) {
   return () => { if (c) { var client = null; } const s = JSON.parse('') as S; return s.client === client ? s : null; };
@@ -724,6 +685,37 @@ export function varInBlock(client: 'a', c: boolean) {
                 "m.ts.f@5 -> m.ts.S.client @5: []",
                 "m.ts.fnDecl@2 -> m.ts.S.client @2: []",
                 "m.ts.varInBlock@9 -> m.ts.S.client @10: []",
+            ]
+        );
+    }
+
+    #[test]
+    fn block_bindings_stay_in_their_block() {
+        let g = graph(&[(
+            "m.ts",
+            "interface S { client: string; }
+declare const client: string | null;
+declare const d: string;
+export function leak(c: boolean, x: string) {
+  if (c) { const client: 'a' = 'a'; }
+  const s = JSON.parse(x) as S;
+  return s.client === client ? s : null;
+}
+export function leakSrc(c: boolean, x: string) {
+  if (c) { const d = JSON.parse(x); }
+  return d as S;
+}
+export function sib(c: boolean, x: string) {
+  if (c) { const d = JSON.parse(x); return d as S; }
+  else { const d = JSON.parse(x); return d as S; }
+}",
+        )]);
+        assert_eq!(
+            edges(&g),
+            vec![
+                "m.ts.leak@4 -> m.ts.S.client @6: [nullable=1]",
+                "m.ts.sib@13 -> m.ts.S.client @14: []",
+                "m.ts.sib@13 -> m.ts.S.client @15: []",
             ]
         );
     }
