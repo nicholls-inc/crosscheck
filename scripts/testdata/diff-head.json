@@ -1,0 +1,10 @@
+{"results": [
+  {"severity": "error", "path": ["readTheme", "Theme"], "source_guarantee": "nullable",
+   "target_requirement": "non-null", "site": {"file": "theme.ts", "line": 9}},
+  {"severity": "warning", "path": ["peek", "SsoStash.origin"], "source_guarantee": "nullability (unspecified)",
+   "target_requirement": "non-null", "site": {"file": "stash.ts", "line": 30}},
+  {"severity": "warning", "path": ["peek", "SsoStash.strategy"], "source_guarantee": "choices (unspecified)",
+   "target_requirement": "choices in [oauth_apple, oauth_google]", "site": {"file": "stash.ts", "line": 31}},
+  {"severity": "error", "path": ["readMode", "Mode"], "source_guarantee": "nullable",
+   "target_requirement": "non-null", "site": {"file": "mode.ts", "line": 3}}
+]}

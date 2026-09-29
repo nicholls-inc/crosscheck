@@ -1,0 +1,6 @@
+{"results": [
+  {"severity": "error", "path": ["readTheme", "Theme"], "source_guarantee": "nullable",
+   "target_requirement": "non-null", "site": {"file": "theme.ts", "line": 4}},
+  {"severity": "warning", "path": ["peek", "SsoStash.origin"], "source_guarantee": "nullability (unspecified)",
+   "target_requirement": "non-null", "site": {"file": "stash.ts", "line": 12}}
+]}
