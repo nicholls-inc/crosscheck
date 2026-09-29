@@ -41,9 +41,10 @@ checker does not run; it assumes the consuming project's CI runs tsc.
   The operand of `as T` (after unwrapping parentheses, and `as unknown` in `e as unknown as T`) must be one of these
   calls, or a `const` bound to `JSON.parse(..)` in an enclosing scope. A `const` bound to a storage or search-params
   read is not followed: tsc narrows its `string | null` by control flow (`if (!raw) return;`), which this frontend does
-  not model. A binding (a parameter's annotation, or a `JSON.parse` const) counts only when no other binding of the
-  same name, of any kind (declaration, function or class name, `var`, catch parameter, destructured name), lies
-  inside the function that holds it; otherwise the name is unknown. Shadowing and hoisting never need modelling.
+  not model. Names resolve through `oxc_semantic`'s scopes: a guard comparand or const operand carries facts only
+  when its reference resolves to the binding that recorded them (an annotated parameter or variable, or a
+  `JSON.parse` const), so shadowing, hoisting and block scope follow JavaScript's own rules. The frontend keeps no
+  scope model of its own.
   `as const`, `satisfies`, `!`, and casts on any other operand are not sites: tsc checks overlap on those, or the
   operand's own type is the proof.
 - **Target.** The asserted type `T`, resolved syntactically (see Types). Each target becomes `model` nodes (slots):
