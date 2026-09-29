@@ -16,9 +16,10 @@ result tsc types as `any` or `string | null`, asserted with `as T`. The TS front
 
 Trust split, stated in the README trust model: exit 0 on a TS project means that no extracted assertion site
 contradicts the type it asserts. A requirement the read does not guarantee (every field of `JSON.parse(raw) as T`) is a
-warning and leaves the exit code at 0, so gate a TypeScript review on warnings as well as errors. Sites whose target
-type is unresolved are not checked (see Types). Typed flows are delegated to `tsc --strict`, which the checker does
-not run and must pass in CI.
+warning and leaves the exit code at 0, so gate a TypeScript review on warnings as well as errors (the `warnings` count from
+`scripts/review-pr.sh`, or `severity: "warning"` entries in the JSON `results`). Sites whose target
+type is unresolved are not checked (see Types). Typed flows are delegated to tsc with `strictNullChecks`, which the
+checker does not run; it assumes the consuming project's CI runs tsc.
 
 ## Graph shape
 

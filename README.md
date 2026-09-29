@@ -31,7 +31,8 @@ Python / TypeScript project (.py, .ts, .tsx files)
 | Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
 | Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
-| TypeScript typed flows | Delegated to `tsc --strict`, which the checker does not run and CI must pass. For TypeScript, exit 0 means no extracted assertion site contradicts its type; unguaranteed requirements are warnings, and sites with unresolved target types are only counted on stderr |
+| TypeScript typed flows | Delegated to tsc with `strictNullChecks`, which the checker does not run; it assumes the consuming project's CI runs tsc. For TypeScript, exit 0 means no extracted assertion site contradicts its type. Unguaranteed requirements are warnings, and stderr is part of the verdict: it alone reports sites skipped for unresolved target types and a tsconfig without `strictNullChecks` |
+| TypeScript runtime reads | Trusted-not-proved: `JSON.parse` returns `any`, and storage `getItem` and `searchParams.get` return `string \| null` (`src/ts/sites.rs`; not yet in `BehaviorModel.lean`) |
 
 ## Quick start
 
@@ -235,7 +236,7 @@ A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` 
 
 The extractor reads `.ts`, `.tsx`, `.mts` and `.cts` files next to any `.py` files in the directory; `.d.ts` files feed type declarations only. JavaScript files are not read, so static or vendored JavaScript in a Python project cannot fail its run. The design is in `docs/design/typescript-frontend.md`.
 
-Under `strict`, tsc already proves every typed flow for nullability and literal-union membership, so the checker does not repeat that proof. It checks the places where a value enters the typed world by assertion instead: a runtime read asserted with `as T`.
+Under `strictNullChecks` (part of `strict`; no other flag is checked), tsc already proves every typed flow for nullability and literal-union membership, so the checker does not repeat that proof. It checks the places where a value enters the typed world by assertion instead: a runtime read asserted with `as T`.
 
 | Runtime read | Guarantee |
 |--------------|-----------|
@@ -245,7 +246,7 @@ Under `strict`, tsc already proves every typed flow for nullability and literal-
 
 The read may be the operand itself, the inner operand of `e as unknown as T`, or a `const` bound to `JSON.parse(..)`. A `const` bound to a storage or search-params read is not followed, because tsc narrows its `string | null` by control flow and this frontend does not. The asserted type is the target: a scalar alias or enum is one node (`Theme`), and an interface or object type is one node per property (`SsoStash.origin`), with a non-null requirement unless the property is optional or the type includes `null` / `undefined`, and a choices requirement when every union member is a string or number literal. Types resolve across files through imports and the `paths` of the nearest `tsconfig.json` in the directory or its ancestors (`extends` is not followed). Generic, mapped, conditional, `keyof` and intersection types are not resolved; a cast to one is skipped and counted on stderr only, so an unresolved type can only remove findings. The extractor also warns on stderr when that tsconfig turns off `strictNullChecks`, uses `extends`, or is missing.
 
-A read that guarantees nothing gives a warning for every requirement that could reject a value, and warnings leave the exit code at 0, so gate a TypeScript review on warnings too; `getItem(k) as Theme` without `| null` is an error. A guard on the cast's binding in the next statement discharges a property: `return v.p === x ? v : null` or `if (v.p !== x) return null;`, where `x` is an annotated parameter or `const`, or a literal. An optional parameter guarantees only that it may be undefined.
+A read that guarantees nothing gives a warning for every requirement that could reject a value, and warnings leave the exit code at 0, so gate a TypeScript review on warnings too: the `warnings` count that `scripts/review-pr.sh` prints, or the `results` entries with `severity: "warning"` in the JSON output; `getItem(k) as Theme` without `| null` is an error. A guard on the cast's binding in the next statement discharges a property: `return v.p === x ? v : null` or `if (v.p !== x) return null;`, where `x` is an annotated parameter or `const`, or a literal. An optional parameter guarantees only that it may be undefined.
 
 **Reviewing a pull request.** `scripts/review-pr.sh BASE_DIR HEAD_DIR [check options...]` checks both trees and prints the findings the head introduces, matched by path and requirement rather than line (`scripts/diff-findings.sh` does the comparison). On drivers-web PR #876 (base `3bb3312`, head `1ab6f57`; `test_fixtures/ts_sso_stash` is the distilled, reproducible copy) it reports three new warnings for `peekSsoStash`'s `JSON.parse(raw) as SsoStash`: `SsoStash.origin` is required and limited to `login` / `signup`, and `SsoStash.strategy` to the two OAuth strategies, but only `clientName` is checked after the cast.
 
