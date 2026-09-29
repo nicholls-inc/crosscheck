@@ -1,3 +1,5 @@
+> **Superseded (2026-09-29).** This document is historical. The `sorry` stubs it describes have all been proved, and there is no live `sorry` or `axiom` in `prover/ContractGraph/`. For the current state of the proofs, see the key theorems in `CLAUDE.md` (`checkEdge_sound`, `checkPath_sound`, `enumeratePaths_complete`, `closedStates_checkPath`, `runChecker_sound_all`). For the current measured behaviour of the tool, see `docs/evaluation/real-codebase-evaluation-2026-09.md`.
+
 # Task
 
   Fill in sorry stubs in Lean soundness theorems for the contract-graph-verifier project.

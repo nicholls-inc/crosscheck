@@ -79,12 +79,13 @@ defaults/
 prover/                     Lean checker + proofs
 ├── ContractGraph/
 │   ├── Types.lean          Types mirroring the SQLite schema
-│   ├── BehaviorModel.lean  Django + Python data class semantics (trusted axioms)
+│   ├── BehaviorModel.lean  Django + Python data class semantics (trusted, documentation only)
 │   ├── DependentExpr.lean  Parser/evaluator for dependent expressions
 │   ├── Translation.lean    SQLite → graph (overrides, per-parameter filtering, micros)
 │   ├── Checker.lean        Constraint checks + checkEdge_sound, checkEdgeAll_sound
 │   ├── Composition.lean    Composition, checkPath, checkPath_sound(_noErrors), IsDataPath
 │   ├── Search.lean         Pruned, indexed search with budget; completeness
+│   ├── StateSearch.lean    State-based breadth-first checker (runChecker), closedStates_checkPath
 │   ├── Diagnostics.lean    Structured error reporting
 │   └── Main.lean           Entry point, JSON output, runChecker_sound_all
 └── ContractGraphTest/      #guard test modules (one per feature round)
@@ -94,12 +95,21 @@ bench/                      Benchmark harness and public corpus
 ├── baseline.json           Committed results on the public corpus
 └── README.md               Corpus formats and usage guide
 
+scripts/
+├── check-fixtures.sh       Full pipeline on every fixture, compared with expected.json
+├── bench.py                Benchmark harness: run the corpus, compare with a baseline
+└── tests/                  Unit tests for bench.py
+
+docs/
+└── evaluation/             Measurements on real codebases (real-codebase-evaluation-2026-09.md)
+
 test_fixtures/              one directory per scenario, each with expected.json
 ├── bug1/, transitive/, nullable/          original PoC scenarios
 ├── plain_python/, plain_python_clean/     no Django
 ├── limits_*/                              v1 limitations, now fixed
 ├── v2_*/                                  data-flow model v2
-└── r3_*/                                  adversarial findings (round 3)
+├── r3_*/, r5_*/, r6_*/, r7_*/             adversarial findings (rounds 3, 5, 6, 7)
+└── r8_*/                                  findings from the pr-swarm review of PR #3
 ```
 
 ## Test fixtures

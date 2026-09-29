@@ -51,13 +51,15 @@ Each layer carries a different trust level. This is a defining architectural pro
 | Layer | Trust level | What it means |
 |-------|------------|---------------|
 | **Lean kernel** | Absolute | The kernel either accepts the proof or doesn't. This is the incorruptible oracle. |
-| **Layer 3: Consistency checker** | Proved | Soundness theorems are machine-checked by the Lean kernel. If `checkEdge` returns `Consistent`, the Lean propositions are logically consistent. |
-| **Layer 2: Translation** | Proved relative to behavior model | The translation from SQLite contracts to Lean propositions is proved correct *relative to the Django behavior model*. The behavior model itself is trusted-not-proved. |
-| **Django behavior model** | Trusted-not-proved | Axiomatized Lean definitions of what Django field constraints enforce at runtime. Small (~200 lines), auditable, version-pinned to Django 4.2/5.x. This is the irreducible trust assumption. |
+| **Layer 3: Consistency checker** | Proved | Soundness theorems are machine-checked by the Lean kernel (`checkEdge_sound`, `checkPath_sound`, `runChecker_sound_all`). Exit code 0 means every data path of the *translated graph* is stepwise sound. |
+| **Layer 2: Translation** | Not proved | `Translation.lean` has no theorems. It turns SQLite rows into Lean structures and rejects malformed rows (exit 2) rather than dropping them. Exit 0 is relative to the translated graph. |
+| **Django and data class behavior model** | Trusted-not-proved, documentation only | `BehaviorModel.lean` (about 100 lines) states what Django fields and plain-Python data classes enforce, version-pinned to Django 4.2/5.x. No theorem references its definitions yet, so it is not a premise of `runChecker_sound_all`; it states the semantics the extractor and `constraintImplies` are meant to follow. |
 | **Layer 1: Extraction** | Untrusted but auditable | AST parsing can misclassify, miss patterns, or produce wrong constraints. Results are tagged `[EXTRACTED]` and auditable via source file:line references. |
 | **Edge discovery** | Untrusted but auditable + manually overridable | Heuristic AST pattern matching for Django ORM write patterns. Manual config file for overrides and corrections. |
 
-The critical design constraint: **the soundness guarantee flows downward from the Lean kernel.** The checker's soundness proof says "if these Lean propositions are consistent, then the contracts are consistent." It does NOT say "these propositions accurately model the Django runtime." That claim rests on the behavior model, which is auditable but not proved.
+The critical design constraint: **the soundness guarantee covers the checker, not the inputs.** The proofs say "if the translated graph passes, every data path in it is stepwise sound." They do NOT say "the translation matches the SQLite rows," "the extraction matches the Python code," or "these constraints accurately model the Django runtime." No theorem yet links the checked constraints to `BehaviorModel.lean`. The translation is unproved and the behavior model is auditable but not proved. See the trust model in `README.md` and `CLAUDE.md`.
+
+> **Design intent vs. what was built.** An earlier version of this section described the translation as "proved relative to the behavior model" and the behavior model as an axiomatized file of about 200 lines. That was the design goal, not the result: the translation has no theorems, and `BehaviorModel.lean` is about 100 lines of definitions.
 
 ---
 
@@ -354,7 +356,7 @@ prover/
 ├── lakefile.toml              # Lake build config, depends on leansqlite
 ├── ContractGraph/
 │   ├── Types.lean             # Inductive types mirroring SQLite schema
-│   ├── BehaviorModel.lean     # Django field constraint semantics (trusted axioms)
+│   ├── BehaviorModel.lean     # Django field constraint semantics (trusted, documentation only)
 │   ├── Translation.lean       # SQLite → Lean proposition translation
 │   ├── DependentExpr.lean     # Parser and evaluator for dependent expressions
 │   ├── Checker.lean           # Consistency checker with soundness proofs
@@ -482,7 +484,7 @@ inductive CheckResult where
 
 ### 3.3 Django behavior model (BehaviorModel.lean)
 
-This is the irreducible trust assumption. Each definition formalizes what a Django field constraint enforces at runtime. The file must be small enough to audit line by line and stable enough to maintain across Django versions.
+This was the intended irreducible trust assumption; as built, `BehaviorModel.lean` is about 100 lines and no theorem references it yet. Each definition formalizes what a Django field constraint enforces at runtime. The file must be small enough to audit line by line and stable enough to maintain across Django versions.
 
 ```lean
 -- BehaviorModel.lean
