@@ -5,7 +5,6 @@ name: CGV CI
 
 on:
   pull_request:
-    branches: [main]
     paths: ["cgv/**", ".github/workflows/cgv-ci.yml"]
   push:
     branches: [main]
