@@ -88,3 +88,15 @@ fn test_typescript_assertion_sites() {
     );
     assert_eq!(the_edge(&edges, "loadTheme", "Theme", "writes_to", None).site_line, Some(4));
 }
+
+#[test]
+fn unparseable_javascript_does_not_stop_a_python_run() {
+    let tmp = TempDir::new().unwrap();
+    let app = tmp.path().join("app");
+    fs::create_dir_all(app.join("static")).unwrap();
+    fs::write(app.join("app.py"), "def f(x: int) -> int:\n    return x\n").unwrap();
+    fs::write(app.join("static/tpl.js"), "var cfg = {{ config_json|safe }};\n").unwrap();
+    let conn = extract_to_db(&app, &tmp);
+    let names: Vec<String> = query_nodes(&conn, "function").into_iter().map(|n| n.name).collect();
+    assert_eq!(names, vec!["f".to_string()]);
+}

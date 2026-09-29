@@ -1117,9 +1117,9 @@ struct SourceFiles {
     typescript: Vec<PathBuf>,
 }
 
-const TS_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+const TS_EXTENSIONS: [&str; 4] = ["ts", "tsx", "mts", "cts"];
 
-/// Find every .py and TypeScript / JavaScript file under `dir` (or the one
+/// Find every .py and TypeScript file under `dir` (or the one
 /// file `dir` names), skipping dot-directories, `__pycache__` and `node_modules`.
 fn find_source_files(dir: &Path) -> Result<SourceFiles> {
     let mut files = SourceFiles::default();
