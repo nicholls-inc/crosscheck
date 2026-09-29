@@ -44,7 +44,10 @@ checker does not run; it assumes the consuming project's CI runs tsc.
   not model. Names resolve through `oxc_semantic`'s scopes: a guard comparand or const operand carries facts only
   when its reference resolves to the binding that recorded them (an annotated parameter or variable, or a
   `JSON.parse` const), so shadowing, hoisting and block scope follow JavaScript's own rules. The frontend keeps no
-  scope model of its own.
+  scope model of its own. Facts are recorded in a pass over the whole module before sites are read, so a function may
+  use a binding declared below it. A reference that resolves to no binding (a global, or a `declare const`) carries no
+  facts. A closure reading an outer binding sees that binding's facts, and a reassigned `let` keeps the facts of its
+  annotation, which tsc checks every assignment against.
   `as const`, `satisfies`, `!`, and casts on any other operand are not sites: tsc checks overlap on those, or the
   operand's own type is the proof.
 - **Target.** The asserted type `T`, resolved syntactically (see Types). Each target becomes `model` nodes (slots):
