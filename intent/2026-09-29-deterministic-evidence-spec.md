@@ -14,12 +14,12 @@ Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `
 - **TG-4. Tier 3 plan.** A root `plan.md` counts only if this pull request changes it. A `Plan: <path>` line that cites an existing file also counts.
 - **TG-5. Tier 3 governance notes.** A note counts only if this pull request changes it and its path matches `.assurance/protected-surface-amend/*.md` or `.assurance/add-session-*/**.md`. Every changed protected file must be named in at least one counting note. A note that is already in the tree but not changed does not count.
 - **TG-6. No attestation.** The gate never reads `intent-check-attestation.json` files and never requires one. Whether one exists does not affect the result.
-- **TG-7. CGV proof surfaces.** If this pull request changes `cgv/prover/ContractGraph/BehaviorModel.lean` or `cgv/prover/protected-statements.txt`, the PR body must contain a Markdown heading (level 2 or deeper) whose text is `Protected-surface change`, case-insensitive.
+- **TG-7. CGV proof surfaces.** If this pull request changes `cgv/prover/ContractGraph/BehaviorModel.lean`, `cgv/prover/protected-statements.txt`, or its generator `cgv/prover/scripts/ProtectedStatements.lean`, the PR body must contain a Markdown heading (level 2 or deeper) whose text is `Protected-surface change`, case-insensitive.
 - **TG-8. Evidence report.** On pass, the gate prints one line for each class of changed file. Each line names the CI workflow that holds the deterministic evidence for that class, or says `not yet reached: human review is the only evidence`. The report is information only and never changes the result. The classes, with the first match winning:
 
   | Changed path | Evidence |
   |---|---|
-  | `cgv/**` | `CGV CI` workflow (`cargo test`, `lake build`, fixtures, statement manifest) |
+  | `cgv/**` | `CGV CI` workflow (`cargo test`, `lake build`, fixtures, statement manifest and axiom check) |
   | `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | `CI` workflow (`npm test`, including the property tests) |
   | `scripts/ci/**` | `Tier Gate` workflow (`node --test scripts/ci/*.test.mjs`) |
   | `evals/**` | `Incident Eval Check` workflow |
@@ -38,17 +38,18 @@ Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `
 - **SM-2.** The script fails with a non-zero exit if a listed name is missing, or if a listed theorem is not a theorem. This covers a rename or deletion.
 - **SM-3.** The output is byte-identical across runs on the same sources and the same toolchain.
 - **SM-4.** Changing only a proof leaves the output unchanged. Changing a listed statement, a listed definition, or a definition they reach changes the output.
-- **SM-5.** `cgv/prover/protected-statements.txt` is the committed output. CI fails when a fresh run differs from it. The manifest is a protected path, so updating it forces Tier 3 (TG-1), a governance note (TG-5), and the protected-surface change section (TG-7).
+- **SM-5.** `cgv/prover/protected-statements.txt` is the committed output. CI fails when a fresh run differs from it. The manifest is a protected path, so updating it forces Tier 3 (TG-1), a governance note (TG-5), and the protected-surface change section (TG-7). The generator is a protected path for the same reason: it decides what the manifest records.
+- **SM-6.** The script fails with a non-zero exit if a listed theorem or definition depends on an axiom other than `propext`, `Classical.choice` and `Quot.sound`. `lake build` accepts `sorry` with a warning, so without SM-6 a `sorry`, or a new axiom that closes a proof, would leave the manifest and every CI step unchanged.
 
 The manifest does not catch changes outside what the listed definitions reach. Examples are the checker (`runChecker`, `checkEdge`) and `Translation.lean`. That is intended: the theorems prove the checker against the statements, and the translation is untrusted by design (see `cgv/CLAUDE.md`, Trust model). A Lean toolchain bump may change the pretty-printed text or the hashes, and so forces a manifest update and Tier 3 review. That is acceptable, because a toolchain bump changes the trusted kernel.
 
 ## CGV CI (`.github/workflows/cgv-ci.yml`)
 
 - **CI-1.** Runs on pull requests and on pushes to `main` that change `cgv/**` or the workflow file itself.
-- **CI-2.** In `cgv/`, runs `cargo test` and `cargo build --release`.
+- **CI-2.** In `cgv/`, runs `cargo test` and `cargo build --release`, after CI-3: the end-to-end Rust test runs the checker binary that `lake build` produces, and skips when it is missing.
 - **CI-3.** Installs the toolchain pinned in `cgv/prover/lean-toolchain`, then runs `lake build` for the default targets in `cgv/prover`. These are the proofs, the checker, and the `#guard` tests.
 - **CI-4.** Runs `scripts/check-fixtures.sh`.
-- **CI-5.** Regenerates the statement manifest and fails on any difference from the committed file, printing the diff.
+- **CI-5.** Regenerates the statement manifest and fails on any difference from the committed file, printing the diff, or when the generator fails (SM-2, SM-6).
 - **CI-6.** Calls no LLM and uses no secret.
 
 ## Workflows removed
@@ -61,7 +62,7 @@ The manifest does not catch changes outside what the listed definitions reach. E
 
 - **DOC-1.** `docs/assurance/TIER-LAYER-MAP.md`, `docs/gates/tier-layer-gate.md`, `docs/assurance/DEVELOPMENT-FRAMEWORK.md`, and `.claude/rules/protected-surfaces.md` describe TG-1 to TG-9, the CGV evidence, the workflow list after WR-1 and WR-2, and the sign-off without branch protection.
 - **DOC-2.** `docs/gates/intent-check-verdict.md` and `docs/gates/audit-spec-coverage-triage.md` no longer describe CI runs. They describe the local, advisory runs.
-- **DOC-3.** `.claude/rules/protected-surfaces.md` adds `cgv/prover/protected-statements.txt` to the machine-readable list, and describes the manifest in the CGV section.
+- **DOC-3.** `.claude/rules/protected-surfaces.md` adds `cgv/prover/protected-statements.txt` and `cgv/prover/scripts/ProtectedStatements.lean` to the machine-readable list, and describes the manifest in the CGV section.
 - **DOC-4.** `cgv/CLAUDE.md` describes the manifest and CGV CI. `cgv/README.md` does too, if its trust model covers theorem statements.
 - **DOC-5.** The PB-1 scope in `docs/assurance/ROADMAP.md` names the workflows that remain, and states that the framework covers CGV.
 

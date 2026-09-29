@@ -32,13 +32,14 @@ const GATE_DOC = 'tier-layer-gate.md';
 export const CGV_PROOF_SURFACES = [
   'cgv/prover/ContractGraph/BehaviorModel.lean',
   'cgv/prover/protected-statements.txt',
+  'cgv/prover/scripts/ProtectedStatements.lean',
 ];
 
 const NOT_YET_REACHED = 'not yet reached: human review is the only evidence';
 
 // Evidence classes for the pass report (TG-8). First match wins.
 export const EVIDENCE_CLASSES = [
-  { re: /^cgv\//, evidence: 'CGV CI workflow (cargo test, lake build, fixtures, statement manifest)' },
+  { re: /^cgv\//, evidence: 'CGV CI workflow (cargo test, lake build, fixtures, statement manifest and axiom check)' },
   {
     re: /^crosscheck\/(mcp-server|docs\/invariants)\//,
     evidence: 'CI workflow (npm test, including the property tests)',
@@ -165,8 +166,10 @@ export function evaluate({
 }) {
   const present = (p) => existsSync(join(cwd, p));
   const changedAndPresent = new Set(changedFiles.filter(present));
+  // A citation is a line of its own ("Plan: <path>"), not the word anywhere in
+  // the body, so text inside a governance-note block cannot satisfy it.
   const citedExisting = (keyword) => {
-    const match = prBody.match(new RegExp(`${keyword}:\\s*(\\S+)`, 'i'));
+    const match = prBody.match(new RegExp(`^[ \\t]*${keyword}:[ \\t]*(\\S+)`, 'im'));
     if (!match) return false;
     const cited = match[1].replace(/^`|`$/g, '');
     return present(cited);

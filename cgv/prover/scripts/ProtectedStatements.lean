@@ -13,6 +13,10 @@ What is printed:
   structural hash of its value. Inductive types list their constructors.
 
 Proofs are never printed, so rewriting a proof leaves the manifest unchanged.
+A proof must still hold, though: every protected theorem and definition may
+depend only on the axioms in `allowedAxioms`. A `sorry`, or a new axiom that
+closes a proof, makes this script fail instead of printing.
+
 The list of names mirrors the CGV table in `.claude/rules/protected-surfaces.md`;
 keep the two in step.
 -/
@@ -39,6 +43,16 @@ def protectedDefinitions : List Name := [
   `ContractGraph.IsDataPath,
   `ContractGraph.stepwiseSound
 ]
+
+/-- Lean's standard axioms. `sorryAx`, and any axiom declared in the project,
+are not on this list. -/
+def allowedAxioms : List Name := [``propext, ``Classical.choice, ``Quot.sound]
+
+/-- Fails unless `n` depends only on `allowedAxioms`. -/
+def checkAxioms (n : Name) : MetaM Unit := do
+  let bad := (← collectAxioms n).filter (!allowedAxioms.contains ·)
+  unless bad.isEmpty do
+    throwError "{n} depends on disallowed axioms {bad.toList}; a protected proof may use only {allowedAxioms}"
 
 def inScope (n : Name) : Bool :=
   (`ContractGraph).isPrefixOf n
@@ -88,10 +102,12 @@ def render (env : Environment) : MetaM String := do
   for n in protectedTheorems do
     let some ci := env.find? n | throwError "protected theorem {n} not found"
     unless ci matches .thmInfo _ do throwError "{n} is not a theorem"
+    checkAxioms n
     out := out ++ s!"\ntheorem {n} :\n  {← ppExpr ci.type}\n"
   out := out ++ "\n-- Protected definitions and every ContractGraph definition they reach\n"
   for n in protectedDefinitions do
     unless env.contains n do throwError "protected definition {n} not found"
+    checkAxioms n
   for n in reach env protectedDefinitions do
     let some ci := env.find? n | unreachable!
     let valueHash := match ci.value? with

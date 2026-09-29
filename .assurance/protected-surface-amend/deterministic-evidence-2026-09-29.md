@@ -3,7 +3,7 @@
 
 ## Protected-Surface Amendment
 
-**Target file(s):** `scripts/ci/tier-gate.mjs` (+ 10 others, see Diff Plan)
+**Target file(s):** `scripts/ci/tier-gate.mjs` (+ 11 others, see Diff Plan)
 **Class:** A (CI enforcement, harness rules, and the governance documents the gates read). One file is a CGV proof surface: `cgv/prover/protected-statements.txt`.
 **Matched rule:** `scripts/ci/**`, `.github/workflows/**`, `.claude/rules/**`, `docs/assurance/**`. After this change, `cgv/prover/protected-statements.txt` is also listed.
 **Date:** 2026-09-29
@@ -19,11 +19,12 @@
 
 **CI** changes in four ways:
 - The tier gate gains `node:test` tests, and `tier-gate.yml` runs them.
-- A new `cgv-ci.yml` runs `cargo test`, `lake build`, the fixture checks, and a theorem-statement manifest diff.
+- A new `cgv-ci.yml` runs `lake build`, then `cargo test` (whose end-to-end test needs the checker `lake build` produces), the fixture checks, and a theorem-statement manifest diff with an axiom check.
+- `tier-gate.yml` lists changed files with `--no-renames`, so a protected file moved to an unprotected path still counts as a protected change.
 - `spec-audit.yml` is removed, because it ran an LLM.
 - `protected-surface-check.yml` is removed, because it ran `/intent-check` through an LLM and never checked governance notes.
 
-**The rules** add the manifest `cgv/prover/protected-statements.txt` to the machine-readable protected list.
+**The rules** add the manifest `cgv/prover/protected-statements.txt` and its generator `cgv/prover/scripts/ProtectedStatements.lean` to the machine-readable protected list. The generator decides what the manifest records, so an edit to it could weaken the check while the manifest stays the same. The generator also fails when a protected theorem depends on `sorry` or on an axiom beyond `propext`, `Classical.choice` and `Quot.sound` (SM-6), because `lake build` only warns on `sorry`.
 
 **`TIER-LAYER-MAP.md`, `DEVELOPMENT-FRAMEWORK.md`, and PB-1 in `ROADMAP.md`** are updated to match. Each change is traced to a requirement ID in `intent/2026-09-29-deterministic-evidence-spec.md`.
 
@@ -66,6 +67,7 @@ The rationale rests on three concrete triggers:
 | 9 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | stages 4 and 5 | DOC-1 | replaced (workflow list, intent-check advisory), added (CGV) |
 | 10 | `docs/assurance/ROADMAP.md` | PB-1 scope | DOC-5 | reworded (workflow list, CGV coverage) |
 | 11 | `cgv/prover/protected-statements.txt` | new | SM-5 | added |
+| 12 | `cgv/prover/scripts/ProtectedStatements.lean` | new | SM-1 to SM-6, DOC-3 | added (protected after this change; SM-6 axiom check) |
 
 ### Test / Coverage Impact
 
@@ -74,7 +76,8 @@ The rationale rests on three concrete triggers:
   - two runs give identical output;
   - a proof-only edit leaves the manifest unchanged;
   - a weakened statement changes it;
-  - a changed definition that the protected definitions reach changes it.
+  - a changed definition that the protected definitions reach changes it;
+  - a `sorry`, or a new axiom closing a protected proof, keeps `lake build` green and makes the generator exit 1 (SM-6).
 - **No Class B invariant** doc or property test changes.
 - **Attestations.** No attestation or intent-check baseline refresh is needed, because this change removes the attestation from the gate. The committed attestation from #134 stays as a historical record and no longer counts.
 - **No silent-regression risk:** there are no BLOCKING lines. The gate becomes stricter about artefact freshness and looser in one respect, the attestation. The rationale argues for that looser direction: the attestation was LLM judgement and was already satisfied by a stale file.

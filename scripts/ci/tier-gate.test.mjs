@@ -19,6 +19,7 @@ const RULES = [
   'scripts/ci/**',
   'cgv/prover/ContractGraph/BehaviorModel.lean',
   'cgv/prover/protected-statements.txt',
+  'cgv/prover/scripts/ProtectedStatements.lean',
   '```',
   '',
 ].join('\n');
@@ -140,6 +141,23 @@ test('TG-4: a Plan: citation of an existing file satisfies the plan requirement'
   assert.equal(r.pass, true);
 });
 
+test('TG-4: "plan:" in the middle of a line is not a citation', () => {
+  const r = run(tier3Repo({ 'intent/p.md': '# Plan' }), {
+    body: 'See the build plan: intent/p.md',
+    changed: [SKILL, NOTE],
+  });
+  assert.equal(r.pass, false);
+  assert.match(out(r), /Tier 3 requires a build plan/);
+});
+
+test('TG-4: an indented Plan: line on its own is a citation', () => {
+  const r = run(tier3Repo({ 'intent/p.md': '# Plan' }), {
+    body: 'Tier: 3\n  Plan: intent/p.md',
+    changed: [SKILL, NOTE],
+  });
+  assert.equal(r.pass, true);
+});
+
 // ---- TG-5: governance notes ------------------------------------------------
 
 test('TG-5: a governance note already in the tree does not count', () => {
@@ -216,6 +234,17 @@ test('TG-7: BehaviorModel.lean also requires the section', () => {
   const dir = repo({ [bm]: 'x', 'plan.md': 'x', [NOTE]: `names ${bm}` });
   const r = run(dir, { body: 'Tier: 3', changed: [bm, 'plan.md', NOTE] });
   assert.equal(r.pass, false);
+});
+
+test('TG-7: the manifest generator is protected and requires the section', () => {
+  const gen = 'cgv/prover/scripts/ProtectedStatements.lean';
+  const floor = run(repo({ [gen]: 'x', 'intent/i.md': 'x' }), { body: 'Tier: 1', changed: [gen, 'intent/i.md'] });
+  assert.equal(floor.pass, false);
+  assert.match(out(floor), /force a floor of Tier 3/);
+  const dir = repo({ [gen]: 'x', 'plan.md': 'x', [NOTE]: `names ${gen}` });
+  const r = run(dir, { body: 'Tier: 3', changed: [gen, 'plan.md', NOTE] });
+  assert.equal(r.pass, false);
+  assert.match(out(r), /Protected-surface change/);
 });
 
 // ---- TG-8 / TG-9: pass report ------------------------------------------------

@@ -39,16 +39,16 @@ This file replaces the root `plan.md` from #246, which remains in git history.
 |---|---|---|
 | `scripts/ci/tier-gate.mjs` | yes (`scripts/ci/**`) | TG-1 to TG-10 |
 | `scripts/ci/tier-gate.test.mjs` | yes (`scripts/ci/**`) | new tests |
-| `.github/workflows/tier-gate.yml` | yes | run the tests |
-| `.github/workflows/cgv-ci.yml` | yes | new |
+| `.github/workflows/tier-gate.yml` | yes | run the tests; `--no-renames` |
+| `.github/workflows/cgv-ci.yml` | yes | new; Rust steps after `lake build` (CI-2) |
 | `.github/workflows/spec-audit.yml` | yes | deleted |
 | `.github/workflows/protected-surface-check.yml` | yes | deleted |
-| `.claude/rules/protected-surfaces.md` | yes | manifest path, CGV manifest text, sign-off without branch protection |
+| `.claude/rules/protected-surfaces.md` | yes | manifest and generator paths, axiom check, CGV manifest text, sign-off without branch protection |
 | `docs/assurance/TIER-LAYER-MAP.md` | yes | Tier 3 artefacts, CGV evidence, evidence classes |
 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | yes | workflow list, stage 4, CGV |
 | `docs/assurance/ROADMAP.md` | yes | PB-1 scope |
 | `cgv/prover/protected-statements.txt` | yes, after this change (DOC-3) | new |
-| `cgv/prover/scripts/ProtectedStatements.lean` | no | new |
+| `cgv/prover/scripts/ProtectedStatements.lean` | yes, after this change (DOC-3) | new; SM-6 axiom check |
 | `docs/gates/tier-layer-gate.md`, `docs/gates/intent-check-verdict.md`, `docs/gates/audit-spec-coverage-triage.md` | no | DOC-1, DOC-2 |
 | `cgv/CLAUDE.md`, `cgv/README.md` | no | DOC-4 |
 | `intent/2026-09-29-deterministic-evidence*.md`, `plan.md` | no | stage artefacts |
@@ -71,6 +71,7 @@ No `SKILL.md` or `agents/*.md` file changes.
   - two runs are byte-identical;
   - a proof-only edit (`:= rfl` to `:= by rfl` in `incompleteWith_exitCode`) leaves the manifest unchanged;
   - weakening that statement to `2 ≤ …` changes it;
-  - editing the `ToString ConstraintKind` instance changes its value hash.
+  - editing the `ToString ConstraintKind` instance changes its value hash;
+  - replacing the proof of `incompleteWith_exitCode` with `sorry`, or with `cheat.elim` for a new `axiom cheat : False`, keeps `lake build` green and makes the generator exit 1, naming `sorryAx` or `ContractGraph.cheat` (SM-6).
 - `cargo test`, `cargo build --release`, `lake build`, `scripts/check-fixtures.sh`, and the manifest diff pass locally on this branch.
 - `grep -rn "ANTHROPIC_API_KEY\|claude-code-action" .github/workflows` returns nothing.

@@ -83,8 +83,9 @@ Evidence at this stage comes from deterministic CI jobs:
 - **CGV:** `cgv-ci.yml` runs `cargo test`, `lake build` (the soundness proofs
   and the `#guard` tests), the fixture comparison, and the statement-manifest
   check. That check fails when a protected theorem statement, or a definition
-  it relies on, changes without `cgv/prover/protected-statements.txt` changing
-  too.
+  reachable from `constraintImplies`, `IsDataPath` or `stepwiseSound`, changes
+  without `cgv/prover/protected-statements.txt` changing too. It also fails when
+  a protected theorem depends on `sorry` or on a non-standard axiom.
 - **The tier gate:** `tier-gate.yml` runs the gate's own tests.
 
 `/intent-check`, `/audit-spec-coverage`, `/audit-invariant-consistency` and

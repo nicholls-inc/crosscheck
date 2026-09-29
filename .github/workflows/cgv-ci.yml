@@ -34,12 +34,6 @@ jobs:
           key: cgv-${{ runner.os }}-${{ hashFiles('cgv/Cargo.lock', 'cgv/prover/lean-toolchain', 'cgv/prover/lake-manifest.json') }}
           restore-keys: cgv-${{ runner.os }}-
 
-      - name: Rust tests
-        run: cargo test
-
-      - name: Rust release build
-        run: cargo build --release
-
       - name: Install the pinned Lean toolchain
         run: |
           curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz -C "$RUNNER_TEMP"
@@ -50,10 +44,18 @@ jobs:
         working-directory: cgv/prover
         run: lake build
 
+      # After lake build: tests/e2e_text_format.rs runs the checker binary lake
+      # builds, and skips when it is missing.
+      - name: Rust tests
+        run: cargo test
+
+      - name: Rust release build
+        run: cargo build --release
+
       - name: Fixtures (extractor + checker against expected.json)
         run: scripts/check-fixtures.sh
 
-      - name: Protected theorem statements match the committed manifest
+      - name: Protected theorem statements match the committed manifest, using only standard axioms
         working-directory: cgv/prover
         run: |
           lake build ContractGraph ContractGraph.Main

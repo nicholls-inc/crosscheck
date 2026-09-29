@@ -28,7 +28,7 @@ jobs:
           git fetch origin "${{ github.event.pull_request.base.ref }}" --depth=1
           {
             echo "changed_files<<EOF"
-            git diff --name-only "origin/${{ github.event.pull_request.base.ref }}...HEAD"
+            git diff --name-only --no-renames "origin/${{ github.event.pull_request.base.ref }}...HEAD"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
