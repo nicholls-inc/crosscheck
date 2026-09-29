@@ -46,7 +46,7 @@ jobs:
           "$RUNNER_TEMP/elan-init" -y --no-modify-path --default-toolchain "$(cat prover/lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - name: Lean proofs, checker and #guard tests
+      - name: "Lean proofs, checker and #guard tests"
         working-directory: cgv/prover
         run: lake build
 
