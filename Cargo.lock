@@ -287,6 +287,7 @@ dependencies = [
  "oxc_ast_visit",
  "oxc_parser",
  "oxc_span",
+ "oxc_syntax",
  "proptest",
  "ruff_python_ast",
  "ruff_python_parser",

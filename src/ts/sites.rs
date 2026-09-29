@@ -1,12 +1,13 @@
 //! Assertion sites: `<runtime read> as T`, their enclosing function, and
 //! the guard evidence that discharges a property of `T`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxc_allocator::Vec as ArenaVec;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
+use oxc_syntax::scope::ScopeFlags;
 
 use super::types::{self, FileId, Shape, TypeIndex};
 use super::ParsedModule;
@@ -121,17 +122,21 @@ pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a
 /// Functions whose first argument is the function they wrap.
 const WRAPPERS: [&str; 4] = ["useCallback", "useMemo", "memo", "forwardRef"];
 
+/// One lexical scope: a function (named or anonymous) or a block.
 struct Frame {
     function: FunctionRef,
-    /// `const v = <runtime read>` bindings.
+    /// `const v = JSON.parse(..)` bindings.
     sources: HashMap<String, RuntimeSource>,
     /// Parameters and `const`s with an annotation: what the name guarantees.
     typed: HashMap<String, ValueFacts>,
+    /// Every name this scope binds; a lookup stops here instead of reaching
+    /// an outer binding it shadows.
+    bound: HashSet<String>,
 }
 
 impl Frame {
     fn new(function: FunctionRef) -> Frame {
-        Frame { function, sources: HashMap::new(), typed: HashMap::new() }
+        Frame { function, sources: HashMap::new(), typed: HashMap::new(), bound: HashSet::new() }
     }
 }
 
@@ -162,24 +167,57 @@ impl<'a> SiteVisitor<'_, 'a> {
         self.frames.last_mut().expect("module frame")
     }
 
+    /// Enter a named function. Its qualified name carries the line, so two
+    /// same-named functions in one file (methods of two classes) stay two nodes.
     fn push_function(&mut self, name: &str, offset: u32, params: Option<&FormalParameters<'a>>) {
-        let mut frame = Frame::new(FunctionRef {
-            qualified: format!("{}.{name}", self.module.rel),
+        let line = self.line(offset);
+        let function = FunctionRef {
+            qualified: format!("{}.{name}@{line}", self.module.rel),
             short: name.to_string(),
             file: self.module.rel.clone(),
-            line: self.line(offset),
-        });
+            line,
+        };
+        self.push_scope(function, params);
+    }
+
+    /// Enter an anonymous function or a block: a new scope, attributed to the
+    /// enclosing named function.
+    fn push_anonymous(&mut self, params: Option<&FormalParameters<'a>>) {
+        let function = self.frames.last().expect("module frame").function.clone();
+        self.push_scope(function, params);
+    }
+
+    fn push_scope(&mut self, function: FunctionRef, params: Option<&FormalParameters<'a>>) {
+        let mut frame = Frame::new(function);
         for p in params.into_iter().flat_map(|p| p.items.iter()) {
-            if let (BindingPattern::BindingIdentifier(id), Some(ann)) = (&p.pattern, &p.type_annotation) {
-                let facts = self.index.resolve(self.file, &ann.type_annotation).facts();
-                frame.typed.insert(id.name.as_str().to_string(), facts);
+            let BindingPattern::BindingIdentifier(id) = &p.pattern else {
+                continue;
+            };
+            let name = id.name.as_str().to_string();
+            if let Some(ann) = &p.type_annotation {
+                let mut facts = self.index.resolve(self.file, &ann.type_annotation).facts();
+                if p.optional {
+                    facts.nullable = Some(true);
+                }
+                frame.typed.insert(name.clone(), facts);
             }
+            frame.bound.insert(name);
         }
         self.frames.push(frame);
     }
 
-    fn lookup<T: Clone>(&self, pick: impl Fn(&Frame) -> Option<T>) -> Option<T> {
-        self.frames.iter().rev().find_map(pick)
+    /// The innermost binding of `name`, read through `pick`; `None` when the
+    /// innermost scope that binds `name` records nothing for it.
+    fn lookup<T>(&self, name: &str, pick: impl Fn(&Frame) -> Option<T>) -> Option<T> {
+        for frame in self.frames.iter().rev() {
+            if let Some(found) = pick(frame) {
+                return Some(found);
+            }
+            if frame.bound.contains(name) {
+                return None;
+            }
+        }
+        None
     }
 
     /// The runtime source behind a cast operand: the call itself, or a
@@ -195,7 +233,7 @@ impl<'a> SiteVisitor<'_, 'a> {
                 Expression::CallExpression(c) => return RuntimeSource::of_call(c),
                 Expression::Identifier(id) => {
                     let name = id.name.as_str();
-                    return self.lookup(|f| f.sources.get(name).copied());
+                    return self.lookup(name, |f| f.sources.get(name).copied());
                 }
                 _ => return None,
             }
@@ -251,7 +289,7 @@ impl<'a> SiteVisitor<'_, 'a> {
         match x.without_parentheses() {
             Expression::Identifier(id) => {
                 let name = id.name.as_str();
-                self.lookup(|f| f.typed.get(name).cloned())
+                self.lookup(name, |f| f.typed.get(name).cloned())
             }
             Expression::StringLiteral(s) => Some(one(s.value.as_str().to_string())),
             Expression::NumericLiteral(n) => Some(one(types::numeric_text(n))),
@@ -434,15 +472,19 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
                 continue;
             };
             let name = id.name.as_str().to_string();
+            self.frame().bound.insert(name.clone());
             if let Some(ann) = &d.type_annotation {
                 let facts = self.index.resolve(self.file, &ann.type_annotation).facts();
                 self.frame().typed.insert(name.clone(), facts);
             }
             let init = d.init.as_ref();
+            // Only JSON.parse: tsc narrows a `string | null` binding by control
+            // flow (`if (!raw) return;`), which this frontend does not model,
+            // while nothing narrows `any` into the asserted type.
             if decl.kind == VariableDeclarationKind::Const {
                 if let Some(Expression::CallExpression(c)) = init.map(Expression::without_parentheses) {
-                    if let Some(source) = RuntimeSource::of_call(c) {
-                        self.frame().sources.insert(name.clone(), source);
+                    if RuntimeSource::of_call(c) == Some(RuntimeSource::JsonParse) {
+                        self.frame().sources.insert(name.clone(), RuntimeSource::JsonParse);
                     }
                 }
             }
@@ -455,6 +497,24 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
                 None => self.visit_variable_declarator(d),
             }
         }
+    }
+
+    fn visit_function(&mut self, f: &Function<'a>, flags: ScopeFlags) {
+        self.push_anonymous(Some(&f.params));
+        walk::walk_function(self, f, flags);
+        self.frames.pop();
+    }
+
+    fn visit_arrow_function_expression(&mut self, f: &ArrowFunctionExpression<'a>) {
+        self.push_anonymous(Some(&f.params));
+        walk::walk_arrow_function_expression(self, f);
+        self.frames.pop();
+    }
+
+    fn visit_block_statement(&mut self, b: &BlockStatement<'a>) {
+        self.push_anonymous(None);
+        walk::walk_block_statement(self, b);
+        self.frames.pop();
     }
 
     fn visit_ts_as_expression(&mut self, e: &TSAsExpression<'a>) {
@@ -528,12 +588,12 @@ export const f = (raw: string, sp: URLSearchParams, req: Request) => {
         assert_eq!(
             edges(&g),
             vec![
-                "m.ts.f -> m.ts.T @3: []",
-                "m.ts.f -> m.ts.T @4: [nullable=1]",
-                "m.ts.f -> m.ts.T @5: [nullable=1]",
-                "m.ts.f -> m.ts.T @7: [nullable=1]",
-                "m.ts.f -> m.ts.T @8: [nullable=1]",
-                "m.ts.f -> m.ts.T @9: [nullable=1]",
+                "m.ts.f@2 -> m.ts.T @3: []",
+                "m.ts.f@2 -> m.ts.T @4: [nullable=1]",
+                "m.ts.f@2 -> m.ts.T @5: [nullable=1]",
+                "m.ts.f@2 -> m.ts.T @7: [nullable=1]",
+                "m.ts.f@2 -> m.ts.T @8: [nullable=1]",
+                "m.ts.f@2 -> m.ts.T @9: [nullable=1]",
             ]
         );
         assert_eq!(g.sites, 6);
@@ -545,8 +605,8 @@ export const f = (raw: string, sp: URLSearchParams, req: Request) => {
             "m.ts",
             "type T = 'a';
 function f() {
-  const raw = sessionStorage.getItem('k');
-  const x = raw as T;
+  const parsed = JSON.parse('{}');
+  const x = parsed as T;
   const y = (JSON.parse('{}') as unknown) as T;
   const z = JSON.parse('{}') as unknown as T;
   return [x, y, z];
@@ -558,11 +618,71 @@ function g(raw: string) {
         assert_eq!(
             edges(&g),
             vec![
-                "m.ts.f -> m.ts.T @4: [nullable=1]",
-                "m.ts.f -> m.ts.T @5: []",
-                "m.ts.f -> m.ts.T @6: []",
+                "m.ts.f@2 -> m.ts.T @4: []",
+                "m.ts.f@2 -> m.ts.T @5: []",
+                "m.ts.f@2 -> m.ts.T @6: []",
             ]
         );
+    }
+
+    #[test]
+    fn storage_bound_consts_narrowed_or_shadowed_are_not_sites() {
+        let g = graph(&[(
+            "m.ts",
+            "type T = 'a';
+export function narrowed(): T | null {
+  const raw = localStorage.getItem('t');
+  if (!raw) return null;
+  return raw as T;
+}
+export function shadow(): T {
+  const parsed = JSON.parse('{}');
+  return ['x'].map((parsed: string) => parsed as T)[0];
+}
+export function blockScoped(): T {
+  if (Math.random()) { const late = JSON.parse('{}'); void late; }
+  const late = 'a';
+  return late as T;
+}",
+        )]);
+        assert_eq!(edges(&g), Vec::<String>::new());
+    }
+
+    #[test]
+    fn optional_or_shadowed_comparand_does_not_discharge() {
+        let g = graph(&[(
+            "m.ts",
+            "interface S { client: string; }
+export function optionalParam(client?: string): S | null {
+  const s = JSON.parse('') as S;
+  return s.client === client ? s : null;
+}
+export function shadowed(client: string) {
+  return (client) => { const s = JSON.parse('') as S; return s.client === client ? s : null; };
+}",
+        )]);
+        assert_eq!(
+            edges(&g),
+            vec![
+                "m.ts.optionalParam@2 -> m.ts.S.client @3: [nullable=1]",
+                "m.ts.shadowed@6 -> m.ts.S.client @7: []",
+            ]
+        );
+    }
+
+    #[test]
+    fn same_named_methods_are_distinct_functions() {
+        let g = graph(&[(
+            "a.ts",
+            "type T = 'x';
+class A { load() { return JSON.parse('') as T; } }
+class B { load() { return localStorage.getItem('a') as T; } }",
+        )]);
+        assert_eq!(
+            edges(&g),
+            vec!["a.ts.load@2 -> a.ts.T @2: []", "a.ts.load@3 -> a.ts.T @3: [nullable=1]"]
+        );
+        assert_eq!(g.functions.len(), 2);
     }
 
     #[test]
@@ -583,11 +703,11 @@ export default function () { return JSON.parse('') as T; }",
             functions,
             vec![
                 "<module a/b.tsx> (a/b.tsx.<module>:1)",
-                "arrow (a/b.tsx.arrow:4)",
-                "decl (a/b.tsx.decl:3)",
-                "default (a/b.tsx.default:7)",
-                "hooked (a/b.tsx.hooked:5)",
-                "method (a/b.tsx.method:6)",
+                "arrow (a/b.tsx.arrow@4:4)",
+                "decl (a/b.tsx.decl@3:3)",
+                "default (a/b.tsx.default@7:7)",
+                "hooked (a/b.tsx.hooked@5:5)",
+                "method (a/b.tsx.method@6:6)",
             ]
         );
     }
@@ -616,7 +736,7 @@ export const peek = (client: string): S | null => {{
             let g = graph(&[("m.ts", &src(form))]);
             assert_eq!(
                 edges(&g),
-                vec!["m.ts.peek -> m.ts.S.client @3: [nullable=0]", "m.ts.peek -> m.ts.S.origin @3: []"],
+                vec!["m.ts.peek@2 -> m.ts.S.client @3: [nullable=0]", "m.ts.peek@2 -> m.ts.S.origin @3: []"],
                 "{form}"
             );
         }
@@ -645,7 +765,7 @@ export function peek(mode: 'a' | 'b', maybe: string | null) {{
 }}"
                 ),
             )]);
-            assert_eq!(edges(&g), vec![format!("m.ts.peek -> m.ts.S.client @5: {expected}")], "{operand}");
+            assert_eq!(edges(&g), vec![format!("m.ts.peek@4 -> m.ts.S.client @5: {expected}")], "{operand}");
         }
     }
 
@@ -673,7 +793,7 @@ export const peek = (client: string, flag: boolean) => {{
 }};"
                 ),
             )]);
-            assert_eq!(edges(&g), vec!["m.ts.peek -> m.ts.S.client @3: []"], "{form}");
+            assert_eq!(edges(&g), vec!["m.ts.peek@2 -> m.ts.S.client @3: []"], "{form}");
         }
     }
 }

@@ -349,7 +349,7 @@ export const peek = (clientName: string): Stash | null => {
         );
         assert_eq!(g.slots[0].qualified, "domain/stash.ts.Stash.id");
         assert_eq!(g.assertions.len(), 4);
-        assert!(g.assertions.iter().all(|a| a.site_line == 13 && a.function == "domain/stash.ts.peek"));
+        assert!(g.assertions.iter().all(|a| a.site_line == 13 && a.function == "domain/stash.ts.peek@10"));
         assert_eq!(g.skipped_unresolved, 0);
     }
 
