@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.7.0...crosscheck-v2.8.0) (2026-09-29)
+
+
+### Features
+
+* **crosscheck:** import the plugin and its framework with history ([e76ac19](https://github.com/nicholls-inc/crosscheck/commit/e76ac19329321c14d579ea55ad2956b80768d1f7))
+
 ## [2.7.0](https://github.com/nicholls-inc/claude-code-marketplace/compare/crosscheck-v2.6.0...crosscheck-v2.7.0) (2026-08-25)
 
 
