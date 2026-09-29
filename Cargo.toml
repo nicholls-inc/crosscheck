@@ -2,12 +2,21 @@
 name = "crosscheck-contracts"
 version = "0.1.0"
 edition = "2021"
+# oxc 0.146 needs rustc 1.95
+rust-version = "1.95"
 
 [dependencies]
 # Python AST parsing (from ruff project)
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff", tag = "0.15.21" }
 ruff_python_ast = { git = "https://github.com/astral-sh/ruff", tag = "0.15.21" }
 ruff_text_size = { git = "https://github.com/astral-sh/ruff", tag = "0.15.21" }
+
+# TypeScript / JavaScript AST parsing; oxc changes its API between minor versions
+oxc_allocator = "=0.146.0"
+oxc_ast = "=0.146.0"
+oxc_ast_visit = "=0.146.0"
+oxc_parser = "=0.146.0"
+oxc_span = "=0.146.0"
 
 # SQLite output
 rusqlite = { version = "0.31", features = ["bundled"] }
