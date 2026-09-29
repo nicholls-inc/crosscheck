@@ -52,6 +52,7 @@ Current projection across the six layers: `TODO: fill from
 | # | Item | Cost | Doc |
 |---|---|---|---|
 | PB-1 | Adopt the AI-native SDLC playbook as the development framework and make every human gate self-explanatory | M | [`DEVELOPMENT-FRAMEWORK.md`](DEVELOPMENT-FRAMEWORK.md) |
+| MR-1 | Consolidate Crosscheck and the contract graph verifier into one repository under one vision | M | [`../VISION.md`](../VISION.md) |
 
 **PB-1 — Status: In progress.** Scope: adopt the playbook artefact chain
 (intent → spec → plan → diff + tests → PR with review findings → incident
@@ -62,6 +63,16 @@ from a fixed three-sentence gate message. Acceptance: a new contributor can
 trace a change from `intent/<slug>.md` to a merged PR using
 `DEVELOPMENT-FRAMEWORK.md` alone, and every gate in the inventory names its
 explainer. Later artefacts cite PB-1 as their governing roadmap item.
+
+**MR-1 — Status: Done** (#18, #42, and nicholls-inc/claude-code-marketplace#251).
+Scope: move the Crosscheck plugin, its development framework, its CI, its
+release tags, and its open issues from `nicholls-inc/claude-code-marketplace`
+into this repository with history, next to the contract graph verifier in
+`cgv/`, and install the plugin from here with a `git-subdir` marketplace
+source. Acceptance: `claude plugin install crosscheck@nicholls` installs the
+plugin from `crosscheck/` of this repository, and both tools' protected surfaces
+are listed in `.claude/rules/protected-surfaces.md`. Intent:
+`intent/2026-09-29-crosscheck-monorepo.md`.
 
 ### Next (4–8 weeks)
 

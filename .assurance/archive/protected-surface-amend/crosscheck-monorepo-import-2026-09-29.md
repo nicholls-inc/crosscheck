@@ -1,3 +1,5 @@
+> **Archived.** This note governed #42, which is merged. It lives outside `.assurance/protected-surface-amend/` so that `protected-surface-guard.mjs` and `tier-gate.mjs` no longer read it. Both tools accept any note that names a file, so a note left in place would allow edits to all 52 files below without a new amendment.
+
 ## Protected-Surface Amendment
 
 **Target file(s):** every protected file that the Crosscheck import adds to this repository (52 files, listed in the Diff Plan)
@@ -22,11 +24,13 @@ Crosscheck and CGV now share one vision (`docs/VISION.md`). One repository lets 
 
 ### Governing Roadmap Item
 
-- REQUIRES HUMAN VERIFICATION: No item in `docs/assurance/ROADMAP.md` covers this move. The reviewer must add one, or record here why the move needs none.
+- **Path:** `docs/assurance/ROADMAP.md` (immediate horizon, item MR-1)
+- **Title:** Consolidate Crosscheck and the contract graph verifier into one repository under one vision
+- **Scope coverage:** MR-1 covers moving the plugin, its framework, its CI, its tags, and its issues into this repository. The roadmap item was added after the move landed, in the follow-up pull request that resolved this note.
 
 ### Authority
 
-- **Authoriser:** REQUIRES HUMAN VERIFICATION: Authoriser draft is unverified. The branch is agent-authored. The expected authoriser is harry-nicholls as the maintainer.
+- **Authoriser:** harry-nicholls. He directed the move and merged #42 on 2026-09-29. He directed the resolution of this note's markers in the same session.
 - **Role:** Maintainer
 
 ### Test and coverage impact
@@ -36,8 +40,8 @@ Crosscheck and CGV now share one vision (`docs/VISION.md`). One repository lets 
 
 ### Review checklist
 
-- [ ] REQUIRES HUMAN VERIFICATION: The Governing Roadmap Item above is resolved.
-- [ ] REQUIRES HUMAN VERIFICATION: The Authoriser above is confirmed.
+- [x] The Governing Roadmap Item above is resolved (MR-1).
+- [x] The Authoriser above is confirmed (harry-nicholls).
 - [ ] `git diff` against the marketplace `main` shows no content change for any file below except `.claude/rules/protected-surfaces.md`.
 - [ ] The two changes to `.claude/rules/protected-surfaces.md` match the Change Description.
 
