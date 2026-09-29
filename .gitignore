@@ -8,6 +8,14 @@ target/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+.worktrees/
 
-# Python bytecode (scripts/bench.py tests)
+# Python bytecode (cgv/scripts/bench.py tests)
 __pycache__/
+
+# Node
+node_modules/
+
+# Local tool output
+.sisyphus/
+field-reports/
