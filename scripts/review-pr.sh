@@ -35,6 +35,9 @@ results = json.load(open(path))["results"]
 count = lambda s: sum(r["severity"] == s for r in results)
 print(f"{side}: exit {code}, {count('error')} errors, {count('warning')} warnings")
 PY
+  # Skipped sites and tsconfig strictness reach stderr only, and they are part
+  # of a TypeScript verdict.
+  grep -E '^(Warning|TS):' "$out/$side.err" | sed "s/^/$side: /" || true
 done
 
 echo "new in head:"

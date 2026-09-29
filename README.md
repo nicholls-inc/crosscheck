@@ -31,7 +31,7 @@ Python / TypeScript project (.py, .ts, .tsx files)
 | Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
 | Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
-| TypeScript typed flows | Delegated to tsc with `strictNullChecks`, which the checker does not run; it assumes the consuming project's CI runs tsc. For TypeScript, exit 0 means no extracted assertion site contradicts its type. Unguaranteed requirements are warnings, and stderr is part of the verdict: it alone reports sites skipped for unresolved target types and a tsconfig without `strictNullChecks` |
+| TypeScript typed flows | Delegated to tsc with `strictNullChecks`, which the checker does not run; it assumes the consuming project's CI runs tsc. For TypeScript, exit 0 means no extracted assertion site contradicts its type. Unguaranteed requirements are warnings, and stderr is part of the verdict: it alone reports sites skipped for unresolved target types, a tsconfig without `strictNullChecks`, a tsconfig that uses `extends`, and a missing tsconfig; `scripts/review-pr.sh` prints those lines |
 | TypeScript runtime reads | Trusted-not-proved: `JSON.parse` returns `any`, and storage `getItem` and `searchParams.get` return `string \| null` (`src/ts/sites.rs`; not yet in `BehaviorModel.lean`) |
 
 ## Quick start
@@ -236,7 +236,7 @@ A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` 
 
 The extractor reads `.ts`, `.tsx`, `.mts` and `.cts` files next to any `.py` files in the directory; `.d.ts` files feed type declarations only. JavaScript files are not read, so static or vendored JavaScript in a Python project cannot fail its run. The design is in `docs/design/typescript-frontend.md`.
 
-Under `strictNullChecks` (part of `strict`; no other flag is checked), tsc already proves every typed flow for nullability and literal-union membership, so the checker does not repeat that proof. It checks the places where a value enters the typed world by assertion instead: a runtime read asserted with `as T`.
+Under `strictNullChecks` (part of `strict`; no other flag is checked), tsc proves typed flows for nullability and literal-union membership, apart from the holes the design doc lists (`any`, unchecked index access, bivariant method parameters), so the checker does not repeat that proof. It checks the places where a value enters the typed world by assertion instead: a runtime read asserted with `as T`.
 
 | Runtime read | Guarantee |
 |--------------|-----------|

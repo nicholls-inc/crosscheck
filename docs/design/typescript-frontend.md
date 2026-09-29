@@ -18,7 +18,8 @@ Trust split, stated in the README trust model: exit 0 on a TS project means that
 contradicts the type it asserts. A requirement the read does not guarantee (every field of `JSON.parse(raw) as T`) is a
 warning and leaves the exit code at 0, so gate a TypeScript review on warnings as well as errors (the `warnings` count from
 `scripts/review-pr.sh`, or `severity: "warning"` entries in the JSON `results`). Sites whose target
-type is unresolved are not checked (see Types). Typed flows are delegated to tsc with `strictNullChecks`, which the
+type is unresolved are not checked (see Types); like a missing or non-strict tsconfig, they are reported on stderr
+only, so stderr is part of the verdict. Typed flows are delegated to tsc with `strictNullChecks`, which the
 checker does not run; it assumes the consuming project's CI runs tsc.
 
 ## Graph shape
@@ -40,7 +41,9 @@ checker does not run; it assumes the consuming project's CI runs tsc.
   The operand of `as T` (after unwrapping parentheses, and `as unknown` in `e as unknown as T`) must be one of these
   calls, or a `const` bound to `JSON.parse(..)` in an enclosing scope. A `const` bound to a storage or search-params
   read is not followed: tsc narrows its `string | null` by control flow (`if (!raw) return;`), which this frontend does
-  not model. Parameters and declarations shadow outer bindings, and every function and block is its own scope.
+  not model. A binding (a parameter's annotation, or a `JSON.parse` const) counts only when no other binding of the
+  same name, of any kind (declaration, function or class name, `var`, catch parameter, destructured name), lies
+  inside the function that holds it; otherwise the name is unknown. Shadowing and hoisting never need modelling.
   `as const`, `satisfies`, `!`, and casts on any other operand are not sites: tsc checks overlap on those, or the
   operand's own type is the proof.
 - **Target.** The asserted type `T`, resolved syntactically (see Types). Each target becomes `model` nodes (slots):
