@@ -17,21 +17,21 @@ Changes to either are allowed, but never silently.
 ## What is protected
 
 **Class A — trusted semantics (the whole file):**
-- `prover/ContractGraph/BehaviorModel.lean`
+- `cgv/prover/ContractGraph/BehaviorModel.lean`
 
 **Class B — statements of the soundness theorems and the definitions they
 mention** (the statement, not the proof; rewriting a proof freely is fine):
 
 | Name | File |
 | --- | --- |
-| `constraintImplies` | `prover/ContractGraph/Checker.lean` |
-| `checkEdge_sound`, `checkEdgeAll_sound`, `checkEdgeAll_sound_noErrors` | `prover/ContractGraph/Checker.lean` |
-| `IsDataPath`, `stepwiseSound` | `prover/ContractGraph/Composition.lean` |
-| `checkPath_sound`, `checkPath_sound_noErrors` | `prover/ContractGraph/Composition.lean` |
-| `enumeratePaths_complete` | `prover/ContractGraph/Search.lean` |
-| `closedStates_checkPath` | `prover/ContractGraph/StateSearch.lean` |
-| `runChecker_sound`, `runChecker_sound_all` | `prover/ContractGraph/Main.lean` |
-| `runChecker_exitCode_eq_zero_iff`, `runCheckerPaths_exitCode_eq_zero_iff`, `incompleteWith_exitCode` | `prover/ContractGraph/Main.lean` |
+| `constraintImplies` | `cgv/prover/ContractGraph/Checker.lean` |
+| `checkEdge_sound`, `checkEdgeAll_sound`, `checkEdgeAll_sound_noErrors` | `cgv/prover/ContractGraph/Checker.lean` |
+| `IsDataPath`, `stepwiseSound` | `cgv/prover/ContractGraph/Composition.lean` |
+| `checkPath_sound`, `checkPath_sound_noErrors` | `cgv/prover/ContractGraph/Composition.lean` |
+| `enumeratePaths_complete` | `cgv/prover/ContractGraph/Search.lean` |
+| `closedStates_checkPath` | `cgv/prover/ContractGraph/StateSearch.lean` |
+| `runChecker_sound`, `runChecker_sound_all` | `cgv/prover/ContractGraph/Main.lean` |
+| `runChecker_exitCode_eq_zero_iff`, `runCheckerPaths_exitCode_eq_zero_iff`, `incompleteWith_exitCode` | `cgv/prover/ContractGraph/Main.lean` |
 
 Renaming or deleting any of these counts as changing it.
 
@@ -47,7 +47,7 @@ A PR that touches a protected surface includes, in its description, a
    the same, and for which inputs. "Less" is allowed; unstated "less" is not.
 4. **Evidence** — for Class A, the library documentation or a runtime check
    behind the rule (version-pinned); for Class B, which callers and docs
-   (README trust model, CLAUDE.md key theorems) were updated to match.
+   (the trust model in `cgv/README.md`, the key theorems in `cgv/CLAUDE.md`) were updated to match.
 
 A reviewer, human or automated, treats a protected-surface change without
 this section as a blocking finding, whatever the code's correctness.
