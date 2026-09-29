@@ -6,10 +6,13 @@ gates but leaves each repository to say which of its own surfaces are critical. 
 answer lives here: the tier a change falls into determines which artefact must be
 committed before a human is asked to approve anything.
 
-Enforcement is deterministic, not advisory. The **tier-gate CI job**
-(`scripts/ci/tier-gate.mjs`, run by `.github/workflows/tier-gate.yml`) evaluates every
-pull request against the rules below and must pass **before the review gate opens**.
-A failing tier gate is not a review comment — the review has not started yet.
+The check is deterministic. The **tier-gate CI job** (`scripts/ci/tier-gate.mjs`, run by
+`.github/workflows/tier-gate.yml`, with its own tests in
+`scripts/ci/tier-gate.test.mjs`) evaluates every pull request against the rules below.
+It must pass **before the review gate opens**. A failing tier gate is not a review
+comment: the review has not started yet. There is no branch protection, so the gate
+cannot stop a merge. The maintainer does not merge while it is red (see
+[Evidence and sign-off](#evidence-and-sign-off)).
 
 ## Declaring a tier
 
@@ -47,16 +50,26 @@ intent file exists; review then covers the diff itself.
 user or a caller. New MCP tool behaviour, changed parsing, changed thresholds in
 non-protected code.
 
-**Artefact required:** a committed `spec.md` for the change (in addition to the
-`intent.md` it derives from). The spec must flag unresolved concerns rather than quietly
-settle them.
+**Artefact required:** a spec for the change, in addition to the `intent.md` it derives
+from. The spec must flag unresolved concerns rather than quietly settle them. Either
+of these satisfies the requirement:
+- the PR changes a root `spec.md`;
+- the PR body has a `Spec: <path>` line that cites an existing file.
 
-**Worked example.** A PR changes how `dafny_verify` reports timeouts so callers can
-distinguish a timeout from a verification failure. No protected surface is touched, but
-the observable behaviour of a tool changes. The author declares `Tier: 2`, commits
-`spec.md` describing the new result shape and the open question about backwards
-compatibility, and cites the intent. The tier gate confirms a `spec.md` is present in
-the diff or already committed and referenced.
+A root `spec.md` left over from an earlier change does not count.
+
+**Worked example.** A PR changes how `dafny_verify` reports timeouts, so that callers
+can tell a timeout from a verification failure. No protected surface is touched, but
+the observable behaviour of a tool changes. The author:
+- declares `Tier: 2`;
+- writes a spec describing the new result shape and the open question about
+  backwards compatibility;
+- cites the intent.
+
+**CGV worked example.** A PR adds a new constraint kind to the checker. For CGV, the
+spec can be the changed Lean definitions plus the new `test_fixtures/*/expected.json`,
+cited as `Spec: cgv/test_fixtures/<fixture>/expected.json`. The Lean statements are a
+stronger spec than prose, so a prose `spec.md` is optional.
 
 ### Tier 3 — critical / protected
 
@@ -66,21 +79,67 @@ decides whether other changes are safe.
 
 **Artefacts required:**
 
-1. a committed `plan.md` — files that change, order of work, risks, and the proof or
-   tests that will demonstrate correctness, written so that an engineer who never saw
-   the conversation could implement it;
-2. an **intent-check attestation** (the record that the change's invariant tests were
-   run and classified, per the false-positive tracker); and
-3. for any edit to a protected path, a **governance-note block** — the
-   `## Protected-Surface Amendment` block produced by `/protected-surface-amend`,
-   naming each protected file it authorises, pasted into the PR description.
+1. **A plan.** It lists the files that change, the order of work, the risks, and the
+   proof or tests that will show the change is correct. It is written so that an
+   engineer who never saw the conversation could implement it. Either of these
+   satisfies the requirement:
+   - the PR changes a root `plan.md`;
+   - the PR body has a `Plan: <path>` line that cites an existing file.
+
+   A root `plan.md` left over from an earlier change does not count.
+2. **A governance note, for any edit to a protected path.** This is the
+   `## Protected-Surface Amendment` block produced by `/protected-surface-amend`. The
+   PR must change it, under `.assurance/protected-surface-amend/` or
+   `.assurance/add-session-*/`. It must name every changed protected file, and its
+   block goes in the PR description. A note from an earlier change does not count.
+3. **For a CGV proof surface** (`BehaviorModel.lean`,
+   `cgv/prover/protected-statements.txt`, or its generator
+   `cgv/prover/scripts/ProtectedStatements.lean`), a `## Protected-surface change` section in
+   the PR body. See `.claude/rules/protected-surfaces.md`.
+
+**No LLM verdict is an artefact.** Tier 3 used to require an `intent-check`
+attestation. That record is the verdict of an LLM back-translator and diff-checker, and
+`docs/VISION.md` rules out LLM judgement as evidence. `/intent-check` remains a useful
+advisory tool to run locally, but the gate never reads its output.
 
 **Worked example.** A PR tightens the abort threshold inside
 `crosscheck/skills/reason/SKILL.md`. That path matches `crosscheck/skills/*/SKILL.md`,
-so the Tier 3 floor applies even though the author initially thought of it as a wording
-change. The PR must carry `Tier: 3`, a committed `plan.md`, the intent-check
-attestation, and a governance-note block naming that `SKILL.md`. With any one of the
-three missing, the tier gate fails and no reviewer is asked to approve.
+so the Tier 3 floor applies, even though the author first thought of it as a wording
+change. The PR must carry:
+- `Tier: 3`;
+- a changed `plan.md`, or a `Plan:` citation;
+- a new governance note naming that `SKILL.md`.
+
+If either artefact is missing, the tier gate fails.
+
+**CGV worked example.** A PR strengthens `runChecker_sound_all`. The `CGV CI` manifest
+check fails until the author regenerates `cgv/prover/protected-statements.txt`. That
+file is protected, so the PR becomes Tier 3. It needs a plan, a governance note naming
+the manifest, and a `## Protected-surface change` section that says the guarantee now
+promises more.
+
+## Evidence and sign-off
+
+The tier gate checks that the artefacts exist. It does not decide whether the change is
+correct. That evidence comes from deterministic CI jobs, and on a pass the gate reports
+which job holds the evidence for each class of changed file:
+
+| Changed path | Deterministic evidence |
+|---|---|
+| `cgv/**` | `CGV CI`: `cargo test`, `lake build` (proofs and `#guard` tests), fixtures, statement manifest and axiom check |
+| `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | `CI`: `npm test`, including the property tests |
+| `scripts/ci/**` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
+| `evals/**` | `Incident Eval Check` |
+| `crosscheck/skills/**`, `crosscheck/agents/**`, `.claude/**`, `docs/assurance/**`, `.github/workflows/**` | not yet reached: human review is the only evidence |
+
+Skills, agents, rules, hooks and workflow definitions are "not yet reached". No
+deterministic check exercises their behaviour: they are prompt text or gate definitions.
+The open question is what a replayable behavioural eval of a prompt artefact looks like.
+
+**The human sign-off is the maintainer's merge.** The repository is private and has no
+GitHub Pro, so it has no branch protection. That means no CI job, this gate included,
+can block a merge. A red check is information for the maintainer. Enforcing approval in
+CI is not yet reached, because it needs a merge condition that GitHub enforces.
 
 ## Reading the map
 

@@ -45,10 +45,10 @@ manual or orchestrator-driven work.
 
 ## Where this shows up
 
-Besides the file above, this same gate content is posted as a PR comment
-by the repository's automated spec-audit CI check, so reviewers see the
-triage prompt directly on the pull request without needing to open a
-generated file.
+The gate content shows up in the findings file above, when the audit is run
+locally or by an orchestrator. This repository no longer runs the audit in CI:
+it needs an LLM, and CI runs no LLMs. The findings are advisory. They point a
+reviewer at likely gaps, and the reviewer decides.
 
 ## How long this takes
 

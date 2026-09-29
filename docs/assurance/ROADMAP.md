@@ -56,13 +56,21 @@ Current projection across the six layers: `TODO: fill from
 
 **PB-1 — Status: In progress.** Scope: adopt the playbook artefact chain
 (intent → spec → plan → diff + tests → PR with review findings → incident
-record + eval) as this repository's own development framework, with a tier map,
-a protected-surface hook, `REVIEW.md`, and the four enforcing CI workflows; and
-give every human gate a plain-language explainer under `docs/gates/` reached
-from a fixed three-sentence gate message. Acceptance: a new contributor can
-trace a change from `intent/<slug>.md` to a merged PR using
-`DEVELOPMENT-FRAMEWORK.md` alone, and every gate in the inventory names its
-explainer. Later artefacts cite PB-1 as their governing roadmap item.
+record + eval) as the development framework for both Crosscheck and CGV. It
+includes a tier map, a protected-surface hook, `REVIEW.md`, and deterministic CI:
+- `tier-gate.yml`, with the gate's own tests;
+- `ci.yml` for Crosscheck;
+- `cgv-ci.yml` for CGV, which includes the theorem-statement manifest check;
+- `incident-eval-check.yml`.
+
+No CI job calls an LLM, so only deterministic checks and the maintainer's merge
+count as evidence. PB-1 also gives every human gate a plain-language explainer
+under `docs/gates/`, reached from a fixed three-sentence gate message.
+Acceptance: a new contributor can trace a change from `intent/<slug>.md` to a
+merged PR using `DEVELOPMENT-FRAMEWORK.md` alone, and every gate in the
+inventory names its explainer. Later artefacts cite PB-1 as their governing
+roadmap item. The move to CI with deterministic evidence only is recorded in
+`intent/2026-09-29-deterministic-evidence.md`.
 
 **MR-1 — Status: Done** (#18, #42, and nicholls-inc/claude-code-marketplace#251).
 Scope: move the Crosscheck plugin, its development framework, its CI, its
