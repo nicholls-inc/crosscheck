@@ -1,0 +1,10 @@
+{
+  // Path alias as used by the app: "@/..." maps into src/.
+  "compilerOptions": {
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"], // trailing comma below is intentional
+    },
+  },
+}

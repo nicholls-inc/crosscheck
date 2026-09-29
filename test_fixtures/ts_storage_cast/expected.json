@@ -1,0 +1,16 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "readTheme -> Theme",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Theme"
+    }
+  ],
+  "no_other_warnings": true,
+  "warnings": [
+    { "path": "readTheme -> Theme", "contains": "choices postcondition" },
+    { "path": "readThemeOrNull -> Theme | null", "contains": "choices postcondition" }
+  ]
+}

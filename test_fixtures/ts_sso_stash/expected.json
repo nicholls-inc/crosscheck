@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "errors": [],
+  "no_other_warnings": true,
+  "warnings": [
+    { "path": "peekSsoStash -> SsoStash.origin", "contains": "nullability postcondition" },
+    { "path": "peekSsoStash -> SsoStash.origin", "contains": "choices postcondition" },
+    { "path": "peekSsoStash -> SsoStash.strategy", "contains": "choices postcondition" }
+  ]
+}

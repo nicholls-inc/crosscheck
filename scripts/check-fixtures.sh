@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the full pipeline (Rust extractor + Lean checker) on every fixture under
 # test_fixtures/ that has an expected.json, and compare the reported errors and
-# exit code with it. Warnings are printed but not compared.
+# exit code with it. Warnings listed under "warnings" must be present; with
+# "no_other_warnings": true, no other warning may appear.
 #
 # Usage: scripts/check-fixtures.sh [--release|--debug]
 # Requires: cargo build (--release by default), cd prover && lake build, python3.
@@ -59,8 +60,16 @@ missing_warnings = [
     if not any(" -> ".join(r["path"]) == w["path"] and w["contains"] in r["suggestion"]
                for r in warning_results)
 ]
+# "no_other_warnings": every actual warning must match an expected entry.
+unexpected_warnings = [
+    (" -> ".join(r["path"]), r["suggestion"]) for r in warning_results
+    if expected.get("no_other_warnings")
+    and not any(" -> ".join(r["path"]) == w["path"] and w["contains"] in r["suggestion"]
+                for w in expected.get("warnings", []))
+]
 got = [g for g in got]
-ok = want == got and code == expected["exit_code"] and not missing_warnings
+ok = (want == got and code == expected["exit_code"] and not missing_warnings
+      and not unexpected_warnings)
 print(f"{'ok  ' if ok else 'FAIL'} {name}: {len(got)} errors, {warnings} warnings, exit {code}")
 if not ok:
     for e in sorted(set(want) - set(got)):
@@ -69,6 +78,8 @@ if not ok:
         print("  unexpected:", " | ".join(str(x) for x in e if x is not None))
     for w in missing_warnings:
         print("  missing warning:", w["path"], "|", w["contains"])
+    for path, suggestion in unexpected_warnings:
+        print(f"  unexpected warning: {path} | {suggestion}")
     if code != expected["exit_code"]:
         print(f"  exit code {code}, expected {expected['exit_code']}")
 sys.exit(0 if ok else 1)

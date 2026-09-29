@@ -1,0 +1,20 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "relabel -> Label.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.text"
+    },
+    {
+      "path": "readDensity -> Density",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Density"
+    }
+  ],
+  "warnings": [
+    { "path": "readDensity -> Density", "contains": "choices postcondition" }
+  ]
+}
