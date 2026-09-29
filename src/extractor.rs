@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ruff_python_ast::{Expr, Stmt};
 
@@ -15,6 +15,7 @@ use crate::function_extractor;
 use crate::model_extractor::{self, ModelField};
 use crate::resolve::{self, ClassInfo, ClassKind, EnumKind, ModuleInfo, ProjectIndex, Symbol};
 use crate::source::LineIndex;
+use crate::ts;
 use crate::value_analysis::{self, ValueFacts};
 
 /// One parsed Python file.
@@ -692,37 +693,24 @@ pub fn extract_with(
     // Load defaults
     let field_defaults = defaults::load_defaults(django_version)?;
 
-    // Parse all Python files
-    let mut py_files = find_python_files(app_path)?;
-    py_files.sort();
+    // Parse all Python and TypeScript files
+    let mut files = find_source_files(app_path)?;
+    files.python.sort();
+    files.typescript.sort();
     if !options.exclude.is_empty() {
-        py_files.retain(|f| {
-            let rel = f
-                .strip_prefix(app_path)
-                .unwrap_or(f)
-                .to_string_lossy()
-                .replace('\\', "/");
-            !options.exclude.iter().any(|g| glob_excludes(g, &rel))
-        });
+        let excluded = |f: &PathBuf| {
+            let rel = relative_path(app_path, f).replace('\\', "/");
+            options.exclude.iter().any(|g| glob_excludes(g, &rel))
+        };
+        files.python.retain(|f| !excluded(f));
+        files.typescript.retain(|f| !excluded(f));
     }
     let mut modules = Vec::new();
     let mut parse_errors = Vec::new();
-    for py_file in &py_files {
+    for py_file in &files.python {
         let bytes = std::fs::read(py_file)?;
         let source = String::from_utf8_lossy(&bytes).into_owned();
-        let mut relative_path = py_file
-            .strip_prefix(app_path)
-            .unwrap_or(py_file)
-            .to_string_lossy()
-            .to_string();
-        if relative_path.is_empty() {
-            // A single file was given: name the module after the file.
-            relative_path = py_file
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-        }
+        let relative_path = relative_path(app_path, py_file);
         let mut module = SourceModule::parse(&relative_path, source);
         if let Some(err) = module.parse_error.take() {
             parse_errors.push(format!("{relative_path}: {err}"));
@@ -733,6 +721,8 @@ pub fn extract_with(
         }
         modules.push(module);
     }
+    let ts_graph = ts::extract(&files.typescript, app_path)?;
+    parse_errors.extend(ts_graph.parse_errors.iter().cloned());
     if !parse_errors.is_empty() {
         if !options.allow_parse_errors {
             anyhow::bail!(
@@ -754,7 +744,7 @@ pub fn extract_with(
     let db = ContractDb::create(&db_path)?;
 
     let project = Project::build(modules, &field_defaults);
-    let names = resolve::display_names(&project.node_names());
+    let names = resolve::display_names(&[project.node_names(), ts_graph.node_names()].concat());
 
     // Nodes: model fields, data class fields, functions
     let mut model_node_ids =
@@ -805,8 +795,15 @@ pub fn extract_with(
             }
         }
     }
+    let ts_counts = ts_graph.write(&db, &names)?;
     db.finish()?;
 
+    if ts_graph.skipped_unresolved > 0 {
+        eprintln!(
+            "TS: {} assertion sites skipped: target type unresolved",
+            ts_graph.skipped_unresolved
+        );
+    }
     let data_class_field_count: usize = project.data_classes.iter().map(|c| c.fields.len()).sum();
     let function_count = project
         .index
@@ -815,13 +812,16 @@ pub fn extract_with(
         .filter(|f| !f.name.starts_with("<module "))
         .count();
     eprintln!(
-        "Extracted {} model fields, {} data class fields, {} functions ({} module-level code blocks, {} call sites), {} edges to {}",
+        "Extracted {} model fields, {} data class fields, {} functions ({} module-level code blocks, {} call sites), {} edges, TS: {} assertion sites, {} slots, {} edges to {}",
         project.model_fields.len(),
         data_class_field_count,
         function_count,
         project.index.functions.len() - function_count,
         site_ids.len(),
         edge_count,
+        ts_graph.sites,
+        ts_counts.slots,
+        ts_counts.edges,
         db_path.display()
     );
 
@@ -1099,30 +1099,58 @@ fn lookup(ids: &HashMap<String, i64>, names: &HashMap<String, String>, name: &st
     }
 }
 
-/// Find all .py files in a directory recursively.
-fn find_python_files(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
-    let mut files = Vec::new();
-    if dir.is_file() && dir.extension().is_some_and(|ext| ext == "py") {
-        files.push(dir.to_path_buf());
-        return Ok(files);
+/// `file` relative to the application root; a single file given as the
+/// root is named after itself.
+pub fn relative_path(app_path: &Path, file: &Path) -> String {
+    let rel = file.strip_prefix(app_path).unwrap_or(file);
+    if rel.as_os_str().is_empty() {
+        file.file_name().unwrap_or_default().to_string_lossy().to_string()
+    } else {
+        rel.to_string_lossy().to_string()
     }
-    if dir.is_dir() {
+}
+
+/// The source files of a run, by frontend.
+#[derive(Default)]
+struct SourceFiles {
+    python: Vec<PathBuf>,
+    typescript: Vec<PathBuf>,
+}
+
+const TS_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
+/// Find every .py and TypeScript / JavaScript file under `dir` (or the one
+/// file `dir` names), skipping dot-directories, `__pycache__` and `node_modules`.
+fn find_source_files(dir: &Path) -> Result<SourceFiles> {
+    let mut files = SourceFiles::default();
+    fn add(files: &mut SourceFiles, path: PathBuf) {
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("py") => files.python.push(path),
+            Some(ext) if TS_EXTENSIONS.contains(&ext) => files.typescript.push(path),
+            _ => {}
+        }
+    }
+    fn walk(files: &mut SourceFiles, dir: &Path) -> Result<()> {
         for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
+            let path = entry?.path();
             if path.is_dir() {
-                // Skip __pycache__, .git, etc.
                 let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
                 if !dir_name.starts_with('.')
                     && dir_name != "__pycache__"
                     && dir_name != "node_modules"
                 {
-                    files.extend(find_python_files(&path)?);
+                    walk(files, &path)?;
                 }
-            } else if path.extension().is_some_and(|ext| ext == "py") {
-                files.push(path);
+            } else {
+                add(files, path);
             }
         }
+        Ok(())
+    }
+    if dir.is_file() {
+        add(&mut files, dir.to_path_buf());
+    } else if dir.is_dir() {
+        walk(&mut files, dir)?;
     }
     Ok(files)
 }

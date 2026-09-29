@@ -6,8 +6,8 @@ use std::process::{Command, Stdio};
 
 use crosscheck_contracts::{defaults, extractor, report};
 
-/// Stack size of the extraction thread: deeply nested Python (long operator
-/// chains, nested calls) recurses in the parser and the analyses.
+/// Stack size of the extraction thread: deeply nested Python or TypeScript
+/// (long operator chains, nested calls) recurses in the parsers and the analyses.
 const EXTRACTION_STACK: usize = 256 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -18,7 +18,7 @@ enum OutputFormat {
 
 #[derive(Parser)]
 #[command(name = "crosscheck")]
-#[command(about = "Contract graph verifier for Python applications (Django models, dataclasses, attrs, pydantic)")]
+#[command(about = "Contract graph verifier for Python (Django models, dataclasses, attrs, pydantic) and TypeScript (assertion sites) applications")]
 struct Cli {
     #[command(subcommand)]
     command: TopCommands,
@@ -35,9 +35,9 @@ enum TopCommands {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Check contracts in a Python application
+    /// Check contracts in a Python and/or TypeScript application
     Check {
-        /// Path to the application directory (or a single .py file)
+        /// Path to the application directory (or a single .py / .ts file)
         app_path: PathBuf,
 
         /// Path to manual edge overrides file

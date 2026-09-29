@@ -146,11 +146,13 @@ fn render_result(result: &CheckResult) -> String {
     ));
     lines.push(format!(
         "       {} guarantees {}",
-        result.source.name, result.source_guarantee
+        result.source.name,
+        shorten_choices(&result.source_guarantee)
     ));
     lines.push(format!(
         "       {} requires {}",
-        result.target.name, result.target_requirement
+        result.target.name,
+        shorten_choices(&result.target_requirement)
     ));
     lines.push(format!("       Path: {}", result.path.join(" \u{2192} ")));
     if result.hop_differs_from_path() {
@@ -169,9 +171,36 @@ fn render_result(result: &CheckResult) -> String {
     if result.is_transitive_only_note() {
         lines.push("       Note: invisible to pairwise checking.".to_string());
     }
-    lines.push(format!("       Suggestion: {}", result.suggestion));
+    lines.push(format!("       Suggestion: {}", shorten_choices(&result.suggestion)));
 
     lines.join("\n") + "\n"
+}
+
+/// Members shown of a `choices in [..]` list; the rest become `... (+N more)`.
+const MAX_CHOICES_SHOWN: usize = 12;
+
+/// `choices in [a, b, ...]` with more than `MAX_CHOICES_SHOWN` members
+/// shortened to the first members and a count (text format only).
+fn shorten_choices(text: &str) -> String {
+    const OPEN: &str = "choices in [";
+    let Some(start) = text.find(OPEN) else {
+        return text.to_string();
+    };
+    let list_start = start + OPEN.len();
+    let Some(end) = text[list_start..].find(']') else {
+        return text.to_string();
+    };
+    let members: Vec<&str> = text[list_start..list_start + end].split(", ").collect();
+    if members.len() <= MAX_CHOICES_SHOWN {
+        return text.to_string();
+    }
+    format!(
+        "{}{}, ... (+{} more){}",
+        &text[..list_start],
+        members[..MAX_CHOICES_SHOWN].join(", "),
+        members.len() - MAX_CHOICES_SHOWN,
+        &text[list_start + end..]
+    )
 }
 
 #[cfg(test)]
@@ -275,6 +304,23 @@ mod tests {
         let json = BUG1_JSON.replace(r#""hop": ["#, r#""site": {"file": "billing/services.py", "line": 7}, "hop": ["#);
         let text = render_text(&parse(&json).unwrap(), false);
         assert!(text.contains("At: billing/services.py:7"), "{text}");
+    }
+
+    #[test]
+    fn long_choices_lists_are_shortened_in_text_only() {
+        let members: Vec<String> = (1..=15).map(|i| format!("k{i}")).collect();
+        let json = BUG1_JSON.replace(
+            r#""target_requirement": "precision ≤ 3""#,
+            &format!(r#""target_requirement": "choices in [{}]""#, members.join(", ")),
+        );
+        let output = parse(&json).unwrap();
+        assert_eq!(output.results[0].target_requirement, format!("choices in [{}]", members.join(", ")));
+        let text = render_text(&output, false);
+        assert!(
+            text.contains("requires choices in [k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, ... (+3 more)]\n"),
+            "{text}"
+        );
+        assert_eq!(shorten_choices("choices in [a, b]"), "choices in [a, b]");
     }
 
     #[test]

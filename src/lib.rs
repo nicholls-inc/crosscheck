@@ -12,4 +12,5 @@ pub mod model_extractor;
 pub mod report;
 pub mod resolve;
 pub mod source;
+pub mod ts;
 pub mod value_analysis;
