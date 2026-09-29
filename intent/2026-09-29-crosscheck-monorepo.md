@@ -18,38 +18,29 @@ One repository holds Crosscheck, CGV, the shared vision, and Crosscheck's develo
 - The history import must be merged with a merge commit. A squash merge discards the history.
 - `.claude/hooks/` and `.claude/settings.json` are not imported by an agent. The maintainer adds them.
 
-## Resolved questions
-- **Which roadmap item governs this move?** MR-1 in `docs/assurance/ROADMAP.md`. It was added with the history import and names this intent. Follow-up work that changes the tier map or the tier gate is governed by PB-1, which owns both. The CGV CI work below needs a new roadmap item.
 
-## Open questions
-- **Does CGV adopt the full development framework, or only the tier declaration?**
-  Proposed answer: CGV adopts the full chain, with CGV-native evidence at each tier. Reasoning:
-  - "Tier declaration only" does not hold up. The tier gate runs on every pull request and checks each tier's artefacts, so a declaration without artefacts fails the gate. Making the gate skip `cgv/` would leave CGV's protected surfaces with no deterministic check at all.
-  - The full framework as written does not fit CGV:
-    - A Tier 2 prose `spec.md` duplicates the Lean theorem statements, which are the stronger spec, and the two can drift apart.
-    - `/intent-check` round-trips invariant prose against TypeScript or Go property tests. It cannot read a Lean theorem.
-    - `/invariant-coverage-scaffold` does not support Rust yet.
-    - The soundness theorem statements are protected by rule, but they are not in the machine-readable path list, so no hook or Tier 3 floor catches a change to them.
-  - CGV has no CI. `ci.yml` runs only on `crosscheck/**`, so `cargo test`, `lake build`, and `scripts/check-fixtures.sh` never run on a pull request. Adopting the framework without CI would add paperwork without adding any deterministic evidence.
-  - Proposed shape:
-    1. Every CGV change has an intent. This costs little and records the design.
-    2. At Tier 2, the spec may be the changed Lean statements plus the changed `test_fixtures/*/expected.json` files, cited by a `Spec:` line in the pull request.
-    3. At Tier 3, the evidence is a passing `lake build` and a statement manifest check. The manifest check fails whenever a protected theorem statement changes. That change then forces Tier 3 and the **Protected-surface change** section.
-    4. The first step is a new CI workflow that runs `cargo test`, `lake build ContractGraph ContractGraph.Main`, and `scripts/check-fixtures.sh` on `cgv/**`.
-- **The tier gate accepts any `intent-check` attestation file. Under the vision, an LLM verdict cannot be evidence. How should Tier 3 change?**
-  Proposed answer, for discussion. The current gate has three separate defects:
-  - *Stale artefacts pass.* `tier-gate.mjs` searches the whole tree for the file name. The committed `crosscheck/mcp-server/.assurance/intent-check-attestation.json` (from #134, April 2026) therefore satisfies every Tier 3 pull request. The same happens with the root `plan.md` (from #246). Neither the verdict nor the content hash is read.
-  - *The attestation is LLM judgement.* Its `verdict` comes from a back-translator and a diff-checker, with a confidence figure of 91% in the committed file. Even a fresh attestation with a checked hash is still LLM judgement.
-  - *There is no human approval check.* The gate never confirms that a named human approved the pull request.
+## Decisions (maintainer, 2026-09-29)
+- **Which roadmap item governs this move?** MR-1 in `docs/assurance/ROADMAP.md`. It was added with the history import and names this intent. The follow-up work below changes the tier map, the tier gate, and CI, which PB-1 owns, so PB-1 governs it.
+- **Does CGV adopt the full development framework, or only the tier declaration?** The full framework. The repository applies its own system to itself. Why "tier declaration only" does not hold up:
+  - The tier gate runs on every pull request and checks each tier's artefacts, so a declaration without artefacts fails the gate.
+  - Making the gate skip `cgv/` would leave CGV's protected surfaces with no deterministic check.
 
-  Proposal:
-  1. Remove the attestation from Tier 3's required artefacts. `/intent-check` keeps running as an advisory signal: it posts its result as a pull request comment and feeds the false-positive tracker. The gate never reads it.
-  2. Replace it with deterministic evidence for each class of protected surface, run in CI on the pull request's head commit:
-     - For invariant docs and property tests, the invariant coverage check and the covering tests pass.
-     - For Dafny and Lean specs, `dafny verify` or `lake build` passes.
-     - For CGV theorem statements, the statement manifest check passes.
-     - For `SKILL.md`, agent files, rules, hooks, and CI, no deterministic behaviour check exists yet. The gate says "not yet reached: human review is the only evidence" and does not pretend otherwise.
-  3. Require human approval deterministically. A CODEOWNERS entry for the protected paths, plus branch protection that requires a code-owner review, makes a named human's approval a merge condition. That approval is the human judgement the vision counts.
-  4. Bind artefacts to the pull request. `plan.md` and governance notes count only if the pull request adds or changes them, and the gate reads their content rather than only checking that they exist.
+  CGV's evidence differs from Crosscheck's at each tier:
+  1. Every CGV change has an intent.
+  2. At Tier 2, the spec may be the changed Lean statements plus the changed `test_fixtures/*/expected.json` files, cited by a `Spec:` line.
+  3. At Tier 3, the evidence is a passing `lake build` plus a statement manifest check. The manifest check fails when a protected theorem statement, or a definition it relies on, changes without the committed manifest changing too. The manifest is a protected path, so changing it forces Tier 3 and the **Protected-surface change** section.
+  4. CGV gets CI: `cargo test`, `lake build`, `scripts/check-fixtures.sh`, and the manifest check, run on `cgv/**`.
+- **How should Tier 3 change?** The gate stops reading the `intent-check` attestation. It had three defects:
+  - It accepted any attestation file in the tree, including the committed one from #134. The root `plan.md` from #246 passed the same way.
+  - It never read the attestation's verdict or content hash.
+  - The verdict is LLM judgement in any case.
 
-  This changes `docs/assurance/TIER-LAYER-MAP.md`, `scripts/ci/tier-gate.mjs`, and the tier-gate workflow. All three are Class A protected surfaces, so the change goes through `/protected-surface-amend` under PB-1.
+  The new Tier 3:
+  1. The gate does not read the attestation. `/intent-check` stays available as a local advisory tool.
+  2. Deterministic evidence comes from CI jobs for each class of protected surface: the Crosscheck tests, CGV's `lake build` and manifest check, and the tier gate's own tests. For `SKILL.md`, agent files, rules, hooks, and CI definitions, no deterministic behaviour check exists yet. The gate reports this as "not yet reached", and human review is the only evidence.
+  3. A plan or governance note found by searching the tree counts only if this pull request adds or changes it. A file cited by a `Plan:` or `Spec:` line still counts, because the author names it and the reviewer can read it.
+  4. For a CGV proof surface, the pull request body must contain a `## Protected-surface change` section.
+
+## Constraints on the follow-up (maintainer, 2026-09-29)
+- **No LLM runs in CI.** There is no budget for it. `spec-audit.yml` and the `intent-check` job in `protected-surface-check.yml` are removed. The audit skills and `/intent-check` run locally, as advisory tools.
+- **No branch protection.** The repository is private, and the account has no GitHub Pro. No CI check can therefore block a merge. The maintainer's merge is the human sign-off. Enforcing that sign-off in CI is not yet reached: the blocking property is a merge condition that GitHub enforces, which needs branch protection. The CI checks inform that merge. They do not replace it.
