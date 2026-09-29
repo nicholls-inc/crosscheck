@@ -1,0 +1,10 @@
+description = "A nullable DateTimeField reaches a non-null write through a callee; the fix guards only in the caller, through a helper the checker cannot see through, so the finding stays (expected DETECTED_NOT_CLEARED)."
+kind = "non-null"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "billing/logic.py"
+line = 11

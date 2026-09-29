@@ -1,0 +1,10 @@
+description = "A pydantic model built from response.json() where the remote API may send null; nothing in project code produces None, so out of scope."
+kind = "non-null"
+in_scope = false
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "gateway/client.py"
+line = 8

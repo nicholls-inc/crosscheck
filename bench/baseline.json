@@ -1,0 +1,358 @@
+{
+  "schema": 1,
+  "tool_commit": "f71b04ee4f8b252f61bae80b52d8c7b029e0b78d",
+  "corpora": [
+    "public"
+  ],
+  "cases": [
+    {
+      "id": "dict-get-default",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "WARNING_ONLY",
+      "rank": [
+        1,
+        2
+      ],
+      "pre": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 2
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "warning",
+          "source": "parse_payer",
+          "target": "Payer.city",
+          "site": "billing/logic.py:5"
+        }
+      ]
+    },
+    {
+      "id": "external-payload-null",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": false,
+      "source": "synthetic",
+      "outcome": "NOT_REPORTED",
+      "rank": null,
+      "pre": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 2
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "warning",
+          "source": "fetch_quote",
+          "target": "QuoteResponse.currency",
+          "site": "gateway/client.py:8"
+        },
+        {
+          "severity": "warning",
+          "source": "fetch_quote",
+          "target": "QuoteResponse.price",
+          "site": "gateway/client.py:8"
+        }
+      ]
+    },
+    {
+      "id": "first-under-type-ignore",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "CAUGHT",
+      "rank": [
+        1,
+        1
+      ],
+      "pre": {
+        "exit": 1,
+        "errors": 1,
+        "warnings": 0
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "error",
+          "source": "primary_vehicle",
+          "target": "primary_vehicle.<return>",
+          "site": "fleet/logic.py:5"
+        }
+      ]
+    },
+    {
+      "id": "guard-in-caller",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "DETECTED_NOT_CLEARED",
+      "rank": [
+        1,
+        1
+      ],
+      "pre": {
+        "exit": 1,
+        "errors": 1,
+        "warnings": 0
+      },
+      "fix": {
+        "exit": 1,
+        "errors": 1,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "error",
+          "source": "renew",
+          "target": "record_renewal",
+          "site": "billing/logic.py:11"
+        }
+      ]
+    },
+    {
+      "id": "length-address-defaults",
+      "corpus": "public",
+      "kind": "length",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "CAUGHT",
+      "rank": [
+        1,
+        1
+      ],
+      "pre": {
+        "exit": 1,
+        "errors": 1,
+        "warnings": 1
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "matched": [
+        {
+          "severity": "error",
+          "source": "site_for_registration",
+          "target": "Site.address_line",
+          "site": "sites/logic.py:5"
+        }
+      ]
+    },
+    {
+      "id": "length-cross-model",
+      "corpus": "public",
+      "kind": "length",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "CAUGHT",
+      "rank": [
+        1,
+        1
+      ],
+      "pre": {
+        "exit": 1,
+        "errors": 1,
+        "warnings": 0
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "error",
+          "source": "label_trip",
+          "target": "TripLabel.text",
+          "site": "fleet/logic.py:5"
+        }
+      ]
+    },
+    {
+      "id": "none-dereference",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": false,
+      "source": "synthetic",
+      "outcome": "NOT_REPORTED",
+      "rank": null,
+      "pre": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "matched": [
+        {
+          "severity": "warning",
+          "source": "newest_vehicle_name",
+          "target": "newest_vehicle_name.<return>",
+          "site": "fleet/logic.py:6"
+        }
+      ]
+    },
+    {
+      "id": "optional-fields-to-params",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "CAUGHT",
+      "rank": [
+        1,
+        3
+      ],
+      "pre": {
+        "exit": 1,
+        "errors": 3,
+        "warnings": 0
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "error",
+          "source": "sync_contact",
+          "target": "save_contact",
+          "site": "billing/logic.py:13"
+        },
+        {
+          "severity": "error",
+          "source": "sync_contact",
+          "target": "save_contact",
+          "site": "billing/logic.py:13"
+        },
+        {
+          "severity": "error",
+          "source": "sync_contact",
+          "target": "save_contact",
+          "site": "billing/logic.py:13"
+        }
+      ]
+    },
+    {
+      "id": "precision-two-hop",
+      "corpus": "public",
+      "kind": "precision",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "CAUGHT",
+      "rank": [
+        1,
+        1
+      ],
+      "pre": {
+        "exit": 1,
+        "errors": 1,
+        "warnings": 1
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "matched": [
+        {
+          "severity": "error",
+          "source": "compute_offpeak",
+          "target": "EnergyRecord.energy",
+          "site": "metering/logic.py:26"
+        },
+        {
+          "severity": "warning",
+          "source": "split_energy",
+          "target": "EnergyRecord.energy",
+          "site": "metering/logic.py:26"
+        }
+      ]
+    },
+    {
+      "id": "two-attribute-deep",
+      "corpus": "public",
+      "kind": "non-null",
+      "in_scope": true,
+      "source": "synthetic",
+      "outcome": "WARNING_ONLY",
+      "rank": [
+        1,
+        1
+      ],
+      "pre": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "fix": {
+        "exit": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "matched": [
+        {
+          "severity": "warning",
+          "source": "open_ticket",
+          "target": "Ticket.operator_name",
+          "site": "sites/logic.py:5"
+        }
+      ]
+    }
+  ],
+  "labelled_runs": [
+    {
+      "id": "labelled-app",
+      "corpus": "public",
+      "errors": 7,
+      "labelled": 7,
+      "true_bug": 2,
+      "benign": 1,
+      "false_positive": 4,
+      "precision": 0.2857,
+      "unlabelled": 0,
+      "stale_labels": 0,
+      "false_positive_causes": {
+        "narrowing": 1,
+        "no-return": 1,
+        "numeric-tower": 1,
+        "object-param": 1
+      }
+    }
+  ],
+  "summary": {
+    "in_scope": 8,
+    "CAUGHT": 5,
+    "DETECTED_NOT_CLEARED": 1,
+    "WARNING_ONLY": 2,
+    "MISSED": 0,
+    "out_of_scope": 2,
+    "NOT_REPORTED": 2,
+    "SPURIOUS_ERROR": 0,
+    "FAILED": 0
+  }
+}

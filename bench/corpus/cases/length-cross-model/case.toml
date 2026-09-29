@@ -1,0 +1,11 @@
+description = "A 200-char CharField written into a 17-char CharField of another model via objects.create."
+kind = "length"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "fleet/logic.py"
+line = 5
+target = "TripLabel.text"

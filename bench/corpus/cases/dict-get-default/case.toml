@@ -1,0 +1,11 @@
+description = "data.get(key, \"\") from an untyped dict into non-Optional dataclass fields; the value can still be None if the key holds null. The checker only warns today. Expected WARNING_ONLY."
+kind = "non-null"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "billing/logic.py"
+line = 5
+target = "Payer.city"

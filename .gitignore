@@ -8,3 +8,6 @@ prover/.lake/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Python bytecode (scripts/bench.py tests)
+__pycache__/

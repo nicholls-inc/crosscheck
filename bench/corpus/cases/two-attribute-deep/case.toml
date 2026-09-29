@@ -1,0 +1,11 @@
+description = "obj.fk.nullable_field written to a non-null field; the checker only warns today (extractor gap: two-attribute chains have no nullability). Expected WARNING_ONLY."
+kind = "non-null"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "sites/logic.py"
+line = 5
+target = "Ticket.operator_name"

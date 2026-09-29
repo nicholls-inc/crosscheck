@@ -1,0 +1,10 @@
+description = "Three null=True fields passed (under type: ignore) to non-Optional str parameters that are written to non-null fields."
+kind = "non-null"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "billing/logic.py"
+line = 13

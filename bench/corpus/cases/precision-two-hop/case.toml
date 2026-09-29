@@ -1,0 +1,11 @@
+description = "A 4dp value passes through a function with postcondition max(input_precision, 3) into a DecimalField(decimal_places=3); only the composed path fails."
+kind = "precision"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "metering/logic.py"
+line = 26
+target = "EnergyRecord.energy"

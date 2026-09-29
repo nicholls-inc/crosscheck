@@ -1,0 +1,11 @@
+description = "A 255-char field passed in get_or_create(defaults={...}) into a 100-char field."
+kind = "length"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "sites/logic.py"
+line = 5
+target = "Site.address_line"
