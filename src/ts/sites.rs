@@ -107,13 +107,16 @@ pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a
     // Real scopes: every identifier reference resolves to the binding it names,
     // so no shadowing, hoisting or block rule is modelled here.
     let scoping = SemanticBuilder::new().build(&module.program).semantic.into_scoping();
+    // Facts first, sites second: a function may use a binding declared below it.
+    let mut facts = Facts { index, file, sources: HashMap::new(), typed: HashMap::new() };
+    facts.visit_program(&module.program);
     let mut v = SiteVisitor {
         index,
         file,
         module,
         scoping,
-        sources: HashMap::new(),
-        typed: HashMap::new(),
+        sources: facts.sources,
+        typed: facts.typed,
         frames: vec![FunctionRef {
             qualified: format!("{}.<module>", module.rel),
             short: format!("<module {}>", module.rel),
@@ -129,6 +132,50 @@ pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a
 
 /// Functions whose first argument is the function they wrap.
 const WRAPPERS: [&str; 4] = ["useCallback", "useMemo", "memo", "forwardRef"];
+
+/// What each binding of a module guarantees, keyed by symbol.
+struct Facts<'i, 'a> {
+    index: &'i TypeIndex<'a>,
+    file: FileId,
+    /// `const v = JSON.parse(..)` bindings.
+    sources: HashMap<SymbolId, RuntimeSource>,
+    /// Parameters and variables with an annotation.
+    typed: HashMap<SymbolId, ValueFacts>,
+}
+
+impl<'a> Visit<'a> for Facts<'_, 'a> {
+    fn visit_formal_parameter(&mut self, p: &FormalParameter<'a>) {
+        if let (BindingPattern::BindingIdentifier(id), Some(ann)) = (&p.pattern, &p.type_annotation) {
+            let mut facts = self.index.resolve(self.file, &ann.type_annotation).facts();
+            if p.optional {
+                facts.nullable = Some(true);
+            }
+            self.typed.insert(id.symbol_id(), facts);
+        }
+        walk::walk_formal_parameter(self, p);
+    }
+
+    fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
+        for d in &decl.declarations {
+            let BindingPattern::BindingIdentifier(id) = &d.id else {
+                continue;
+            };
+            if let Some(ann) = &d.type_annotation {
+                self.typed.insert(id.symbol_id(), self.index.resolve(self.file, &ann.type_annotation).facts());
+            }
+            // Only JSON.parse: tsc narrows a `string | null` binding by control
+            // flow (`if (!raw) return;`), which this frontend does not model,
+            // while nothing narrows `any` into the asserted type.
+            let init = d.init.as_ref().map(Expression::without_parentheses);
+            if let (VariableDeclarationKind::Const, Some(Expression::CallExpression(c))) = (decl.kind, init) {
+                if RuntimeSource::of_call(c) == Some(RuntimeSource::JsonParse) {
+                    self.sources.insert(id.symbol_id(), RuntimeSource::JsonParse);
+                }
+            }
+        }
+        walk::walk_variable_declaration(self, decl);
+    }
+}
 
 struct SiteVisitor<'i, 'a> {
     index: &'i TypeIndex<'a>,
@@ -161,7 +208,7 @@ impl<'a> SiteVisitor<'_, 'a> {
 
     /// Enter a named function. Its qualified name carries the line, so two
     /// same-named functions in one file (methods of two classes) stay two nodes.
-    fn push_function(&mut self, name: &str, span: Span, params: Option<&FormalParameters<'a>>) {
+    fn push_function(&mut self, name: &str, span: Span) {
         let line = self.line(span.start);
         self.frames.push(FunctionRef {
             qualified: format!("{}.{name}@{line}", self.module.rel),
@@ -169,28 +216,14 @@ impl<'a> SiteVisitor<'_, 'a> {
             file: self.module.rel.clone(),
             line,
         });
-        self.record_params(params);
     }
 
     /// Enter an anonymous function, attributed to the enclosing named function.
-    fn push_anonymous(&mut self, params: Option<&FormalParameters<'a>>) {
+    fn push_anonymous(&mut self) {
         let function = self.frames.last().expect("module frame").clone();
         self.frames.push(function);
-        self.record_params(params);
     }
 
-    fn record_params(&mut self, params: Option<&FormalParameters<'a>>) {
-        for p in params.into_iter().flat_map(|p| p.items.iter()) {
-            let (BindingPattern::BindingIdentifier(id), Some(ann)) = (&p.pattern, &p.type_annotation) else {
-                continue;
-            };
-            let mut facts = self.index.resolve(self.file, &ann.type_annotation).facts();
-            if p.optional {
-                facts.nullable = Some(true);
-            }
-            self.typed.insert(id.symbol_id(), facts);
-        }
-    }
 
     /// The binding a reference resolves to; `None` for a global.
     fn symbol(&self, id: &IdentifierReference<'a>) -> Option<SymbolId> {
@@ -408,7 +441,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
         match decl {
             Declaration::FunctionDeclaration(f) if f.id.is_some() => {
                 let name = f.id.as_ref().map(|i| i.name.as_str().to_string()).unwrap_or_default();
-                self.push_function(&name, f.span, Some(&f.params));
+                self.push_function(&name, f.span);
                 walk::walk_declaration(self, decl);
                 self.frames.pop();
             }
@@ -419,7 +452,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_export_default_declaration(&mut self, decl: &ExportDefaultDeclaration<'a>) {
         if let ExportDefaultDeclarationKind::FunctionDeclaration(f) = &decl.declaration {
             let name = f.id.as_ref().map_or("default", |i| i.name.as_str()).to_string();
-            self.push_function(&name, f.span, Some(&f.params));
+            self.push_function(&name, f.span);
             walk::walk_export_default_declaration(self, decl);
             self.frames.pop();
         } else {
@@ -430,7 +463,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_method_definition(&mut self, m: &MethodDefinition<'a>) {
         match m.key.static_name() {
             Some(name) => {
-                self.push_function(&name, m.span, Some(&m.value.params));
+                self.push_function(&name, m.span);
                 walk::walk_method_definition(self, m);
                 self.frames.pop();
             }
@@ -445,24 +478,9 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
                 continue;
             };
             let name = id.name.as_str().to_string();
-            if let Some(ann) = &d.type_annotation {
-                let facts = self.index.resolve(self.file, &ann.type_annotation).facts();
-                self.typed.insert(id.symbol_id(), facts);
-            }
-            let init = d.init.as_ref();
-            // Only JSON.parse: tsc narrows a `string | null` binding by control
-            // flow (`if (!raw) return;`), which this frontend does not model,
-            // while nothing narrows `any` into the asserted type.
-            if decl.kind == VariableDeclarationKind::Const {
-                if let Some(Expression::CallExpression(c)) = init.map(Expression::without_parentheses) {
-                    if RuntimeSource::of_call(c) == Some(RuntimeSource::JsonParse) {
-                        self.sources.insert(id.symbol_id(), RuntimeSource::JsonParse);
-                    }
-                }
-            }
-            match init.and_then(named_function) {
-                Some(params) => {
-                    self.push_function(&name, d.span, Some(params));
+            match d.init.as_ref().and_then(named_function) {
+                Some(_) => {
+                    self.push_function(&name, d.span);
                     self.visit_variable_declarator(d);
                     self.frames.pop();
                 }
@@ -472,13 +490,13 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     }
 
     fn visit_function(&mut self, f: &Function<'a>, flags: ScopeFlags) {
-        self.push_anonymous(Some(&f.params));
+        self.push_anonymous();
         walk::walk_function(self, f, flags);
         self.frames.pop();
     }
 
     fn visit_arrow_function_expression(&mut self, f: &ArrowFunctionExpression<'a>) {
-        self.push_anonymous(Some(&f.params));
+        self.push_anonymous();
         walk::walk_arrow_function_expression(self, f);
         self.frames.pop();
     }
@@ -717,6 +735,22 @@ export function sib(c: boolean, x: string) {
                 "m.ts.sib@13 -> m.ts.S.client @14: []",
                 "m.ts.sib@13 -> m.ts.S.client @15: []",
             ]
+        );
+    }
+
+    #[test]
+    fn uses_above_their_declaration_resolve() {
+        let g = graph(&[(
+            "m.ts",
+            "interface S { client: string; }
+export function use() { return cfg as S; }
+export function peek(raw: string) { const s = JSON.parse(raw) as S; return s.client === EXPECTED ? s : null; }
+const cfg = JSON.parse('{}');
+const EXPECTED: string = 'x';",
+        )]);
+        assert_eq!(
+            edges(&g),
+            vec!["m.ts.peek@3 -> m.ts.S.client @3: [nullable=0]", "m.ts.use@2 -> m.ts.S.client @2: []"]
         );
     }
 
