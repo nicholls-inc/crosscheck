@@ -89,6 +89,11 @@ prover/                     Lean checker + proofs
 │   └── Main.lean           Entry point, JSON output, runChecker_sound_all
 └── ContractGraphTest/      #guard test modules (one per feature round)
 
+bench/                      Benchmark harness and public corpus
+├── corpus/                 Public synthetic replay cases
+├── baseline.json           Committed results on the public corpus
+└── README.md               Corpus formats and usage guide
+
 test_fixtures/              one directory per scenario, each with expected.json
 ├── bug1/, transitive/, nullable/          original PoC scenarios
 ├── plain_python/, plain_python_clean/     no Django
@@ -110,6 +115,14 @@ test_fixtures/              one directory per scenario, each with expected.json
 Each fixture has an `expected.json` listing the errors the full pipeline should report.
 
 ## Running tests
+
+### Benchmark harness
+
+```bash
+scripts/bench.py run [--corpus DIR ...] [--out RESULT.json] [--compare baseline.json] [--format markdown]
+```
+
+Measures whether the checker detects real bugs and catches historical issues. The harness runs the pipeline on pre-fix and post-fix versions of applications and tracks outcomes across tool versions. See `bench/README.md` for corpus formats, case definitions and outcome interpretation. Other flags: `--cli`, `--checker`, `--keep-work DIR`. Exit codes: 0 ok, 1 regression under `--compare`, 2 harness or pipeline failure. The harness's own tests run with `python3 -m unittest discover -s scripts/tests`.
 
 ### Rust tests
 

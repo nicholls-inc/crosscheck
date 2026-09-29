@@ -34,6 +34,12 @@ cargo test
 
 # Full pipeline on every fixture, compared with test_fixtures/*/expected.json
 scripts/check-fixtures.sh
+
+# Benchmark harness on the public corpus
+scripts/bench.py run [--out RESULT.json] [--compare bench/baseline.json]
+
+# Benchmark harness unit tests
+python3 -m unittest discover -s scripts/tests
 ```
 
 `lake build` type-checks all proofs and the `ContractGraphTest` modules (their `#guard` lines fail the build if checker behaviour changes).
@@ -97,3 +103,5 @@ Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, req
 Design: `docs/design/dataflow-v2.md` (model, SQLite interface, and the round 3/5 addenda). Adversarial reports and repros from each round were kept outside the repo; their findings are recorded in the addenda and as fixtures.
 
 Lean-side test modules (`ContractGraphTest/`) construct graphs directly and verify checker behavior with `#eval` and proof terms.
+
+**Benchmark corpus** (`bench/corpus/` and `bench/baseline.json`): Public synthetic replay cases of real bugs, used to measure whether the checker detects actual issues and fixes across tool versions. `corpus.toml` names the corpus and its default arguments. Each case directory holds `case.toml` (describing a pre-fix and post-fix version and the bugs to match) and `pre/` and `fix/` subdirectories (dir-based cases) or git revision references (git-based cases). `labels.jsonl` (optional) labels findings as true bugs, benign or false positives, allowing precision computation. `bench/baseline.json` is a committed result used for regression testing with `--compare`. See `bench/README.md` for formats and usage.

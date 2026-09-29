@@ -1,0 +1,10 @@
+description = "Crash from dereferencing a possibly-None .first() result; no write to a constrained target, so out of scope."
+kind = "non-null"
+in_scope = false
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "fleet/logic.py"
+line = 6

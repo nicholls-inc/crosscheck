@@ -1,0 +1,6 @@
+name = "public"
+description = "Synthetic replay cases and one labelled run. All code is invented."
+
+[[labelled_run]]
+id = "labelled-app"
+app = "labelled/app"

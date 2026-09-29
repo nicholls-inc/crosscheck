@@ -1,0 +1,11 @@
+description = "A function annotated -> Vehicle returns .first() (may be None) under type: ignore[return-value]."
+kind = "non-null"
+in_scope = true
+source = "synthetic"
+pre = "pre"
+fix = "fix"
+
+[[bug]]
+file = "fleet/logic.py"
+line = 5
+target = "primary_vehicle.<return>"
