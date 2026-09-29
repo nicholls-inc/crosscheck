@@ -1,7 +1,7 @@
 //! Assertion sites: `<runtime read> as T`, their enclosing function, and
 //! the guard evidence that discharges a property of `T`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use oxc_allocator::Vec as ArenaVec;
 use oxc_ast::ast::*;
@@ -102,16 +102,22 @@ pub struct Site {
 
 /// Every site in one module (not a `.d.ts`).
 pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a>) -> Vec<Site> {
+    let mut bindings = Bindings::default();
+    bindings.visit_program(&module.program);
     let mut v = SiteVisitor {
         index,
         file,
         module,
-        frames: vec![Frame::new(FunctionRef {
-            qualified: format!("{}.<module>", module.rel),
-            short: format!("<module {}>", module.rel),
-            file: module.rel.clone(),
-            line: 1,
-        })],
+        bindings: bindings.0,
+        frames: vec![Frame::new(
+            FunctionRef {
+                qualified: format!("{}.<module>", module.rel),
+                short: format!("<module {}>", module.rel),
+                file: module.rel.clone(),
+                line: 1,
+            },
+            Span::new(0, module.source.len() as u32),
+        )],
         guards: HashMap::new(),
         sites: Vec::new(),
     };
@@ -122,21 +128,31 @@ pub fn collect<'a>(index: &TypeIndex<'a>, file: FileId, module: &ParsedModule<'a
 /// Functions whose first argument is the function they wrap.
 const WRAPPERS: [&str; 4] = ["useCallback", "useMemo", "memo", "forwardRef"];
 
-/// One lexical scope: a function (named or anonymous) or a block.
+/// Offsets of every binding identifier in a file, by name: parameters,
+/// variables, function, class and import names, catch parameters.
+#[derive(Default)]
+struct Bindings(HashMap<String, Vec<u32>>);
+
+impl<'a> Visit<'a> for Bindings {
+    fn visit_binding_identifier(&mut self, id: &BindingIdentifier<'a>) {
+        self.0.entry(id.name.as_str().to_string()).or_default().push(id.span.start);
+    }
+}
+
+/// A function (named or anonymous) and the facts it binds, each with the
+/// offset of its binding identifier.
 struct Frame {
     function: FunctionRef,
+    span: Span,
     /// `const v = JSON.parse(..)` bindings.
-    sources: HashMap<String, RuntimeSource>,
+    sources: HashMap<String, (RuntimeSource, u32)>,
     /// Parameters and `const`s with an annotation: what the name guarantees.
-    typed: HashMap<String, ValueFacts>,
-    /// Every name this scope binds; a lookup stops here instead of reaching
-    /// an outer binding it shadows.
-    bound: HashSet<String>,
+    typed: HashMap<String, (ValueFacts, u32)>,
 }
 
 impl Frame {
-    fn new(function: FunctionRef) -> Frame {
-        Frame { function, sources: HashMap::new(), typed: HashMap::new(), bound: HashSet::new() }
+    fn new(function: FunctionRef, span: Span) -> Frame {
+        Frame { function, span, sources: HashMap::new(), typed: HashMap::new() }
     }
 }
 
@@ -144,6 +160,7 @@ struct SiteVisitor<'i, 'a> {
     index: &'i TypeIndex<'a>,
     file: FileId,
     module: &'i ParsedModule<'a>,
+    bindings: HashMap<String, Vec<u32>>,
     frames: Vec<Frame>,
     /// Guard evidence per cast (by the cast's span start), found from the
     /// statement after `const v = <cast>`.
@@ -169,59 +186,50 @@ impl<'a> SiteVisitor<'_, 'a> {
 
     /// Enter a named function. Its qualified name carries the line, so two
     /// same-named functions in one file (methods of two classes) stay two nodes.
-    fn push_function(&mut self, name: &str, offset: u32, params: Option<&FormalParameters<'a>>) {
-        let line = self.line(offset);
+    fn push_function(&mut self, name: &str, span: Span, params: Option<&FormalParameters<'a>>) {
+        let line = self.line(span.start);
         let function = FunctionRef {
             qualified: format!("{}.{name}@{line}", self.module.rel),
             short: name.to_string(),
             file: self.module.rel.clone(),
             line,
         };
-        self.push_scope(function, params);
+        self.push_scope(function, span, params);
     }
 
-    /// Enter an anonymous function or a block: a new scope, attributed to the
-    /// enclosing named function.
-    fn push_anonymous(&mut self, params: Option<&FormalParameters<'a>>) {
+    /// Enter an anonymous function, attributed to the enclosing named function.
+    fn push_anonymous(&mut self, span: Span, params: Option<&FormalParameters<'a>>) {
         let function = self.frames.last().expect("module frame").function.clone();
-        self.push_scope(function, params);
+        self.push_scope(function, span, params);
     }
 
-    fn push_scope(&mut self, function: FunctionRef, params: Option<&FormalParameters<'a>>) {
-        let mut frame = Frame::new(function);
-        if let Some(rest) = params.and_then(|p| p.rest.as_ref()) {
-            bind_names(&rest.rest.argument, &mut frame.bound);
-        }
+    fn push_scope(&mut self, function: FunctionRef, span: Span, params: Option<&FormalParameters<'a>>) {
+        let mut frame = Frame::new(function, span);
         for p in params.into_iter().flat_map(|p| p.items.iter()) {
-            bind_names(&p.pattern, &mut frame.bound);
-            let BindingPattern::BindingIdentifier(id) = &p.pattern else {
+            let (BindingPattern::BindingIdentifier(id), Some(ann)) = (&p.pattern, &p.type_annotation) else {
                 continue;
             };
-            let name = id.name.as_str().to_string();
-            if let Some(ann) = &p.type_annotation {
-                let mut facts = self.index.resolve(self.file, &ann.type_annotation).facts();
-                if p.optional {
-                    facts.nullable = Some(true);
-                }
-                frame.typed.insert(name.clone(), facts);
+            let mut facts = self.index.resolve(self.file, &ann.type_annotation).facts();
+            if p.optional {
+                facts.nullable = Some(true);
             }
-            frame.bound.insert(name);
+            frame.typed.insert(id.name.as_str().to_string(), (facts, id.span.start));
         }
         self.frames.push(frame);
     }
 
-    /// The innermost binding of `name`, read through `pick`; `None` when the
-    /// innermost scope that binds `name` records nothing for it.
-    fn lookup<T>(&self, name: &str, pick: impl Fn(&Frame) -> Option<T>) -> Option<T> {
-        for frame in self.frames.iter().rev() {
-            if let Some(found) = pick(frame) {
-                return Some(found);
-            }
-            if frame.bound.contains(name) {
-                return None;
-            }
-        }
-        None
+    /// The innermost recorded binding of `name`, read through `pick`. It is
+    /// trusted only when no other binding of `name` lies anywhere inside the
+    /// frame that holds it, so shadowing, hoisting and `var` never need
+    /// modelling: any second binding in reach makes the name unknown.
+    fn lookup<T>(&self, name: &str, pick: impl Fn(&Frame) -> Option<(T, u32)>) -> Option<T> {
+        let frame = self.frames.iter().rev().find(|f| pick(f).is_some())?;
+        let (found, at) = pick(frame)?;
+        let others = self.bindings.get(name).into_iter().flatten();
+        let shadowed = others
+            .filter(|&&o| o != at)
+            .any(|&o| frame.span.start <= o && o < frame.span.end);
+        (!shadowed).then_some(found)
     }
 
     /// The runtime source behind a cast operand: the call itself, or a
@@ -380,32 +388,6 @@ impl<'a> SiteVisitor<'_, 'a> {
     }
 }
 
-/// Every name a binding pattern introduces, destructuring included.
-fn bind_names(pattern: &BindingPattern<'_>, out: &mut HashSet<String>) {
-    match pattern {
-        BindingPattern::BindingIdentifier(id) => {
-            out.insert(id.name.as_str().to_string());
-        }
-        BindingPattern::ObjectPattern(o) => {
-            for prop in &o.properties {
-                bind_names(&prop.value, out);
-            }
-            if let Some(rest) = &o.rest {
-                bind_names(&rest.argument, out);
-            }
-        }
-        BindingPattern::ArrayPattern(a) => {
-            for element in a.elements.iter().flatten() {
-                bind_names(element, out);
-            }
-            if let Some(rest) = &a.rest {
-                bind_names(&rest.argument, out);
-            }
-        }
-        BindingPattern::AssignmentPattern(a) => bind_names(&a.left, out),
-    }
-}
-
 /// `const v = <cast>` with one declarator: (cast span start, v).
 fn const_cast<'x>(stmt: &'x Statement<'_>) -> Option<(u32, &'x str)> {
     let Statement::VariableDeclaration(d) = stmt else {
@@ -465,7 +447,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
         match decl {
             Declaration::FunctionDeclaration(f) if f.id.is_some() => {
                 let name = f.id.as_ref().map(|i| i.name.as_str().to_string()).unwrap_or_default();
-                self.push_function(&name, f.span.start, Some(&f.params));
+                self.push_function(&name, f.span, Some(&f.params));
                 walk::walk_declaration(self, decl);
                 self.frames.pop();
             }
@@ -476,7 +458,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_export_default_declaration(&mut self, decl: &ExportDefaultDeclaration<'a>) {
         if let ExportDefaultDeclarationKind::FunctionDeclaration(f) = &decl.declaration {
             let name = f.id.as_ref().map_or("default", |i| i.name.as_str()).to_string();
-            self.push_function(&name, f.span.start, Some(&f.params));
+            self.push_function(&name, f.span, Some(&f.params));
             walk::walk_export_default_declaration(self, decl);
             self.frames.pop();
         } else {
@@ -487,7 +469,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_method_definition(&mut self, m: &MethodDefinition<'a>) {
         match m.key.static_name() {
             Some(name) => {
-                self.push_function(&name, m.span.start, Some(&m.value.params));
+                self.push_function(&name, m.span, Some(&m.value.params));
                 walk::walk_method_definition(self, m);
                 self.frames.pop();
             }
@@ -498,15 +480,13 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
         for d in &decl.declarations {
             let BindingPattern::BindingIdentifier(id) = &d.id else {
-                bind_names(&d.id, &mut self.frame().bound);
                 self.visit_variable_declarator(d);
                 continue;
             };
             let name = id.name.as_str().to_string();
-            self.frame().bound.insert(name.clone());
             if let Some(ann) = &d.type_annotation {
                 let facts = self.index.resolve(self.file, &ann.type_annotation).facts();
-                self.frame().typed.insert(name.clone(), facts);
+                self.frame().typed.insert(name.clone(), (facts, id.span.start));
             }
             let init = d.init.as_ref();
             // Only JSON.parse: tsc narrows a `string | null` binding by control
@@ -515,13 +495,13 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
             if decl.kind == VariableDeclarationKind::Const {
                 if let Some(Expression::CallExpression(c)) = init.map(Expression::without_parentheses) {
                     if RuntimeSource::of_call(c) == Some(RuntimeSource::JsonParse) {
-                        self.frame().sources.insert(name.clone(), RuntimeSource::JsonParse);
+                        self.frame().sources.insert(name.clone(), (RuntimeSource::JsonParse, id.span.start));
                     }
                 }
             }
             match init.and_then(named_function) {
                 Some(params) => {
-                    self.push_function(&name, d.span.start, Some(params));
+                    self.push_function(&name, d.span, Some(params));
                     self.visit_variable_declarator(d);
                     self.frames.pop();
                 }
@@ -531,47 +511,14 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     }
 
     fn visit_function(&mut self, f: &Function<'a>, flags: ScopeFlags) {
-        self.push_anonymous(Some(&f.params));
+        self.push_anonymous(f.span, Some(&f.params));
         walk::walk_function(self, f, flags);
         self.frames.pop();
     }
 
     fn visit_arrow_function_expression(&mut self, f: &ArrowFunctionExpression<'a>) {
-        self.push_anonymous(Some(&f.params));
+        self.push_anonymous(f.span, Some(&f.params));
         walk::walk_arrow_function_expression(self, f);
-        self.frames.pop();
-    }
-
-    fn visit_block_statement(&mut self, b: &BlockStatement<'a>) {
-        self.push_anonymous(None);
-        walk::walk_block_statement(self, b);
-        self.frames.pop();
-    }
-
-    fn visit_catch_clause(&mut self, c: &CatchClause<'a>) {
-        self.push_anonymous(None);
-        if let Some(param) = &c.param {
-            bind_names(&param.pattern, &mut self.frame().bound);
-        }
-        walk::walk_catch_clause(self, c);
-        self.frames.pop();
-    }
-
-    fn visit_for_statement(&mut self, s: &ForStatement<'a>) {
-        self.push_anonymous(None);
-        walk::walk_for_statement(self, s);
-        self.frames.pop();
-    }
-
-    fn visit_for_in_statement(&mut self, s: &ForInStatement<'a>) {
-        self.push_anonymous(None);
-        walk::walk_for_in_statement(self, s);
-        self.frames.pop();
-    }
-
-    fn visit_for_of_statement(&mut self, s: &ForOfStatement<'a>) {
-        self.push_anonymous(None);
-        walk::walk_for_of_statement(self, s);
         self.frames.pop();
     }
 
@@ -750,6 +697,33 @@ export function outer(client: string, xs: (string | null)[]) {
                 "m.ts.outer@2 -> m.ts.S.client @5: []",
                 "m.ts.outer@2 -> m.ts.S.client @6: []",
                 "m.ts.outer@2 -> m.ts.S.client @7: []",
+            ]
+        );
+    }
+
+    #[test]
+    fn declarations_and_hoisted_bindings_shadow_an_outer_comparand() {
+        let g = graph(&[(
+            "m.ts",
+            "interface S { client: string; }
+export function fnDecl(client: 'a') { { function client() {} const s = JSON.parse('') as S; return s.client === client ? s : null; } }
+export function classDecl(client: 'a') { { class client {} const s = JSON.parse('') as S; return s.client === client ? s : null; } }
+export function lateConst(client: 'a') {
+  const f = () => { const s = JSON.parse('') as S; return s.client === client ? s : null; };
+  const client = 'x' as string | null;
+  return f;
+}
+export function varInBlock(client: 'a', c: boolean) {
+  return () => { if (c) { var client = null; } const s = JSON.parse('') as S; return s.client === client ? s : null; };
+}",
+        )]);
+        assert_eq!(
+            edges(&g),
+            vec![
+                "m.ts.classDecl@3 -> m.ts.S.client @3: []",
+                "m.ts.f@5 -> m.ts.S.client @5: []",
+                "m.ts.fnDecl@2 -> m.ts.S.client @2: []",
+                "m.ts.varInBlock@9 -> m.ts.S.client @10: []",
             ]
         );
     }
