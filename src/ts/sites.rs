@@ -189,7 +189,11 @@ impl<'a> SiteVisitor<'_, 'a> {
 
     fn push_scope(&mut self, function: FunctionRef, params: Option<&FormalParameters<'a>>) {
         let mut frame = Frame::new(function);
+        if let Some(rest) = params.and_then(|p| p.rest.as_ref()) {
+            bind_names(&rest.rest.argument, &mut frame.bound);
+        }
         for p in params.into_iter().flat_map(|p| p.items.iter()) {
+            bind_names(&p.pattern, &mut frame.bound);
             let BindingPattern::BindingIdentifier(id) = &p.pattern else {
                 continue;
             };
@@ -376,6 +380,32 @@ impl<'a> SiteVisitor<'_, 'a> {
     }
 }
 
+/// Every name a binding pattern introduces, destructuring included.
+fn bind_names(pattern: &BindingPattern<'_>, out: &mut HashSet<String>) {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => {
+            out.insert(id.name.as_str().to_string());
+        }
+        BindingPattern::ObjectPattern(o) => {
+            for prop in &o.properties {
+                bind_names(&prop.value, out);
+            }
+            if let Some(rest) = &o.rest {
+                bind_names(&rest.argument, out);
+            }
+        }
+        BindingPattern::ArrayPattern(a) => {
+            for element in a.elements.iter().flatten() {
+                bind_names(element, out);
+            }
+            if let Some(rest) = &a.rest {
+                bind_names(&rest.argument, out);
+            }
+        }
+        BindingPattern::AssignmentPattern(a) => bind_names(&a.left, out),
+    }
+}
+
 /// `const v = <cast>` with one declarator: (cast span start, v).
 fn const_cast<'x>(stmt: &'x Statement<'_>) -> Option<(u32, &'x str)> {
     let Statement::VariableDeclaration(d) = stmt else {
@@ -468,6 +498,7 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
         for d in &decl.declarations {
             let BindingPattern::BindingIdentifier(id) = &d.id else {
+                bind_names(&d.id, &mut self.frame().bound);
                 self.visit_variable_declarator(d);
                 continue;
             };
@@ -514,6 +545,33 @@ impl<'a> Visit<'a> for SiteVisitor<'_, 'a> {
     fn visit_block_statement(&mut self, b: &BlockStatement<'a>) {
         self.push_anonymous(None);
         walk::walk_block_statement(self, b);
+        self.frames.pop();
+    }
+
+    fn visit_catch_clause(&mut self, c: &CatchClause<'a>) {
+        self.push_anonymous(None);
+        if let Some(param) = &c.param {
+            bind_names(&param.pattern, &mut self.frame().bound);
+        }
+        walk::walk_catch_clause(self, c);
+        self.frames.pop();
+    }
+
+    fn visit_for_statement(&mut self, s: &ForStatement<'a>) {
+        self.push_anonymous(None);
+        walk::walk_for_statement(self, s);
+        self.frames.pop();
+    }
+
+    fn visit_for_in_statement(&mut self, s: &ForInStatement<'a>) {
+        self.push_anonymous(None);
+        walk::walk_for_in_statement(self, s);
+        self.frames.pop();
+    }
+
+    fn visit_for_of_statement(&mut self, s: &ForOfStatement<'a>) {
+        self.push_anonymous(None);
+        walk::walk_for_of_statement(self, s);
         self.frames.pop();
     }
 
@@ -666,6 +724,32 @@ export function shadowed(client: string) {
             vec![
                 "m.ts.optionalParam@2 -> m.ts.S.client @3: [nullable=1]",
                 "m.ts.shadowed@6 -> m.ts.S.client @7: []",
+            ]
+        );
+    }
+
+    #[test]
+    fn every_binding_form_shadows_an_outer_comparand() {
+        let g = graph(&[(
+            "m.ts",
+            "interface S { client: string; }
+export function outer(client: string, xs: (string | null)[]) {
+  const a = ({ client }: { client: string | null }) => { const s = JSON.parse('') as S; return s.client === client ? s : null; };
+  const b = (...client: string[]) => { const s = JSON.parse('') as S; return s.client === client ? s : null; };
+  try { a({ client: null }); } catch (client) { const s = JSON.parse('') as S; return s.client === client ? s : null; }
+  for (const client of xs) { const s = JSON.parse('') as S; return s.client === client ? s : null; }
+  { const { client } = { client: xs[0] }; const s = JSON.parse('') as S; return s.client === client ? s : null; }
+  return b;
+}",
+        )]);
+        assert_eq!(
+            edges(&g),
+            vec![
+                "m.ts.a@3 -> m.ts.S.client @3: []",
+                "m.ts.b@4 -> m.ts.S.client @4: []",
+                "m.ts.outer@2 -> m.ts.S.client @5: []",
+                "m.ts.outer@2 -> m.ts.S.client @6: []",
+                "m.ts.outer@2 -> m.ts.S.client @7: []",
             ]
         );
     }
