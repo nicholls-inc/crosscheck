@@ -25,6 +25,11 @@ pub struct TsConfig {
     rules: Vec<(String, Vec<String>)>,
     /// The directory `paths` targets resolve against (`baseUrl` if set).
     base: PathBuf,
+    /// `strictNullChecks`, else `strict`: whether tsc proves the typed flows
+    /// this frontend leaves out.
+    pub strict_null_checks: bool,
+    /// The file names an `extends` base, which is not followed.
+    pub extends: bool,
 }
 
 impl TsConfig {
@@ -36,17 +41,24 @@ impl TsConfig {
             .map(|d| d.join("tsconfig.json"))
             .find(|p| p.is_file());
         let Some(path) = path else {
+            eprintln!("Warning: no tsconfig.json found; typed TypeScript flows are only proved by tsc under strictNullChecks");
             return TsConfig::default();
         };
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         let dir = path.parent().unwrap_or(app_root);
-        match TsConfig::parse(&text, dir) {
+        let config = match TsConfig::parse(&text, dir) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("Warning: {}: {e}; import paths not resolved", path.display());
-                TsConfig::default()
+                return TsConfig::default();
             }
+        };
+        if config.extends {
+            eprintln!("Warning: {}: `extends` is not followed; inherited paths and strictness are not read", path.display());
+        } else if !config.strict_null_checks {
+            eprintln!("Warning: {}: strictNullChecks is off, so tsc does not prove the typed flows this checker leaves out", path.display());
         }
+        config
     }
 
     /// Parse tsconfig text (comments and trailing commas allowed); `dir` is
@@ -72,7 +84,12 @@ impl TsConfig {
         }
         // Longest pattern prefix wins, as in tsc.
         rules.sort_by_key(|(p, _)| std::cmp::Reverse(p.split('*').next().unwrap_or("").len()));
-        Ok(TsConfig { base_url, rules, base })
+        let strict_null_checks = options["strictNullChecks"]
+            .as_bool()
+            .or_else(|| options["strict"].as_bool())
+            .unwrap_or(false);
+        let extends = json.get("extends").is_some();
+        Ok(TsConfig { base_url, rules, base, strict_null_checks, extends })
     }
 
     /// Absolute paths (without extension) a non-relative specifier may name,
@@ -745,6 +762,19 @@ mod tests {
         let c = TsConfig::parse("{}", Path::new("/proj")).unwrap();
         assert_eq!(c.candidates("@/x"), Vec::<PathBuf>::new());
         assert!(TsConfig::parse("{ nope", Path::new("/proj")).is_err());
+    }
+
+    #[test]
+    fn tsconfig_strictness_and_extends() {
+        let read = |text: &str| {
+            let c = TsConfig::parse(text, Path::new("/proj")).unwrap();
+            (c.strict_null_checks, c.extends)
+        };
+        assert_eq!(read("{}"), (false, false));
+        assert_eq!(read(r#"{"compilerOptions": {"strict": true}}"#), (true, false));
+        assert_eq!(read(r#"{"compilerOptions": {"strict": true, "strictNullChecks": false}}"#), (false, false));
+        assert_eq!(read(r#"{"compilerOptions": {"strictNullChecks": true}}"#), (true, false));
+        assert_eq!(read(r#"{"extends": "./base.json"}"#), (false, true));
     }
 
     #[test]

@@ -4,16 +4,21 @@ Status: implemented for the patterns in drivers-web PR #876. Nothing under `prov
 
 ## Why only assertion boundaries
 
-Under `strict`, tsc proves every flow whose source has a TypeScript type, for the two kinds a TS type expresses:
-nullability and literal-union membership. Emitting those flows into the graph would repeat tsc's proof with weaker
+Under `strictNullChecks` (part of `strict`), tsc proves flows whose source has a TypeScript type for the two kinds a
+TS type expresses, nullability and literal-union membership, apart from its known holes (`any`, unchecked index access,
+bivariant method parameters). The extractor warns on stderr when the nearest `tsconfig.json` turns strictNullChecks
+off, uses `extends`, or is missing. Emitting those flows into the graph would repeat tsc's proof with weaker
 machinery, spend the state budget, and add false positives wherever the syntactic frontend knows less than tsc
 (a provider name `string | null` narrowed by `|| undefined` and a `!= null` filter before a required form field).
 
 The checker adds value where a value enters the typed world by assertion instead of proof: a runtime read whose
 result tsc types as `any` or `string | null`, asserted with `as T`. The TS frontend emits exactly those sites.
 
-Trust split, stated in the README trust model: exit 0 on a TS project means every *extracted assertion site* is
-consistent with the type it asserts. Typed flows are delegated to `tsc --strict`, which the checker does not run.
+Trust split, stated in the README trust model: exit 0 on a TS project means that no extracted assertion site
+contradicts the type it asserts. A requirement the read does not guarantee (every field of `JSON.parse(raw) as T`) is a
+warning and leaves the exit code at 0, so gate a TypeScript review on warnings as well as errors. Sites whose target
+type is unresolved are not checked (see Types). Typed flows are delegated to `tsc --strict`, which the checker does
+not run and must pass in CI.
 
 ## Graph shape
 
@@ -28,9 +33,15 @@ consistent with the type it asserts. Typed flows are delegated to `tsc --strict`
   | `localStorage.getItem(..)`, `sessionStorage.getItem(..)` | `string \| null` | nullable |
   | `<x>.searchParams.get(..)`, `new URLSearchParams(..).get(..)`, `searchParams.get(..)` | `string \| null` | nullable |
 
+  These result types are trusted semantics: they are stated here and implemented in `src/ts/sites.rs`, and
+  `BehaviorModel.lean` does not record them yet.
+
   The operand of `as T` (after unwrapping parentheses, and `as unknown` in `e as unknown as T`) must be one of these
-  calls, or a `const` identifier in the same function whose initializer is one. `as const`, `satisfies`, `!`, and
-  casts on any other operand are not sites: tsc checks overlap on those, or the operand's own type is the proof.
+  calls, or a `const` bound to `JSON.parse(..)` in an enclosing scope. A `const` bound to a storage or search-params
+  read is not followed: tsc narrows its `string | null` by control flow (`if (!raw) return;`), which this frontend does
+  not model. Parameters and declarations shadow outer bindings, and every function and block is its own scope.
+  `as const`, `satisfies`, `!`, and casts on any other operand are not sites: tsc checks overlap on those, or the
+  operand's own type is the proof.
 - **Target.** The asserted type `T`, resolved syntactically (see Types). Each target becomes `model` nodes (slots):
   - a named alias or enum of scalars: one node named after it (`Theme`);
   - an inline scalar type: one node named after its source text (`'a' | 'b'`);
@@ -47,28 +58,33 @@ consistent with the type it asserts. Typed flows are delegated to `tsc --strict`
 - **Guard evidence.** For `const v = <site>` followed by `return v.p === x ? v : null` (either operand order, `!==` with
   the branches swapped, or `if (v.p !== x) return null; return v;`), property `p` takes the guarantee of `x` when `x` is
   a parameter or `const` with an annotation, or a literal. That discharges `SsoStash.clientName` in `peekSsoStash`.
-  A guard that does not dominate the return gives nothing.
+  An optional parameter (`x?: string`) guarantees only that it may be undefined. A guard that does not dominate the
+  return gives nothing.
 
 ## Types
 
 `TypeIndex` indexes every `type` alias, `interface` (with `extends` of indexed interfaces) and `enum` in the project,
 keyed by (file, name). `ImportMap` follows named imports, `import type`, `import { A as B }` and `export { A } from`,
-resolving specifiers through relative paths and `compilerOptions.paths` / `baseUrl` of the root `tsconfig.json`
-(comments and trailing commas allowed), trying `.ts .tsx .d.ts .mts .cts` and `/index.*`.
+resolving specifiers through relative paths and `compilerOptions.paths` / `baseUrl` of the nearest `tsconfig.json` in
+the directory or its ancestors (comments and trailing commas allowed; `extends` is not followed), trying
+`.ts .tsx .d.ts .mts .cts` and `/index.*`. Declarations in a file without imports or exports are global.
 
-`Shape` is `Primitive | Literals | Nullable | Object | Unknown`. Generics, conditional, mapped, indexed and
-`keyof` types, intersections, `export *`, cycles and unresolved imports are `Unknown`, never guessed. In a union an
-`Unknown` member removes `choices` but keeps an explicit `null` visible. A cast whose target is `Unknown` writes
-nothing and is counted on stderr (`TS: N assertion sites skipped: target type unresolved`), so an unresolved type can
-only remove findings.
+`Shape` is `Primitive | Literals | Nullable | Object | Unknown`. Generics (`Partial<T>` included), conditional,
+mapped, indexed and `keyof` types, intersections, `export *`, cycles, unresolved imports and names declared globally
+more than once are `Unknown`, never guessed. In a union an `Unknown` member removes `choices` but keeps an explicit
+`null` visible. A cast whose target is `Unknown` writes nothing and is counted on stderr only
+(`TS: N assertion sites skipped: target type unresolved`); the JSON report and the exit code do not show it. An
+unresolved type can only remove findings, so read that count before trusting a clean run.
 
 ## Files and CLI
 
 - `src/ts/` holds the frontend: `mod.rs` (`extract`, `TsGraph::write`), `sites.rs` (runtime-source table, visitor,
   guard evidence), `types.rs` (`TypeIndex`, `ImportMap`, `Shape`, tsconfig).
-- `extractor.rs` walks `.py` and `.ts .tsx .mts .cts .js .jsx .mjs .cjs` in one pass (`.d.ts` files feed the type
-  index only), runs both frontends into one database, and names TS nodes by `<relative path>.<name>` so they cannot
-  collide with Python module names. JavaScript files parse but yield no sites: they have no `as`.
+- `extractor.rs` walks `.py` and `.ts .tsx .mts .cts` in one pass (`.d.ts` files feed the type index only) and runs
+  both frontends into one database. JavaScript files are not read: they have no `as` and declare no types, and a
+  Python project's static or vendored JavaScript must not be able to fail its run. TS function nodes are named
+  `<relative path>.<name>@<line>` and slots `<relative path>.<Type>[.<prop>]`, so they collide neither with each other
+  nor with Python module names.
 - A parse error in a TS file is handled like a Python one: fatal unless `--allow-parse-errors`.
 - `report.rs` text output shortens a choices list past 12 members; JSON output is unchanged.
 - `scripts/diff-findings.sh BASE.json HEAD.json` prints findings present in HEAD but not BASE, keyed by path, guarantee
