@@ -34,6 +34,9 @@ cargo test
 
 # Full pipeline on every fixture, compared with test_fixtures/*/expected.json
 scripts/check-fixtures.sh
+
+# Findings a pull request introduces (base tree vs head tree, matched by path, not line)
+scripts/review-pr.sh BASE_DIR HEAD_DIR --exclude '**/__tests__/**'
 ```
 
 `lake build` type-checks all proofs and the `ContractGraphTest` modules (their `#guard` lines fail the build if checker behaviour changes).
@@ -41,6 +44,8 @@ scripts/check-fixtures.sh
 ## Architecture
 
 **Extractor (Rust, `src/`):** Parses Python files, extracts Django model field constraints (`model_extractor.rs`), plain-Python data class fields (`dataclass_extractor.rs`) and function contracts, discovers `writes_to` / `calls` / `flows_to` edges (`edge_discovery.rs`), writes everything to a SQLite database. Data class fields are nodes of kind `model`, so the checker treats them as path targets like Django fields. CLI binary is `crosscheck-contracts`.
+
+**TypeScript frontend (Rust, `src/ts/`):** oxc 0.146 (pinned exactly; its API changes between minor versions). Emits only assertion sites: a runtime read (`JSON.parse`, storage `getItem`, `searchParams.get`) asserted with `as T`, as one `writes_to` edge per property slot of `T` (`Iface.prop` or the alias name) with the read's guarantee as override rows. Typed flows are left to `tsc --strict`. `types.rs` resolves aliases, interfaces, enums, imports and tsconfig `paths` syntactically and never guesses (unresolved targets are counted on stderr). Design: `docs/design/typescript-frontend.md`.
 
 **Checker (Lean, `prover/ContractGraph/`):** Reads the SQLite database, translates rows into typed Lean structures, checks constraint consistency. The checker operates on a `ContractGraph` of `Node`s and `Edge`s.
 
@@ -64,6 +69,7 @@ The trust boundary matters for correctness claims:
 - **Not proved:** Translation from SQLite to Lean propositions (`Translation.lean` has no theorems). It rejects malformed rows (exit 2) rather than dropping them.
 - **Trusted-not-proved, documentation only:** `BehaviorModel.lean` (~100 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program). No theorem references its definitions yet: it states the semantics the extractor and `constraintImplies` are meant to follow, it is not a premise of `runChecker_sound_all`.
 - **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
+- **Delegated:** TypeScript typed flows, to `tsc --strict` (not run by the checker). For TypeScript, exit 0 covers the extracted assertion sites only.
 
 `BehaviorModel.lean` and the statements of the soundness theorems are protected surfaces: a change to either needs a stated rationale in the PR (see `.claude/rules/protected-surfaces.md`).
 
@@ -92,6 +98,7 @@ Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, req
 - `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path; nullable: 4dp writes into 2dp fields, and `return None` under a non-Optional annotation reported at the return site `apply_discount -> apply_discount.<return>`)
 - `plain_python/`, `plain_python_clean/`: no Django (clean version must pass)
 - `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`, `r6_*`, `r7_*`: adversarial findings; `r8_*`: findings from the pr-swarm review of PR #3. Several include an `ok.py` with correct code so a false positive fails the fixture.
+- `ts_*`: TypeScript assertion sites distilled from drivers-web PR #876 (`ts_sso_stash` is its `peekSsoStash`); each defect fixture has an `ok.ts`, and `"no_other_warnings": true` in `expected.json` fails the fixture on any warning not listed
 - `V2_FIXTURE_NOTES.md`: how ambiguous verdicts were decided
 
 Design: `docs/design/dataflow-v2.md` (model, SQLite interface, and the round 3/5 addenda). Adversarial reports and repros from each round were kept outside the repo; their findings are recorded in the addenda and as fixtures.

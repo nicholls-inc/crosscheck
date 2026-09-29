@@ -1,13 +1,13 @@
 # Contract Graph Verifier
 
-A three-layer pipeline that extracts implicit contracts from Python application code (Django models, dataclasses, attrs, pydantic, `NamedTuple`, `TypedDict`), translates them into Lean propositions, and checks their consistency across component boundaries with machine-checked soundness guarantees.
+A three-layer pipeline that extracts implicit contracts from Python application code (Django models, dataclasses, attrs, pydantic, `NamedTuple`, `TypedDict`) and from TypeScript type assertions on runtime reads, translates them into Lean propositions, and checks their consistency across component boundaries with machine-checked soundness guarantees.
 
-**Status:** research prototype. It began as a three-node PoC (function A → function B → data model field) demonstrating that graph-level consistency checking catches bugs that pairwise checking structurally misses, and now checks real-scale graphs with a state-based checker. The target can be a Django model field or a field of a plain-Python data class; see [Python support](#python-support).
+**Status:** research prototype. It began as a three-node PoC (function A → function B → data model field) demonstrating that graph-level consistency checking catches bugs that pairwise checking structurally misses, and now checks real-scale graphs with a state-based checker. The target can be a Django model field or a field of a plain-Python data class; see [Python support](#python-support) and [TypeScript support](#typescript-support).
 
 ## Architecture
 
 ```
-Python project (.py files)
+Python / TypeScript project (.py, .ts, .tsx files)
         │
         ▼
   Extractor (Rust)       AST extraction, edge discovery, body analysis
@@ -31,6 +31,7 @@ Python project (.py files)
 | Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
 | Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
+| TypeScript typed flows | Delegated to `tsc --strict`, which the checker does not run. For TypeScript, exit 0 covers the extracted assertion sites only |
 
 ## Quick start
 
@@ -229,6 +230,26 @@ A value derived from the parameter of a single-parameter function gets a depende
 A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` is given.
 
 **Excluding files.** `--exclude GLOB` (repeatable) skips every file whose path relative to the application root, or one of whose directories, matches the glob (`*` and `?` within a path segment, `**` across segments; no leading `**` means anchored at the root). For Django projects whose tests build invalid unsaved instances on purpose, use `--exclude '**/tests/**'` (and `--exclude '**/test_*.py'` for test modules outside a `tests` directory).
+
+## TypeScript support
+
+The extractor reads `.ts`, `.tsx`, `.mts` and `.cts` files next to any `.py` files in the directory; `.d.ts` files feed type declarations only, and JavaScript files parse but yield nothing. The design is in `docs/design/typescript-frontend.md`.
+
+Under `strict`, tsc already proves every typed flow for nullability and literal-union membership, so the checker does not repeat that proof. It checks the places where a value enters the typed world by assertion instead: a runtime read asserted with `as T`.
+
+| Runtime read | Guarantee |
+|--------------|-----------|
+| `JSON.parse(..)` | nothing |
+| `localStorage.getItem(..)`, `sessionStorage.getItem(..)` | may be null |
+| `searchParams.get(..)`, `new URLSearchParams(..).get(..)` | may be null |
+
+The read may be the operand itself, a `const` bound to it in the same function, or the inner operand of `e as unknown as T`. The asserted type is the target: a scalar alias or enum is one node (`Theme`), and an interface or object type is one node per property (`SsoStash.origin`), with a non-null requirement unless the property is optional or the type includes `null` / `undefined`, and a choices requirement when every union member is a string or number literal. Types resolve across files through imports and `tsconfig.json` `paths` (found in the directory or its ancestors). Generic, mapped, conditional, `keyof` and intersection types are not resolved; a cast to one is skipped and counted on stderr, so an unresolved type can only remove findings.
+
+A read that guarantees nothing gives a warning for every requirement that could reject a value; `getItem(k) as Theme` without `| null` is an error. A guard on the cast's binding in the next statement discharges a property: `return v.p === x ? v : null` or `if (v.p !== x) return null;`, where `x` is an annotated parameter or `const`, or a literal.
+
+**Reviewing a pull request.** `scripts/review-pr.sh BASE_DIR HEAD_DIR [check options...]` checks both trees and prints the findings the head introduces, matched by path and requirement rather than line (`scripts/diff-findings.sh` does the comparison). On drivers-web PR #876 it reports three new warnings for `peekSsoStash`'s `JSON.parse(raw) as SsoStash`: `SsoStash.origin` is required and limited to `login` / `signup`, and `SsoStash.strategy` to the two OAuth strategies, but only `clientName` is checked after the cast.
+
+**Not covered:** `!` non-null assertions, casts on typed operands (`x as 'a'` where `x: 'a' | 'b'`), taint from a cast to the code that later reads the value, runtime schemas (Joi, zod) and `Response#json()`.
 
 ## Output
 
