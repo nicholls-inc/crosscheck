@@ -92,8 +92,9 @@ decides whether other changes are safe.
    PR must change it, under `.assurance/protected-surface-amend/` or
    `.assurance/add-session-*/`. It must name every changed protected file, and its
    block goes in the PR description. A note from an earlier change does not count.
-3. **For a CGV proof surface** (`BehaviorModel.lean` or
-   `cgv/prover/protected-statements.txt`), a `## Protected-surface change` section in
+3. **For a CGV proof surface** (`BehaviorModel.lean`,
+   `cgv/prover/protected-statements.txt`, or its generator
+   `cgv/prover/scripts/ProtectedStatements.lean`), a `## Protected-surface change` section in
    the PR body. See `.claude/rules/protected-surfaces.md`.
 
 **No LLM verdict is an artefact.** Tier 3 used to require an `intent-check`
@@ -125,7 +126,7 @@ which job holds the evidence for each class of changed file:
 
 | Changed path | Deterministic evidence |
 |---|---|
-| `cgv/**` | `CGV CI`: `cargo test`, `lake build` (proofs and `#guard` tests), fixtures, statement manifest |
+| `cgv/**` | `CGV CI`: `cargo test`, `lake build` (proofs and `#guard` tests), fixtures, statement manifest and axiom check |
 | `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | `CI`: `npm test`, including the property tests |
 | `scripts/ci/**` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
 | `evals/**` | `Incident Eval Check` |

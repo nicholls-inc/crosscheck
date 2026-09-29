@@ -73,5 +73,6 @@ No `SKILL.md` or `agents/*.md` file changes.
   - weakening that statement to `2 ≤ …` changes it;
   - editing the `ToString ConstraintKind` instance changes its value hash;
   - replacing the proof of `incompleteWith_exitCode` with `sorry`, or with `cheat.elim` for a new `axiom cheat : False`, keeps `lake build` green and makes the generator exit 1, naming `sorryAx` or `ContractGraph.cheat` (SM-6).
+- Not covered by a test: `--no-renames` (TG-1a) lives in `tier-gate.yml`, and the node tests take the changed-file list as input.
 - `cargo test`, `cargo build --release`, `lake build`, `scripts/check-fixtures.sh`, and the manifest diff pass locally on this branch.
 - `grep -rn "ANTHROPIC_API_KEY\|claude-code-action" .github/workflows` returns nothing.

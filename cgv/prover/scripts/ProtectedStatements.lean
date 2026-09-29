@@ -15,7 +15,9 @@ What is printed:
 Proofs are never printed, so rewriting a proof leaves the manifest unchanged.
 A proof must still hold, though: every protected theorem and definition may
 depend only on the axioms in `allowedAxioms`. A `sorry`, or a new axiom that
-closes a proof, makes this script fail instead of printing.
+closes a proof, makes this script fail instead of printing. A declaration added
+with the kernel check switched off (`debug.skipKernelTC`) reports no axioms, so
+this check does not reach it; see `.claude/rules/protected-surfaces.md`.
 
 The list of names mirrors the CGV table in `.claude/rules/protected-surfaces.md`;
 keep the two in step.

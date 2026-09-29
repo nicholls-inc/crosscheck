@@ -150,6 +150,13 @@ test('TG-4: "plan:" in the middle of a line is not a citation', () => {
   assert.match(out(r), /Tier 3 requires a build plan/);
 });
 
+for (const line of ['- Plan: intent/p.md', '* Plan: intent/p.md', '> Plan: intent/p.md', 'Plan: intent/p.md\r']) {
+  test(`TG-4: ${JSON.stringify(line)} is a citation`, () => {
+    const r = run(tier3Repo({ 'intent/p.md': '# Plan' }), { body: `Tier: 3\n${line}\n`, changed: [SKILL, NOTE] });
+    assert.equal(r.pass, true);
+  });
+}
+
 test('TG-4: an indented Plan: line on its own is a citation', () => {
   const r = run(tier3Repo({ 'intent/p.md': '# Plan' }), {
     body: 'Tier: 3\n  Plan: intent/p.md',

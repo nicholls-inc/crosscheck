@@ -4,15 +4,16 @@
 ## Protected-Surface Amendment
 
 **Target file(s):** `scripts/ci/tier-gate.mjs` (+ 11 others, see Diff Plan)
-**Class:** A (CI enforcement, harness rules, and the governance documents the gates read). One file is a CGV proof surface: `cgv/prover/protected-statements.txt`.
-**Matched rule:** `scripts/ci/**`, `.github/workflows/**`, `.claude/rules/**`, `docs/assurance/**`. After this change, `cgv/prover/protected-statements.txt` is also listed.
+**Class:** A (CI enforcement, harness rules, and the governance documents the gates read). Two files are CGV proof surfaces: `cgv/prover/protected-statements.txt` and its generator `cgv/prover/scripts/ProtectedStatements.lean`.
+**Matched rule:** `scripts/ci/**`, `.github/workflows/**`, `.claude/rules/**`, `docs/assurance/**`. After this change, `cgv/prover/protected-statements.txt` and `cgv/prover/scripts/ProtectedStatements.lean` are also listed.
 **Date:** 2026-09-29
 
 ### Change Description
 
-**The tier gate** (`scripts/ci/tier-gate.mjs`) changes in five ways:
+**The tier gate** (`scripts/ci/tier-gate.mjs`) changes in six ways:
 - It no longer requires or reads an `intent-check` attestation.
 - A root `plan.md`, a root `spec.md`, or a governance note counts only if the pull request changes it. A file cited by a `Plan:` or `Spec:` line still counts.
+- A `Plan:`, `Spec:` or `Intent:` citation must start its own line, optionally as a list item or quote. The keyword in the middle of a line no longer counts.
 - It requires a `## Protected-surface change` section when the pull request changes a CGV proof surface.
 - It prints an evidence report for each class of changed file.
 - It prints the fact that the maintainer's merge is the human sign-off.
@@ -58,11 +59,11 @@ The rationale rests on three concrete triggers:
 |---|------|-------|---------------------|--------|
 | 1 | `scripts/ci/tier-gate.mjs` | whole file | TG-1 to TG-10 | replaced (rules rewritten, `evaluate` exported) |
 | 2 | `scripts/ci/tier-gate.test.mjs` | new | TG-1 to TG-10 | added |
-| 3 | `.github/workflows/tier-gate.yml` | test step | TG tests | added |
-| 4 | `.github/workflows/cgv-ci.yml` | new | CI-1 to CI-6 | added |
+| 3 | `.github/workflows/tier-gate.yml` | test step, changed-file list | TG tests, TG-1a | added (tests), changed (`--no-renames`) |
+| 4 | `.github/workflows/cgv-ci.yml` | new | CI-1 to CI-6 | added (`lake build` before the Rust steps, CI-2) |
 | 5 | `.github/workflows/spec-audit.yml` | whole file | WR-1 | removed |
 | 6 | `.github/workflows/protected-surface-check.yml` | whole file | WR-2 | removed |
-| 7 | `.claude/rules/protected-surfaces.md` | CGV section, amendment pattern, path list | DOC-1, DOC-3 | added (manifest path, manifest text, sign-off without branch protection) |
+| 7 | `.claude/rules/protected-surfaces.md` | CGV section, amendment pattern, path list | DOC-1, DOC-3, SM-6 | added (manifest and generator paths, axiom check and its not-yet-reached limit, manifest text, sign-off without branch protection) |
 | 8 | `docs/assurance/TIER-LAYER-MAP.md` | Tier 3 section, new evidence section | DOC-1 | replaced (Tier 3 artefacts), added (CGV evidence, evidence classes) |
 | 9 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | stages 4 and 5 | DOC-1 | replaced (workflow list, intent-check advisory), added (CGV) |
 | 10 | `docs/assurance/ROADMAP.md` | PB-1 scope | DOC-5 | reworded (workflow list, CGV coverage) |

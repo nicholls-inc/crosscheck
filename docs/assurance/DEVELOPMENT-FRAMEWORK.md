@@ -85,7 +85,8 @@ Evidence at this stage comes from deterministic CI jobs:
   check. That check fails when a protected theorem statement, or a definition
   reachable from `constraintImplies`, `IsDataPath` or `stepwiseSound`, changes
   without `cgv/prover/protected-statements.txt` changing too. It also fails when
-  a protected theorem depends on `sorry` or on a non-standard axiom.
+  a protected theorem or definition depends on `sorry` or on a non-standard
+  axiom.
 - **The tier gate:** `tier-gate.yml` runs the gate's own tests.
 
 `/intent-check`, `/audit-spec-coverage`, `/audit-invariant-consistency` and

@@ -166,10 +166,11 @@ export function evaluate({
 }) {
   const present = (p) => existsSync(join(cwd, p));
   const changedAndPresent = new Set(changedFiles.filter(present));
-  // A citation is a line of its own ("Plan: <path>"), not the word anywhere in
-  // the body, so text inside a governance-note block cannot satisfy it.
+  // A citation starts its own line ("Plan: <path>"), optionally as a list item
+  // or quote ("- Plan: <path>", "> Plan: <path>"), so prose that happens to
+  // contain "plan:" does not count.
   const citedExisting = (keyword) => {
-    const match = prBody.match(new RegExp(`^[ \\t]*${keyword}:[ \\t]*(\\S+)`, 'im'));
+    const match = prBody.match(new RegExp(`^[ \\t]*(?:[-*+>][ \\t]+)?${keyword}:[ \\t]*(\\S+)`, 'im'));
     if (!match) return false;
     const cited = match[1].replace(/^`|`$/g, '');
     return present(cited);

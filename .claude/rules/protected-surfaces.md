@@ -112,6 +112,11 @@ A proof must still be a proof. `lake build` accepts `sorry` with a warning, so
 the generator also fails when a protected theorem or definition depends on any
 axiom other than `propext`, `Classical.choice` and `Quot.sound`. A `sorry`, or
 a new axiom that closes a proof, fails CGV CI.
+A declaration the kernel never checked is not yet reached: `set_option
+debug.skipKernelTC true` with `addDecl` adds a theorem that reports no axioms.
+The property that blocks it is a kernel replay of the built environment, and
+the open question is whether a replay (`lean4checker`, `Environment.replay`)
+fits CGV CI's time budget.
 
 A PR that touches a CGV proof surface includes, in its description, a
 **Protected-surface change** section, in addition to the amendment pattern
