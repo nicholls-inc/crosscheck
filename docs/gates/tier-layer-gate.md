@@ -13,8 +13,18 @@ A pull request declares its tier in one of two ways: a `Tier: N` line in the PR 
 ## Which tier applies
 
 - **Tier 1 — routine.** Documentation, tests, and non-behavioural code (formatting, renames, build plumbing that changes no output). Requires a reference to the governing `intent.md` — the "why we're doing this" document from the Plan stage — cited by path in the PR body or added under `intent/`.
-- **Tier 2 — standard.** Behavioural code changes: anything that alters what the software does for a user or caller. Requires a committed `spec.md` — a design document generated from the intent that must flag open concerns rather than silently resolving them.
-- **Tier 3 — critical/protected.** Protected surfaces (see below), gate logic, hooks, CI enforcement, and invariants — anything that changes how the project decides whether other changes are safe. Requires a committed `plan.md` (detailed enough that someone who never saw the discussion could implement the change from it alone), an **intent-check attestation** (a record that the change's invariant tests were run and classified), and, for any protected file in the diff, a **governance-note block** naming it.
+- **Tier 2 — standard.** Behavioural code changes: anything that alters what the software does for a user or caller. It requires a spec, which is a design document generated from the intent that flags open concerns instead of silently resolving them. Either of these satisfies the requirement:
+  - the pull request changes a root `spec.md`;
+  - the PR body has a `Spec: <path>` line citing an existing file. For CGV, this can be the changed Lean file or fixture `expected.json`.
+- **Tier 3 — critical/protected.** Protected surfaces (see below), gate logic, hooks, CI enforcement, and invariants: anything that changes how the project decides whether other changes are safe. It requires a plan, detailed enough that someone who never saw the discussion could implement the change from it alone. Either of these satisfies the requirement:
+  - the pull request changes a root `plan.md`;
+  - the PR body has a `Plan: <path>` line citing an existing file.
+
+  For every protected file in the diff, it also requires a **governance-note block** naming that file. The block must be in a note that this pull request adds or changes. For a CGV proof surface, the PR body also needs a `## Protected-surface change` section.
+
+**Artefacts left over from earlier changes do not count.** A root `plan.md` or `spec.md`, or a governance note, counts only if this pull request changes it, or, for a plan or spec, if the PR body cites it by path. Otherwise the file left behind by the last change would satisfy every later one.
+
+**No LLM verdict is required or read.** Tier 3 used to require an `intent-check` attestation. That record is an LLM's judgement, and this repository counts only deterministic checks and human judgement as evidence. You can still run `/intent-check` locally, as a second opinion.
 
 ## Why a protected path forces Tier 3
 
@@ -29,9 +39,11 @@ When a pull request fixes a bug that caused a production incident, the tier gate
 - **Approving (declaring the correct tier and supplying its artefacts)**: the pull request now carries an auditable record matching its actual risk level, and the tier gate passes, opening the review gate.
 - **Declining (leaving the tier or artefacts as they are)**: the change stays blocked. Nothing is merged and no reviewer is asked to look at it until the tier and artefacts are corrected.
 
+This repository has no branch protection, so GitHub does not stop a merge while this check is red. "Blocked" is the maintainer's rule rather than a setting: the maintainer does not merge a pull request whose tier gate is red. When the gate passes, it also lists which CI job holds the deterministic evidence for each changed file, and it names the files that only human review covers.
+
 ## How long this takes
 
-For Tier 1 and Tier 2, usually a few minutes — citing or writing a short intent or spec document. For Tier 3, expect tens of minutes, since a genuine `plan.md`, an intent-check attestation, and (for protected files) a governance-note block from `/protected-surface-amend` all take real drafting time.
+For Tier 1 and Tier 2, usually a few minutes — citing or writing a short intent or spec document. For Tier 3, expect tens of minutes, because a genuine plan and, for protected files, a governance-note block from `/protected-surface-amend` both take real drafting time.
 
 ## Who to ask if unsure
 

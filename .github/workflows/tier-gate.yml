@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Test the tier gate
+        run: node --test scripts/ci/*.test.mjs
+
       - name: Compute changed files vs base
         id: diff
         run: |

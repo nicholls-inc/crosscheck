@@ -44,6 +44,16 @@ python3 -m unittest discover -s scripts/tests
 
 `lake build` type-checks all proofs and the `ContractGraphTest` modules (their `#guard` lines fail the build if checker behaviour changes).
 
+```bash
+# Protected theorem statements: regenerate and compare with the committed manifest
+cd prover && lake build ContractGraph ContractGraph.Main \
+  && lake env lean --run scripts/ProtectedStatements.lean | diff -u protected-statements.txt -
+```
+
+`protected-statements.txt` records the statement of every protected soundness theorem, and the type and value hash of `constraintImplies`, `IsDataPath`, `stepwiseSound` and every definition they reach. A proof-only edit leaves it unchanged. If a statement changes on purpose, regenerate the file (`> protected-statements.txt`). The file is a protected surface, so the pull request becomes Tier 3 and needs a governance note and a **Protected-surface change** section (see `.claude/rules/protected-surfaces.md` at the repository root).
+
+CI (`.github/workflows/cgv-ci.yml`) runs `cargo test`, `cargo build --release`, `lake build`, `scripts/check-fixtures.sh` and the manifest check on every pull request that touches `cgv/`. Every CGV change follows the repository's development framework (`docs/assurance/DEVELOPMENT-FRAMEWORK.md`): an intent for every change, and for behavioural changes a spec. The spec can be the changed Lean statements plus fixture `expected.json` files, cited with `Spec: <path>`. See `docs/assurance/TIER-LAYER-MAP.md`.
+
 ## Architecture
 
 **Extractor (Rust, `src/`):** Parses Python files, extracts Django model field constraints (`model_extractor.rs`), plain-Python data class fields (`dataclass_extractor.rs`) and function contracts, discovers `writes_to` / `calls` / `flows_to` edges (`edge_discovery.rs`), writes everything to a SQLite database. Data class fields are nodes of kind `model`, so the checker treats them as path targets like Django fields. CLI binary is `crosscheck-contracts`.
@@ -71,7 +81,7 @@ The trust boundary matters for correctness claims:
 - **Trusted-not-proved, documentation only:** `BehaviorModel.lean` (~100 lines: Django field semantics, version-pinned to Django 4.2/5.x, and plain-Python data class semantics; annotation contracts on dataclass/attrs/NamedTuple/TypedDict are relative to a type-correct program). No theorem references its definitions yet: it states the semantics the extractor and `constraintImplies` are meant to follow, it is not a premise of `runChecker_sound_all`.
 - **Untrusted but auditable:** Rust extraction (all extraction results tagged `[EXTRACTED]` with source locations)
 
-`BehaviorModel.lean` and the statements of the soundness theorems are protected surfaces: a change to either needs a stated rationale in the PR (see `.claude/rules/protected-surfaces.md` at the repository root).
+`BehaviorModel.lean` and the statements of the soundness theorems are protected surfaces: a change to either needs a stated rationale in the PR (see `.claude/rules/protected-surfaces.md` at the repository root). The statement manifest (`prover/protected-statements.txt`, checked in CI) makes a statement change visible deterministically.
 
 ## Key design patterns
 

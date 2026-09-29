@@ -20,6 +20,12 @@ protected change. This attestation is written to
 `.assurance/intent-check-attestation.json` and can gate a commit through a
 companion pre-commit hook.
 
+In this repository the verdict is advisory. It is an LLM's judgement, and
+`docs/VISION.md` counts only deterministic checks and human judgement as
+evidence. CI does not run `/intent-check`, and the tier gate does not read the
+attestation. Run it locally when a second opinion on an invariant change would
+help, and treat a `fail` as a prompt to look harder, not as a verdict.
+
 ## What you are being asked to decide
 
 When you see a fail verdict, the skill's report tells you what the code

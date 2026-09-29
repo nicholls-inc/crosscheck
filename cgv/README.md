@@ -28,6 +28,7 @@ Python project (.py files)
 |-----------|------------|
 | Lean kernel | Absolute — accepts or rejects the proof |
 | Checker + proofs | Proved — soundness theorems are machine-checked |
+| Theorem statements | Tracked — the kernel proves each theorem only as stated, so CI compares the statements (and the definitions they rely on) with the committed manifest `prover/protected-statements.txt`; a change fails CI unless the manifest changes with it, which is a reviewed protected-surface change |
 | Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
 | Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |

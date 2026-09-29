@@ -2,16 +2,23 @@
 
 Governing roadmap item: **PB-1** (`docs/assurance/ROADMAP.md`).
 
-Crosscheck develops itself with the artefact chain from the AI-native SDLC
-playbook. Every stage commits an artefact the next stage reads. Together the
-intent, the spec, the plan, the diff, the tests and the review findings are the
-audit trail — no stage depends on conversation context that has since scrolled
-away.
+This repository develops both of its tools, Crosscheck and CGV (`cgv/`), with
+the artefact chain from the AI-native SDLC playbook. Every stage commits an
+artefact that the next stage reads. Together, the intent, the spec, the plan,
+the diff, the tests and the review findings are the audit trail. No stage
+depends on conversation context that has since scrolled away.
 
-Three kinds of control appear below. **Skills are advisory** — they make the
-right behaviour likely. **Hooks and CI are deterministic** — they make it
-always. **Human approval is concentrated at named gates**, each with an
-explainer under `docs/gates/`.
+Three kinds of control appear below:
+- **Skills are advisory.** They make the right behaviour likely.
+- **Hooks and CI are deterministic.** They make the right behaviour checked
+  every time.
+- **Human approval is concentrated at named gates.** Each gate has an
+  explainer under `docs/gates/`.
+
+Only the last two count as evidence (`docs/VISION.md`). No CI job calls an LLM.
+The repository has no branch protection, so CI checks cannot block a merge. The
+maintainer's merge is the human sign-off, and the maintainer does not merge
+while a check is red.
 
 ## The chain
 
@@ -70,13 +77,27 @@ unconditionally without a governing roadmap item
 
 ### 4. Test — verification and alignment
 
-`/intent-check` runs the round-trip triple (invariant prose, covering test, code
-diff), appends to the false-positive tracker and emits an attestation. It
-auto-refuses when the rolling false-positive rate reaches the kill threshold
-(`docs/gates/intent-check-kill-criterion.md`); a failing verdict routes to fix
-code / fix test / amend invariant
-(`docs/gates/intent-check-verdict.md`). `/assurance-probe` measures test
-strength on rotation, not per PR.
+Evidence at this stage comes from deterministic CI jobs:
+- **Crosscheck:** `ci.yml` runs `npm test`, which includes the property tests
+  that cover the invariant docs.
+- **CGV:** `cgv-ci.yml` runs `cargo test`, `lake build` (the soundness proofs
+  and the `#guard` tests), the fixture comparison, and the statement-manifest
+  check. That check fails when a protected theorem statement, or a definition
+  it relies on, changes without `cgv/prover/protected-statements.txt` changing
+  too.
+- **The tier gate:** `tier-gate.yml` runs the gate's own tests.
+
+`/intent-check`, `/audit-spec-coverage`, `/audit-invariant-consistency` and
+`/spec-adversary` are advisory. They use an LLM, so they run locally or under an
+orchestrator, never in CI, and no gate reads their output.
+- `/intent-check` runs the round-trip triple (invariant prose, covering test,
+  code diff) and appends to the false-positive tracker.
+- It refuses when the rolling false-positive rate reaches the kill threshold
+  (`docs/gates/intent-check-kill-criterion.md`).
+- A failing verdict is a prompt to look harder: fix the code, fix the test, or
+  amend the invariant (`docs/gates/intent-check-verdict.md`).
+
+`/assurance-probe` measures test strength on rotation, not per PR.
 
 ### 5. Deploy — the PR
 
@@ -84,16 +105,23 @@ The PR body declares `Tier: N` (see `docs/assurance/TIER-LAYER-MAP.md`) and
 carries the review findings produced against `REVIEW.md`: separate passes for
 bugs and logic, security, and compliance with the spec and plan; findings marked
 Important or Nit; at most five nits reported and the rest summarised as a count;
-generated paths excluded. Four CI workflows gate the merge:
+generated paths excluded. These CI workflows report on the merge. None of them
+calls an LLM, and none can block a merge without branch protection:
 
-- `spec-audit.yml` — runs the spec-coverage and invariant-consistency audits on
-  changed invariant docs and specs.
-- `protected-surface-check.yml` — fails when the diff touches a protected path
-  without a matching governance note.
-- `tier-gate.yml` — fails when the declared tier lacks its required artefacts
-  (`docs/gates/tier-layer-gate.md`). Any protected path forces a Tier 3 floor.
-- `incident-eval-check.yml` — fails when an incident record under `evals/` has
-  no accompanying eval.
+- `tier-gate.yml` fails in any of these cases (`docs/gates/tier-layer-gate.md`):
+  - the declared tier lacks its required artefacts;
+  - a changed protected path is not named in a governance note that the PR
+    adds or changes;
+  - a CGV proof surface changes without a `## Protected-surface change`
+    section in the PR body.
+
+  Any protected path forces a Tier 3 floor. On a pass, the gate lists which job
+  holds the evidence for each changed file.
+- `ci.yml` (Crosscheck) and `cgv-ci.yml` (CGV) are the tests, builds and proofs
+  described in stage 4.
+- `incident-eval-check.yml` fails when an incident record under `evals/` has no
+  accompanying eval.
+- `semantic-pr.yml` checks that the PR title is a conventional commit.
 
 ### 6. Maintain — incidents and evals
 
