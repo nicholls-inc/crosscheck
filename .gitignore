@@ -2,7 +2,7 @@
 target/
 
 # Lean 4 lake build artifacts
-prover/.lake/
+.lake/
 
 .env
 
