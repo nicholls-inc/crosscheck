@@ -132,6 +132,76 @@ consolidation passes and renders settled / active / drifted per artefact for
 human adjudication (`docs/gates/auditor-verdicts.md`); it never edits what it
 audits.
 
+## Pick up the next task
+
+`docs/TASKS.md` is the ordered queue of tasks. `docs/assurance/ROADMAP.md` holds
+the items that govern them. When the maintainer says "pick up next task", do
+these steps in order.
+
+1. **Choose.** Run `git fetch origin`, then read the queue with
+   `git show origin/main:docs/TASKS.md`. List the claimed tasks with
+   `git ls-remote --heads origin 'task/*'`. The next task is the first row that
+   meets all three conditions:
+   - its status is `todo`;
+   - every task it depends on is `done`;
+   - no branch named `task/<task ID>` exists.
+2. **Claim.** Create a branch named exactly `task/<task ID>` from `origin/main`,
+   give it an empty commit that no other agent can produce, and push it only if
+   the branch does not exist yet:
+
+   ```bash
+   nonce=$(uuidgen) && [ -n "$nonce" ] || { echo "no nonce: stop"; exit 1; }
+   git switch -c task/<task ID> --no-track origin/main
+   git commit --allow-empty -m "chore: claim task/<task ID> ($nonce)"
+   git push origin --force-with-lease=refs/heads/task/<task ID>: \
+     HEAD:refs/heads/task/<task ID>
+   git ls-remote origin refs/heads/task/<task ID>   # must print HEAD's SHA
+   ```
+
+   The lease with nothing after the colon makes the push fail if the branch
+   exists, and the unique commit means two agents never push the same SHA. Both
+   are needed: a second push of a branch cut from `origin/main` with no commit
+   of its own prints "Everything up-to-date" and succeeds. If `uuidgen` prints
+   nothing, stop: without the nonce, two agents with one identity can make the
+   same commit in the same second. If the push fails, or `ls-remote` prints a
+   SHA that is not your `HEAD`, another agent holds the task. Run
+   `git switch --detach origin/main && git branch -D task/<task ID>` and return
+   to step 1. `--no-track` keeps the branch from tracking `main`, so push later
+   commits with `git push origin task/<task ID>`.
+3. **Read.** Read `docs/VISION.md`, the roadmap item that the task ID names, and
+   the linked issue. Then read the journals that `AGENTS.md` tells you to read.
+4. **Run the chain.** Start at stage 1 above with `intent/<yyyy-mm-dd>-<slug>.md`.
+   Find the tier in `TIER-LAYER-MAP.md` and commit the artefacts that the tier
+   requires before the diff.
+5. **Record.** In the same pull request, set the row of the task to `done` and
+   put the path of the intent in its record. Add a `Task: <task ID>` line to the
+   pull request body.
+
+Stop and report to the maintainer in each of these cases. Do not work around
+them.
+
+- The intent has an open question.
+- No row meets the conditions in step 1. Report which rows are `blocked` or
+  claimed, and what unblocks each.
+- The task needs a change to a protected surface that no roadmap item covers.
+
+If you stop after step 2, release the claim with
+`git push origin --delete task/<task ID>` and name the task in your report.
+Otherwise the task stays claimed with nobody working on it. A claim branch that
+nobody is working on is deleted by the maintainer.
+
+Two rules keep the queue true.
+
+- **New work becomes a row.** If you find work that the task does not cover, add
+  a `todo` row under the roadmap item it belongs to, or open an issue. Do not do
+  that work in the current pull request.
+- **Only the maintainer changes the status of a roadmap item.** When the last
+  task of an item is done, say so in the pull request body. The maintainer
+  decides whether the item meets its acceptance.
+
+The maintainer's merge makes the new status true on `main`. Until the merge, the
+branch is the only sign that the task is in progress.
+
 ## Which agent runs which stretch
 
 - `add-orchestrator` — spec → bulk-drafted invariants → batched audit → triaged

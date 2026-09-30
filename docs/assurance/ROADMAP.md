@@ -14,12 +14,17 @@ so the first item is the framework by which every later item will be built.
 
 ## Strategic context
 
-The long-term goal is deterministic AI-driven software development: formally
-verified kernels for critical pure logic, contract graphs for integration
-boundaries, and spec-intent alignment checks for everything else. Crosscheck
-already implements the layers; what it has lacked is a documented development
-framework that applies them to itself, and human gates a newcomer can act on
-without asking anyone.
+The long-term goal is stated in [`../VISION.md`](../VISION.md), agreed on
+2026-09-29: every change an AI makes ships with a record of evidence, each claim
+in the record names its strength, and no guarantee rests on the judgement of an
+LLM. The items below are the steps towards that vision. Each item names the
+design rule of the vision that it serves.
+
+Before the vision, the goal was stated as formally verified kernels for critical
+pure logic, contract graphs for integration boundaries, and spec-intent
+alignment checks for everything else. Crosscheck and CGV implement parts of
+that. PB-1 is giving the repository a development framework that applies the tools to
+itself, and human gates a newcomer can act on without asking anyone.
 
 Current projection across the six layers: `TODO: fill from
 /assurance-layer-audit output`.
@@ -70,7 +75,10 @@ Acceptance: a new contributor can trace a change from `intent/<slug>.md` to a
 merged PR using `DEVELOPMENT-FRAMEWORK.md` alone, and every gate in the
 inventory names its explainer. Later artefacts cite PB-1 as their governing
 roadmap item. The move to CI with deterministic evidence only is recorded in
-`intent/2026-09-29-deterministic-evidence.md`.
+`intent/2026-09-29-deterministic-evidence.md`. PB-1 also covers the task queue
+in `docs/TASKS.md` and the procedure "Pick up the next task" in
+`DEVELOPMENT-FRAMEWORK.md`, recorded in `intent/2026-09-30-task-queue.md`.
+Issues: #49, #50.
 
 **MR-1 — Status: Done** (#18, #42, and nicholls-inc/claude-code-marketplace#251).
 Scope: move the Crosscheck plugin, its development framework, its CI, its
@@ -86,19 +94,100 @@ are listed in `.claude/rules/protected-surfaces.md`. Intent:
 
 | # | Item | Cost | Doc |
 |---|---|---|---|
-| TODO | TODO | TODO | TODO |
+| VA-1 | Bring what Crosscheck tells its users in line with the vision | M | [`../VISION.md`](../VISION.md) |
+| ER-1 | Define the evidence record, and emit it from both tools | L | [`../VISION.md`](../VISION.md) |
+| CG-1 | Make CGV findings worth reading on a real codebase | M | [`../../cgv/docs/evaluation/real-codebase-evaluation-2026-09.md`](../../cgv/docs/evaluation/real-codebase-evaluation-2026-09.md) |
+
+**VA-1 — Status: Not started.** Serves rule 1 and the scope section of the
+vision. Scope: the skills, the agents, `crosscheck/README.md` and
+`crosscheck/docs/assurance-hierarchy.md` still describe the positions that the
+vision replaces. They tell a target repository that Tier 3 needs an
+`intent-check` attestation, they call spec completeness "best-effort", and they
+call some classes of code "out of scope" or "not addressed". Acceptance: no
+skill or agent presents an LLM verdict as evidence or as a required artefact,
+and each class of code that a tool does not reach is described as "not yet
+reached", with the property that blocks it and the open question.
+
+**ER-1 — Status: Not started.** Serves rules 3 and 7, and the vision's central
+claim. Scope: one documented format for the record of evidence that ships with a
+change. Each claim names its strength (proved, tested, observed, or judged), its
+trusted base, and the command that reruns it. Acceptance: CGV and one Crosscheck
+pipeline each emit a record in the format, and a deterministic checker rejects a
+record with a claim that names no strength or no rerun command. How evidence of
+different strengths combines into one verdict is an open question of the vision,
+and the intent for ER-1 must flag it.
+
+**CG-1 — Status: Not started.** Serves rule 2. Scope: on the one real codebase
+measured so far, 3 of 67 triaged errors were reachable bugs. The work is fewer
+false errors, fewer real bugs reported as warnings, a baseline mode, a checkable
+witness for each error, and a README that says what exit 0 means. Acceptance:
+the issues below are closed, and `cgv/bench` reports precision on a labelled
+corpus for each release. Issues: #5, #6, #7, #8, #9, #10.
 
 ### Medium-term (2–3 months)
 
 | # | Item | Cost | Doc |
 |---|---|---|---|
-| TODO | TODO | TODO | TODO |
+| TB-1 | Shrink the trusted base, and measure what remains | L | [`../../cgv/README.md`](../../cgv/README.md) (Trust model) |
+| RQ-1 | Write requirements formally, and prove that a spec achieves them | L | [`../VISION.md`](../VISION.md) |
+| AD-1 | Review the Crosscheck backlog imported from the marketplace repository against the vision, and refine or drop each issue | L | #27 |
+
+**TB-1 — Status: Not started.** Serves rule 2. Scope: CGV's extraction from
+Python is not proved, a declaration can skip the Lean kernel, and no checker has
+a published record of the seeded errors it rejected. Acceptance: each issue
+below is closed or has a recorded decision, and each checker in the suite
+publishes the seeded errors that it rejected and the ones it missed. A second,
+independently written proof checker is not yet reached. The property that
+blocks it is an export of the proofs in a form a second checker reads, and the
+open question is which checker to use. Issues: #16, #47, #48, #51.
+
+**RQ-1 — Status: Not started.** Serves the second link of the vision's chain:
+the spec and the assumptions give the requirement. Scope: a formal statement of
+a requirement, a proof that a spec and its stated assumptions achieve it, and a
+trace from a CGV contract to the requirement it serves. Acceptance: one worked
+example in `formal-verification/` carries a requirement, a spec, stated
+assumptions, and a machine-checked proof that links them.
+
+**AD-1 — Status: Not started.** Serves the vision as a whole: an imported issue
+stays only if it moves the suite towards the vision. Scope: the 23 issues that
+came with the import of Crosscheck. They cover the gap between the ADD design
+and what ships (#27), the conformance oracle, the orchestrator, and four field
+reports. They were written before the vision, so each one is reviewed against
+it before any work on it starts. The review records one decision per issue:
+refine it (rewrite it against the vision, name the design rule or item it
+serves, and add a task under that item), or drop it (close it with the reason).
+A drop reason never calls a class of code out of scope. Acceptance: each of the
+23 issues has a recorded decision, each refined issue names the rule or item it
+serves and has a task in `docs/TASKS.md`, and each dropped issue is closed with
+its reason. Issues: #19 to #41.
 
 ### Aspirational (scope and commit later)
 
 | # | Item | Cost | Doc |
 |---|---|---|---|
-| TODO | TODO | TODO | TODO |
+| CE-1 | Write specs in a controlled English, with a glossary of the organisation's terms | L | [`../VISION.md`](../VISION.md) |
+| SC-1 | Generate scenarios that a spec allows and forbids, for a domain expert to judge | L | [`../VISION.md`](../VISION.md) |
+| CL-1 | Reach more classes of code | L | [`../VISION.md`](../VISION.md) |
+
+**CE-1 — Status: Not started.** Serves rules 4 and 5. Two open questions of the
+vision come first: which controlled English to use, and who owns the glossary.
+
+**SC-1 — Status: Not started.** Serves rule 6. Scope: a solver produces the
+scenarios. `/spec-adversary` uses an LLM, so under rule 1 it is a search tool
+and its output is not evidence.
+
+**CL-1 — Status: Not started.** Serves the scope section of the vision. Each
+class in the vision's table becomes its own item when work on it starts.
+
+### Tasks
+
+`docs/TASKS.md` holds the ordered queue of tasks. One task is one pull request,
+and the ID of a task names the item above that governs it. An agent that is
+told "pick up next task" follows "Pick up the next task" in
+[`DEVELOPMENT-FRAMEWORK.md`](DEVELOPMENT-FRAMEWORK.md). The queue grants no
+authority: a change to a protected surface cites an item in this file, never a
+task. An agent marks a task done in the pull request that completes it. Only
+the maintainer changes the `Status:` of an item.
 
 ## Kill criteria
 
