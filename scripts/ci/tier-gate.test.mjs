@@ -319,6 +319,10 @@ test('TG-12: a symlink to a file inside the repository counts', () => {
   assert.equal(planResult(dir, 'Plan: link.md').pass, true);
 });
 
+test('TG-12: a file whose name starts with two dots counts', () => {
+  assert.equal(planResult(nestedTier3Repo({ '..plan.md': '# Plan' }).dir, 'Plan: ..plan.md').pass, true);
+});
+
 test('TG-12: a valid Intent: citation after an invalid one satisfies Tier 1', () => {
   const r = run(repo({ 'intent/old.md': 'x', 'README.md': 'x' }), {
     body: 'Tier: 1\nIntent: TBD\nIntent: intent/old.md',

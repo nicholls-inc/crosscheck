@@ -16,13 +16,14 @@
 //
 // An artefact found implicitly (root spec.md, root plan.md, a governance note)
 // counts only if this pull request changes it; an artefact the PR body cites by
-// path ("Spec: <path>", "Plan: <path>") counts if it exists. No LLM verdict is
-// read: intent-check attestations are ignored (TG-6).
+// path ("Spec: <path>", "Plan: <path>") counts if it is a regular file inside
+// the repository. No LLM verdict is read: intent-check attestations are ignored
+// (TG-6).
 //
 // No dependencies. Node ESM. Exits 0 on pass, 1 on failure.
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -229,13 +230,23 @@ export function evaluate({
   // A citation starts its own line ("Plan: <path>"), optionally as a list item
   // or quote ("- Plan: <path>", "> Plan: <path>"), so prose that happens to
   // contain "plan:" does not count. Unlike a "Tier:" line, a quoted citation
-  // still counts: it can only name a file that exists, not pick the tier.
-  const citedExisting = (keyword) => {
-    const match = prBody.match(new RegExp(`^[ \\t]*(?:[-*+>][ \\t]+)?${keyword}:[ \\t]*(\\S+)`, 'im'));
-    if (!match) return false;
-    const cited = match[1].replace(/^`|`$/g, '');
-    return present(cited);
+  // still counts: it can only name a file in the repository, not pick the tier.
+  // Any citation line may satisfy the requirement (TG-12).
+  const cwdReal = realpathSync(cwd);
+  const isRepoFile = (cited) => {
+    let real;
+    try {
+      real = realpathSync(resolve(cwd, cited));
+    } catch {
+      return false;
+    }
+    const rel = relative(cwdReal, real);
+    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel) && statSync(real).isFile();
   };
+  const citedExisting = (keyword) =>
+    [...prBody.matchAll(new RegExp(`^[ \\t]*(?:[-*+>][ \\t]+)?${keyword}:[ \\t]*(\\S+)`, 'gim'))].some((m) =>
+      isRepoFile(m[1].replace(/^`|`$/g, ''))
+    );
 
   const { globs: protectedGlobs, missing: rulesMissing } = loadProtectedGlobs(resolve(cwd, rulesPath));
   const protectedRegexes = protectedGlobs.map(globToRegExp);
