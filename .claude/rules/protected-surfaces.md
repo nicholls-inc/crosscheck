@@ -144,11 +144,16 @@ When a change to any protected file is proposed:
 
 1. **Name the authority.** A named human reviewer's approval is required.
    Automated agents must *propose* the amendment, never self-authorise it.
-   This repository has no branch protection, because it is private and has no
-   GitHub Pro. The maintainer's merge is therefore the approval. CI checks
-   inform the merge but cannot block it, so enforcing approval in CI is not yet
-   reached. The property that blocks it is a merge condition GitHub enforces,
-   which requires branch protection.
+   The default branch has a ruleset, `default`. It requires a pull request
+   with one approving review and resolved review threads, dismisses stale
+   approvals on push, allows only squash merges, and blocks deletion and
+   force-push. It also asks for code-owner review, but the repository has no
+   CODEOWNERS file. It requires no status checks, so CI checks inform the
+   merge but cannot block it. The maintainer is the only person who can
+   approve, and GitHub does not let an author approve their own pull request,
+   so the maintainer merges by bypassing the ruleset. That merge is the
+   approval. Approval by someone other than the author is not yet reached. The
+   property that blocks it is a second person with write access.
 2. **Link to a roadmap item.** Every amendment must cite a governing item in
    `docs/assurance/ROADMAP.md`. If no item covers the change, open one first —
    `/protected-surface-amend` refuses to synthesise governance.

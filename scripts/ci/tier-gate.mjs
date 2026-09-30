@@ -265,7 +265,7 @@ export function evaluate({
       ...evidenceReport(changedFiles), // TG-8
       '',
       // TG-9
-      'Human sign-off: the maintainer\'s merge. This repository has no branch protection, so CI informs the merge but cannot block it.',
+      'Human sign-off: the maintainer\'s merge, which bypasses the default-branch ruleset. The ruleset requires no status checks, so CI informs the merge but cannot block it.',
     ],
   };
 }

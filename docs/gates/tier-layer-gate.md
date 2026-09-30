@@ -39,7 +39,7 @@ When a pull request fixes a bug that caused a production incident, the tier gate
 - **Approving (declaring the correct tier and supplying its artefacts)**: the pull request now carries an auditable record matching its actual risk level, and the tier gate passes, opening the review gate.
 - **Declining (leaving the tier or artefacts as they are)**: the change stays blocked. Nothing is merged and no reviewer is asked to look at it until the tier and artefacts are corrected.
 
-This repository has no branch protection, so GitHub does not stop a merge while this check is red. "Blocked" is the maintainer's rule rather than a setting: the maintainer does not merge a pull request whose tier gate is red. When the gate passes, it also lists which CI job holds the deterministic evidence for each changed file, and it names the files that only human review covers.
+The ruleset on the default branch requires no status checks, so GitHub does not stop a merge while this check is red. "Blocked" is the maintainer's rule rather than a setting: the maintainer does not merge a pull request whose tier gate is red. When the gate passes, it also lists which CI job holds the deterministic evidence for each changed file, and it names the files that only human review covers.
 
 ## How long this takes
 

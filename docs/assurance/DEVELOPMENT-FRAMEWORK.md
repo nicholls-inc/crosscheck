@@ -16,9 +16,10 @@ Three kinds of control appear below:
   explainer under `docs/gates/`.
 
 Only the last two count as evidence (`docs/VISION.md`). No CI job calls an LLM.
-The repository has no branch protection, so CI checks cannot block a merge. The
-maintainer's merge is the human sign-off, and the maintainer does not merge
-while a check is red.
+The ruleset on the default branch requires no status checks, so CI checks cannot
+block a merge. The maintainer's merge, which bypasses the ruleset's approval
+rule, is the human sign-off, and the maintainer does not merge while a check is
+red.
 
 ## The chain
 
@@ -108,7 +109,8 @@ carries the review findings produced against `REVIEW.md`: separate passes for
 bugs and logic, security, and compliance with the spec and plan; findings marked
 Important or Nit; at most five nits reported and the rest summarised as a count;
 generated paths excluded. These CI workflows report on the merge. None of them
-calls an LLM, and none can block a merge without branch protection:
+calls an LLM, and none can block a merge, because the ruleset on the default
+branch requires no status checks:
 
 - `tier-gate.yml` fails in any of these cases (`docs/gates/tier-layer-gate.md`):
   - the declared tier lacks its required artefacts;
