@@ -121,6 +121,47 @@ test('PG-2: a new block appended to a note on the default branch unlocks only wh
   assertBlocked(runHook(repo, 'protected/a.txt'));
 });
 
+test('PG-2: a merged block copied to a new note file does not unlock a file', () => {
+  const repo = scratch({ files: { [NOTE]: block('protected/a.txt') } });
+  write(repo.checkout, `${NOTE_DIR}/copy.md`, block('protected/a.txt'));
+  write(repo.checkout, '.assurance/add-session-x/copy.md', block('protected/a.txt'));
+  assertBlocked(runHook(repo, 'protected/a.txt'));
+});
+
+test('PG-2: when git cannot read a note on the default branch, a new note does not unlock a file', () => {
+  const repo = scratch();
+  // A submodule entry at a note path: git lists it, and git show fails on it.
+  git(repo.work, 'update-index', '--add', '--cacheinfo', `160000,${'1'.repeat(40)},${NOTE_DIR}/sub.md`);
+  git(repo.work, 'commit', '-q', '-m', 'gitlink');
+  git(repo.work, 'push', '-q', 'origin', repo.branch);
+  git(repo.checkout, 'fetch', '-q', 'origin');
+  write(repo.checkout, `${NOTE_DIR}/new.md`, block('protected/a.txt'));
+  const blocked = runHook(repo, 'protected/a.txt');
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /could not list or read the governance notes on the default branch/);
+});
+
+test('PG-2: a CRLF checkout of a merged note does not unlock a file', () => {
+  const repo = scratch({ files: { [NOTE]: block('protected/a.txt') } });
+  write(repo.checkout, NOTE, block('protected/a.txt').replace(/\n/g, '\r\n'));
+  assertBlocked(runHook(repo, 'protected/a.txt'));
+});
+
+test('PG-3: editing a merged block unlocks only the paths the edit adds', () => {
+  const repo = scratch({ files: { [NOTE]: block('protected/a.txt') } });
+  write(repo.checkout, NOTE, block('protected/a.txt', 'protected/b.txt'));
+  assertAllowed(runHook(repo, 'protected/b.txt'));
+  assertBlocked(runHook(repo, 'protected/a.txt'));
+});
+
+test('PG-3: a path a note file already named on the default branch needs a new note file', () => {
+  const repo = scratch({ files: { [NOTE]: block('protected/a.txt') } });
+  write(repo.checkout, NOTE, `${block('protected/a.txt')}\n${block('protected/a.txt', 'again')}`);
+  assertBlocked(runHook(repo, 'protected/a.txt'));
+  write(repo.checkout, `${NOTE_DIR}/new.md`, block('protected/a.txt', 'again'));
+  assertAllowed(runHook(repo, 'protected/a.txt'));
+});
+
 test('PG-2: a squash-merged note stops counting once the default branch is fetched', () => {
   const repo = scratch();
   git(repo.checkout, 'switch', '-q', '-c', 'feat');

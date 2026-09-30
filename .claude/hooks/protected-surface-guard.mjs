@@ -91,9 +91,11 @@ function matchesAnyGlob(relPath, globs) {
 }
 
 // Scan .assurance/protected-surface-amend/*.md and .assurance/add-session-*/*.md
-// for a "## Protected-Surface Amendment" block whose "Target file(s)" section
-// names the given (repo-relative) file path as a substring.
-function hasGovernanceNote(repoRoot, relFilePath, defaultSha) {
+// for a new "## Protected-Surface Amendment" block that names the given
+// (repo-relative) file path as a substring.
+function hasGovernanceNote(repoRoot, relFilePath, defaultNotes) {
+  const defaultTexts = [...defaultNotes.values()];
+
   const candidateDirs = [];
   const amendDir = join(repoRoot, '.assurance', 'protected-surface-amend');
   if (existsSync(amendDir)) candidateDirs.push(amendDir);
@@ -128,9 +130,8 @@ function hasGovernanceNote(repoRoot, relFilePath, defaultSha) {
         continue;
       }
       const notePath = relative(repoRoot, join(dir, file)).split(sep).join('/');
-      const defaultText = readAtCommit(repoRoot, defaultSha, notePath);
-      if (defaultText === null) continue;
-      if (blockNamesFile(content, relFilePath, defaultText)) return true;
+      const sameFile = defaultNotes.get(notePath) ?? '';
+      if (blockNamesFile(normalise(content), relFilePath, defaultTexts, sameFile)) return true;
     }
   }
   return false;
@@ -154,39 +155,65 @@ function resolveDefaultBranch(repoRoot) {
   return null;
 }
 
-// The text of a file at the given commit, '' when the path is absent there, or
-// null when git fails for any other reason. The caller treats null as "no block
-// is new", so a git error blocks the edit instead of unlocking it.
-function readAtCommit(repoRoot, sha, relPath) {
+// CRLF and LF checkouts of the same note compare equal.
+function normalise(text) {
+  return text.replace(/\r\n/g, '\n');
+}
+
+// A note file is a .md file directly under .assurance/protected-surface-amend/
+// or directly under a .assurance/add-session-*/ directory.
+function isNotePath(relPath) {
+  const parts = relPath.split('/');
+  return (
+    parts.length === 3 &&
+    parts[0] === '.assurance' &&
+    (parts[1] === 'protected-surface-amend' || parts[1].startsWith('add-session-')) &&
+    parts[2].endsWith('.md')
+  );
+}
+
+// Every note file at the given commit, as a Map from repo-relative path to
+// normalised text, or null when git fails to list or read them. The caller
+// blocks the edit on null, so a git error never unlocks one.
+function readDefaultNotes(repoRoot, sha) {
   const opts = {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer: 64 * 1024 * 1024,
   };
+  const notes = new Map();
   try {
-    const listed = execFileSync('git', ['ls-tree', '--name-only', sha, '--', relPath], opts);
-    if (listed.trim() === '') return '';
-    return execFileSync('git', ['show', `${sha}:${relPath}`], opts);
+    const listed = execFileSync('git', ['ls-tree', '-r', '-z', '--name-only', sha, '--', '.assurance'], opts);
+    for (const relPath of listed.split('\0')) {
+      if (!isNotePath(relPath)) continue;
+      notes.set(relPath, normalise(execFileSync('git', ['show', `${sha}:${relPath}`], opts)));
+    }
   } catch {
     return null;
   }
+  return notes;
 }
 
 // A file's content may contain multiple "## Protected-Surface Amendment"
-// blocks; check each one's "Target file(s)" section independently. A block
-// that already occurs in the default branch's copy of the file is not new and
-// never counts.
-function blockNamesFile(content, relFilePath, defaultText) {
+// blocks; check each one independently. A block whose text occurs in any note
+// file on the default branch is not new and never counts, wherever it has been
+// copied to. A new or edited block counts only for paths that the same note
+// file did not already name on the default branch, so editing an old note
+// cannot renew the unlocks it once granted.
+function blockNamesFile(content, relFilePath, defaultTexts, sameFile) {
   const blockRe = /## Protected-Surface Amendment[\s\S]*?(?=\n## Protected-Surface Amendment|$)/g;
   const blocks = content.match(blockRe);
   if (!blocks) return false;
   for (const block of blocks) {
-    if (defaultText.includes(block.trim())) continue;
+    const text = block.trim();
+    if (defaultTexts.some((t) => t.includes(text))) continue;
     // The amendment template names the primary path on the "Target file(s)"
     // line and enumerates every further file in the "Diff Plan" table, so
     // search the whole block: any explicit mention of the path counts.
-    if (block.includes(relFilePath)) return true;
+    if (!block.includes(relFilePath)) continue;
+    if (sameFile.includes(relFilePath)) continue;
+    return true;
   }
   return false;
 }
@@ -283,7 +310,15 @@ function main() {
     process.exit(2);
   }
 
-  if (hasGovernanceNote(repoRoot, relFilePath, defaultSha)) {
+  const defaultNotes = readDefaultNotes(repoRoot, defaultSha);
+  if (defaultNotes === null) {
+    process.stderr.write(
+      `protected-surface-guard: git could not list or read the governance notes on the default branch (${defaultSha}), so the hook cannot tell which blocks are new; blocking the edit to a protected surface. Check that \`git ls-tree -r ${defaultSha} -- .assurance\` and \`git show\` of each note work, then retry.\n`
+    );
+    process.exit(2);
+  }
+
+  if (hasGovernanceNote(repoRoot, relFilePath, defaultNotes)) {
     process.exit(0);
   }
 

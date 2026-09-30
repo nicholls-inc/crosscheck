@@ -7,7 +7,7 @@
 
 ### Change Description
 
-1. `.claude/hooks/protected-surface-guard.mjs`: a governance-note block allows an edit only if its text is not in the same file on the default-branch commit (`origin/HEAD`, else `origin/main`). If neither ref resolves, an edit to a protected file is blocked with a message that names the fix. The gate message's reason clause says "no governance-note block that is new on this branch".
+1. `.claude/hooks/protected-surface-guard.mjs`: a governance-note block allows an edit only if its text is not in any note file on the default-branch commit (`origin/HEAD`, else `origin/main`), and only for paths its own note file did not already name there. If neither ref resolves, an edit to a protected file is blocked with a message that names the fix. The gate message's reason clause says "no governance-note block that is new on this branch".
 2. `scripts/ci/protected-surface-guard.test.mjs`: new. Scratch-repository tests of the hook, run by the Tier Gate job's `node --test scripts/ci/*.test.mjs`.
 3. `.claude/rules/protected-surfaces.md`: the deterministic-layer bullet states the new rule. The path list does not change.
 4. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: stage 3 states the new rule.

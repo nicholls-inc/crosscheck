@@ -38,7 +38,8 @@ The test lives in `scripts/ci/` so that the Tier Gate job's existing `node --tes
 
 - **A stale `origin/main`.** A note merged since the last fetch still counts until the next fetch. This is stated in the intent's constraints. The Tier Gate, which diffs the pull request, still refuses such a note in CI.
 - **A clone with no remote.** Every protected edit is blocked until `origin` exists and is fetched. That is the conservative choice the hook already makes for failures other than a missing rules file. The message names the fix.
-- **A block copied verbatim from an old note.** It is not new, so it does not count. That fails closed.
+- **A block copied verbatim from an old note.** It is not new, wherever it is copied to, so it does not count. That fails closed. A copy changed by even one character is new, and is then no different from writing a fresh note.
+- **Re-authorising a file in an old note file.** An old note file cannot unlock a path it already named, so a new change to that file needs a new note file. `/protected-surface-amend` already writes a new file per change.
 - **The commit type.** The SKILL.md edit makes this a `fix(crosscheck):` commit, as `CLAUDE.md` requires for a behavioural artefact.
 - **This change locks its own follow-ups.** Once merged, this pull request's note stops counting, so a later edit to the hook needs a new note. That is the intended outcome.
 

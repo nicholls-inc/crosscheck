@@ -12,7 +12,7 @@ The Tier Gate already refuses a note from an earlier change: "A note from an ear
 ## Proposed outcome
 - A note block unlocks an edit only if its text is not on the default branch. The default branch is `origin/HEAD`, or `origin/main` when `origin/HEAD` is not set. A block that is untracked, staged, or committed on the branch counts. A block that is on the default branch does not.
 - Once a branch's note is squash-merged, the same text is on the default branch, so the note stops counting for that branch too.
-- Adding a new block to an old note file unlocks only the files that the new block names.
+- Adding a new block to an old note file, or editing an old block, unlocks only the files that the old note file did not already name. A block copied from any merged note, into any file, does not count.
 - If the hook cannot find the default branch, it blocks edits to protected files and says how to fix it. Edits to other files are unaffected.
 - On a clean checkout of `main`, the hook allows 0 of the protected files.
 - The fallback contract in `/assurance-init`, and the documents that describe the hook, state the new rule.
