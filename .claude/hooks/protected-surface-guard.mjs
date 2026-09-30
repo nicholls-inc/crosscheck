@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Deterministic PreToolUse hook: blocks edits to protected surfaces unless a
-// Protected-Surface Amendment governance-note block already names the file.
+// Protected-Surface Amendment governance-note block that is new on this branch
+// (not already on origin/HEAD, else origin/main) names the file.
 //
 // Reads the PreToolUse JSON payload from stdin: { tool_name, tool_input: { file_path, ... } }.
 // Exit 0  -> allow the edit.
@@ -92,7 +93,7 @@ function matchesAnyGlob(relPath, globs) {
 // Scan .assurance/protected-surface-amend/*.md and .assurance/add-session-*/*.md
 // for a "## Protected-Surface Amendment" block whose "Target file(s)" section
 // names the given (repo-relative) file path as a substring.
-function hasGovernanceNote(repoRoot, relFilePath) {
+function hasGovernanceNote(repoRoot, relFilePath, defaultSha) {
   const candidateDirs = [];
   const amendDir = join(repoRoot, '.assurance', 'protected-surface-amend');
   if (existsSync(amendDir)) candidateDirs.push(amendDir);
@@ -126,19 +127,55 @@ function hasGovernanceNote(repoRoot, relFilePath) {
       } catch {
         continue;
       }
-      if (blockNamesFile(content, relFilePath)) return true;
+      const notePath = relative(repoRoot, join(dir, file)).split(sep).join('/');
+      const defaultText = readAtCommit(repoRoot, defaultSha, notePath);
+      if (blockNamesFile(content, relFilePath, defaultText)) return true;
     }
   }
   return false;
 }
 
+// The default branch as last fetched: origin/HEAD, else origin/main. Returns
+// the commit sha, or null when neither ref resolves. Never fetches.
+function resolveDefaultBranch(repoRoot) {
+  for (const ref of ['origin/HEAD', 'origin/main']) {
+    try {
+      const sha = execFileSync(
+        'git',
+        ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+        { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+      ).trim();
+      if (sha) return sha;
+    } catch {
+      // Ref does not resolve; try the next one.
+    }
+  }
+  return null;
+}
+
+// The text of a file at the given commit, or '' when the path is absent there.
+function readAtCommit(repoRoot, sha, relPath) {
+  try {
+    return execFileSync('git', ['show', `${sha}:${relPath}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return '';
+  }
+}
+
 // A file's content may contain multiple "## Protected-Surface Amendment"
-// blocks; check each one's "Target file(s)" section independently.
-function blockNamesFile(content, relFilePath) {
+// blocks; check each one's "Target file(s)" section independently. A block
+// that already occurs in the default branch's copy of the file is not new and
+// never counts.
+function blockNamesFile(content, relFilePath, defaultText) {
   const blockRe = /## Protected-Surface Amendment[\s\S]*?(?=\n## Protected-Surface Amendment|$)/g;
   const blocks = content.match(blockRe);
   if (!blocks) return false;
   for (const block of blocks) {
+    if (defaultText.includes(block.trim())) continue;
     // The amendment template names the primary path on the "Target file(s)"
     // line and enumerates every further file in the "Diff Plan" table, so
     // search the whole block: any explicit mention of the path counts.
@@ -175,7 +212,7 @@ function deriveGateLink(repoRoot) {
 function printGateMessage(link) {
   const msg = [
     '**Action needed: run /protected-surface-amend before editing**',
-    `You are being asked to allow this edit to a protected surface because the file is a protected surface with no governance-note block in the working tree. Approving means generating the block via /protected-surface-amend then re-editing; declining means the file stays unchanged. Full explanation: ${link}.`,
+    `You are being asked to allow this edit to a protected surface because the file is a protected surface with no governance-note block that is new on this branch. Approving means generating the block via /protected-surface-amend then re-editing; declining means the file stays unchanged. Full explanation: ${link}.`,
   ].join('\n');
   process.stderr.write(msg + '\n');
 }
@@ -231,7 +268,15 @@ function main() {
     process.exit(0);
   }
 
-  if (hasGovernanceNote(repoRoot, relFilePath)) {
+  const defaultSha = resolveDefaultBranch(repoRoot);
+  if (defaultSha === null) {
+    process.stderr.write(
+      'protected-surface-guard: cannot find origin/HEAD or origin/main, so the hook cannot tell which governance-note blocks are new on this branch; blocking the edit to a protected surface. Run `git fetch origin` and `git remote set-head origin --auto`, then retry.\n'
+    );
+    process.exit(2);
+  }
+
+  if (hasGovernanceNote(repoRoot, relFilePath, defaultSha)) {
     process.exit(0);
   }
 

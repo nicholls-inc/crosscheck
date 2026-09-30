@@ -14,9 +14,10 @@ Enforcement is dual-track:
 
 - **Deterministic layer:** `.claude/hooks/protected-surface-guard.mjs`, a
   `PreToolUse` hook that blocks writes to any path matching the machine-readable
-  list below unless a governance-note block naming that file exists in the
-  working tree. The hook parses its glob list from this file, so this document
-  is the single source of truth for what is protected.
+  list below unless a governance-note block naming that file is new on this
+  branch, not already on the default branch. The hook parses its glob list from
+  this file, so this document is the single source of truth for what is
+  protected.
 - **Advisory layer:** `/protected-surface-amend`, the skill that drafts the
   governance-note block (change description, rationale, governing roadmap item,
   authority, diff plan, test/coverage impact, review checklist). Skills make the
