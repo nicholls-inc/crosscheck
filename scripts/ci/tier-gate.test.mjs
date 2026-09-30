@@ -1,11 +1,12 @@
 // Tests for tier-gate.mjs. Run: node --test scripts/ci/*.test.mjs
 // Each test names the requirement it covers (TG-*, see
-// intent/2026-09-29-deterministic-evidence-spec.md and, for TG-1, TG-8 and
-// TG-11, intent/2026-09-30-tier-anchor-spec.md).
+// intent/2026-09-29-deterministic-evidence-spec.md; for TG-1, TG-8 and
+// TG-11, intent/2026-09-30-tier-anchor-spec.md; for TG-12 and TG-13,
+// intent/2026-09-30-citation-rule-spec.md).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { evaluate } from './tier-gate.mjs';
@@ -30,8 +31,7 @@ const NOTE = '.assurance/protected-surface-amend/reason-2026-09-29.md';
 const STALE_NOTE = '.assurance/protected-surface-amend/old-2026-01-01.md';
 
 // Build a throwaway repository containing `files` (path -> content).
-function repo(files = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'tier-gate-test-'));
+function repo(files = {}, dir = mkdtempSync(join(tmpdir(), 'tier-gate-test-'))) {
   const all = { '.claude/rules/protected-surfaces.md': RULES, ...files };
   for (const [path, content] of Object.entries(all)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
@@ -254,6 +254,83 @@ test('TG-4: an indented Plan: line on its own is a citation', () => {
     changed: [SKILL, NOTE],
   });
   assert.equal(r.pass, true);
+});
+
+// ---- TG-12: citations -----------------------------------------------------
+
+// A Tier 3 repository at <parent>/repo, with <parent>/outside.md beside it.
+function nestedTier3Repo(extra = {}) {
+  const parent = mkdtempSync(join(tmpdir(), 'tier-gate-test-'));
+  writeFileSync(join(parent, 'outside.md'), '# Plan');
+  const dir = repo({ [SKILL]: 'x', [NOTE]: `names ${SKILL}`, 'intent/p.md': '# Plan', ...extra }, join(parent, 'repo'));
+  return { parent, dir };
+}
+
+const planResult = (dir, body) => run(dir, { body: `Tier: 3\n${body}`, changed: [SKILL, NOTE] });
+
+test('TG-12: "+ Plan:" is a citation', () => {
+  assert.equal(planResult(nestedTier3Repo().dir, '+ Plan: intent/p.md').pass, true);
+});
+
+for (const line of ['-Plan: intent/p.md', '>> Plan: intent/p.md', '1. Plan: intent/p.md', '- [ ] Plan: intent/p.md']) {
+  test(`TG-12: ${JSON.stringify(line)} is not a citation`, () => {
+    const r = planResult(nestedTier3Repo().dir, line);
+    assert.equal(r.pass, false);
+    assert.match(out(r), /Tier 3 requires a build plan/);
+  });
+}
+
+test('TG-12: a valid citation after an invalid one counts', () => {
+  assert.equal(planResult(nestedTier3Repo().dir, 'Plan: TBD\nPlan: intent/p.md').pass, true);
+});
+
+test('TG-12: a valid citation before an invalid one counts', () => {
+  assert.equal(planResult(nestedTier3Repo().dir, 'Plan: intent/p.md\nPlan: TBD').pass, true);
+});
+
+test('TG-12: two invalid citations fail', () => {
+  assert.equal(planResult(nestedTier3Repo().dir, 'Plan: intent/missing.md\nPlan: intent').pass, false);
+});
+
+test('TG-12: a directory is not a cited file', () => {
+  const r = planResult(nestedTier3Repo().dir, 'Plan: intent');
+  assert.equal(r.pass, false);
+  assert.match(out(r), /Tier 3 requires a build plan/);
+});
+
+test('TG-12: a relative path out of the repository does not count', () => {
+  assert.equal(planResult(nestedTier3Repo().dir, 'Plan: ../outside.md').pass, false);
+});
+
+test('TG-12: an absolute path out of the repository does not count', () => {
+  const { parent, dir } = nestedTier3Repo();
+  assert.equal(planResult(dir, `Plan: ${join(parent, 'outside.md')}`).pass, false);
+});
+
+test('TG-12: a symlink to a file outside the repository does not count', () => {
+  const { parent, dir } = nestedTier3Repo();
+  symlinkSync(join(parent, 'outside.md'), join(dir, 'link.md'));
+  assert.equal(planResult(dir, 'Plan: link.md').pass, false);
+});
+
+test('TG-12: a symlink to a file inside the repository counts', () => {
+  const { dir } = nestedTier3Repo();
+  symlinkSync(join(dir, 'intent/p.md'), join(dir, 'link.md'));
+  assert.equal(planResult(dir, 'Plan: link.md').pass, true);
+});
+
+test('TG-12: a valid Intent: citation after an invalid one satisfies Tier 1', () => {
+  const r = run(repo({ 'intent/old.md': 'x', 'README.md': 'x' }), {
+    body: 'Tier: 1\nIntent: TBD\nIntent: intent/old.md',
+    changed: ['README.md'],
+  });
+  assert.equal(r.pass, true);
+});
+
+test('TG-12: a Spec: citation of a directory does not satisfy Tier 2', () => {
+  const r = run(repo({ 'intent/s.md': 'x', 'src/a.ts': 'x' }), { body: 'Tier: 2\nSpec: intent', changed: ['src/a.ts'] });
+  assert.equal(r.pass, false);
+  assert.match(out(r), /Tier 2 requires a spec artefact/);
 });
 
 // ---- TG-5: governance notes ------------------------------------------------
