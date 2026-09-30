@@ -54,4 +54,5 @@ No `SKILL.md`, agent, hook, rule, CI, or code file changes.
   - the issues that the roadmap items name are exactly the open issues from `gh issue list` (RM-4);
   - the first row that meets PU-1 is `PB-1.2`.
 - Every relative link in the changed Markdown files resolves to a file.
+- The claim commands in step 2 were run by hand against a scratch bare remote with two and three clones. One agent won in the same-base race, in the sequential case, and after `main` moved. The loser's push was rejected with `stale info`, and its clean-up left no local `task/*` branch. The nonce guard stopped when `uuidgen` printed nothing. A claim with no commit of its own printed "Everything up-to-date" and exited 0, which is why the commit is needed. This is a manual run, not a committed check: task `PB-1.6` adds a test that races two claims.
 - Not covered: whether an agent that starts with no context and is told "pick up next task" reaches `PB-1.2` and follows the chain. Only a fresh session can show that.

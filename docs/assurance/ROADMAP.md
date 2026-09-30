@@ -23,7 +23,7 @@ design rule of the vision that it serves.
 Before the vision, the goal was stated as formally verified kernels for critical
 pure logic, contract graphs for integration boundaries, and spec-intent
 alignment checks for everything else. Crosscheck and CGV implement parts of
-that. PB-1 gave the repository a development framework that applies the tools to
+that. PB-1 is giving the repository a development framework that applies the tools to
 itself, and human gates a newcomer can act on without asking anyone.
 
 Current projection across the six layers: `TODO: fill from

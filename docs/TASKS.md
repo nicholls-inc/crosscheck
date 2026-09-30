@@ -7,7 +7,7 @@ This file is the ordered queue of work on this repository. The order of the rows
 - **Task.** `<roadmap item ID>.<n>`. The item is in [`assurance/ROADMAP.md`](assurance/ROADMAP.md) and governs the task. An ID is never reused.
 - **Status.** One of three values:
   - `todo`: nobody has finished the task.
-  - `blocked`: the task waits for a decision by a person. The row says which decision.
+  - `blocked`: the task waits for something outside the queue, such as a decision by a person or a fix elsewhere. The row says what unblocks it.
   - `done`: the pull request that completed the task is merged.
 
   The queue has no "in progress" status. A pushed branch named `task/<task ID>` shows that an agent holds the task.
@@ -17,10 +17,11 @@ This file is the ordered queue of work on this repository. The order of the rows
 
 ## Rules
 
-- One task is one pull request. If a task is too large for one pull request, its pull request replaces the row with smaller rows and does nothing else.
+- One task is one pull request. If a task is too large for one pull request, its pull request replaces the row with smaller rows, points every `Depends on` that named the old row at the new rows, and does nothing else.
 - The pull request that completes a task sets its row to `done` and fills in the record.
 - Add a row under an existing roadmap item. If no item fits, the work needs a new roadmap item first, and only the maintainer approves one.
 - The queue grants no authority. A change to a protected surface cites a roadmap item.
+- Until PB-1.3 is `done`, the protected-surface hook lets some edits through without a governance note. A task that edits a protected surface writes its note first anyway.
 
 ## Queue
 
@@ -31,7 +32,7 @@ This file is the ordered queue of work on this repository. The order of the rows
 | PB-1.3 | todo | Stop merged governance notes from unlocking the protected-surface hook. The notes on `main` allow edits to 29 of 57 protected files | | | |
 | PB-1.4 | todo | Tier gate: anchor the `Tier:` line, and label unchecked code "not yet reached" | | #50 | |
 | PB-1.5 | todo | Tier gate: accept any citation line, require a regular file in the repository, and add negative tests | | #49 | |
-| PB-1.6 | todo | Add a script that prints the next task by the rules of the pick-up procedure, and check this file in CI: each task ID names a roadmap item, each dependency exists, and each status is valid | | | |
+| PB-1.6 | todo | Add a script that prints the next task by the rules of the pick-up procedure, and check this file in CI: each task ID names a roadmap item, each dependency exists, each status is valid, and a pull request sets to `done` only the row in its `Task:` line. Add a test that races two claims against a scratch remote | | | |
 | VA-1.1 | todo | Skills and agents stop presenting the `intent-check` attestation as a required artefact | | | |
 | VA-1.2 | todo | Replace "out of scope", "not addressed" and "best-effort" in `crosscheck/README.md` and `crosscheck/docs/assurance-hierarchy.md` with "not yet reached", the blocking property, and the open question | | | |
 | ER-1.1 | todo | Write the intent and the spec for the evidence record format | | | |

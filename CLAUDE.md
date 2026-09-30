@@ -26,7 +26,7 @@ Two rules from `docs/VISION.md` apply to every session:
 
 ## Picking up work
 
-`docs/TASKS.md` is the ordered queue of tasks, and `docs/assurance/ROADMAP.md` holds the items that govern them. When you are told "pick up next task", follow "Pick up the next task" in `docs/assurance/DEVELOPMENT-FRAMEWORK.md`. Do not ask the maintainer what the status is. Read the queue.
+`docs/TASKS.md` is the ordered queue of tasks, and `docs/assurance/ROADMAP.md` holds the items that govern them. When you are told "pick up next task", follow "Pick up the next task" in `docs/assurance/DEVELOPMENT-FRAMEWORK.md`.
 
 ## Crosscheck plugin (`crosscheck/`)
 
