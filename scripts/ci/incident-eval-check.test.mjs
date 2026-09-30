@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +75,29 @@ function run(checkout, head, overrides = {}) {
   });
 }
 
+// The failure report the script prints, with the link it builds for a remote
+// that is not on GitHub.
+function failureOutput(items) {
+  return [
+    '**Action needed: add an eval and candidate invariant**',
+    'You are being asked to add a regression eval and a candidate invariant for this incident because every production incident must leave both artefacts in the suite. Approving means the incident becomes a permanent regression check and a documented invariant; declining means the change stays blocked until both artefacts are added. Full explanation: docs/gates/README.md.',
+    '',
+    ...items.map((item) => `- ${item}`),
+    '',
+  ].join('\n');
+}
+
+const noEval = (id) => `No eval under evals/ names or references incident "${id}". Add one so this incident stays a permanent regression test.`;
+const noInvariant = (id) => `No candidate invariant under docs/invariants/ or crosscheck/docs/invariants/ references incident "${id}". Add or amend one to capture what the incident revealed.`;
+const passed = (id) => `incident-eval-check: PASS — incident "${id}" has an eval and a candidate invariant.\n`;
+
+function addFiles(checkout, files) {
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(checkout, path)), { recursive: true });
+    writeFileSync(join(checkout, path), content);
+  }
+}
+
 const READ_FAILED = /^incident-eval-check: could not read the pull request's commits: /;
 
 function assertExit2(result, pattern) {
@@ -90,7 +113,7 @@ test('IE-1: reads an incident id from the oldest of several commits of a squash-
   });
   const result = run(checkout, head);
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stdout, /No eval under evals\/ names or references incident "INC-7"\./);
+  assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
 });
 
 test('IE-5: a squash-merged PR with no incident reference is skipped', () => {
@@ -104,14 +127,63 @@ test('IE-5: an incident line in the PR body applies the check', () => {
   const { checkout, head } = squashMergedPr({ branchMessages: ['fix: plain change'] });
   const result = run(checkout, head, { PR_BODY: 'Why\n\nFixes-Incident: INC-8' });
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stdout, /No eval under evals\/ names or references incident "INC-8"\./);
+  assert.equal(result.stdout, failureOutput([noEval('INC-8'), noInvariant('INC-8')]));
+});
+
+test('IE-5: the body is read before the commits, and trailing punctuation is dropped', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-9'] });
+  const result = run(checkout, head, { PR_BODY: 'Fixes-Incident: INC-8.' });
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noEval('INC-8'), noInvariant('INC-8')]));
+});
+
+test('IE-5: the incident line is matched without regard to case', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nfixes-incident: inc-3'] });
+  const result = run(checkout, head);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noEval('inc-3'), noInvariant('inc-3')]));
+});
+
+test('IE-5: an eval named for the incident and an invariant citing it pass', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-7'] });
+  addFiles(checkout, { 'evals/INC-7.yaml': 'case: x\n', 'docs/invariants/m.md': 'Anchored in INC-7.\n' });
+  const result = run(checkout, head);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, passed('INC-7'));
+});
+
+test('IE-5: an eval citing the incident and an invariant under crosscheck/docs pass', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-7'] });
+  addFiles(checkout, { 'evals/regression.yaml': 'incident: INC-7\n', 'crosscheck/docs/invariants/m.md': 'Anchored in INC-7.\n' });
+  const result = run(checkout, head);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, passed('INC-7'));
+});
+
+test('IE-5: an eval without an invariant fails, and files outside evals/ and the invariant dirs do not count', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-7'] });
+  addFiles(checkout, { 'evals/INC-7.yaml': 'incident: INC-7\n', 'docs/INC-7.md': 'INC-7\n' });
+  const result = run(checkout, head);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noInvariant('INC-7')]));
+});
+
+test('IE-5: an invariant without an eval fails, and a file outside evals/ named for the incident does not count', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-7'] });
+  addFiles(checkout, { 'docs/invariants/m.md': 'Anchored in INC-7.\n', 'other/INC-7.md': 'INC-7\n' });
+  const result = run(checkout, head);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noEval('INC-7')]));
 });
 
 test('IE-5: the incident label with no incident id fails', () => {
   const { checkout, head } = squashMergedPr({ branchMessages: ['fix: plain change'] });
-  const result = run(checkout, head, { PR_LABELS: 'bug,incident' });
+  const result = run(checkout, head, { PR_LABELS: 'bug, Incident ' });
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stdout, /The "incident" label is set but no incident id was found\./);
+  assert.equal(
+    result.stdout,
+    failureOutput(['The "incident" label is set but no incident id was found. Add a "Fixes-Incident: <id>" line to the PR body or a commit message.'])
+  );
 });
 
 test('IE-5: an incident line with no value does not take the next line as the id', () => {
