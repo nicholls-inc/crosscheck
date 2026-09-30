@@ -130,7 +130,7 @@ corpus for each release. Issues: #5, #6, #7, #8, #9, #10.
 |---|---|---|---|
 | TB-1 | Shrink the trusted base, and measure what remains | L | [`../../cgv/README.md`](../../cgv/README.md) (Trust model) |
 | RQ-1 | Write requirements formally, and prove that a spec achieves them | L | [`../VISION.md`](../VISION.md) |
-| AD-1 | Work through the Crosscheck backlog imported from the marketplace repository | L | #27 |
+| AD-1 | Review the Crosscheck backlog imported from the marketplace repository against the vision, and refine or drop each issue | L | #27 |
 
 **TB-1 — Status: Not started.** Serves rule 2. Scope: CGV's extraction from
 Python is not proved, a declaration can skip the Lean kernel, and no checker has
@@ -148,11 +148,18 @@ trace from a CGV contract to the requirement it serves. Acceptance: one worked
 example in `formal-verification/` carries a requirement, a spec, stated
 assumptions, and a machine-checked proof that links them.
 
-**AD-1 — Status: Not started.** Scope: the 23 issues that came with the import
-of Crosscheck. They cover the gap between the ADD design and what ships (#27),
-the conformance oracle, the orchestrator, and four field reports. Acceptance:
-each issue is closed, or is a task in `docs/TASKS.md` under the item it belongs
-to. Issues: #19 to #41.
+**AD-1 — Status: Not started.** Serves the vision as a whole: an imported issue
+stays only if it moves the suite towards the vision. Scope: the 23 issues that
+came with the import of Crosscheck. They cover the gap between the ADD design
+and what ships (#27), the conformance oracle, the orchestrator, and four field
+reports. They were written before the vision, so each one is reviewed against
+it before any work on it starts. The review records one decision per issue:
+refine it (rewrite it against the vision, name the design rule or item it
+serves, and add a task under that item), or drop it (close it with the reason).
+A drop reason never calls a class of code out of scope. Acceptance: each of the
+23 issues has a recorded decision, each refined issue names the rule or item it
+serves and has a task in `docs/TASKS.md`, and each dropped issue is closed with
+its reason. Issues: #19 to #41.
 
 ### Aspirational (scope and commit later)
 

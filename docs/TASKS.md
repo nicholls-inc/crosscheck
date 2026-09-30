@@ -49,4 +49,4 @@ This file is the ordered queue of work on this repository. The order of the rows
 | TB-1.2 | todo | CGV: reject `implemented_by` and `extern` on constants that the soundness theorems reach | | #48 | |
 | TB-1.3 | todo | CGV manifest: hash the definitions that protected statements mention, and check the name lists against the rules table | | #51 | |
 | TB-1.4 | todo | Write the intent and the plan for proving extraction, and split the work into rows | | #16 | |
-| AD-1.1 | todo | Triage issues #19 to #41: close each one, or add a row for it under the roadmap item it belongs to | | #27 | |
+| AD-1.1 | todo | Review issues #19 to #41 against `docs/VISION.md` and record one decision for each. Refine: rewrite the issue against the vision, name the rule or item it serves, and add a row under that item. Drop: close the issue with the reason. Start no work on any of them in this task | | #27 | |
