@@ -26,7 +26,7 @@ Each requirement has an ID. The plan and the pull request cite these IDs.
 ## Pick-up procedure (`docs/assurance/DEVELOPMENT-FRAMEWORK.md`)
 
 - **PU-1. Choose.** The next task is the first row, read from `origin/main`, that meets all three conditions: its status is `todo`, every task it depends on is `done`, and no branch claims it.
-- **PU-2. Claim.** The agent pushes a branch named exactly `task/<task ID>`. Two agents cannot both push a new branch with one name, so a rejected push means that another agent holds the task.
+- **PU-2. Claim.** The agent pushes a branch named exactly `task/<task ID>` that holds one empty commit with a unique message on top of `origin/main`, with a lease that fails if the branch already exists (`--force-with-lease=refs/heads/task/<task ID>:`). A failed push, or a remote SHA that is not the agent's own commit, means that another agent holds the task. A plain push is not enough: a second push of a branch with no commit of its own names the same SHA, and git reports success.
 - **PU-3. Read.** Before it writes the intent, the agent reads `docs/VISION.md`, the governing roadmap item, the linked issue, and the journals that `AGENTS.md` names.
 - **PU-4. Run the chain.** The agent follows the stages of `DEVELOPMENT-FRAMEWORK.md` from stage 1, at the tier that `TIER-LAYER-MAP.md` gives.
 - **PU-5. Record.** The pull request body has a `Task: <task ID>` line. The same pull request sets the row to `done` and fills in the record.

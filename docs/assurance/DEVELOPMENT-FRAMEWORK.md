@@ -145,9 +145,24 @@ these steps in order.
    - its status is `todo`;
    - every task it depends on is `done`;
    - no branch named `task/<task ID>` exists.
-2. **Claim.** Create a branch named exactly `task/<task ID>` from `origin/main`
-   and push it. If the push is rejected because the branch exists, another agent
-   holds the task. Return to step 1.
+2. **Claim.** Create a branch named exactly `task/<task ID>` from `origin/main`,
+   give it an empty commit that no other agent can produce, and push it only if
+   the branch does not exist yet:
+
+   ```bash
+   git switch -c task/<task ID> origin/main
+   git commit --allow-empty -m "chore: claim task/<task ID> ($(uuidgen))"
+   git push origin --force-with-lease=refs/heads/task/<task ID>: \
+     HEAD:refs/heads/task/<task ID>
+   git ls-remote origin refs/heads/task/<task ID>   # must print HEAD's SHA
+   ```
+
+   The lease with nothing after the colon makes the push fail if the branch
+   exists, and the unique commit means two agents never push the same SHA. Both
+   are needed: a second push of a branch cut from `origin/main` with no commit
+   of its own prints "Everything up-to-date" and succeeds. If the push fails, or
+   `ls-remote` prints a SHA that is not your `HEAD`, another agent holds the
+   task. Delete your local branch and return to step 1.
 3. **Read.** Read `docs/VISION.md`, the roadmap item that the task ID names, and
    the linked issue. Then read the journals that `AGENTS.md` tells you to read.
 4. **Run the chain.** Start at stage 1 above with `intent/<yyyy-mm-dd>-<slug>.md`.
