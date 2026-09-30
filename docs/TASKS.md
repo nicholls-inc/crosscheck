@@ -28,11 +28,12 @@ This file is the ordered queue of work on this repository. The order of the rows
 | Task | Status | What | Depends on | Issue | Record |
 |---|---|---|---|---|---|
 | PB-1.1 | done | Add this queue, the roadmap items for the vision, and the pick-up procedure | | | `intent/2026-09-30-task-queue.md` |
-| PB-1.2 | todo | Fix the `Incident Eval Check` workflow. It failed on the four squash-merged pull requests #43 to #46 with "Invalid revision range" | | | |
+| PB-1.2 | done | Fix the `Incident Eval Check` workflow. It failed on the four squash-merged pull requests #43 to #46 with "Invalid revision range" | | | `intent/2026-09-30-incident-eval-range.md` |
 | PB-1.3 | todo | Stop merged governance notes from unlocking the protected-surface hook. The notes on `main` allow edits to 29 of 57 protected files | | | |
 | PB-1.4 | todo | Tier gate: anchor the `Tier:` line, and label unchecked code "not yet reached" | | #50 | |
 | PB-1.5 | todo | Tier gate: accept any citation line, require a regular file in the repository, and add negative tests | | #49 | |
 | PB-1.6 | todo | Add a script that prints the next task by the rules of the pick-up procedure, and check this file in CI: each task ID names a roadmap item, each dependency exists, each status is valid, and a pull request sets to `done` only the row in its `Task:` line. Add a test that races two claims against a scratch remote | | | |
+| PB-1.7 | todo | Tier Gate workflow: pass the base ref to `run:` as an environment variable, not a `${{ }}` expression, and stop writing the changed files through a fixed `EOF` heredoc delimiter, which a file named `EOF` ends early | | | |
 | VA-1.1 | todo | Skills and agents stop presenting the `intent-check` attestation as a required artefact | | | |
 | VA-1.2 | todo | Replace "out of scope", "not addressed" and "best-effort" in `crosscheck/README.md` and `crosscheck/docs/assurance-hierarchy.md` with "not yet reached", the blocking property, and the open question | | | |
 | ER-1.1 | todo | Write the intent and the spec for the evidence record format | | | |

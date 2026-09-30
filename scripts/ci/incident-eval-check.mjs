@@ -3,21 +3,54 @@
 // incident-referencing PR ships a regression eval and a candidate invariant.
 //
 // Inputs (env):
-//   PR_BODY          - full pull request description text
-//   PR_LABELS        - comma-separated label list
-//   COMMIT_MESSAGES  - newline-separated commit messages for the PR
+//   PR_BODY    - full pull request description text
+//   PR_LABELS  - comma-separated label list
+//   PR_NUMBER  - pull request number; its commits are read from refs/pull/<n>/head
+//   BASE_REF   - base branch name
+//   HEAD_SHA   - the pull request's head commit
 //
-// No dependencies. Node ESM. Exits 0 always unless the check applies and fails
-// (exit 1 in that case).
+// No dependencies. Node ESM. Exits 0 when the check does not apply or passes,
+// 1 when it applies and fails, and 2 when the commits cannot be read.
+// Requirement IDs (IE-*) refer to intent/2026-09-30-incident-eval-range-spec.md.
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 const CWD = process.cwd();
 const GATE_DOC = 'README.md';
 const INVARIANT_DIRS = ['docs/invariants', 'crosscheck/docs/invariants'];
 const EVAL_DIR = 'evals';
+
+function fail(detail) {
+  console.error(`incident-eval-check: could not read the pull request's commits: ${detail}`);
+  process.exit(2);
+}
+
+// A squash merge leaves the head commits on no branch and deletes the branch,
+// so the checkout lacks them. GitHub keeps refs/pull/<n>/head. The range starts
+// at origin/<base>, which excludes base-branch commits merged into the PR branch.
+function readCommitMessages() {
+  const prNumber = process.env.PR_NUMBER || '';
+  const baseRef = process.env.BASE_REF || '';
+  const headSha = process.env.HEAD_SHA || '';
+  if (!/^[0-9]+$/.test(prNumber) || !/^[0-9a-f]{40}$/.test(headSha) || !baseRef) {
+    fail(`PR_NUMBER, BASE_REF and HEAD_SHA must be set (got "${prNumber}", "${baseRef}", "${headSha}")`);
+  }
+  const commands = [
+    ['fetch', '--no-tags', '--quiet', 'origin', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr/${prNumber}`],
+    ['log', '-z', '--format=%B', `origin/${baseRef}..${headSha}`],
+  ];
+  let out = '';
+  for (const args of commands) {
+    try {
+      out = execFileSync('git', args, { cwd: CWD, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      fail(`git ${args.join(' ')}\n${(err.stderr || err.message).trim()}`);
+    }
+  }
+  return out.split('\0').filter((m) => m.trim().length > 0);
+}
 
 function readEnvList(name, sep_) {
   const raw = process.env[name] || '';
@@ -92,7 +125,7 @@ function printFailure(missingItems) {
 function main() {
   const prBody = process.env.PR_BODY || '';
   const prLabels = readEnvList('PR_LABELS', ',');
-  const commitMessages = readEnvList('COMMIT_MESSAGES', '\n');
+  const commitMessages = readCommitMessages();
 
   const hasIncidentLabel = prLabels.some((l) => l.toLowerCase() === 'incident');
   const incidentId = findIncidentId(prBody, commitMessages);
