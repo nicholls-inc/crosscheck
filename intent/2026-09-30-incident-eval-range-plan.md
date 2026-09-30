@@ -1,7 +1,7 @@
 # Plan: Read a merged pull request's commits in the Incident Eval Check
 
 Intent: `intent/2026-09-30-incident-eval-range.md`
-Spec: `intent/2026-09-30-incident-eval-range-spec.md` (IE-1 to IE-6)
+Spec: `intent/2026-09-30-incident-eval-range-spec.md` (IE-1 to IE-7)
 Governing roadmap item: PB-1. Task: PB-1.2. Tier: 3.
 
 This plan is not the root `plan.md`, which belongs to an earlier change. The pull request body cites this file with a `Plan:` line.
@@ -35,6 +35,6 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 ## Proof that it worked
 
-- `node --test scripts/ci/*.test.mjs` passes, including the four IE-6 cases.
+- `node --test scripts/ci/*.test.mjs` passes, including the twelve IE-6 cases.
 - Step 6 prints `no incident reference — skipped` for #53 and #46.
-- After merge, the `Incident Eval Check` run for this pull request succeeds.
+- After merge, the `Incident Eval Check` run for this pull request succeeds. If it does not, PB-1.2 goes back to `todo` (intent, "After merge").

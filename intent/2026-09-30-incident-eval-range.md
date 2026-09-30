@@ -17,7 +17,7 @@ When `git log` fails, the step never writes the closing `EOF` line to `$GITHUB_O
 GitHub keeps `refs/pull/<number>/head` after the branch is deleted. `git ls-remote origin 'refs/pull/*/head'` on 2026-09-30 lists it for #43, #46 and #53, whose branches no longer exist.
 
 ## Proposed outcome
-- The check fetches `refs/pull/<number>/head` and reads the commits in `origin/<base>..<head.sha>`. It works whether the pull request was squash-merged or merge-committed, and whether or not the branch still exists.
+- The check fetches `refs/pull/<number>/head` and reads the commits in `origin/<base>..<head.sha>`. It works after a squash merge whether or not the branch still exists. After a merge commit or a rebase merge that keeps the SHAs, the head is already on the base branch and the range is empty, so the check exits 2 rather than skip commits it cannot tell apart from the base's. The default branch allows only squash merges, so that case does not arise today.
 - If git cannot produce the commits, the check fails with the git command and its error. It never reports "no incident reference — skipped" for commits it did not read.
 - The commit collection lives in `scripts/ci/incident-eval-check.mjs`, so `node --test scripts/ci/*.test.mjs` in the Tier Gate job tests it against a scratch remote that reproduces a squash merge with a deleted branch.
 
@@ -33,3 +33,6 @@ GitHub keeps `refs/pull/<number>/head` after the branch is deleted. `git ls-remo
 
 ## Open questions
 None.
+
+## After merge
+The workflow runs on `pull_request: closed`, so this pull request's own merge is its first live run. If that run does not succeed, PB-1.2 goes back to `todo` in `docs/TASKS.md`, with the run's URL in its record.

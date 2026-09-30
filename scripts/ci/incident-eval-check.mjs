@@ -10,12 +10,13 @@
 //   HEAD_SHA   - the pull request's head commit
 //
 // No dependencies. Node ESM. Exits 0 when the check does not apply or passes,
-// 1 when it applies and fails, and 2 when the commits cannot be read.
+// 1 when it applies and fails, and 2 when the commits cannot be read or the
+// range holds none.
 // Requirement IDs (IE-*) refer to intent/2026-09-30-incident-eval-range-spec.md.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const CWD = process.cwd();
 const GATE_DOC = 'README.md';
@@ -27,29 +28,38 @@ function fail(detail) {
   process.exit(2);
 }
 
+function gitOrFail(args) {
+  try {
+    return execFileSync('git', args, { cwd: CWD, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    fail(`git ${args.join(' ')}\n${(err.stderr || err.message).trim()}`);
+  }
+}
+
 // A squash merge leaves the head commits on no branch and deletes the branch,
 // so the checkout lacks them. GitHub keeps refs/pull/<n>/head. The range starts
 // at origin/<base>, which excludes base-branch commits merged into the PR branch.
-function readCommitMessages() {
+// Returns one entry per line, so an incident line is matched within its own line.
+function readCommitLines() {
   const prNumber = process.env.PR_NUMBER || '';
   const baseRef = process.env.BASE_REF || '';
   const headSha = process.env.HEAD_SHA || '';
   if (!/^[0-9]+$/.test(prNumber) || !/^[0-9a-f]{40}$/.test(headSha) || !baseRef) {
     fail(`PR_NUMBER, BASE_REF and HEAD_SHA must be set (got "${prNumber}", "${baseRef}", "${headSha}")`);
   }
-  const commands = [
-    ['fetch', '--no-tags', '--quiet', 'origin', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr/${prNumber}`],
-    ['log', '-z', '--format=%B', `origin/${baseRef}..${headSha}`],
-  ];
-  let out = '';
-  for (const args of commands) {
-    try {
-      out = execFileSync('git', args, { cwd: CWD, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (err) {
-      fail(`git ${args.join(' ')}\n${(err.stderr || err.message).trim()}`);
-    }
+  gitOrFail(['fetch', '--no-tags', '--quiet', 'origin', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr/${prNumber}`]);
+  const range = `origin/${baseRef}..${headSha}`;
+  const messages = gitOrFail(['log', '-z', '--format=%B', range]).split('\0').filter((m) => m.trim().length > 0);
+  // An empty range means the head is already on the base branch (a merge commit
+  // or a rebase merge). Its commits cannot be told apart from the base's, so
+  // fail rather than skip.
+  if (messages.length === 0) {
+    fail(`no commits in ${range}`);
   }
-  return out.split('\0').filter((m) => m.trim().length > 0);
+  return messages
+    .flatMap((m) => m.split('\n'))
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 }
 
 function readEnvList(name, sep_) {
@@ -81,7 +91,7 @@ function walk(dir, out = []) {
 
 function gitOriginUrl() {
   try {
-    return execSync('git remote get-url origin', { cwd: CWD }).toString().trim();
+    return execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: CWD, encoding: 'utf8' }).trim();
   } catch {
     return '';
   }
@@ -101,8 +111,8 @@ function gateDocLink() {
   return `https://github.com/${ownerRepo}/blob/main/docs/gates/${GATE_DOC}`;
 }
 
-function findIncidentId(prBody, commitMessages) {
-  const sources = [prBody || '', ...commitMessages];
+function findIncidentId(prBody, commitLines) {
+  const sources = [prBody || '', ...commitLines];
   for (const text of sources) {
     const m = text.match(/Fixes-Incident:\s*(\S+)/i);
     if (m) return m[1].replace(/[.,;]$/, '');
@@ -125,10 +135,10 @@ function printFailure(missingItems) {
 function main() {
   const prBody = process.env.PR_BODY || '';
   const prLabels = readEnvList('PR_LABELS', ',');
-  const commitMessages = readCommitMessages();
+  const commitLines = readCommitLines();
 
   const hasIncidentLabel = prLabels.some((l) => l.toLowerCase() === 'incident');
-  const incidentId = findIncidentId(prBody, commitMessages);
+  const incidentId = findIncidentId(prBody, commitLines);
 
   if (!incidentId && !hasIncidentLabel) {
     console.log('no incident reference — skipped');

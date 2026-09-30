@@ -34,6 +34,7 @@ This file is the ordered queue of work on this repository. The order of the rows
 | PB-1.5 | todo | Tier gate: accept any citation line, require a regular file in the repository, and add negative tests | | #49 | |
 | PB-1.6 | todo | Add a script that prints the next task by the rules of the pick-up procedure, and check this file in CI: each task ID names a roadmap item, each dependency exists, each status is valid, and a pull request sets to `done` only the row in its `Task:` line. Add a test that races two claims against a scratch remote | | | |
 | PB-1.7 | todo | Tier Gate workflow: pass the base ref to `run:` as an environment variable, not a `${{ }}` expression, and stop writing the changed files through a fixed `EOF` heredoc delimiter, which a file named `EOF` ends early | | | |
+| PB-1.8 | todo | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` says `incident-eval-check.yml` fails on an incident record without an eval. State its real trigger (the `incident` label or an incident line in the body or a commit), its exit 2, and that it runs after the merge and cannot block it | | | |
 | VA-1.1 | todo | Skills and agents stop presenting the `intent-check` attestation as a required artefact | | | |
 | VA-1.2 | todo | Replace "out of scope", "not addressed" and "best-effort" in `crosscheck/README.md` and `crosscheck/docs/assurance-hierarchy.md` with "not yet reached", the blocking property, and the open question | | | |
 | ER-1.1 | todo | Write the intent and the spec for the evidence record format | | | |
