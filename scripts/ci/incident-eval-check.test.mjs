@@ -139,6 +139,20 @@ test('IE-5: the body is read before the commits, and trailing punctuation is dro
     assert.equal(result.status, 1, result.stderr);
     assert.equal(result.stdout, failureOutput([noEval('INC-8'), noInvariant('INC-8')]), mark);
   }
+  // Only one trailing mark is dropped: an interior dot and any other trailing
+  // character stay part of the id.
+  for (const [written, id] of [['INC-1.2.', 'INC-1.2'], ['INC-8)', 'INC-8)']]) {
+    const result = run(checkout, head, { PR_BODY: `Fixes-Incident: ${written}` });
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, failureOutput([noEval(id), noInvariant(id)]), written);
+  }
+});
+
+test('IE-5: trailing punctuation is dropped from an id read from a commit', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-7.'] });
+  const result = run(checkout, head);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
 });
 
 test('IE-5: the body is matched as one text, so an incident line with no value takes the next line', () => {
@@ -148,7 +162,7 @@ test('IE-5: the body is matched as one text, so an incident line with no value t
   assert.equal(result.stdout, failureOutput([noEval('INC-4'), noInvariant('INC-4')]));
 });
 
-test('IE-1: a commit history larger than 1 MiB is read', () => {
+test('IE-1: a commit message over 1 MiB is read', () => {
   const { checkout, head } = squashMergedPr({
     branchMessages: [`fix: a\n\n${`${'y'.repeat(99)}\n`.repeat(20000)}Fixes-Incident: INC-7`],
   });

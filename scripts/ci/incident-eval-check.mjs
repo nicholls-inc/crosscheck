@@ -22,7 +22,8 @@ const CWD = process.cwd();
 const GATE_DOC = 'README.md';
 const INVARIANT_DIRS = ['docs/invariants', 'crosscheck/docs/invariants'];
 const EVAL_DIR = 'evals';
-// Node's default is 1 MiB, which a long commit history can exceed.
+// Node's default is 1 MiB, which a long commit message or history can exceed.
+// Output past this limit makes execFileSync throw ENOBUFS, which exits 2.
 const GIT_MAX_BUFFER = 256 * 1024 * 1024;
 
 function fail(detail) {

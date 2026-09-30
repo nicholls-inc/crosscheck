@@ -35,6 +35,6 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 ## Proof that it worked
 
-- `node --test scripts/ci/*.test.mjs` passes, including the twenty-one IE-6 cases.
+- `node --test scripts/ci/*.test.mjs` passes, including the twenty-two IE-6 cases.
 - Step 6 prints `no incident reference — skipped` for #53 and #46.
 - After merge, the `Incident Eval Check` run for this pull request succeeds. If it does not, PB-1.2 goes back to `todo` (intent, "After merge").

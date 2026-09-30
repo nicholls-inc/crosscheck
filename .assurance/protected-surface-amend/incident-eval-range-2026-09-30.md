@@ -9,7 +9,7 @@
 
 1. `scripts/ci/incident-eval-check.mjs`: the `COMMIT_MESSAGES` input is replaced by `PR_NUMBER`, `BASE_REF` and `HEAD_SHA`. The script fetches `refs/pull/<PR_NUMBER>/head` and reads the messages in `origin/<BASE_REF>..<HEAD_SHA>` with `execFileSync`. Bad inputs, a git failure, or an empty range exit 2 with the cause. Commit messages are matched line by line, as before. `git remote get-url` also runs without a shell. Git's output is read with a 256 MiB buffer. The incident rules and their exit codes 0 and 1 are unchanged.
 2. `.github/workflows/incident-eval-check.yml`: the "Collect PR commit messages" step and its `$GITHUB_OUTPUT` heredoc are removed. The remaining step passes the five inputs as environment variables.
-3. `scripts/ci/incident-eval-check.test.mjs`: new. Twenty-one cases. Nineteen run against a scratch remote that reproduces a squash merge with a deleted head branch, and cover the incident rules end to end, including the pass path. Two read the script and the workflow for IE-3 and IE-4.
+3. `scripts/ci/incident-eval-check.test.mjs`: new. Twenty-two cases. Twenty run against a scratch remote that reproduces a squash merge with a deleted head branch, and cover the incident rules end to end, including the pass path. Two read the script and the workflow for IE-3 and IE-4.
 
 ### Rationale
 
@@ -36,7 +36,7 @@ The check has failed on every squash-merged pull request since #43 with `fatal: 
 
 ### Test / Coverage Impact
 
-- `node --test scripts/ci/*.test.mjs`, run by the Tier Gate job, now includes the twenty-one IE-6 cases.
+- `node --test scripts/ci/*.test.mjs`, run by the Tier Gate job, now includes the twenty-two IE-6 cases.
 - The incident rules are unchanged, so no invariant or eval changes.
 
 ### Review Checklist
