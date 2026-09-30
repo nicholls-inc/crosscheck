@@ -45,5 +45,5 @@ Notes stay on `main` after their change merges, and the hook counted every note.
 
 ### Review Checklist
 
-- [ ] On a clean checkout of `main` with the new hook, no tracked protected file is allowed.
-- [ ] The rules-file fail-open and fail-closed behaviour is unchanged.
+- [x] On a clean checkout of `main` with the new hook, no tracked protected file is allowed.
+- [x] The rules-file fail-open and fail-closed behaviour is unchanged.
