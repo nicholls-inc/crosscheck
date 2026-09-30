@@ -11,8 +11,9 @@ The tier gate, `scripts/ci/tier-gate.mjs`, has two faults left over from #46.
 The report is also wrong in the other direction for two paths. `crosscheck/conformance/**` is checked by the `conformance` job of `ci.yml` (`go vet`, `go test`, `go run . ..`), but falls to "none required". `.claude/hooks/protected-surface-guard.mjs` is tested by `scripts/ci/protected-surface-guard.test.mjs`, which the Tier Gate job runs, but is reported as "not yet reached".
 
 ## Proposed outcome
-- `Tier: N` declares a tier only when it starts a line, with the same optional indent and list or quote marker as the citations. `Tier:` in the middle of a line is ignored.
-- Every non-prose path the gate reports falls into one of two kinds of class. A checked class names the workflow that checks it. A "not yet reached" class names the blocking property and the open question. "None required at this tier" is kept only for prose (`.md` and `.pdf` files outside the classes above it).
+- `Tier: N` declares a tier only when it starts a line, after an optional indent and no list or quote marker. `Tier:` in the middle of a line, in a quote or in a list item is ignored.
+- The first `Tier:` line is the declaration, even when it is invalid, and an invalid one fails the gate. A `Tier:` line and a `tier:N` label must agree, and the gate fails when they do not.
+- Every non-prose path the gate reports falls into one of two kinds of class. A checked class names the workflow that checks it. A "not yet reached" class names the blocking property and the open question. No path is labelled "none required at this tier". Prose has no deterministic check, so it is not yet reached as well, and agent and reviewer instructions (`CLAUDE.md`, `AGENTS.md`, `REVIEW.md`) and root `docs/invariants/**` get their own not-yet-reached rows.
 - `crosscheck/conformance/**` reports the `conformance` job, and the protected-surface hook reports the Tier Gate job.
 - `TIER-LAYER-MAP.md` and `docs/gates/tier-layer-gate.md` state both rules.
 
@@ -29,4 +30,4 @@ The report is also wrong in the other direction for two paths. `crosscheck/confo
 - No dependency is added.
 
 ## Open questions
-None.
+None. The maintainer settled four questions from the review of #57: an invalid first `Tier:` line fails (1a), quote and list markers do not declare (2a), all prose is not yet reached (3b), and a line and a label must agree (4b).

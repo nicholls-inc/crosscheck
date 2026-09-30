@@ -7,9 +7,9 @@
 
 ### Change Description
 
-1. `scripts/ci/tier-gate.mjs`: the `Tier:` declaration counts only at the start of a line, with the citation prefix (TG-1 revised). The evidence report's class table is replaced: each row is checked, prose, or not yet reached, and a not-yet-reached row names its blocking property and open question. `crosscheck/conformance/**` and the protected-surface hook gain checked rows, and non-prose code outside every row is reported as not yet reached instead of "none required at this tier" (TG-8 revised).
+1. `scripts/ci/tier-gate.mjs`: the `Tier:` declaration counts only at the start of a line, after an optional indent and no list or quote marker (TG-1 revised). The first `Tier:` line is the declaration even when invalid, and an invalid one fails. A `Tier:` line and a `tier:N` label must agree, and so must two labels; disagreement fails. The evidence report's class table is replaced: each row is checked or not yet reached, and a not-yet-reached row names its blocking property and open question. `crosscheck/conformance/**` and the protected-surface hook gain checked rows. Agent and reviewer instructions (`CLAUDE.md`, `AGENTS.md`, `REVIEW.md`) join the prompt-text row, root `docs/invariants/**` and prose each get a not-yet-reached row, and no line says "none required at this tier" (TG-8 revised).
 2. `scripts/ci/tier-gate.test.mjs`: the TG-11 cases are added, and the two existing TG-8 cases assert the new line format.
-3. `docs/assurance/TIER-LAYER-MAP.md`: the declaration rule and the evidence table state the revised TG-1 and TG-8.
+3. `docs/assurance/TIER-LAYER-MAP.md`: the declaration rule and the evidence table state the revised TG-1 and TG-8. The map already said a line and a label "must agree", but the gate never enforced it and let the line win. That requirement is kept, and the gate now enforces it. An earlier revision of this PR dropped the requirement to match the code. The maintainer reversed that on review (thread on `TIER-LAYER-MAP.md`, decision 4b).
 
 ### Rationale
 
@@ -37,7 +37,7 @@ Issue #50. The gate matched `Tier:` anywhere in the PR body, so pasted text coul
 ### Test / Coverage Impact
 
 - `node --test scripts/ci/*.test.mjs` gains the TG-11 cases.
-- The gate's pass or fail result changes only for a PR body whose only `Tier:` is mid-line. The evidence report is information only.
+- The gate's pass or fail result changes for a PR body whose only `Tier:` is mid-line or after a list or quote marker, whose first `Tier:` line is not exactly `Tier: 1`, `2` or `3`, or whose `Tier:` line and `tier:N` label disagree. The evidence report is information only.
 - No invariant or eval changes.
 
 ### Review Checklist
@@ -45,4 +45,5 @@ Issue #50. The gate matched `Tier:` anywhere in the PR body, so pasted text coul
 - [x] Rationale is anchored to issue #50.
 - [x] Authoriser is a named human.
 - [x] PB-1 covers the tier gate and lists #50.
-- [x] No non-prose path in the report of every tracked file says "none required at this tier".
+- [x] No line in the report of every tracked file says "none required at this tier".
+- [x] The "must agree" rule for a line and a label is kept and enforced, not dropped.
