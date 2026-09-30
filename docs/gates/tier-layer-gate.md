@@ -8,7 +8,7 @@ The **tier-gate CI job** (`scripts/ci/tier-gate.mjs`) runs on every pull request
 
 ## How to declare a tier
 
-A pull request declares its tier in one of two ways: a `Tier: N` line in the PR body (e.g. `Tier: 2`), or a `tier:N` label on the PR. If neither is present, the gate fails immediately and asks you to add one.
+A pull request declares its tier in one of two ways: a `Tier: N` line in the PR body (e.g. `Tier: 2`), or a `tier:N` label on the PR. The `Tier:` line must start the line, optionally after an indent. A line that starts with a list or quote marker (`- `, `* `, `+ `, `> `) declares nothing, and so does `Tier:` in the middle of a sentence, so quoted or list-item text cannot set the tier. The first `Tier:` line is the declaration and must read exactly `Tier: 1`, `Tier: 2` or `Tier: 3`. If it says anything else, such as `Tier: 4` or `Tier: 1 (routine)`, the gate fails, even when a later line is valid. A `Tier:` line and a `tier:N` label must agree, and so must two labels; if they disagree, the gate fails. If neither is present, the gate fails immediately and asks you to add one.
 
 ## Which tier applies
 
@@ -39,7 +39,7 @@ When a pull request fixes a bug that caused a production incident, the tier gate
 - **Approving (declaring the correct tier and supplying its artefacts)**: the pull request now carries an auditable record matching its actual risk level, and the tier gate passes, opening the review gate.
 - **Declining (leaving the tier or artefacts as they are)**: the change stays blocked. Nothing is merged and no reviewer is asked to look at it until the tier and artefacts are corrected.
 
-The ruleset on the default branch requires no status checks, so GitHub does not stop a merge while this check is red. "Blocked" is the maintainer's rule rather than a setting: the maintainer does not merge a pull request whose tier gate is red. When the gate passes, it also lists which CI job holds the deterministic evidence for each changed file, and it names the files that only human review covers.
+The ruleset on the default branch requires no status checks, so GitHub does not stop a merge while this check is red. "Blocked" is the maintainer's rule rather than a setting: the maintainer does not merge a pull request whose tier gate is red. When the gate passes, it also lists which CI job holds the deterministic evidence for each changed file. A file that no job checks, prose included, is listed as "not yet reached", with the property that blocks a check and the open question. The list is in `docs/assurance/TIER-LAYER-MAP.md`.
 
 ## How long this takes
 

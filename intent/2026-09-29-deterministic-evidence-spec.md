@@ -8,7 +8,7 @@ Each requirement has an ID. The tests cite these IDs.
 
 Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `CROSSCHECK_PROTECTED_RULES`. A path *changed in this pull request* is one listed in `CHANGED_FILES` that still exists in the working tree. A deleted file does not count as an artefact.
 
-- **TG-1. Declaration and floor are unchanged.** A tier comes from a `Tier: N` line or a `tier:N` label. If the diff touches a protected path, the floor is Tier 3. A declaration below the floor fails.
+- **TG-1. Declaration and floor are unchanged.** Revised by TG-1 in `intent/2026-09-30-tier-anchor-spec.md`, which anchors the `Tier:` line. A tier comes from a `Tier: N` line or a `tier:N` label. If the diff touches a protected path, the floor is Tier 3. A declaration below the floor fails.
 - **TG-2. Tier 1 is unchanged.** Tier 1 passes when the pull request changes an intent file under `intent/` (other than `README.md` or `TEMPLATE.md`), or when an `Intent: <path>` line cites an existing file. A citation line starts with the keyword, optionally indented or after a list or quote marker (`- `, `* `, `+ `, `> `); the keyword in the middle of a line does not count. The same holds for `Spec:` and `Plan:`.
 - **TG-1a. Renames.** The changed-file list is computed with `--no-renames`, so a protected file moved to another path counts as a change to the protected path. `tier-gate.yml` holds this; the node tests take the list as input and do not cover it.
 - **TG-3. Tier 2 spec.** A root `spec.md` counts only if this pull request changes it. A `Spec: <path>` line that cites an existing file also counts. For CGV, the cited file may be the changed Lean file or fixture.
@@ -16,7 +16,7 @@ Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `
 - **TG-5. Tier 3 governance notes.** A note counts only if this pull request changes it and its path matches `.assurance/protected-surface-amend/*.md` or `.assurance/add-session-*/**.md`. Every changed protected file must be named in at least one counting note. A note that is already in the tree but not changed does not count.
 - **TG-6. No attestation.** The gate never reads `intent-check-attestation.json` files and never requires one. Whether one exists does not affect the result.
 - **TG-7. CGV proof surfaces.** If this pull request changes `cgv/prover/ContractGraph/BehaviorModel.lean`, `cgv/prover/protected-statements.txt`, or its generator `cgv/prover/scripts/ProtectedStatements.lean`, the PR body must contain a Markdown heading (level 2 or deeper) whose text is `Protected-surface change`, case-insensitive.
-- **TG-8. Evidence report.** On pass, the gate prints one line for each class of changed file. Each line names the CI workflow that holds the deterministic evidence for that class, or says `not yet reached: human review is the only evidence`. The report is information only and never changes the result. The classes, with the first match winning:
+- **TG-8. Evidence report.** Revised by TG-8 in `intent/2026-09-30-tier-anchor-spec.md`, which replaces the table below. On pass, the gate prints one line for each class of changed file. Each line names the CI workflow that holds the deterministic evidence for that class, or says `not yet reached: human review is the only evidence`. The report is information only and never changes the result. The classes, with the first match winning:
 
   | Changed path | Evidence |
   |---|---|
