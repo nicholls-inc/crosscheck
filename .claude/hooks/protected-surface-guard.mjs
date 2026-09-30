@@ -129,6 +129,7 @@ function hasGovernanceNote(repoRoot, relFilePath, defaultSha) {
       }
       const notePath = relative(repoRoot, join(dir, file)).split(sep).join('/');
       const defaultText = readAtCommit(repoRoot, defaultSha, notePath);
+      if (defaultText === null) continue;
       if (blockNamesFile(content, relFilePath, defaultText)) return true;
     }
   }
@@ -153,16 +154,22 @@ function resolveDefaultBranch(repoRoot) {
   return null;
 }
 
-// The text of a file at the given commit, or '' when the path is absent there.
+// The text of a file at the given commit, '' when the path is absent there, or
+// null when git fails for any other reason. The caller treats null as "no block
+// is new", so a git error blocks the edit instead of unlocking it.
 function readAtCommit(repoRoot, sha, relPath) {
+  const opts = {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    maxBuffer: 64 * 1024 * 1024,
+  };
   try {
-    return execFileSync('git', ['show', `${sha}:${relPath}`], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    const listed = execFileSync('git', ['ls-tree', '--name-only', sha, '--', relPath], opts);
+    if (listed.trim() === '') return '';
+    return execFileSync('git', ['show', `${sha}:${relPath}`], opts);
   } catch {
-    return '';
+    return null;
   }
 }
 

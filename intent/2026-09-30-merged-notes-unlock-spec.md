@@ -5,7 +5,7 @@ Intent: `intent/2026-09-30-merged-notes-unlock.md`. Governing roadmap item: PB-1
 A *note file* is a `.md` file directly under `.assurance/protected-surface-amend/` or directly under a `.assurance/add-session-*/` directory, as before. A *block* is the text from a `## Protected-Surface Amendment` heading up to the next such heading or the end of the file, as before.
 
 - **PG-1.** The *default-branch commit* is the commit that `origin/HEAD` names. If `origin/HEAD` does not resolve, it is the commit that `origin/main` names. The hook reads both refs as last fetched and never fetches.
-- **PG-2.** A block is *new* when its text, trimmed of surrounding whitespace, does not occur in the file at the same path in the default-branch commit. If that path does not exist in the default-branch commit, every block in the file is new.
+- **PG-2.** A block is *new* when its text, trimmed of surrounding whitespace, does not occur in the file at the same path in the default-branch commit. If that path does not exist in the default-branch commit, every block in the file is new. If git fails to read that path for any other reason, no block in the file is new.
 - **PG-3.** An edit to a protected file is allowed only if a new block names the file's repository-relative path. A block that is not new never allows an edit.
 - **PG-4.** If neither ref in PG-1 resolves, an edit to a protected file exits 2. Stderr says that the hook cannot find `origin/HEAD` or `origin/main`, and names `git fetch origin` and `git remote set-head origin --auto` as the fix. An edit to a file that is not protected exits 0, as before.
 - **PG-5.** Git runs through `execFileSync` with its arguments as an array. No command goes through a shell.
@@ -16,7 +16,10 @@ A *note file* is a `.md` file directly under `.assurance/protected-surface-amend
   - a new block appended to a note file that is on the default branch: the file the new block names exits 0, and a file that only the old block names exits 2 (PG-2);
   - a branch whose note has been squash-merged into the default branch and fetched: exit 2 (PG-2);
   - a remote whose default branch is `trunk`, with the note on `trunk` and no `main`: exit 2 with the gate message, not the PG-4 message (PG-1);
+  - a remote with `origin/HEAD` unset: the note on `main` exits 2 with the gate message, and a block new on the branch exits 0 (PG-1);
+  - a note on the default branch larger than 1 MiB: exit 2 (PG-2);
   - a new note under `.assurance/add-session-<name>/`: exit 0 (PG-6);
+  - a note under `.assurance/add-session-<name>/` that is on the default branch: exit 2 (PG-2, PG-6);
   - a repository with no remote: a protected file exits 2 and stderr names `origin/HEAD` and `origin/main`; an unprotected file exits 0 (PG-4);
   - an unprotected file with no note: exit 0 (PG-6);
   - the hook source contains none of `execSync`, `exec(` or `shell: true` (PG-5). This is a text scan, and review covers a shell option passed through a variable.

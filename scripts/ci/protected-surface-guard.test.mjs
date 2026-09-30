@@ -141,10 +141,30 @@ test('PG-1: a remote whose default branch is trunk, with no main, is read', () =
   assertBlocked(runHook(repo, 'protected/a.txt'));
 });
 
+test('PG-1: with origin/HEAD unset, origin/main is the default branch', () => {
+  const repo = scratch({ files: { [NOTE]: block('protected/a.txt') } });
+  git(repo.checkout, 'remote', 'set-head', 'origin', '-d');
+  assert.throws(() => git(repo.checkout, 'rev-parse', '--verify', '--quiet', 'origin/HEAD'));
+  assertBlocked(runHook(repo, 'protected/a.txt'));
+  write(repo.checkout, NOTE, `${block('protected/a.txt')}\n${block('protected/b.txt')}`);
+  assertAllowed(runHook(repo, 'protected/b.txt'));
+});
+
+test('PG-2: a merged note larger than 1 MiB does not unlock a file', () => {
+  const big = `${block('protected/a.txt')}\n${'x'.repeat(2 * 1024 * 1024)}\n`;
+  const repo = scratch({ files: { [NOTE]: big } });
+  assertBlocked(runHook(repo, 'protected/a.txt'));
+});
+
 test('PG-6: a new note under .assurance/add-session-<name>/ unlocks the file', () => {
   const repo = scratch();
   write(repo.checkout, '.assurance/add-session-x/note.md', block('protected/a.txt'));
   assertAllowed(runHook(repo, 'protected/a.txt'));
+});
+
+test('PG-2, PG-6: a note under .assurance/add-session-<name>/ on the default branch does not unlock a file', () => {
+  const repo = scratch({ files: { '.assurance/add-session-x/note.md': block('protected/a.txt') } });
+  assertBlocked(runHook(repo, 'protected/a.txt'));
 });
 
 test('PG-4: with no remote, a protected file is blocked and stderr names the fix', () => {
