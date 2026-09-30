@@ -22,6 +22,8 @@ const CWD = process.cwd();
 const GATE_DOC = 'README.md';
 const INVARIANT_DIRS = ['docs/invariants', 'crosscheck/docs/invariants'];
 const EVAL_DIR = 'evals';
+// Node's default is 1 MiB, which a long commit history can exceed.
+const GIT_MAX_BUFFER = 256 * 1024 * 1024;
 
 function fail(detail) {
   console.error(`incident-eval-check: could not read the pull request's commits: ${detail}`);
@@ -30,7 +32,7 @@ function fail(detail) {
 
 function gitOrFail(args) {
   try {
-    return execFileSync('git', args, { cwd: CWD, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return execFileSync('git', args, { cwd: CWD, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: GIT_MAX_BUFFER });
   } catch (err) {
     fail(`git ${args.join(' ')}\n${(err.stderr || err.message).trim()}`);
   }

@@ -32,7 +32,9 @@ function commit(cwd, message) {
   counter += 1;
   writeFileSync(join(cwd, `file-${counter}.txt`), `${counter}\n`);
   git(cwd, 'add', '.');
-  git(cwd, 'commit', '-q', '-m', message);
+  const messageFile = join(cwd, '..', `message-${counter}.txt`);
+  writeFileSync(messageFile, message);
+  git(cwd, 'commit', '-q', '--cleanup=verbatim', '-F', messageFile);
 }
 
 // Pull request #1 is squash-merged into main. Its head is published only as
@@ -132,9 +134,27 @@ test('IE-5: an incident line in the PR body applies the check', () => {
 
 test('IE-5: the body is read before the commits, and trailing punctuation is dropped', () => {
   const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-9'] });
-  const result = run(checkout, head, { PR_BODY: 'Fixes-Incident: INC-8.' });
+  for (const mark of ['.', ',', ';']) {
+    const result = run(checkout, head, { PR_BODY: `Fixes-Incident: INC-8${mark}` });
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, failureOutput([noEval('INC-8'), noInvariant('INC-8')]), mark);
+  }
+});
+
+test('IE-5: the body is matched as one text, so an incident line with no value takes the next line', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: plain change'] });
+  const result = run(checkout, head, { PR_BODY: 'Fixes-Incident:\nINC-4' });
   assert.equal(result.status, 1, result.stderr);
-  assert.equal(result.stdout, failureOutput([noEval('INC-8'), noInvariant('INC-8')]));
+  assert.equal(result.stdout, failureOutput([noEval('INC-4'), noInvariant('INC-4')]));
+});
+
+test('IE-1: a commit history larger than 1 MiB is read', () => {
+  const { checkout, head } = squashMergedPr({
+    branchMessages: [`fix: a\n\n${`${'y'.repeat(99)}\n`.repeat(20000)}Fixes-Incident: INC-7`],
+  });
+  const result = run(checkout, head);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
 });
 
 test('IE-5: the incident line is matched without regard to case', () => {
@@ -142,6 +162,13 @@ test('IE-5: the incident line is matched without regard to case', () => {
   const result = run(checkout, head);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(result.stdout, failureOutput([noEval('inc-3'), noInvariant('inc-3')]));
+});
+
+test('IE-5: the incident label with an incident id applies the check to that id', () => {
+  const { checkout, head } = squashMergedPr({ branchMessages: ['fix: a\n\nFixes-Incident: INC-7'] });
+  const result = run(checkout, head, { PR_LABELS: 'incident' });
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
 });
 
 test('IE-5: an eval named for the incident and an invariant citing it pass', () => {
