@@ -45,4 +45,4 @@ Issue #50. The gate matched `Tier:` anywhere in the PR body, so pasted text coul
 - [x] Rationale is anchored to issue #50.
 - [x] Authoriser is a named human.
 - [x] PB-1 covers the tier gate and lists #50.
-- [ ] No non-prose path in the report of every tracked file says "none required at this tier".
+- [x] No non-prose path in the report of every tracked file says "none required at this tier".

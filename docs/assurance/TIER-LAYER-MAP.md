@@ -21,7 +21,11 @@ Every pull request declares its tier in one of two ways:
 - a `Tier: N` line in the PR body (`Tier: 2`), or
 - a `tier:N` label on the PR (`tier:2`).
 
-If both are present they must agree. If neither is present, the tier gate fails.
+A `Tier:` line starts with the keyword, optionally indented or after a list or quote
+marker (`- `, `* `, `+ `, `> `), as a citation does. `Tier:` in the middle of a line
+does not declare a tier, so quoted text cannot set it. If the body has more than one
+`Tier:` line, the first wins. If both a line and a label are present, the line wins.
+If neither is present, the tier gate fails.
 
 **Protected-path floor.** If the diff touches any path listed in
 `.claude/rules/protected-surfaces.md`, the change is at least Tier 3 regardless of what
@@ -128,13 +132,28 @@ which job holds the evidence for each class of changed file:
 |---|---|
 | `cgv/**` | `CGV CI`: `cargo test`, `lake build` (proofs and `#guard` tests), fixtures, statement manifest and axiom check |
 | `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | `CI`: `npm test`, including the property tests |
-| `scripts/ci/**` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
+| `crosscheck/conformance/**` | `CI`, conformance job: `go vet`, `go test`, `go run . ..` |
+| `scripts/ci/**`, `.claude/hooks/protected-surface-guard.mjs` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
 | `evals/**` | `Incident Eval Check` |
-| `crosscheck/skills/**`, `crosscheck/agents/**`, `.claude/**`, `docs/assurance/**`, `.github/workflows/**` | not yet reached: human review is the only evidence |
+| `crosscheck/skills/**`, `crosscheck/agents/**`, `.claude/rules/**`, `docs/assurance/**` | not yet reached |
+| `.github/workflows/**` | not yet reached |
+| any other `.md` or `.pdf` file | none required at this tier (prose) |
+| anything else | not yet reached |
 
-Skills, agents, rules, hooks and workflow definitions are "not yet reached". No
-deterministic check exercises their behaviour: they are prompt text or gate definitions.
-The open question is what a replayable behavioural eval of a prompt artefact looks like.
+The first matching row wins. Each "not yet reached" line in the report names the
+property that blocks a deterministic check and the open question:
+
+- **Skills, agents, rules and governance documents.** Their behaviour is prompt text that
+  an agent interprets. The open question is what a replayable behavioural eval of a
+  prompt artefact looks like.
+- **Workflow definitions.** A workflow runs only on GitHub's runners, on GitHub's events.
+  The open question is how to replay a workflow against recorded events before it merges.
+- **Everything else that is not prose**, such as `logic-distribution/**`,
+  `formal-verification/**`, `crosscheck/scripts/**`, `crosscheck/demo/**` and
+  configuration files. No CI workflow runs a check on the path. The open question is
+  which deterministic check the code needs, and which workflow runs it.
+
+The full rule is TG-8 in `intent/2026-09-30-tier-anchor-spec.md`.
 
 **The human sign-off is the maintainer's merge.** The default branch has a ruleset,
 `default`, that asks for one approving review. The maintainer is the only person who

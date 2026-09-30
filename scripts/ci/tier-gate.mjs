@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // tier-gate.mjs — deterministic CI gate enforcing the assurance tier map.
 //
-// Requirement IDs (TG-*) refer to intent/2026-09-29-deterministic-evidence-spec.md.
+// Requirement IDs (TG-*) refer to intent/2026-09-29-deterministic-evidence-spec.md
+// and intent/2026-09-30-tier-anchor-spec.md (TG-1 and TG-8 revised there).
 //
 // Inputs (env):
 //   PR_BODY           - full pull request description text
@@ -35,20 +36,48 @@ export const CGV_PROOF_SURFACES = [
   'cgv/prover/scripts/ProtectedStatements.lean',
 ];
 
-const NOT_YET_REACHED = 'not yet reached: human review is the only evidence';
-
-// Evidence classes for the pass report (TG-8). First match wins.
+// Evidence classes for the pass report (TG-8). First match wins; the last row
+// matches every path.
 export const EVIDENCE_CLASSES = [
-  { re: /^cgv\//, evidence: 'CGV CI workflow (cargo test, lake build, fixtures, statement manifest and axiom check)' },
+  {
+    re: /^cgv\//,
+    kind: 'checked',
+    workflow: 'CGV CI workflow (cargo test, lake build, fixtures, statement manifest and axiom check)',
+  },
   {
     re: /^crosscheck\/(mcp-server|docs\/invariants)\//,
-    evidence: 'CI workflow (npm test, including the property tests)',
+    kind: 'checked',
+    workflow: 'CI workflow (npm test, including the property tests)',
   },
-  { re: /^scripts\/ci\//, evidence: 'Tier Gate workflow (node --test scripts/ci/*.test.mjs)' },
-  { re: /^evals\//, evidence: 'Incident Eval Check workflow' },
   {
-    re: /^(crosscheck\/(skills|agents)\/|\.claude\/|docs\/assurance\/|\.github\/workflows\/)/,
-    evidence: NOT_YET_REACHED,
+    re: /^crosscheck\/conformance\//,
+    kind: 'checked',
+    workflow: 'CI workflow, conformance job (go vet, go test, go run . ..)',
+  },
+  {
+    re: /^(scripts\/ci\/|\.claude\/hooks\/protected-surface-guard\.mjs$)/,
+    kind: 'checked',
+    workflow: 'Tier Gate workflow (node --test scripts/ci/*.test.mjs)',
+  },
+  { re: /^evals\//, kind: 'checked', workflow: 'Incident Eval Check workflow' },
+  {
+    re: /^(crosscheck\/(skills|agents)\/|\.claude\/rules\/|docs\/assurance\/)/,
+    kind: 'notYetReached',
+    property: 'their behaviour is prompt text that an agent interprets',
+    question: 'what a replayable behavioural eval of a prompt artefact looks like',
+  },
+  {
+    re: /^\.github\/workflows\//,
+    kind: 'notYetReached',
+    property: "a workflow runs only on GitHub's runners, on GitHub's events",
+    question: 'how to replay a workflow against recorded events before it merges',
+  },
+  { re: /\.(md|pdf)$/i, kind: 'prose' },
+  {
+    re: /./,
+    kind: 'notYetReached',
+    property: 'no CI workflow runs a check on this path',
+    question: 'which deterministic check this code needs, and which workflow runs it',
   },
 ];
 
@@ -86,7 +115,7 @@ function loadProtectedGlobs(rulesPath) {
 }
 
 function parseDeclaredTier(prBody, prLabels) {
-  const bodyMatch = (prBody || '').match(/Tier:\s*([123])\b/i);
+  const bodyMatch = (prBody || '').match(/^[ \t]*(?:[-*+>][ \t]+)?Tier:[ \t]*([123])\b/im);
   if (bodyMatch) return Number(bodyMatch[1]);
   const labelMatch = prLabels.find((l) => /^tier:([123])$/i.test(l));
   if (labelMatch) return Number(labelMatch.match(/^tier:([123])$/i)[1]);
@@ -137,19 +166,21 @@ function failureLines(missingItems, cwd) {
   ];
 }
 
+function reportLine(row, files) {
+  const count = `${files.length} file(s), e.g. ${files[0]}`;
+  if (row.kind === 'checked') return `- ${row.workflow}: ${count}`;
+  if (row.kind === 'prose') return `- none required at this tier: ${count}`;
+  return `- not yet reached: ${count}. Blocking property: ${row.property}. Open question: ${row.question}.`;
+}
+
 function evidenceReport(changedFiles) {
-  const byEvidence = new Map();
+  const byRow = new Map();
   for (const file of changedFiles) {
-    const cls = EVIDENCE_CLASSES.find((c) => c.re.test(file));
-    const evidence = cls ? cls.evidence : 'none required at this tier';
-    if (!byEvidence.has(evidence)) byEvidence.set(evidence, []);
-    byEvidence.get(evidence).push(file);
+    const row = EVIDENCE_CLASSES.find((c) => c.re.test(file));
+    if (!byRow.has(row)) byRow.set(row, []);
+    byRow.get(row).push(file);
   }
-  const lines = ['Deterministic evidence for this diff:'];
-  for (const [evidence, files] of byEvidence) {
-    lines.push(`- ${evidence}: ${files.length} file(s), e.g. ${files[0]}`);
-  }
-  return lines;
+  return ['Deterministic evidence for this diff:', ...[...byRow].map(([row, files]) => reportLine(row, files))];
 }
 
 /**
