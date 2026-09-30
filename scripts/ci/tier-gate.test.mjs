@@ -76,7 +76,7 @@ test('TG-1: a mid-line "Tier:" does not override a label', () => {
   assert.match(out(r), /declared: 1,/);
 });
 
-for (const line of ['- Tier: 1', '> Tier: 1', '  Tier: 1', 'tier: 1', 'Tier: 1\r']) {
+for (const line of ['Tier: 1', '  Tier: 1', '\tTier: 1', 'tier: 1', 'Tier:1', 'Tier: 1  ', 'Tier: 1\r']) {
   test(`TG-1: ${JSON.stringify(line)} declares Tier 1`, () => {
     const r = run(repo({ 'intent/a.md': 'x' }), { body: `${line}\n`, changed: ['intent/a.md'] });
     assert.equal(r.pass, true);
@@ -84,10 +84,70 @@ for (const line of ['- Tier: 1', '> Tier: 1', '  Tier: 1', 'tier: 1', 'Tier: 1\r
   });
 }
 
+for (const line of ['- Tier: 1', '* Tier: 1', '+ Tier: 1', '> Tier: 1', '  > Tier: 1']) {
+  test(`TG-1: quoted or list-item ${JSON.stringify(line)} declares nothing`, () => {
+    const r = run(repo({ 'intent/a.md': 'x' }), { body: `${line}\n`, changed: ['intent/a.md'] });
+    assert.equal(r.pass, false);
+    assert.match(out(r), /Declare this pull request's tier/);
+  });
+}
+
+test('TG-1: a quoted "Tier:" line does not override a label', () => {
+  const r = run(repo({ 'intent/a.md': 'x' }), { body: '> Tier: 2', labels: ['tier:1'], changed: ['intent/a.md'] });
+  assert.equal(r.pass, true);
+  assert.match(out(r), /declared: 1,/);
+});
+
 test('TG-1: the first "Tier:" line wins', () => {
   const r = run(repo({ 'intent/a.md': 'x' }), { body: 'Tier: 1\nTier: 2', changed: ['intent/a.md'] });
   assert.equal(r.pass, true);
   assert.match(out(r), /declared: 1,/);
+});
+
+test('TG-1: a quoted "Tier:" line is skipped when finding the first line', () => {
+  const r = run(tier3Repo(), { body: '> Tier: 1\nTier: 3', changed: TIER3_CHANGED });
+  assert.equal(r.pass, true);
+  assert.match(out(r), /declared: 3,/);
+});
+
+for (const body of [
+  'Tier: 4',
+  'Tier: 0',
+  'Tier: 1.5',
+  'Tier: 12',
+  'Tier: one',
+  'Tier:',
+  'Tier: 1 (routine)',
+  'Tier: 1, see below',
+  'Tier: 4\nTier: 2',
+]) {
+  test(`TG-1: an invalid first "Tier:" line fails the gate: ${JSON.stringify(body)}`, () => {
+    const r = run(repo({ 'intent/a.md': 'x' }), { body, labels: ['tier:2'], changed: ['intent/a.md'] });
+    assert.equal(r.pass, false);
+    assert.match(out(r), /does not declare Tier 1, 2 or 3/);
+  });
+}
+
+test('TG-1: a "Tier:" line and a tier:N label that agree pass', () => {
+  const r = run(repo({ 'intent/a.md': 'x' }), { body: 'Tier: 1', labels: ['tier:1'], changed: ['intent/a.md'] });
+  assert.equal(r.pass, true);
+  assert.match(out(r), /declared: 1,/);
+});
+
+test('TG-1: a "Tier:" line and a tier:N label that disagree fail', () => {
+  const r = run(repo({ 'intent/a.md': 'x', 'spec.md': 'x' }), {
+    body: 'Tier: 2',
+    labels: ['tier:1'],
+    changed: ['intent/a.md', 'spec.md'],
+  });
+  assert.equal(r.pass, false);
+  assert.match(out(r), /declares Tier 2, but the label says Tier 1\. They must agree/);
+});
+
+test('TG-1: two tier:N labels that disagree fail', () => {
+  const r = run(repo({ 'intent/a.md': 'x' }), { labels: ['tier:1', 'tier:2'], changed: ['intent/a.md'] });
+  assert.equal(r.pass, false);
+  assert.match(out(r), /labels tier:1 and tier:2 disagree/);
 });
 
 test('TG-1: a tier:N label declares the tier', () => {
@@ -302,7 +362,7 @@ test('TG-8: the pass report names the evidence for each class of changed file', 
   assert.deepEqual(reportRows(r), [
     '- CGV CI workflow (cargo test, lake build, fixtures, statement manifest and axiom check): 1 file(s), e.g. cgv/src/main.rs',
     '- CI workflow (npm test, including the property tests): 1 file(s), e.g. crosscheck/mcp-server/src/a.ts',
-    '- none required at this tier: 1 file(s), e.g. intent/a.md',
+    '- not yet reached: 1 file(s), e.g. intent/a.md. Blocking property: prose has no executable meaning, so no check reads what it claims. Open question: which claims in a prose document, such as cited paths and commands, a deterministic check can verify.',
   ]);
 });
 
@@ -324,6 +384,7 @@ test('TG-8: a pass whose changed files hit every class reports one line per clas
     'evals/a.json',
     'docs/assurance/ROADMAP.md',
     '.github/workflows/ci.yml',
+    'docs/invariants/tier-gate.md',
     'intent/a.md',
     'package.json',
   ];
@@ -337,7 +398,8 @@ test('TG-8: a pass whose changed files hit every class reports one line per clas
     '- Incident Eval Check workflow: 1 file(s), e.g. evals/a.json',
     '- not yet reached: 1 file(s), e.g. docs/assurance/ROADMAP.md. Blocking property: their behaviour is prompt text that an agent interprets. Open question: what a replayable behavioural eval of a prompt artefact looks like.',
     "- not yet reached: 1 file(s), e.g. .github/workflows/ci.yml. Blocking property: a workflow runs only on GitHub's runners, on GitHub's events. Open question: how to replay a workflow against recorded events before it merges.",
-    '- none required at this tier: 1 file(s), e.g. intent/a.md',
+    '- not yet reached: 1 file(s), e.g. docs/invariants/tier-gate.md. Blocking property: no CI job maps these invariants to the tests that cover them. Open question: which test covers each invariant, and which workflow checks that mapping.',
+    '- not yet reached: 1 file(s), e.g. intent/a.md. Blocking property: prose has no executable meaning, so no check reads what it claims. Open question: which claims in a prose document, such as cited paths and commands, a deterministic check can verify.',
     '- not yet reached: 1 file(s), e.g. package.json. Blocking property: no CI workflow runs a check on this path. Open question: which deterministic check this code needs, and which workflow runs it.',
   ]);
 });
@@ -352,6 +414,27 @@ test('TG-8: a change under a path no workflow checks is never reported as needin
   assert.deepEqual(reportRows(r), [
     '- not yet reached: 1 file(s), e.g. crosscheck/scripts/build.sh. Blocking property: no CI workflow runs a check on this path. Open question: which deterministic check this code needs, and which workflow runs it.',
   ]);
+});
+
+for (const file of ['CLAUDE.md', 'AGENTS.md', 'REVIEW.md', 'cgv/CLAUDE.md']) {
+  test(`TG-8: agent and reviewer instructions in ${file} are reported as prompt text`, () => {
+    const r = run(repo({ 'intent/old.md': 'x', [file]: 'x' }), { body: 'Tier: 1\nIntent: intent/old.md', changed: [file] });
+    assert.equal(r.pass, true);
+    assert.deepEqual(reportRows(r), [
+      `- not yet reached: 1 file(s), e.g. ${file}. Blocking property: their behaviour is prompt text that an agent interprets. Open question: what a replayable behavioural eval of a prompt artefact looks like.`,
+    ]);
+  });
+}
+
+test('TG-8: no report line says no evidence is required', () => {
+  const changed = ['README.md', 'docs/a.pdf', 'CLAUDE.md', 'docs/invariants/x.md', 'package.json'];
+  const r = run(repo({ 'intent/old.md': 'x', ...Object.fromEntries(changed.map((f) => [f, 'x'])) }), {
+    body: 'Tier: 1\nIntent: intent/old.md',
+    changed,
+  });
+  assert.equal(r.pass, true);
+  assert.doesNotMatch(out(r), /none required/);
+  assert.ok(reportRows(r).every((line) => line.startsWith('- not yet reached: ')));
 });
 
 test('TG-9: the pass report states the merge is the human sign-off', () => {

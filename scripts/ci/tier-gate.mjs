@@ -40,6 +40,12 @@ export const CGV_PROOF_SURFACES = [
 // matches every path.
 export const EVIDENCE_CLASSES = [
   {
+    re: /^(crosscheck\/(skills|agents)\/|\.claude\/rules\/|docs\/assurance\/)|(^|\/)(CLAUDE|AGENTS|REVIEW)\.md$/,
+    kind: 'notYetReached',
+    property: 'their behaviour is prompt text that an agent interprets',
+    question: 'what a replayable behavioural eval of a prompt artefact looks like',
+  },
+  {
     re: /^cgv\//,
     kind: 'checked',
     workflow: 'CGV CI workflow (cargo test, lake build, fixtures, statement manifest and axiom check)',
@@ -61,10 +67,10 @@ export const EVIDENCE_CLASSES = [
   },
   { re: /^evals\//, kind: 'checked', workflow: 'Incident Eval Check workflow' },
   {
-    re: /^(crosscheck\/(skills|agents)\/|\.claude\/rules\/|docs\/assurance\/)/,
+    re: /^docs\/invariants\//,
     kind: 'notYetReached',
-    property: 'their behaviour is prompt text that an agent interprets',
-    question: 'what a replayable behavioural eval of a prompt artefact looks like',
+    property: 'no CI job maps these invariants to the tests that cover them',
+    question: 'which test covers each invariant, and which workflow checks that mapping',
   },
   {
     re: /^\.github\/workflows\//,
@@ -72,7 +78,12 @@ export const EVIDENCE_CLASSES = [
     property: "a workflow runs only on GitHub's runners, on GitHub's events",
     question: 'how to replay a workflow against recorded events before it merges',
   },
-  { re: /\.(md|pdf)$/i, kind: 'prose' },
+  {
+    re: /\.(md|pdf)$/i,
+    kind: 'notYetReached',
+    property: 'prose has no executable meaning, so no check reads what it claims',
+    question: 'which claims in a prose document, such as cited paths and commands, a deterministic check can verify',
+  },
   {
     re: /./,
     kind: 'notYetReached',
@@ -114,12 +125,31 @@ function loadProtectedGlobs(rulesPath) {
   return { globs, missing: false };
 }
 
+// TG-1. The first line that starts with "Tier:" (after an optional indent, but
+// no list or quote marker) is the declaration, valid or not. A tier:N label
+// must agree with it and with every other tier:N label.
 function parseDeclaredTier(prBody, prLabels) {
-  const bodyMatch = (prBody || '').match(/^[ \t]*(?:[-*+>][ \t]+)?Tier:[ \t]*([123])\b/im);
-  if (bodyMatch) return Number(bodyMatch[1]);
-  const labelMatch = prLabels.find((l) => /^tier:([123])$/i.test(l));
-  if (labelMatch) return Number(labelMatch.match(/^tier:([123])$/i)[1]);
-  return undefined;
+  const labelTiers = [
+    ...new Set(prLabels.map((l) => l.match(/^tier:([123])$/i)).filter(Boolean).map((m) => Number(m[1]))),
+  ];
+  if (labelTiers.length > 1) {
+    return { problem: `The labels ${labelTiers.map((t) => `tier:${t}`).join(' and ')} disagree. Keep one tier:N label.` };
+  }
+  const line = (prBody || '').match(/^[ \t]*Tier:(.*)$/im);
+  if (!line) return { tier: labelTiers[0] };
+  const value = line[1].trim();
+  if (!/^[123]$/.test(value)) {
+    return {
+      problem: `The first "Tier:" line in the PR body, "${line[0].trim()}", does not declare Tier 1, 2 or 3. Write the line as "Tier: 1", "Tier: 2" or "Tier: 3" with nothing after the digit.`,
+    };
+  }
+  const tier = Number(value);
+  if (labelTiers.length === 1 && labelTiers[0] !== tier) {
+    return {
+      problem: `The PR body declares Tier ${tier}, but the label says Tier ${labelTiers[0]}. They must agree: change the "Tier:" line or the tier:N label.`,
+    };
+  }
+  return { tier };
 }
 
 function isGovernanceNotePath(path) {
@@ -169,7 +199,6 @@ function failureLines(missingItems, cwd) {
 function reportLine(row, files) {
   const count = `${files.length} file(s), e.g. ${files[0]}`;
   if (row.kind === 'checked') return `- ${row.workflow}: ${count}`;
-  if (row.kind === 'prose') return `- none required at this tier: ${count}`;
   return `- not yet reached: ${count}. Blocking property: ${row.property}. Open question: ${row.question}.`;
 }
 
@@ -199,7 +228,8 @@ export function evaluate({
   const changedAndPresent = new Set(changedFiles.filter(present));
   // A citation starts its own line ("Plan: <path>"), optionally as a list item
   // or quote ("- Plan: <path>", "> Plan: <path>"), so prose that happens to
-  // contain "plan:" does not count.
+  // contain "plan:" does not count. Unlike a "Tier:" line, a quoted citation
+  // still counts: it can only name a file that exists, not pick the tier.
   const citedExisting = (keyword) => {
     const match = prBody.match(new RegExp(`^[ \\t]*(?:[-*+>][ \\t]+)?${keyword}:[ \\t]*(\\S+)`, 'im'));
     if (!match) return false;
@@ -211,7 +241,7 @@ export function evaluate({
   const protectedRegexes = protectedGlobs.map(globToRegExp);
   const protectedMatches = changedFiles.filter((f) => protectedRegexes.some((re) => re.test(f)));
   const floorTier = protectedMatches.length > 0 ? 3 : undefined;
-  const declaredTier = parseDeclaredTier(prBody, prLabels);
+  const { tier: declaredTier, problem: declarationProblem } = parseDeclaredTier(prBody, prLabels);
 
   const missing = [];
   const fail = () => ({ pass: false, lines: failureLines(missing, cwd) });
@@ -223,6 +253,10 @@ export function evaluate({
   }
 
   // TG-1: declaration and floor.
+  if (declarationProblem) {
+    missing.push(declarationProblem);
+    return fail();
+  }
   if (floorTier === undefined && declaredTier === undefined) {
     missing.push('Declare this pull request\'s tier via a "Tier: N" line in the PR body or a "tier:N" label.');
     return fail();

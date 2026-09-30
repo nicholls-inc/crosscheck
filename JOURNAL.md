@@ -8,10 +8,10 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 **Type:** fix
 **Touches:** scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/assurance/TIER-LAYER-MAP.md, docs/gates/tier-layer-gate.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
-**Why:** Pasted text such as "Tier: 1" could declare a tier, and the pass report called unchecked code "none required at this tier" (#50).
+**Why:** Pasted text such as "Tier: 1" could declare a tier, and the pass report called unchecked code "none required at this tier" (#50). The maintainer's review decisions on #57 set the stricter rules.
 **Links:** [intent](intent/2026-09-30-tier-anchor.md), [spec](intent/2026-09-30-tier-anchor-spec.md), [plan](intent/2026-09-30-tier-anchor-plan.md)
 
-A `Tier:` line now follows the same rule as a citation: it starts the line, optionally after a list or quote marker. The pass report's classes are now rows of three kinds. A checked row names its workflow. A not-yet-reached row names the blocking property and the open question. Only prose is "none required at this tier". Two paths were misreported and now name their checks: `crosscheck/conformance/**` (the conformance job) and the protected-surface hook (its tests in the Tier Gate job).
+A `Tier:` line now starts the line, after an optional indent and no list or quote marker. The first `Tier:` line is the declaration, and an invalid one fails. A `Tier:` line and a `tier:N` label must agree: the map always said so, and the gate now enforces it. The pass report's classes are now rows of two kinds. A checked row names its workflow. A not-yet-reached row names the blocking property and the open question. Prose, `CLAUDE.md`, `AGENTS.md`, `REVIEW.md` and root `docs/invariants/**` are not yet reached too, so no line says "none required at this tier". The citations keep their list and quote markers, because a citation only names an existing file and cannot pick the tier. Two paths were misreported and now name their checks: `crosscheck/conformance/**` (the conformance job) and the protected-surface hook (its tests in the Tier Gate job).
 
 ---
 

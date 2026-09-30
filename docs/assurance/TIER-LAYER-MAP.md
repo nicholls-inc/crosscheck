@@ -21,11 +21,18 @@ Every pull request declares its tier in one of two ways:
 - a `Tier: N` line in the PR body (`Tier: 2`), or
 - a `tier:N` label on the PR (`tier:2`).
 
-A `Tier:` line starts with the keyword, optionally indented or after a list or quote
-marker (`- `, `* `, `+ `, `> `), as a citation does. `Tier:` in the middle of a line
-does not declare a tier, so quoted text cannot set it. If the body has more than one
-`Tier:` line, the first wins. If both a line and a label are present, the line wins.
-If neither is present, the tier gate fails.
+A `Tier:` line starts with the keyword, optionally indented. A line that puts a list
+or quote marker (`- `, `* `, `+ `, `> `) before the keyword does not declare a tier,
+and neither does `Tier:` in the middle of a line, so quoted or list-item text cannot
+set the tier. A `Tier:` line inside a fenced code block still counts, because the gate
+does not parse Markdown structure.
+
+The first `Tier:` line is the declaration, even when it is invalid. It must read
+exactly `Tier: 1`, `Tier: 2` or `Tier: 3`. Anything else on that line, such as
+`Tier: 4`, `Tier: 1.5` or `Tier: 1 (routine)`, fails the gate, and a later valid line
+does not rescue it. A `Tier:` line and a `tier:N` label must agree: if they name
+different tiers, or two labels name different tiers, the tier gate fails. If neither
+a line nor a label is present, the tier gate fails.
 
 **Protected-path floor.** If the diff touches any path listed in
 `.claude/rules/protected-surfaces.md`, the change is at least Tier 3 regardless of what
@@ -130,24 +137,33 @@ which job holds the evidence for each class of changed file:
 
 | Changed path | Deterministic evidence |
 |---|---|
+| `crosscheck/skills/**`, `crosscheck/agents/**`, `.claude/rules/**`, `docs/assurance/**`, any `CLAUDE.md`, `AGENTS.md` or `REVIEW.md` | not yet reached |
 | `cgv/**` | `CGV CI`: `cargo test`, `lake build` (proofs and `#guard` tests), fixtures, statement manifest and axiom check |
 | `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | `CI`: `npm test`, including the property tests |
 | `crosscheck/conformance/**` | `CI`, conformance job: `go vet`, `go test`, `go run . ..` |
 | `scripts/ci/**`, `.claude/hooks/protected-surface-guard.mjs` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
 | `evals/**` | `Incident Eval Check` |
-| `crosscheck/skills/**`, `crosscheck/agents/**`, `.claude/rules/**`, `docs/assurance/**` | not yet reached |
+| `docs/invariants/**` | not yet reached |
 | `.github/workflows/**` | not yet reached |
-| any other `.md` or `.pdf` file | none required at this tier (prose) |
+| any other `.md` or `.pdf` file | not yet reached |
 | anything else | not yet reached |
 
-The first matching row wins. Each "not yet reached" line in the report names the
-property that blocks a deterministic check and the open question:
+The first matching row wins. No row says "none required": prose has no deterministic
+check either, so it is not yet reached. Each "not yet reached" line in the report
+names the property that blocks a deterministic check and the open question:
 
-- **Skills, agents, rules and governance documents.** Their behaviour is prompt text that
-  an agent interprets. The open question is what a replayable behavioural eval of a
-  prompt artefact looks like.
+- **Skills, agents, rules, governance documents, and agent and reviewer instructions**
+  (`CLAUDE.md`, `AGENTS.md`, `REVIEW.md`). Their behaviour is prompt text that an agent
+  interprets. The open question is what a replayable behavioural eval of a prompt
+  artefact looks like.
+- **Root invariant documents** (`docs/invariants/**`). No CI job maps these invariants
+  to the tests that cover them. The open question is which test covers each invariant,
+  and which workflow checks that mapping.
 - **Workflow definitions.** A workflow runs only on GitHub's runners, on GitHub's events.
   The open question is how to replay a workflow against recorded events before it merges.
+- **Other prose** (any other `.md` or `.pdf`). Prose has no executable meaning, so no
+  check reads what it claims. The open question is which claims in a prose document,
+  such as cited paths and commands, a deterministic check can verify.
 - **Everything else that is not prose**, such as `logic-distribution/**`,
   `formal-verification/**`, `crosscheck/scripts/**`, `crosscheck/demo/**` and
   configuration files. No CI workflow runs a check on the path. The open question is
