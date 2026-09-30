@@ -33,7 +33,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 ## Risks
 
-- **A PR that cited a directory or a path outside the repository.** It now fails. The fix is to cite the file itself. The PR bodies of #52 to #57 cite files under `intent/`.
+- **A PR that cited a directory or a path outside the repository.** It now fails. The fix is to cite the file itself. Every citation in the PR bodies of #52 to #55 and #57 names a regular file in the repository, so none of them changes result.
 - **A body with several citation lines.** It can now pass where it failed. Each counting line still has to name a regular file in the repository, so no requirement is weakened.
 - **Symlinks.** `realpathSync` follows every link, so a link inside the repository to a file inside it passes, and a link to a file outside fails.
 

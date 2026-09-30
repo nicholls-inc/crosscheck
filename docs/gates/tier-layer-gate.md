@@ -15,12 +15,14 @@ A pull request declares its tier in one of two ways: a `Tier: N` line in the PR 
 - **Tier 1 — routine.** Documentation, tests, and non-behavioural code (formatting, renames, build plumbing that changes no output). Requires a reference to the governing `intent.md` — the "why we're doing this" document from the Plan stage — cited by path in the PR body or added under `intent/`.
 - **Tier 2 — standard.** Behavioural code changes: anything that alters what the software does for a user or caller. It requires a spec, which is a design document generated from the intent that flags open concerns instead of silently resolving them. Either of these satisfies the requirement:
   - the pull request changes a root `spec.md`;
-  - the PR body has a `Spec: <path>` line citing an existing file. For CGV, this can be the changed Lean file or fixture `expected.json`.
+  - the PR body has a `Spec: <path>` line citing a file in the repository. For CGV, this can be the changed Lean file or fixture `expected.json`.
 - **Tier 3 — critical/protected.** Protected surfaces (see below), gate logic, hooks, CI enforcement, and invariants: anything that changes how the project decides whether other changes are safe. It requires a plan, detailed enough that someone who never saw the discussion could implement the change from it alone. Either of these satisfies the requirement:
   - the pull request changes a root `plan.md`;
-  - the PR body has a `Plan: <path>` line citing an existing file.
+  - the PR body has a `Plan: <path>` line citing a file in the repository.
 
   For every protected file in the diff, it also requires a **governance-note block** naming that file. The block must be in a note that this pull request adds or changes. For a CGV proof surface, the PR body also needs a `## Protected-surface change` section.
+
+**A citation names a file in the repository.** An `Intent:`, `Spec:` or `Plan:` line starts the line, optionally after an indent and one list or quote marker. Its path must resolve, through any symlinks, to a regular file inside the repository, so a directory, `../x`, or a symlink that points outside the repository does not count. If the PR body has several lines for one keyword, one valid line is enough.
 
 **Artefacts left over from earlier changes do not count.** A root `plan.md` or `spec.md`, or a governance note, counts only if this pull request changes it, or, for a plan or spec, if the PR body cites it by path. Otherwise the file left behind by the last change would satisfy every later one.
 

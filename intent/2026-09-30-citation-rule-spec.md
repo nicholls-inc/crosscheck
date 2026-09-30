@@ -18,5 +18,6 @@ This spec adds TG-12 and TG-13, and revises the citation rule that TG-2, TG-3 an
   - `Plan: intent`, a directory, fails (TG-12);
   - `Plan: ../outside.md` and the absolute path of a file outside the repository fail, although the file exists (TG-12);
   - a symlink in the repository that points at a file outside it fails, and one that points at a file inside it passes (TG-12);
+  - `Plan: ..plan.md`, a file in the repository whose name starts with two dots, passes (TG-12);
   - `Intent: TBD` then `Intent: intent/old.md` passes Tier 1, and `Spec: intent` fails Tier 2, so the rule holds for every keyword (TG-12).
 - **DOC-7.** `docs/assurance/TIER-LAYER-MAP.md` and `docs/gates/tier-layer-gate.md` say that a citation names a file in the repository and that any citation line counts. `intent/2026-09-29-deterministic-evidence-spec.md` points TG-2 at this spec.
