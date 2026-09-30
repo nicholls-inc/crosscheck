@@ -10,8 +10,8 @@ The check is deterministic. The **tier-gate CI job** (`scripts/ci/tier-gate.mjs`
 `.github/workflows/tier-gate.yml`, with its own tests in
 `scripts/ci/tier-gate.test.mjs`) evaluates every pull request against the rules below.
 It must pass **before the review gate opens**. A failing tier gate is not a review
-comment: the review has not started yet. There is no branch protection, so the gate
-cannot stop a merge. The maintainer does not merge while it is red (see
+comment: the review has not started yet. The ruleset on the default branch requires no
+status checks, so the gate cannot stop a merge. The maintainer does not merge while it is red (see
 [Evidence and sign-off](#evidence-and-sign-off)).
 
 ## Declaring a tier
@@ -136,10 +136,13 @@ Skills, agents, rules, hooks and workflow definitions are "not yet reached". No
 deterministic check exercises their behaviour: they are prompt text or gate definitions.
 The open question is what a replayable behavioural eval of a prompt artefact looks like.
 
-**The human sign-off is the maintainer's merge.** The repository is private and has no
-GitHub Pro, so it has no branch protection. That means no CI job, this gate included,
-can block a merge. A red check is information for the maintainer. Enforcing approval in
-CI is not yet reached, because it needs a merge condition that GitHub enforces.
+**The human sign-off is the maintainer's merge.** The default branch has a ruleset,
+`default`, that asks for one approving review. The maintainer is the only person who
+can approve and cannot approve their own pull request, so every merge bypasses the
+ruleset. The ruleset requires no status checks, so no CI job, this gate included, can
+block a merge. A red check is information for the maintainer. Approval by someone other
+than the author is not yet reached, because the repository has no second person with
+write access.
 
 ## Reading the map
 
