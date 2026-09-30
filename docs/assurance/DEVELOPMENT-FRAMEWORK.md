@@ -150,8 +150,9 @@ these steps in order.
    the branch does not exist yet:
 
    ```bash
-   git switch -c task/<task ID> origin/main
-   git commit --allow-empty -m "chore: claim task/<task ID> ($(uuidgen))"
+   nonce=$(uuidgen) && [ -n "$nonce" ] || { echo "no nonce: stop"; exit 1; }
+   git switch -c task/<task ID> --no-track origin/main
+   git commit --allow-empty -m "chore: claim task/<task ID> ($nonce)"
    git push origin --force-with-lease=refs/heads/task/<task ID>: \
      HEAD:refs/heads/task/<task ID>
    git ls-remote origin refs/heads/task/<task ID>   # must print HEAD's SHA
@@ -160,9 +161,13 @@ these steps in order.
    The lease with nothing after the colon makes the push fail if the branch
    exists, and the unique commit means two agents never push the same SHA. Both
    are needed: a second push of a branch cut from `origin/main` with no commit
-   of its own prints "Everything up-to-date" and succeeds. If the push fails, or
-   `ls-remote` prints a SHA that is not your `HEAD`, another agent holds the
-   task. Delete your local branch and return to step 1.
+   of its own prints "Everything up-to-date" and succeeds. If `uuidgen` prints
+   nothing, stop: without the nonce, two agents with one identity can make the
+   same commit in the same second. If the push fails, or `ls-remote` prints a
+   SHA that is not your `HEAD`, another agent holds the task. Run
+   `git switch --detach origin/main && git branch -D task/<task ID>` and return
+   to step 1. `--no-track` keeps the branch from tracking `main`, so push later
+   commits with `git push origin task/<task ID>`.
 3. **Read.** Read `docs/VISION.md`, the roadmap item that the task ID names, and
    the linked issue. Then read the journals that `AGENTS.md` tells you to read.
 4. **Run the chain.** Start at stage 1 above with `intent/<yyyy-mm-dd>-<slug>.md`.
@@ -179,6 +184,11 @@ them.
 - No row meets the conditions in step 1. Report which rows are `blocked` or
   claimed, and what unblocks each.
 - The task needs a change to a protected surface that no roadmap item covers.
+
+If you stop after step 2, release the claim with
+`git push origin --delete task/<task ID>` and name the task in your report.
+Otherwise the task stays claimed with nobody working on it. A claim branch that
+nobody is working on is deleted by the maintainer.
 
 Two rules keep the queue true.
 
