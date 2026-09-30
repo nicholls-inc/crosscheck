@@ -132,6 +132,51 @@ consolidation passes and renders settled / active / drifted per artefact for
 human adjudication (`docs/gates/auditor-verdicts.md`); it never edits what it
 audits.
 
+## Pick up the next task
+
+`docs/TASKS.md` is the ordered queue of tasks. `docs/assurance/ROADMAP.md` holds
+the items that govern them. When the maintainer says "pick up next task", do
+these steps in order.
+
+1. **Choose.** Run `git fetch origin`, then read the queue with
+   `git show origin/main:docs/TASKS.md`. List the claimed tasks with
+   `git ls-remote --heads origin 'task/*'`. The next task is the first row that
+   meets all three conditions:
+   - its status is `todo`;
+   - every task it depends on is `done`;
+   - no branch named `task/<task ID>` exists.
+2. **Claim.** Create a branch named exactly `task/<task ID>` from `origin/main`
+   and push it. If the push is rejected because the branch exists, another agent
+   holds the task. Return to step 1.
+3. **Read.** Read `docs/VISION.md`, the roadmap item that the task ID names, and
+   the linked issue. Then read the journals that `AGENTS.md` tells you to read.
+4. **Run the chain.** Start at stage 1 above with `intent/<yyyy-mm-dd>-<slug>.md`.
+   Find the tier in `TIER-LAYER-MAP.md` and commit the artefacts that the tier
+   requires before the diff.
+5. **Record.** In the same pull request, set the row of the task to `done` and
+   put the path of the intent in its record. Add a `Task: <task ID>` line to the
+   pull request body.
+
+Stop and report to the maintainer in each of these cases. Do not work around
+them.
+
+- The intent has an open question.
+- No row meets the conditions in step 1. Report which rows are `blocked` or
+  claimed, and what unblocks each.
+- The task needs a change to a protected surface that no roadmap item covers.
+
+Two rules keep the queue true.
+
+- **New work becomes a row.** If you find work that the task does not cover, add
+  a `todo` row under the roadmap item it belongs to, or open an issue. Do not do
+  that work in the current pull request.
+- **Only the maintainer changes the status of a roadmap item.** When the last
+  task of an item is done, say so in the pull request body. The maintainer
+  decides whether the item meets its acceptance.
+
+The maintainer's merge makes the new status true on `main`. Until the merge, the
+branch is the only sign that the task is in progress.
+
 ## Which agent runs which stretch
 
 - `add-orchestrator` — spec → bulk-drafted invariants → batched audit → triaged

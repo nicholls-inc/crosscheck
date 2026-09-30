@@ -1,78 +1,57 @@
-# Plan: Only deterministic checks count as evidence in CI
+# Plan: A task queue that any agent can pick up from
 
-Intent: `intent/2026-09-29-deterministic-evidence.md`
-Spec: `intent/2026-09-29-deterministic-evidence-spec.md` (requirement IDs TG-*, SM-*, CI-*, WR-*, DOC-*)
-Governing roadmap item: PB-1. Tier: 3.
+Intent: `intent/2026-09-30-task-queue.md`
+Spec: `intent/2026-09-30-task-queue-spec.md` (requirement IDs RM-*, TQ-*, PU-*, PT-*)
+Governing roadmap item: PB-1. Tier: 3. Task: PB-1.1.
 
-This file replaces the root `plan.md` from #246, which remains in git history.
+This file replaces the root `plan.md` from #46, which remains in git history.
 
 ## Order of work
 
-1. **Governance note first.** Write `.assurance/protected-surface-amend/deterministic-evidence-2026-09-29.md`, naming every protected file in the table below. Until it exists, the PreToolUse hook blocks each edit.
-2. **Statement manifest (SM-1 to SM-5).**
-   - Add `cgv/prover/scripts/ProtectedStatements.lean`.
-   - Run `lake build ContractGraph ContractGraph.Main`, then `lake env lean --run scripts/ProtectedStatements.lean > protected-statements.txt` in `cgv/prover`.
-   - Commit `cgv/prover/protected-statements.txt`.
-3. **Tier gate (TG-1 to TG-10).** In `scripts/ci/tier-gate.mjs`:
-   - Add a `changedAndPresent(path)` helper.
-   - Bind root `spec.md`, root `plan.md`, and governance notes to it.
-   - Drop the attestation check.
-   - Add the TG-7 heading check and the TG-8 and TG-9 report lines.
-   - Export `evaluate(inputs)` so tests can call it without `process.exit`. The CLI wrapper keeps the same output and exit codes.
-4. **Tier gate tests.**
-   - Add `scripts/ci/tier-gate.test.mjs`, using `node:test`. Each test builds a temporary repository directory and calls `evaluate`. At least one test covers each TG requirement.
-   - In `tier-gate.yml`, run `node --test scripts/ci/*.test.mjs` before the gate.
-5. **CGV CI (CI-1 to CI-6).** Add `.github/workflows/cgv-ci.yml` with one job:
-   - checkout;
-   - Rust toolchain with a cache;
-   - `cargo test` and `cargo build --release`;
-   - elan from its release binary, using the toolchain in `lean-toolchain`, with a cache of `cgv/prover/.lake`;
-   - `lake build`;
-   - `scripts/check-fixtures.sh`;
-   - the manifest diff.
-6. **Remove LLM workflows (WR-1 to WR-3).** Delete `spec-audit.yml` and `protected-surface-check.yml`, then grep that no workflow references `ANTHROPIC_API_KEY` or `claude-code-action`.
-7. **Documents (DOC-1 to DOC-5).** Update the files in the table. Then update the monorepo intent's pointer to the governing item.
+1. **Governance note first.** Write `.assurance/protected-surface-amend/task-queue-2026-09-30.md`. It names `docs/assurance/ROADMAP.md` and `docs/assurance/DEVELOPMENT-FRAMEWORK.md`. The tier gate counts a note only if the pull request changes it (TG-5).
+2. **Roadmap (RM-1 to RM-6).** In `docs/assurance/ROADMAP.md`:
+   - replace the strategic context with one that cites `docs/VISION.md`;
+   - replace the three `TODO` rows with nine items, each with a status, a scope, an acceptance statement, and its issues;
+   - extend the scope of PB-1;
+   - add the subsection "Tasks".
+3. **Queue (TQ-1 to TQ-7).** Add `docs/TASKS.md` with the column definitions, the rules, and the first rows.
+4. **Procedure (PU-1 to PU-8).** Add the section "Pick up the next task" to `docs/assurance/DEVELOPMENT-FRAMEWORK.md`, before "Which agent runs which stretch".
+5. **Pointers (PT-1, PT-2).** Add a short section to `CLAUDE.md` and to `AGENTS.md`, and one line to the layout in `README.md`.
+6. **Journal.** Add an entry to the root `JOURNAL.md` that says why the queue and the roadmap are separate files.
 
 ## Files
 
 | File | Protected | Change |
 |---|---|---|
-| `scripts/ci/tier-gate.mjs` | yes (`scripts/ci/**`) | TG-1 to TG-10 |
-| `scripts/ci/tier-gate.test.mjs` | yes (`scripts/ci/**`) | new tests |
-| `.github/workflows/tier-gate.yml` | yes | run the tests; `--no-renames` |
-| `.github/workflows/cgv-ci.yml` | yes | new; Rust steps after `lake build` (CI-2) |
-| `.github/workflows/spec-audit.yml` | yes | deleted |
-| `.github/workflows/protected-surface-check.yml` | yes | deleted |
-| `.claude/rules/protected-surfaces.md` | yes | manifest and generator paths, axiom check, CGV manifest text, sign-off without branch protection |
-| `docs/assurance/TIER-LAYER-MAP.md` | yes | Tier 3 artefacts, CGV evidence, evidence classes |
-| `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | yes | workflow list, stage 4, CGV |
-| `docs/assurance/ROADMAP.md` | yes | PB-1 scope |
-| `cgv/prover/protected-statements.txt` | yes, after this change (DOC-3) | new |
-| `cgv/prover/scripts/ProtectedStatements.lean` | yes, after this change (DOC-3) | new; SM-6 axiom check |
-| `docs/gates/tier-layer-gate.md`, `docs/gates/intent-check-verdict.md`, `docs/gates/audit-spec-coverage-triage.md` | no | DOC-1, DOC-2 |
-| `cgv/CLAUDE.md`, `cgv/README.md` | no | DOC-4 |
-| `intent/2026-09-29-deterministic-evidence*.md`, `plan.md` | no | stage artefacts |
+| `docs/assurance/ROADMAP.md` | yes (`docs/assurance/**`) | RM-1 to RM-6 |
+| `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | yes (`docs/assurance/**`) | PU-1 to PU-8 |
+| `.assurance/protected-surface-amend/task-queue-2026-09-30.md` | no | new governance note |
+| `docs/TASKS.md` | no | new; TQ-1 to TQ-7 |
+| `CLAUDE.md`, `AGENTS.md` | no | PT-1 |
+| `README.md` | no | PT-2 |
+| `JOURNAL.md` | no | one entry |
+| `intent/2026-09-30-task-queue*.md`, `plan.md` | no | stage artefacts |
 
-No `SKILL.md` or `agents/*.md` file changes.
+No `SKILL.md`, agent, hook, rule, CI, or code file changes.
 
 ## Risks
 
-- **The gate rejects legitimate pull requests.** A plan or spec committed in an earlier pull request no longer counts implicitly. Mitigation: a `Plan:` or `Spec:` citation still counts (TG-3, TG-4), and the failure message says so.
-- **The gate's own pull request.** This pull request changes the gate. CI runs the new gate from the pull request's head, so the new rules judge this pull request. It must pass them: it changes `plan.md`, adds a governance note naming every protected file, and has a protected-surface change section.
-- **The manifest trips on a Lean toolchain bump.** This is intended (spec, SM section), but it forces a Tier 3 pull request for every bump.
-- **CI minutes.** The CGV job runs only on `cgv/**`. The measured local cost is about 30 seconds for `lake build`, plus a Rust release build. On a private repository these minutes count against the free allowance.
-- **Private repository, no branch protection.** No check blocks a merge. The spec flags this rather than resolving it.
+- **An agent wrote the roadmap items.** The maintainer's merge approves nine items that the maintainer did not write. Mitigation: the governance note marks the items `REQUIRES HUMAN VERIFICATION`, and the review checklist lists them.
+- **The queue drifts from the truth.** A pull request can merge without marking its row. Mitigation: the procedure puts the row change in the same pull request, and the `Task:` line in the body lets a reviewer check it. No deterministic check exists until task PB-1.6.
+- **Two sources for status.** The roadmap has a status for each item and the queue has one for each task. Mitigation: only the maintainer changes the status of an item (PU-8), and the queue never states the status of an item.
+- **A stale claim.** A `task/<task ID>` branch that nobody finishes blocks its task. The procedure reports claimed tasks instead of taking them over.
+- **The procedure is prose.** An agent applies PU-1 by reading. A different agent could read it differently. Mitigation: the three conditions are mechanical, and PB-1.6 turns them into a script.
 
 ## Proof that it worked
 
-- `node --test scripts/ci/*.test.mjs` passes, with at least one test for each TG requirement.
-- Running the gate locally against this branch's diff and PR body passes, and prints the evidence report.
-- The manifest sensitivity run (SM-3, SM-4) has been done:
-  - two runs are byte-identical;
-  - a proof-only edit (`:= rfl` to `:= by rfl` in `incompleteWith_exitCode`) leaves the manifest unchanged;
-  - weakening that statement to `2 ≤ …` changes it;
-  - editing the `ToString ConstraintKind` instance changes its value hash;
-  - replacing the proof of `incompleteWith_exitCode` with `sorry`, or with `cheat.elim` for a new `axiom cheat : False`, keeps `lake build` green and makes the generator exit 1, naming `sorryAx` or `ContractGraph.cheat` (SM-6).
-- Not covered by a test: `--no-renames` (TG-1a) lives in `tier-gate.yml`, and the node tests take the changed-file list as input.
-- `cargo test`, `cargo build --release`, `lake build`, `scripts/check-fixtures.sh`, and the manifest diff pass locally on this branch.
-- `grep -rn "ANTHROPIC_API_KEY\|claude-code-action" .github/workflows` returns nothing.
+- The tier gate passes when run locally against this branch's changed files and the pull request body, and prints "not yet reached: human review is the only evidence" for `docs/assurance/**`.
+- `node --test scripts/ci/*.test.mjs` still passes.
+- A script outside the repository reads `docs/TASKS.md` and `docs/assurance/ROADMAP.md` and confirms each of these:
+  - every task ID names a roadmap item that exists, and no ID repeats (TQ-2);
+  - every status is `todo`, `blocked`, or `done` (TQ-3);
+  - every dependency is a task in the queue (TQ-4);
+  - no horizon table holds `TODO` (RM-1);
+  - the issues that the roadmap items name are exactly the open issues from `gh issue list` (RM-4);
+  - the first row that meets PU-1 is `PB-1.2`.
+- Every relative link in the changed Markdown files resolves to a file.
+- Not covered: whether an agent that starts with no context and is told "pick up next task" reaches `PB-1.2` and follows the chain. Only a fresh session can show that.

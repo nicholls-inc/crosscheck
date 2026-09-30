@@ -24,6 +24,10 @@ Two rules from `docs/VISION.md` apply to every session:
 - No class of code is out of scope. When a tool does not reach a class of code, say "not yet reached" and name the property that blocks it and the open research question. Never call a class "excluded" or "out of scope".
 - No guarantee rests on the judgment of an LLM. An LLM may draft code, specs, and proofs, and LLM-based checks may point at likely problems, but only deterministic checks and human judgment count as evidence.
 
+## Picking up work
+
+`docs/TASKS.md` is the ordered queue of tasks, and `docs/assurance/ROADMAP.md` holds the items that govern them. When you are told "pick up next task", follow "Pick up the next task" in `docs/assurance/DEVELOPMENT-FRAMEWORK.md`. Do not ask the maintainer what the status is. Read the queue.
+
 ## Crosscheck plugin (`crosscheck/`)
 
 Crosschecks Claude's code claims using Dafny formal verification for provably correct Python/Go code, plus semi-formal reasoning for structured code analysis.

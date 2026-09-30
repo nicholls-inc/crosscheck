@@ -21,6 +21,7 @@ See [`crosscheck/README.md`](crosscheck/README.md) for prerequisites. See [`cgv/
 ## Repository layout
 
 - `docs/VISION.md` is the vision the whole suite shares.
+- `docs/assurance/ROADMAP.md` lists the steps towards the vision, and `docs/TASKS.md` is the ordered queue of tasks.
 - `docs/assurance/`, `docs/gates/`, `docs/decisions/`, `intent/`, `.assurance/`, `evals/`, `REVIEW.md`, `JOURNAL.md`, and `plan.md` hold the development framework and its records.
 - `formal-verification/` holds the specs and fixtures that the Lean and Dafny pipelines are tested against.
 - `logic-distribution/` holds the research behind `crosscheck/docs/research/logic-distribution-analysis.md`.
