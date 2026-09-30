@@ -73,8 +73,8 @@ Edits to protected surfaces (`SKILL.md`, `agents/*.md`, invariant docs,
 a governance note from `/protected-surface-amend`. That skill refuses
 unconditionally without a governing roadmap item
 (`docs/gates/protected-surface-roadmap-refusal.md`), and the PreToolUse hook in
-`.claude/hooks/` blocks the write until the note exists in the working tree
-(`docs/gates/protected-surface-hook.md`).
+`.claude/hooks/` blocks the write unless the note is new on this branch, not
+already on the default branch (`docs/gates/protected-surface-hook.md`).
 
 ### 4. Test — verification and alignment
 

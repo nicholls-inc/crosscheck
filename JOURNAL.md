@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-09-30 — Merged governance notes no longer unlock the hook
+
+**Type:** fix
+**Touches:** .claude/hooks/protected-surface-guard.mjs, scripts/ci/protected-surface-guard.test.mjs, .claude/rules/protected-surfaces.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/protected-surface-hook.md, crosscheck/skills/assurance-init/SKILL.md, docs/TASKS.md, CLAUDE.md
+**Why:** On main at 608ca86 the hook allowed edits to 30 of 58 protected files with no new note because it counted notes that had already merged to the default branch.
+**Links:** [intent](intent/2026-09-30-merged-notes-unlock.md), [spec](intent/2026-09-30-merged-notes-unlock-spec.md), [plan](intent/2026-09-30-merged-notes-unlock-plan.md)
+
+The hook now compares a governance note's text on this branch against the default branch (origin/HEAD else origin/main). Only notes that are new on this branch count; notes already merged to main no longer unlock edits. This mirrors the Tier Gate's rule that a note from an earlier change does not count.
+
+---
+
 ## 2026-09-30 — A task queue beside the roadmap
 
 **Type:** intent-refinement

@@ -21,7 +21,6 @@ This file is the ordered queue of work on this repository. The order of the rows
 - The pull request that completes a task sets its row to `done` and fills in the record.
 - Add a row under an existing roadmap item. If no item fits, the work needs a new roadmap item first, and only the maintainer approves one.
 - The queue grants no authority. A change to a protected surface cites a roadmap item.
-- Until PB-1.3 is `done`, the protected-surface hook lets some edits through without a governance note. A task that edits a protected surface writes its note first anyway.
 
 ## Queue
 
@@ -29,7 +28,7 @@ This file is the ordered queue of work on this repository. The order of the rows
 |---|---|---|---|---|---|
 | PB-1.1 | done | Add this queue, the roadmap items for the vision, and the pick-up procedure | | | `intent/2026-09-30-task-queue.md` |
 | PB-1.2 | done | Fix the `Incident Eval Check` workflow. It failed on the four squash-merged pull requests #43 to #46 with "Invalid revision range" | | | `intent/2026-09-30-incident-eval-range.md` |
-| PB-1.3 | todo | Stop merged governance notes from unlocking the protected-surface hook. The notes on `main` allow edits to 29 of 57 protected files | | | |
+| PB-1.3 | done | Stop merged governance notes from unlocking the protected-surface hook. The notes on `main` allow edits to 29 of 57 protected files | | | `intent/2026-09-30-merged-notes-unlock.md` |
 | PB-1.4 | todo | Tier gate: anchor the `Tier:` line, and label unchecked code "not yet reached" | | #50 | |
 | PB-1.5 | todo | Tier gate: accept any citation line, require a regular file in the repository, and add negative tests | | #49 | |
 | PB-1.6 | todo | Add a script that prints the next task by the rules of the pick-up procedure, and check this file in CI: each task ID names a roadmap item, each dependency exists, each status is valid, and a pull request sets to `done` only the row in its `Task:` line. Add a test that races two claims against a scratch remote | | | |
