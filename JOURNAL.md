@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-01 - A script picks the next task, and CI checks the queue
+
+**Type:** feature
+**Touches:** scripts/ci/task-queue.mjs, scripts/ci/task-queue.test.mjs, .github/workflows/task-queue.yml, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/task-queue-check.md, docs/gates/README.md, docs/TASKS.md
+**Why:** Agents read the queue by eye, nothing checked it, and a pull request could mark any row `done`. The queue's own spec named PB-1.6 as the fix.
+**Links:** [intent](intent/2026-10-01-queue-check.md), [spec](intent/2026-10-01-queue-check-spec.md), [plan](intent/2026-10-01-queue-check-plan.md)
+
+`node scripts/ci/task-queue.mjs next` applies the three conditions of the pick-up procedure, so two agents can no longer read the table two ways. `check` runs on every pull request. It fails on a task ID with no roadmap item, a repeated ID, an unknown status, or a missing dependency, and when a pull request sets to `done` a row its `Task:` line does not name. The `Task:` line uses the tier gate's anchor, so quoted text cannot name a task. The claim snippet stays in the framework document, and the race test runs that snippet itself rather than a copy, so an edit that breaks the claim breaks the test. The check does not require the completing pull request to set its own row, because the split rule lets a pull request replace a row and set nothing to `done`.
+
+---
+
 ## 2026-09-30 - The tier gate reads `Tier:` only at the start of a line
 
 **Type:** fix
