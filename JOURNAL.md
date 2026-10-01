@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-09-30 - Any citation line counts, and only a regular file in the repository
+
+**Type:** fix
+**Touches:** scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/assurance/TIER-LAYER-MAP.md, docs/gates/tier-layer-gate.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** Only the first `Plan:` line counted, and `existsSync` accepted a directory, `../x`, or a symlink out of the repository (#49).
+**Links:** [intent](intent/2026-09-30-citation-rule.md), [spec](intent/2026-09-30-citation-rule-spec.md), [plan](intent/2026-09-30-citation-rule-plan.md)
+
+The gate now reads every `Intent:`, `Spec:` or `Plan:` line, and one valid line meets the requirement. A cited path must resolve, through symlinks, to a regular file whose real path is inside the repository. The line format is unchanged. The gate still checks only that the file exists, not what it says, so any file in the repository satisfies a citation. That gap is recorded in TG-12 and is not new.
+
+---
+
 ## 2026-09-30 - The tier gate reads `Tier:` only at the start of a line
 
 **Type:** fix
