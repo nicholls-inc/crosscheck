@@ -7,8 +7,8 @@
 
 ### Change Description
 
-1. `scripts/ci/task-queue.mjs` (new): `next` prints the next task by the three conditions of step 1 of "Pick up the next task" (NX-1 to NX-4). `check` fails when a row's task ID names no roadmap item, a task ID repeats, a status is not `todo`, `blocked` or `done`, a dependency names no row, or the pull request sets to `done` a row other than the one its `Task:` line names (QC-1 to QC-6).
-2. `scripts/ci/task-queue.test.mjs` (new): TT-1 to TT-4. TT-3 runs the claim snippet from `DEVELOPMENT-FRAMEWORK.md` twice at once against a scratch bare remote and asserts exactly one winner.
+1. `scripts/ci/task-queue.mjs` (new): `next` prints the next task by the three conditions of step 1 of "Pick up the next task" (NX-1 to NX-4). `check` fails when a row's task ID names no roadmap item, a task ID repeats, a status is not `todo`, `blocked` or `done`, a dependency names no row, or the pull request sets to `done` a row other than the one its `Task:` line names (QC-1 to QC-6). It exits 2 when a queue table has no separator row (QP-4), rather than dropping its first row, and when the base file exists but has no queue (QC-7), rather than treating it as missing.
+2. `scripts/ci/task-queue.test.mjs` (new): TT-1 to TT-4, including exit 2 for QP-4 in the working tree and at the base, and for QC-7. TT-3 runs the claim snippet from `DEVELOPMENT-FRAMEWORK.md` twice at once against a scratch bare remote and asserts exactly one winner.
 3. `.github/workflows/task-queue.yml` (new): runs `check` on every pull request, with the base ref and the PR body passed as environment variables (WF-1).
 4. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: step 1 of the pick-up procedure names `node scripts/ci/task-queue.mjs next` (DOC-1). Stage 5 lists `task-queue.yml` (DOC-2). The rules of the procedure do not change.
 
@@ -49,3 +49,4 @@ Task PB-1.6 in `docs/TASKS.md`. The queue's own spec flags that nothing checks t
 - [x] PB-1 covers the task queue and the pick-up procedure.
 - [x] The rules of the pick-up procedure are unchanged; the script applies them.
 - [x] No `run:` line in the new workflow contains a `${{ }}` expression.
+- [x] A queue the script cannot read exits 2 with the file named (QP-4, QC-7), and never passes or counts rows it could not read.

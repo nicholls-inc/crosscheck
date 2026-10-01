@@ -63,6 +63,18 @@ test('QP-1: a missing heading or a different header means no queue', () => {
   assert.equal(parseQueue('## Queue\n\n| Task | Status |\n|---|---|\n| PB-1.1 | todo |\n'), null);
 });
 
+test('QP-4: a queue table with no separator row throws instead of dropping its first row', () => {
+  const md = '## Queue\n\n| Task | Status | What | Depends on | Issue | Record |\n| PB-1.1 | done | w | | | |\n';
+  assert.throws(() => parseQueue(md), {
+    message: 'docs/TASKS.md: the queue table has no separator row under its header; expected | --- | --- | --- | --- | --- | --- |',
+  });
+  assert.throws(() => parseQueue('## Queue\n\n| Task | Status | What | Depends on | Issue | Record |\n', 'origin/main:docs/TASKS.md'), {
+    message: 'origin/main:docs/TASKS.md: the queue table has no separator row under its header; expected | --- | --- | --- | --- | --- | --- |',
+  });
+  const aligned = '## Queue\n\n| Task | Status | What | Depends on | Issue | Record |\n|:--|:-:|--:|---|-|---|\n| PB-1.1 | done | w | | | |\n';
+  assert.deepEqual(parseQueue(aligned).map((r) => r.id), ['PB-1.1']);
+});
+
 test('QP-2: Depends on is a comma-separated list, backticks ignored, empty means none', () => {
   const rows = parseQueue(queueMd([['PB-1.1', 'todo', 'w', '`PB-1.2`, ER-1.1 ,'], ['PB-1.2', 'todo', 'w']]));
   assert.deepEqual(rows.map((r) => r.dependsOn), [['PB-1.2', 'ER-1.1'], []]);
@@ -318,6 +330,38 @@ test('QP-1: check fails with exit 1 when docs/TASKS.md has no queue', () => {
   const r = runScript(work, ['check'], { BASE_REF: 'main' });
   assert.equal(r.code, 1);
   assert.ok(r.out.includes('- docs/TASKS.md has no queue:'), r.out);
+});
+
+const NO_SEPARATOR = '## Queue\n\n| Task | Status | What | Depends on | Issue | Record |\n| PB-1.1 | done | a | | | |\n';
+
+test('QP-4: check exits 2 when the queue in the working tree has no separator row', () => {
+  const { clone } = scratchRemote({ 'docs/TASKS.md': queueMd([['PB-1.1', 'todo', 'a']]), 'docs/assurance/ROADMAP.md': ROADMAP });
+  const work = clone();
+  write(work, { 'docs/TASKS.md': NO_SEPARATOR });
+  assert.deepEqual(runScript(work, ['check'], { BASE_REF: 'main', PR_BODY: '' }), {
+    code: 2,
+    out: '',
+    err: 'docs/TASKS.md: the queue table has no separator row under its header; expected | --- | --- | --- | --- | --- | --- |\n',
+  });
+});
+
+test('QC-7: check exits 2, naming the base queue, when the base file exists but has no readable queue', () => {
+  const head = queueMd([['PB-1.1', 'done', 'a']]);
+  for (const [baseMd, err] of [
+    [
+      '# Task queue\n',
+      'origin/main:docs/TASKS.md exists but has no queue, so the check cannot tell which rows are newly done: expected a "## Queue" heading followed by a table whose header is | Task | Status | What | Depends on | Issue | Record |\n',
+    ],
+    [
+      NO_SEPARATOR,
+      'origin/main:docs/TASKS.md: the queue table has no separator row under its header; expected | --- | --- | --- | --- | --- | --- |\n',
+    ],
+  ]) {
+    const { clone } = scratchRemote({ 'docs/TASKS.md': baseMd, 'docs/assurance/ROADMAP.md': ROADMAP });
+    const work = clone();
+    write(work, { 'docs/TASKS.md': head });
+    assert.deepEqual(runScript(work, ['check'], { BASE_REF: 'main', PR_BODY: 'Task: PB-1.1' }), { code: 2, out: '', err });
+  }
 });
 
 // ---- TT-2: next against a scratch remote -------------------------------------

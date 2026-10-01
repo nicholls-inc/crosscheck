@@ -36,8 +36,10 @@ function splitCells(line) {
     .map((cell) => cell.replace(/\\\|/g, '|').trim());
 }
 
-// QP-1, QP-2. Returns null when there is no queue.
-export function parseQueue(markdown) {
+// QP-1, QP-2, QP-4. Returns null when there is no queue, and throws when the
+// queue's table has no separator row, since its first row could not be told
+// from a separator.
+export function parseQueue(markdown, source = TASKS_PATH) {
   const lines = (markdown || '').split(/\r?\n/);
   const heading = lines.findIndex((l) => /^##[ \t]+Queue[ \t]*$/.test(l));
   if (heading === -1) return null;
@@ -45,6 +47,12 @@ export function parseQueue(markdown) {
   if (start === -1) return null;
   const header = splitCells(lines[start]);
   if (header.length !== HEADER.length || header.some((h, i) => h !== HEADER[i])) return null;
+  const separator = (lines[start + 1] || '').trim().startsWith('|') ? splitCells(lines[start + 1]) : [];
+  if (separator.length !== HEADER.length || !separator.every((c) => /^:?-+:?$/.test(c))) {
+    throw new Error(
+      `${source}: the queue table has no separator row under its header; expected | ${HEADER.map(() => '---').join(' | ')} |`
+    );
+  }
   const rows = [];
   for (const line of lines.slice(start + 2)) {
     if (!line.trim().startsWith('|')) break;
@@ -179,7 +187,7 @@ function git(args) {
 }
 
 function runNext() {
-  const queue = parseQueue(git(['show', `origin/main:${TASKS_PATH}`]));
+  const queue = parseQueue(git(['show', `origin/main:${TASKS_PATH}`]), `origin/main:${TASKS_PATH}`);
   if (!queue) throw new GitFailure(`origin/main:${TASKS_PATH} has no queue table`);
   const claimed = git(['ls-remote', '--heads', 'origin', 'task/*'])
     .split('\n')
@@ -196,19 +204,29 @@ function runNext() {
   return 1;
 }
 
-function readBaseQueue(baseRef) {
+// QC-5, QC-7. Only a missing file means an empty base queue.
+function readBaseRows(baseRef) {
+  const source = `origin/${baseRef}:${TASKS_PATH}`;
+  let markdown;
   try {
-    return git(['show', `origin/${baseRef}:${TASKS_PATH}`]);
+    markdown = git(['show', source]);
   } catch (err) {
-    if (/does not exist|exists on disk, but not in/.test(err.message)) return '';
+    if (/does not exist|exists on disk, but not in/.test(err.message)) return [];
     throw err;
   }
+  const rows = parseQueue(markdown, source);
+  if (!rows) {
+    throw new Error(
+      `${source} exists but has no queue, so the check cannot tell which rows are newly done: expected a "## Queue" heading followed by a table whose header is | ${HEADER.join(' | ')} |`
+    );
+  }
+  return rows;
 }
 
 function runCheck() {
   const baseRef = process.env.BASE_REF;
   if (!baseRef) throw new GitFailure('BASE_REF is not set');
-  const baseRows = parseQueue(readBaseQueue(baseRef)) ?? [];
+  const baseRows = readBaseRows(baseRef);
   const rows = parseQueue(readFileSync(TASKS_PATH, 'utf8'));
   const itemIds = parseItemIds(readFileSync(ROADMAP_PATH, 'utf8'));
   const problems = rows

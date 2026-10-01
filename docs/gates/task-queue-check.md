@@ -14,6 +14,15 @@ The **task-queue CI job** (`scripts/ci/task-queue.mjs check`, run by `.github/wo
 
 A **roadmap item** is a numbered piece of work in `docs/assurance/ROADMAP.md`, such as PB-1, that governs a set of tasks. The `Task:` line is a line in the PR body, such as `Task: PB-1.6`. It must start the line, optionally after an indent, with no list or quote marker before it, and the first such line counts. A pull request with no `Task:` line may not set any row to `done`.
 
+## When the check cannot read a queue
+
+The check exits 2, and prints the file and the problem instead of the gate message, when:
+
+- the queue table, in the pull request or on the base branch, has no separator row (`|---|---|...|`) under its header. Without one, the first task row cannot be told from a separator, and skipping it could hide a row set to `done`;
+- `docs/TASKS.md` exists on the base branch but has no `## Queue` table with the expected header. Only a missing file means an empty base queue, so the check does not count every `done` row as newly done.
+
+Fix the separator row in the pull request. If the base branch's queue is the broken one, the pull request that repairs it cannot pass the check, because there is no base to compare with. The maintainer reads that pull request's diff and merges it, and the check reads the repaired queue from then on.
+
 ## What each decision means
 
 - **Approving (fixing the queue or the `Task:` line)**: the queue on the default branch stays one that the pick-up procedure can read, and only the pull request that does a task marks it done.

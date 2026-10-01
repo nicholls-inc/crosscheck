@@ -8,7 +8,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 ## Data shape
 
-One parsed row type, `{ id, status, what, dependsOn: string[], issue, record }`, read from the table by one parser (QP-1, QP-2). Both subcommands are pure functions over rows:
+One parsed row type, `{ id, status, what, dependsOn: string[], issue, record }`, read from the table by one parser (QP-1, QP-2). The parser returns `null` when there is no queue and throws when the table has no separator row (QP-4). The shell turns a throw, and a base file with no queue (QC-7), into exit 2. Both subcommands are pure functions over rows:
 
 - `nextTask(rows, claimedIds)` returns either `{ id }` or `{ reasons: [{ id, reason }] }` (NX-1, NX-2).
 - `checkQueue({ rows, baseRows, itemIds, prBody })` returns a list of problem strings, empty on pass (QC-1 to QC-5).
@@ -42,7 +42,8 @@ The shell (`main`) reads git and the environment, calls one function, prints, an
 
 ## Risks
 
-- **The table format drifts.** A column renamed or reordered makes `check` fail on QP-1. That is the intended result: the check names the header it expects.
+- **The table format drifts.** A column renamed or reordered makes `check` fail on QP-1. That is the intended result: the check names the header it expects. A table with its separator row deleted exits 2 (QP-4) rather than losing its first row.
+- **A broken base queue.** A base file with no readable queue exits 2 (QC-7), so the pull request that repairs it cannot pass `check`. The maintainer merges it on review.
 - **The race test depends on `bash` and `uuidgen`.** Both exist on `ubuntu-latest` and on macOS. If `uuidgen` is missing, the snippet exits 1 by design, both runs fail, and TT-3 fails loudly rather than passing.
 - **The race test reads prose.** An edit to the claim snippet in `DEVELOPMENT-FRAMEWORK.md` changes what the test runs. That is the point: the documented procedure is what agents run. If the block cannot be found, the test fails.
 - **Concurrent runs may not overlap.** Two spawned processes can run one after the other. TT-3 then shows the same thing as TT-4. Five rounds make an overlap likely but not certain. Either way the result must be exactly one winner.
