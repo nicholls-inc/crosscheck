@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-01 - The Tier Gate step computes its own changed files
+
+**Type:** fix
+**Touches:** .github/workflows/tier-gate.yml, scripts/ci/tier-gate-workflow.test.mjs, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** A changed file named `EOF` ended the workflow's `$GITHUB_OUTPUT` block early. With a second file named `docs/assurance/a<<EOF`, scratch pull request #60 changed a protected file at `Tier: 1` and the gate passed on an empty list.
+**Links:** [intent](intent/2026-10-01-tier-gate-workflow.md), [spec](intent/2026-10-01-tier-gate-workflow-spec.md), [plan](intent/2026-10-01-tier-gate-workflow-plan.md)
+
+The gate step now fetches the base, sets `CHANGED_FILES` from `git diff` and runs the gate, so no file name passes through `$GITHUB_OUTPUT`. The base ref reaches the script as `BASE_REF` in `env:`, not as a `${{ }}` expression in shell source, and the gate's pass line now names it. A new test runs the step's script from the workflow file in a scratch repository, which also tests `--no-renames` for the first time. The test runs under local bash, not on a GitHub runner, so the runner evidence is #60 and this change's own Tier Gate run. `git diff --name-only` still quotes a path with a non-ASCII byte, which then matches no protected glob. Task PB-1.10 fixes that.
+
+---
+
 ## 2026-10-01 - A script picks the next task, and CI checks the queue
 
 **Type:** feature
