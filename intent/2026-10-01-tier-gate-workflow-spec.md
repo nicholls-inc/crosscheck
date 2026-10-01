@@ -16,7 +16,7 @@ This spec adds TG-14 and TG-15, and revises TG-1a of `intent/2026-09-29-determin
   - a branch that renames `docs/assurance/x.md` to `notes/x.md` fails on the Tier 3 floor (TG-1a);
   - a `BASE_REF` that names no branch fails the step, and the gate does not run (TG-14).
 
-  A `${{ }}` expression left in the script fails every case, because bash rejects `${{` as a bad substitution.
+  A `${{ }}` expression left in the script fails the first three cases, because bash rejects `${{` as a bad substitution and the gate never runs.
 - **Known gaps, not rules.**
   - The test runs the script under `bash -e` on the test machine, not on a GitHub runner. The runner's own handling of `env:` and of `$GITHUB_OUTPUT` is not in the test. Scratch pull request #60 is the runner evidence for the fault, and this pull request's own Tier Gate run is the runner evidence for the fix.
   - `git diff --name-only` quotes a path with a byte outside printable ASCII, so such a path matches no protected glob. Task PB-1.10 fixes it.
