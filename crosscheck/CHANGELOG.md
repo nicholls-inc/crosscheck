@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.1](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.8.0...crosscheck-v2.8.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **crosscheck:** stop merged governance notes from unlocking the protected-surface hook ([#55](https://github.com/nicholls-inc/crosscheck/issues/55)) ([2884b50](https://github.com/nicholls-inc/crosscheck/commit/2884b502178ac927771115f092316361119a0d30))
+
 ## [2.8.0](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.7.0...crosscheck-v2.8.0) (2026-09-29)
 
 
