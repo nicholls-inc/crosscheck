@@ -86,7 +86,7 @@ function scratchPr(baseFiles, change) {
 }
 
 function runStep(cwd, baseRef = 'main') {
-  const r = spawnSync('bash', ['-e', '-c', stepScript()], {
+  const r = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', stepScript()], {
     cwd,
     env: { ...GIT_ENV, BASE_REF: baseRef, PR_BODY, PR_LABELS: '' },
     encoding: 'utf8',
@@ -121,5 +121,19 @@ test('TG-14: a base ref that names no branch fails the step before the gate runs
   const work = scratchPr({}, (dir) => write(dir, { 'notes.md': 'x\n' }));
   const { code, out } = runStep(work, 'no-such-branch');
   assert.notEqual(code, 0, out);
+  assert.doesNotMatch(out, /tier-gate:/);
+});
+
+test('TG-14: a base that fetches but shares no history with the PR fails the step before the gate runs', () => {
+  const work = scratchPr({}, (dir) => write(dir, { 'notes.md': 'x\n' }));
+  sh(work, ['switch', '-q', '--orphan', 'unrelated']);
+  write(work, { 'other.md': 'x\n' });
+  sh(work, ['add', 'other.md']);
+  sh(work, ['commit', '-q', '-m', 'unrelated']);
+  sh(work, ['push', '-q', 'origin', 'unrelated']);
+  sh(work, ['switch', '-q', 'pr']);
+  const { code, out } = runStep(work, 'unrelated');
+  assert.notEqual(code, 0, out);
+  assert.match(out, /no merge base/);
   assert.doesNotMatch(out, /tier-gate:/);
 });
