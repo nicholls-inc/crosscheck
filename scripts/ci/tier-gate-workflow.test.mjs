@@ -86,7 +86,7 @@ function scratchPr(baseFiles, change) {
 }
 
 function runStep(cwd, baseRef = 'main') {
-  const r = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', stepScript()], {
+  const r = spawnSync('bash', ['-e', '-c', stepScript()], {
     cwd,
     env: { ...GIT_ENV, BASE_REF: baseRef, PR_BODY, PR_LABELS: '' },
     encoding: 'utf8',
