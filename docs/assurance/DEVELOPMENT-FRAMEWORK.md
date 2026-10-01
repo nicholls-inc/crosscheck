@@ -125,6 +125,11 @@ branch requires no status checks:
   described in stage 4.
 - `incident-eval-check.yml` fails when an incident record under `evals/` has no
   accompanying eval.
+- `task-queue.yml` fails when a row of `docs/TASKS.md` names no roadmap item,
+  repeats a task ID, has a status other than `todo`, `blocked` or `done`, or
+  depends on a task that is not in the queue. It also fails when the pull
+  request sets to `done` any row other than the one its `Task:` line names
+  (`docs/gates/task-queue-check.md`).
 - `semantic-pr.yml` checks that the PR title is a conventional commit.
 
 ### 6. Maintain — incidents and evals
@@ -147,6 +152,10 @@ these steps in order.
    - its status is `todo`;
    - every task it depends on is `done`;
    - no branch named `task/<task ID>` exists.
+
+   After `git fetch origin`, `node scripts/ci/task-queue.mjs next` applies
+   these three conditions and prints the ID of the next task. When no row meets
+   them, it exits 1 and prints each row that is not ready, with the reason.
 2. **Claim.** Create a branch named exactly `task/<task ID>` from `origin/main`,
    give it an empty commit that no other agent can produce, and push it only if
    the branch does not exist yet:
