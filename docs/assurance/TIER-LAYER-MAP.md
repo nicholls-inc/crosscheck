@@ -65,7 +65,7 @@ non-protected code.
 from. The spec must flag unresolved concerns rather than quietly settle them. Either
 of these satisfies the requirement:
 - the PR changes a root `spec.md`;
-- the PR body has a `Spec: <path>` line that cites an existing file.
+- the PR body has a `Spec: <path>` line that cites a file in the repository.
 
 A root `spec.md` left over from an earlier change does not count.
 
@@ -95,9 +95,13 @@ decides whether other changes are safe.
    engineer who never saw the conversation could implement it. Either of these
    satisfies the requirement:
    - the PR changes a root `plan.md`;
-   - the PR body has a `Plan: <path>` line that cites an existing file.
+   - the PR body has a `Plan: <path>` line that cites a file in the repository.
 
    A root `plan.md` left over from an earlier change does not count.
+
+   A cited path must resolve, through any symlinks, to a regular file inside the
+   repository: a directory or a path outside it does not count. The PR body may
+   have several `Intent:`, `Spec:` or `Plan:` lines, and one valid line is enough.
 2. **A governance note, for any edit to a protected path.** This is the
    `## Protected-Surface Amendment` block produced by `/protected-surface-amend`. The
    PR must change it, under `.assurance/protected-surface-amend/` or
