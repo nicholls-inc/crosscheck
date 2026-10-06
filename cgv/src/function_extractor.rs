@@ -842,7 +842,7 @@ mod tests {
     #[test]
     fn test_object_param_accepts_none() {
         let mut fs = funcs(
-            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object]): pass\n",
+            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None): pass\n",
         );
         let aliases: std::collections::HashMap<String, Expr> = [("Payload", "object"), ("Name", "str")]
             .into_iter()
@@ -864,6 +864,9 @@ mod tests {
                 ("e", None, Some(true)),
                 ("g", Some("str"), Some(false)),
                 ("h", None, Some(true)),
+                ("s", None, Some(true)),
+                ("t", None, Some(true)),
+                ("u", None, Some(true)),
             ]
         );
     }
