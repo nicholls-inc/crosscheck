@@ -15,5 +15,6 @@ Intent: `intent/2026-10-06-cgv-readme-type-checkers.md`. Governing roadmap item:
 - CGV CI does not run the script or its tests, because it installs no Python type checkers. The table can go stale when the corpus or the baseline changes. Whether CGV CI should install the pinned packages and diff the README table is an open question for CG-1.
 - The CGV column comes from the committed bench baseline, not from a fresh pipeline run. `scripts/bench.py run --compare bench/baseline.json` checks that the baseline is current.
 - pyright downloads its Node package on first run. The pinned pip version fixes the pyright version.
+- `bench/README.md` still tells authors to mark a test, cleanup or corrected-false-positive case `in_scope = false`, and the field keeps its name. A field that separates "not yet reached" from "not a bug case" is an open item for CG-1, and TC-4 depends on it.
 - `requirements.txt` pins the packages the script reads, not their dependencies (`typing-extensions`, `nodeenv`, `asgiref`, `sqlparse` float). A lock file for the full set is an open question for CG-1.
 - A `flagged` cell compares per-(file, rule) counts in the bug's file, not the bug's line, so an unrelated error of the same rule in that file that the fix removes also flags the case.

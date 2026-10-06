@@ -11,7 +11,8 @@
 # --python names an interpreter with the pinned packages of
 # bench/typecheckers/requirements.txt installed. Exit 0 ok, 2 harness failure
 # (ValueError covers invalid TOML, invalid JSON and non-UTF-8 input; OSError
-# covers a missing interpreter or an unreadable tree).
+# covers an unreadable tree; a command that cannot start is a HarnessError
+# naming the tool).
 import argparse
 import collections
 import json
@@ -35,6 +36,14 @@ class HarnessError(Exception):
     pass
 
 
+def run_tool(tool, cmd, **kwargs):
+    """subprocess.run, with a failure to start the command named after the tool."""
+    try:
+        return subprocess.run(cmd, **kwargs)
+    except OSError as e:
+        raise HarnessError(f"cannot run {tool} with {cmd[0]}: {e}")
+
+
 def write_config(tree, python):
     apps = sorted(p.parent.name for p in tree.glob("*/models.py"))
     (tree / f"{SETTINGS_MODULE}.py").write_text(
@@ -54,8 +63,8 @@ def write_config(tree, python):
 
 
 def run_mypy(tree, python):
-    proc = subprocess.run(
-        [python, "-m", "mypy", "--config-file", "mypy.ini", "--no-error-summary",
+    proc = run_tool(
+        "mypy", [python, "-m", "mypy", "--config-file", "mypy.ini", "--no-error-summary",
          "--no-pretty", "--hide-error-context", "--cache-dir", "/dev/null", "."],
         cwd=tree, capture_output=True, text=True,
         env={**os.environ, "MYPY_FORCE_COLOR": "0", "NO_COLOR": "1", "TERM": "dumb"},
@@ -71,8 +80,8 @@ def run_mypy(tree, python):
 
 
 def run_pyright(tree, python):
-    proc = subprocess.run(
-        [python, "-m", "pyright", "--outputjson", "--pythonpath", python, "-p", "pyrightconfig.json"],
+    proc = run_tool(
+        "pyright", [python, "-m", "pyright", "--outputjson", "--pythonpath", python, "-p", "pyrightconfig.json"],
         cwd=tree, capture_output=True, text=True,
     )
     try:
@@ -101,8 +110,8 @@ def check_tree(src, python, work):
 def versions(python):
     out = {}
     for pkg in ("mypy", "pyright", "django-stubs", "django", "pydantic"):
-        proc = subprocess.run(
-            [python, "-c", f"import importlib.metadata as m; print(m.version({pkg!r}))"],
+        proc = run_tool(
+            pkg, [python, "-c", f"import importlib.metadata as m; print(m.version({pkg!r}))"],
             capture_output=True, text=True,
         )
         if proc.returncode != 0:

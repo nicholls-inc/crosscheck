@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -340,6 +341,13 @@ class CommandLineTest(unittest.TestCase):
                         tc.run_pyright(tree, "python3")
 
 
+class RunToolTest(unittest.TestCase):
+    def test_a_command_that_cannot_start_is_a_harness_error_naming_the_tool(self):
+        with mock.patch.object(tc.subprocess, "run", side_effect=FileNotFoundError("nope")):
+            with self.assertRaisesRegex(tc.HarnessError, r"cannot run pyright with /x/python: .*nope"):
+                tc.run_pyright(Path("."), "/x/python")
+
+
 class CheckTreeTest(unittest.TestCase):
     def test_copies_the_tree_writes_config_and_runs_both_checkers_on_the_copy(self):
         seen = {}
@@ -472,18 +480,19 @@ class MainTest(unittest.TestCase):
                 code = tc.main(["--corpus", str(corpus), "--bench-result", str(result),
                                 "--python", str(Path(tmp) / "no-such-python")])
         self.assertEqual((code, out.getvalue()), (2, ""))
-        self.assertIn("error:", err.getvalue())
+        self.assertIn("cannot run mypy with", err.getvalue())
+        self.assertIn("no-such-python", err.getvalue())
 
     def test_a_relative_interpreter_path_is_made_absolute(self):
         seen = []
         with tempfile.TemporaryDirectory() as tmp:
             corpus, result = self.corpus(tmp, True)
             with mock.patch.object(tc, "versions", side_effect=lambda py: seen.append(py) or self.VERSIONS), \
-                    mock.patch.object(tc, "run_mypy", return_value=[]), \
-                    mock.patch.object(tc, "run_pyright", return_value=[]), \
+                    mock.patch.object(tc, "run_mypy", side_effect=lambda tree, py: seen.append(py) or []), \
+                    mock.patch.object(tc, "run_pyright", side_effect=lambda tree, py: seen.append(py) or []), \
                     contextlib.redirect_stdout(io.StringIO()):
                 tc.main(["--corpus", str(corpus), "--bench-result", str(result), "--python", ".venv/bin/python"])
-        self.assertEqual(seen, [str(Path(".venv/bin/python").absolute())])
+        self.assertEqual(seen, [os.path.abspath(".venv/bin/python")] * 5)
 
     def test_a_bare_interpreter_name_is_left_for_path_lookup(self):
         seen = []

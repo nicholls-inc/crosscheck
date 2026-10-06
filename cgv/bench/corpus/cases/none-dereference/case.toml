@@ -1,4 +1,4 @@
-description = "Crash from dereferencing a possibly-None .first() result; no write to a constrained target, so not yet reached by the design."
+description = "Crash from dereferencing a possibly-None .first() result; no write to a constrained target, so not yet reached by the design (blocked because there is no declared constraint to check the value against)."
 kind = "non-null"
 in_scope = false
 source = "synthetic"
