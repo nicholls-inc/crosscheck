@@ -50,7 +50,8 @@ This file is the ordered queue of work on this repository. The order of the rows
 | ER-1.1 | done | Write the intent and the spec for the evidence record format | | | `intent/2026-10-06-evidence-record.md` |
 | ER-1.2 | done | CGV emits an evidence record | ER-1.1 | | `intent/2026-10-06-cgv-evidence-record.md` |
 | ER-1.3 | todo | One Crosscheck pipeline emits an evidence record | ER-1.1 | | |
-| ER-1.4 | todo | Add a deterministic checker for evidence records | ER-1.1 | | |
+| ER-1.4 | done | Add a deterministic checker for evidence records | ER-1.1 | | `intent/2026-10-06-evidence-record-checker.md` |
+| ER-1.5 | todo | Run `scripts/check-evidence-record.test.mjs` in CI. No workflow runs it, because the tier gate's step runs only `scripts/ci/*.test.mjs`. Adding a step edits `.github/workflows/**`, a Class A protected surface, so the pull request needs a `/crosscheck:protected-surface-amend` note | ER-1.4 | | |
 | CG-1.1 | done | CGV README: say what the tool is for relative to type checkers, and qualify the exit 0 claim | | #10 | `intent/2026-10-06-cgv-readme-type-checkers.md` |
 | CG-1.7 | todo | Accept `int` where `float` is required, and `int` or `float` where `complex` is required (PEP 484 numeric tower). 35 of the 53 triaged false positives. The `type` check is `st = tt` in `constraintImplies` (`cgv/prover/ContractGraph/Checker.lean`), a protected definition, so widening it changes `protected-statements.txt` and needs Tier 3, a governance note and a rule in `BehaviorModel.lean`. The intent decides first whether an extractor-side change avoids that. Add a fixture with an `ok.py` | | #5 | |
 | CG-1.8 | todo | Treat a parameter typed `object` as accepting None, and add fixtures that pin the same for `Any` and an unannotated parameter. `annotation_facts` in `cgv/src/dataclass_extractor.rs` gives every plain name except `Any` the nullability `Some(false)`. Add a fixture with an `ok.py` | | #5 | |
