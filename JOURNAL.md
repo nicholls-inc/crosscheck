@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - CI runs the evidence record checker's tests
+
+**Type:** ci
+**Touches:** .github/workflows/evidence-record.yml, scripts/ci/evidence-record-workflow.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/assurance/TIER-LAYER-MAP.md, docs/TASKS.md
+**Why:** No workflow ran the checker's tests, so a pull request that broke the checker merged green, and the tier gate reported the checker as "not yet reached".
+**Links:** [intent](intent/2026-10-06-evidence-record-ci.md), [spec](intent/2026-10-06-evidence-record-ci-spec.md), [plan](intent/2026-10-06-evidence-record-ci-plan.md)
+
+The `Evidence Record` workflow runs `node --test scripts/check-evidence-record.test.mjs` on every pull request. It is its own workflow, not a step of the Tier Gate job, so a checker failure does not read as a tier gate failure. The tier gate's evidence table names the workflow for the checker and its test file, and for no other path under `scripts/`. `scripts/ci/evidence-record-workflow.test.mjs` runs the step's own script against the committed checker and against one whose `checkRecord` reports nothing, and the second must fail. The test sees the step's script, not the `on:` trigger, so the pull request's own run is the runner evidence.
+
+---
+
 ## 2026-10-06 - A checker reads an evidence record and says which rules it breaks
 
 **Type:** feature

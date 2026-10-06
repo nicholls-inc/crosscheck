@@ -18,7 +18,7 @@ This spec adds EC-1 to EC-3 and revises TG-8 of `intent/2026-09-30-tier-anchor-s
   The row matches those two paths exactly. Any other path under `scripts/` still falls to row 10. `docs/assurance/TIER-LAYER-MAP.md`'s evidence table shows the same row.
 - **EC-3. Tests.**
   - `scripts/ci/evidence-record-workflow.test.mjs` reads the `run:` script of the step named `Test the evidence record checker` from `evidence-record.yml`, by indentation, and runs it with `bash -e` from a scratch directory that holds copies of the checker and its tests under `scripts/`. It covers:
-    - with the checker as committed, the script exits 0, and its TAP output reports at least one passing test and no failing test (EC-1);
+    - with the checker as committed, the script exits 0, and its output, in the TAP format that the test selects through `NODE_OPTIONS`, reports at least one passing test and no failing test (EC-1);
     - with a checker whose `checkRecord` returns an empty list, the script exits non-zero (EC-1).
 
     The first case fails if the step runs another command or a path that does not exist. The second fails if the step does not run the checker's tests, or ignores their result.

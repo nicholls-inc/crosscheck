@@ -34,7 +34,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 ## Risks
 
 - **A second check on every pull request.** The checker's tests take about 4 seconds. Without a path filter the check runs on every pull request, so its result never depends on which files changed.
-- **The EC-3 test spawns `node --test` inside `node --test`.** The parent sets `NODE_TEST_CONTEXT` for its children, and a child `node --test` that inherits it reports to the parent instead of printing TAP. The test removes the variable from the child's environment.
+- **The EC-3 test spawns `node --test` inside `node --test`.** The parent sets `NODE_TEST_CONTEXT` for its children, and a child `node --test` that inherits it reports to the parent instead of printing a summary. The test removes the variable from the child's environment. Node 24 uses its `spec` reporter even off a terminal, so the test also sets `--test-reporter=tap` in the child's `NODE_OPTIONS`. That changes only the output format, not the step's command or its exit code.
 - **The test reads the YAML by indentation.** If the step is renamed or its `run:` moves, the test fails with a message that names the step, not silently.
 
 ## Proof that it worked

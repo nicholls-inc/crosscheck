@@ -146,6 +146,7 @@ which job holds the evidence for each class of changed file:
 | `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | `CI`: `npm test`, including the property tests |
 | `crosscheck/conformance/**` | `CI`, conformance job: `go vet`, `go test`, `go run . ..` |
 | `scripts/ci/**`, `.claude/hooks/protected-surface-guard.mjs`, `.husky/pre-commit` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
+| `scripts/check-evidence-record.mjs`, `scripts/check-evidence-record.test.mjs` | `Evidence Record`: `node --test scripts/check-evidence-record.test.mjs` |
 | `evals/**` | `Incident Eval Check` |
 | `docs/invariants/**` | not yet reached |
 | `.github/workflows/**` | not yet reached |
