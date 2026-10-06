@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - The evidence record has a format
+
+**Type:** docs
+**Touches:** intent/2026-10-06-evidence-record.md, intent/2026-10-06-evidence-record-spec.md, docs/TASKS.md
+**Why:** The vision says every change ships with a record of evidence, and ER-1.2 to ER-1.4 need one format to emit and check. Neither tool said how strong its result was, what it trusted, or how to rerun it.
+**Links:** [intent](intent/2026-10-06-evidence-record.md), [spec](intent/2026-10-06-evidence-record-spec.md)
+
+A record is a closed JSON object about one commit. Each claim names its strength (`proved`, `tested`, `observed` or `judged`), a basis whose fields depend on the strength, a trusted base of pinned components, a rerun command with its exit code, and a requirement or an explicit `null`. Rules EV-1 to EV-12 are decidable from the record alone, so the ER-1.4 checker needs no network, no LLM and runs no command. The record has no overall verdict, because how strengths combine is an open question of the vision. The checker checks shape, not truth. Rerunning every claim, proving that a judge is a person, and pinning the Crosscheck Docker images by digest are not yet reached.
+
+---
+
 ## 2026-10-06 - A pre-commit hook runs the checks that need no PR body
 
 **Type:** feature

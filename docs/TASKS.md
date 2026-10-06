@@ -44,7 +44,7 @@ This file is the ordered queue of work on this repository. The order of the rows
 | PB-1.16 | todo | The Incident Eval Check matches its trigger text anywhere in a line, so prose that quotes the trigger fires it. The run for #62, whose body and commits described the check, failed after the merge and named the incident `<id>` followed by a backtick. Decide which lines count as an incident reference, and add a test for quoted prose | | | |
 | VA-1.1 | todo | Skills and agents stop presenting the `intent-check` attestation as a required artefact | | | |
 | VA-1.2 | todo | Replace "out of scope", "not addressed" and "best-effort" in `crosscheck/README.md` and `crosscheck/docs/assurance-hierarchy.md` with "not yet reached", the blocking property, and the open question | | | |
-| ER-1.1 | todo | Write the intent and the spec for the evidence record format | | | |
+| ER-1.1 | done | Write the intent and the spec for the evidence record format | | | `intent/2026-10-06-evidence-record.md` |
 | ER-1.2 | todo | CGV emits an evidence record | ER-1.1 | | |
 | ER-1.3 | todo | One Crosscheck pipeline emits an evidence record | ER-1.1 | | |
 | ER-1.4 | todo | Add a deterministic checker for evidence records | ER-1.1 | | |
