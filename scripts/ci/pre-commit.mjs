@@ -31,13 +31,16 @@ class CannotRead extends Error {
   }
 }
 
-function git(args) {
+function git(args, fix = []) {
   try {
     return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
-    throw new CannotRead(`git ${args.join(' ')}: ${String(err.stderr || err.message).trim()}`);
+    throw new CannotRead(`git ${args.join(' ')}: ${String(err.stderr || err.message).trim()}`, fix);
   }
 }
+
+// PC-5. A queue file staged as a deletion cannot be read from the index.
+const stagedQueueFile = (path) => git(['show', `:${path}`], [`Fix: git restore --staged ${path}`]);
 
 const splitZ = (out) => out.split('\0').filter((p) => p.length > 0);
 
@@ -78,7 +81,7 @@ function checkGovernanceNotes({ staged, matchesProtected }) {
 function checkTaskQueue() {
   const rows = (() => {
     try {
-      return parseQueue(git(['show', `:${TASKS_PATH}`]), TASKS_PATH);
+      return parseQueue(stagedQueueFile(TASKS_PATH), TASKS_PATH);
     } catch (err) {
       throw err instanceof CannotRead ? err : new CannotRead(err.message);
     }
@@ -90,7 +93,7 @@ function checkTaskQueue() {
       fix,
     };
   }
-  const itemIds = parseItemIds(git(['show', `:${ROADMAP_PATH}`]));
+  const itemIds = parseItemIds(stagedQueueFile(ROADMAP_PATH));
   return { problems: checkRows({ rows, itemIds }), fix };
 }
 
@@ -159,7 +162,8 @@ export function main(rulesPath) {
       }
     } catch (err) {
       if (!(err instanceof CannotRead)) throw err;
-      lines.push(...block(check, [err.message], err.fix));
+      const fix = err.fix.length > 0 ? err.fix : ['Fix: run the git command above by hand and resolve the error it prints'];
+      lines.push(...block(check, [err.message], fix));
       code = 2;
     }
   }

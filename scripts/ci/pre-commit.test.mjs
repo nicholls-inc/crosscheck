@@ -170,6 +170,17 @@ test('PC-3: a note committed earlier on the branch counts', () => {
   assert.equal(r.moved, true);
 });
 
+test('PC-3: a note deleted on the branch is not read', () => {
+  const work = scratchClone();
+  assert.equal(commit(work, { [NOTE]: `Amends ${PROTECTED}\n` }).status, 0);
+  git(work, ['rm', '-q', NOTE]);
+  const r = commit(work, { [PROTECTED]: 'x\n' });
+  assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
+  assert.equal(r.moved, false);
+  assert.match(r.output, /^- docs\/assurance\/x\.md/m);
+});
+
 test('PC-3: a note on the default branch, unchanged on the branch, does not count', () => {
   const r = commit(scratchClone({ [NOTE]: `Amends ${PROTECTED}\n` }), { [PROTECTED]: 'x\n' });
   assert.equal(r.status, 1);
@@ -241,6 +252,24 @@ test('PC-4: a staged queue with no separator row exits 2', () => {
   assert.equal(r.hook, 2);
   assert.equal(r.moved, false);
   assert.match(r.output, /the queue table has no separator row/);
+});
+
+test('PC-4: a staged TASKS.md with no queue fails', () => {
+  const r = commit(scratchClone(), { 'docs/TASKS.md': '# Tasks\n' });
+  assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
+  assert.equal(r.moved, false);
+  assert.match(r.output, /docs\/TASKS\.md has no queue/);
+});
+
+test('PC-2, PC-4, PC-5: a queue file staged as a deletion exits 2 and says to restore it', () => {
+  const work = scratchClone();
+  git(work, ['rm', '-q', 'docs/TASKS.md']);
+  const r = commit(work, { 'README.md': 'y\n' });
+  assert.equal(r.status, 1);
+  assert.equal(r.hook, 2);
+  assert.equal(r.moved, false);
+  assert.match(r.output, /^Fix: git restore --staged docs\/TASKS\.md$/m);
 });
 
 test('PC-4: a roadmap change is checked against the staged queue', () => {

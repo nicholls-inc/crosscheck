@@ -27,7 +27,7 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - It reads both files from the index.
   - It fails on the problems QC-1 to QC-4 report: a task ID not of the form `<item ID>.<n>`, an item that the roadmap does not define, a repeated task ID, an unknown status, and a dependency that names no row.
   - It does not apply QC-5, because the `Task:` line is in the PR body. A row newly set to `done` passes.
-  - It exits 2 when the queue table has no separator row (QP-4), and fails when `docs/TASKS.md` has no queue.
+  - It exits 2 when the queue table has no separator row (QP-4), and fails when `docs/TASKS.md` has no queue. It also exits 2 when either file is staged as a deletion, because it cannot read it from the index, and the `Fix:` it prints is `git restore --staged <path>`.
 - **PC-5. Messages.** For each failing check the hook prints the problems, one per line, then a line that starts `Fix:` and names a command, then the rerun command `node scripts/ci/pre-commit.mjs`, then the link to the check's explainer under `docs/gates/`.
   - Governance notes: `Fix:` names `/crosscheck:protected-surface-amend` and `git add .assurance/protected-surface-amend/<note>.md`, and, for a file staged by mistake, `git restore --staged <path>` with the unnamed staged paths.
   - Queue: `Fix:` names the edit to `docs/TASKS.md` that each problem line states, then `git add docs/TASKS.md`.
@@ -43,6 +43,9 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - a staged queue with an unknown status fails and names the row (PC-4);
   - a staged queue that sets a row to `done` with no `Task:` line passes (PC-4);
   - a staged queue with no separator row exits 2 (PC-4);
+  - a staged `docs/TASKS.md` with no queue fails (PC-4);
+  - a queue file staged as a deletion exits 2 and prints `Fix: git restore --staged <path>` (PC-4, PC-5);
+  - a note deleted on the branch is not read (PC-3);
   - an unrelated commit in a clone with no `origin` passes (PC-6);
   - on each commit, the pre-commit hook process runs for under 5 seconds, as git's trace2 records it (PC-7).
 
