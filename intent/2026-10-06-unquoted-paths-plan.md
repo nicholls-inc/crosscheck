@@ -13,7 +13,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 3. In `scripts/ci/tier-gate.mjs`, read `CHANGED_FILES_PATH` as TG-16 says and stop reading `CHANGED_FILES`. Compile each protected glob with the `s` flag, so `**` matches a newline. In `.github/workflows/tier-gate.yml`, write the `-z` list to a `mktemp` file and export its path (TG-14).
 4. Run `node --test scripts/ci/*.test.mjs` and `actionlint .github/workflows/tier-gate.yml`.
 5. Update the input list in `intent/2026-09-29-deterministic-evidence-spec.md`.
-6. Set PB-1.10 to `done` in `docs/TASKS.md`, with this intent as its record. Add row PB-1.13 for `.husky/commit-msg` and row PB-1.14 for the newline gap in `.claude/hooks/protected-surface-guard.mjs`. Add a root `JOURNAL.md` entry.
+6. Set PB-1.10 to `done` in `docs/TASKS.md`, with this intent as its record. Add row PB-1.13 for `.husky/commit-msg` row PB-1.14 for the newline gap in `.claude/hooks/protected-surface-guard.mjs`, and row PB-1.15 for the gate failing open when `CHANGED_FILES_PATH` is unset. Add a root `JOURNAL.md` entry.
 
 ## Files
 
@@ -23,7 +23,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 | `scripts/ci/tier-gate.mjs` | yes (`scripts/ci/**`) | reads `CHANGED_FILES_PATH` (TG-16) |
 | `scripts/ci/tier-gate-workflow.test.mjs` | yes (`scripts/ci/**`) | three TG-15 cases |
 | `intent/2026-09-29-deterministic-evidence-spec.md` | no | input list |
-| `docs/TASKS.md` | no | PB-1.10 `done`, new row PB-1.13 |
+| `docs/TASKS.md` | no | PB-1.10 `done`, new rows PB-1.13, PB-1.14 and PB-1.15 |
 | `JOURNAL.md` | no | entry |
 | `.assurance/protected-surface-amend/unquoted-paths-2026-10-06.md` | no | new governance note |
 | `intent/2026-10-06-unquoted-paths*.md` | no | stage artefacts |
