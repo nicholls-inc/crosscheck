@@ -9,7 +9,8 @@
 //   PR_LABELS         - comma-separated label list (e.g. "tier:2,needs-review")
 //   CHANGED_FILES_PATH - path of a file holding the changed file paths
 //                        (repo-relative), NUL-separated as `git diff -z
-//                        --name-only` writes them, so no name is quoted (TG-16)
+//                        --name-only` writes them, so no name is quoted (TG-16).
+//                        Unset, empty or unreadable fails the gate (TG-17)
 //   BASE_REF          - the PR's base branch/commit (accepted for interface
 //                        completeness and included in the pass summary; the
 //                        actual diff is supplied via CHANGED_FILES_PATH)
@@ -353,19 +354,33 @@ export function evaluate({
   };
 }
 
+// TG-17: without a readable list the gate cannot see a protected path, so it
+// fails rather than evaluating an empty diff.
 function readChangedFiles(path) {
-  if (!path) return [];
-  return readFileSync(path, 'utf8').split('\0').filter((s) => s.length > 0);
+  if (!path) {
+    return {
+      problem:
+        'CHANGED_FILES_PATH is not set. Set it to a file holding the changed files, as `git diff -z --name-only --no-renames "origin/$BASE_REF...HEAD"` writes them.',
+    };
+  }
+  try {
+    return { files: readFileSync(path, 'utf8').split('\0').filter((s) => s.length > 0) };
+  } catch (err) {
+    return { problem: `Could not read the changed files from CHANGED_FILES_PATH ("${path}"): ${err.code ?? err.message}.` };
+  }
 }
 
 function main() {
-  const result = evaluate({
-    prBody: process.env.PR_BODY || '',
-    prLabels: splitList(process.env.PR_LABELS, ','),
-    changedFiles: readChangedFiles(process.env.CHANGED_FILES_PATH),
-    baseRef: process.env.BASE_REF || '(unspecified)',
-    rulesPath: process.env.CROSSCHECK_PROTECTED_RULES || DEFAULT_RULES_PATH,
-  });
+  const { files, problem } = readChangedFiles(process.env.CHANGED_FILES_PATH);
+  const result = problem
+    ? { pass: false, lines: failureLines([problem], process.cwd()) }
+    : evaluate({
+        prBody: process.env.PR_BODY || '',
+        prLabels: splitList(process.env.PR_LABELS, ','),
+        changedFiles: files,
+        baseRef: process.env.BASE_REF || '(unspecified)',
+        rulesPath: process.env.CROSSCHECK_PROTECTED_RULES || DEFAULT_RULES_PATH,
+      });
   for (const line of result.lines) console.log(line);
   process.exit(result.pass ? 0 : 1);
 }
