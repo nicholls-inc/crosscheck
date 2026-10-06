@@ -1,10 +1,6 @@
 // Tests for check-evidence-record.mjs. Run:
 //
 //   node --test scripts/check-evidence-record.test.mjs
-//
-// EV-N names refer to the rules of intent/2026-10-06-evidence-record-spec.md.
-// Every case runs the checker as a command on a file and asserts the exit
-// code and which rule names the output begins a line with.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -93,7 +89,6 @@ function run(record) {
   return runOnBytes(typeof record === 'string' ? record : JSON.stringify(record, null, 2));
 }
 
-// Anchored at line start and followed by the colon, so EV-1 does not match EV-10.
 const names = (result, rule) => new RegExp(`^${rule}:`, 'm').test(result.stdout);
 const namesWith = (result, rule, text) =>
   result.stdout.split('\n').some((line) => line.startsWith(`${rule}:`) && line.includes(text));
@@ -108,7 +103,6 @@ const ALL_RULES = Array.from({ length: 12 }, (_, i) => `EV-${i + 1}`);
 const noRulesBut = (...kept) => ALL_RULES.filter((r) => !kept.includes(r));
 
 const CASES = [
-  // The spec's list.
   { name: 'the valid record exits 0', record: VALID, status: 0, absent: ALL_RULES },
   {
     name: 'a claim with no strength names EV-5 and EV-9',
@@ -312,7 +306,6 @@ const CASES = [
     absent: ALL_RULES,
   },
 
-  // A negative case for every rule, beyond the spec's list.
   {
     name: 'a missing top-level format names EV-1 and EV-2',
     record: mutated((r) => delete r.format),

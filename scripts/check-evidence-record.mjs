@@ -6,8 +6,6 @@
 //
 // Exit codes: 0 the record satisfies EV-1 to EV-12, 1 it breaks a rule (one
 // line per problem on stdout), 2 no path, unreadable file, or not JSON.
-//
-// The checker reads one file. It runs nothing from the record.
 
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -39,8 +37,6 @@ function isRealDate(s) {
   return day <= daysInMonth;
 }
 
-// EV-9 and EV-10: the strengths, and for each the fields its basis has, come
-// from this one table.
 const BASIS = {
   proved: {
     theorems: {
@@ -63,7 +59,6 @@ const BASIS = {
 
 const isStrength = (v) => typeof v === 'string' && Object.hasOwn(BASIS, v);
 
-// A missing field and an unexpected field, both reported under one rule.
 function closedObjectProblems(rule, where, obj, expected) {
   const missing = expected.filter((k) => !Object.hasOwn(obj, k));
   const extra = Object.keys(obj).filter((k) => !expected.includes(k));
@@ -155,7 +150,6 @@ function claimProblems(claim, index, seenIds) {
   return problems;
 }
 
-// EV-1 to EV-12. Takes a parsed JSON value. An empty array means it passes.
 export function checkRecord(value) {
   if (!isObject(value)) return ['EV-1: record: must be a JSON object'];
   const problems = closedObjectProblems('EV-1', 'record', value, RECORD_FIELDS);
