@@ -21,7 +21,7 @@ Each of these statements says "not yet reached", names the blocking property and
 
 ## Constraints
 - No skill, agent or code changes. VA-1.1 owns the skills and agents.
-- The same phrases appear in `crosscheck/docs/research/assurance-hierarchy.md` and other docs under `crosscheck/docs/`. This change adds row VA-1.3 for them and does not edit them.
+- The same phrases appear in `crosscheck/docs/research/assurance-hierarchy.md` and other docs under `crosscheck/docs/`. This change adds row VA-1.6 for them and does not edit them.
 - Both files present `/intent-check`'s round-trip accuracy as Layer 5's confidence and say Layers 4 to 6 "prove" the spec is right. Rule 1 of the vision makes `/intent-check` a search tool. This change adds row VA-1.4 for that and does not edit it.
 
 ## Open questions
