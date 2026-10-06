@@ -10,7 +10,7 @@ Use CGV next to mypy or pyright, not instead of them. A type checker asks whethe
 
 Tests often miss these bugs too, because the database does not reject the value. PostgreSQL rounds a `numeric` value with more decimal places than the column's scale ([PostgreSQL 16 docs, Numeric Types](https://www.postgresql.org/docs/16/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL)), and SQLite stores a string of any length in a `VARCHAR(10)` column ([SQLite FAQ, question 9](https://www.sqlite.org/faq.html#q9)).
 
-Type checkers reach bugs that CGV does not. CGV reports a value only where it reaches a declared constraint, so a `None` dereference with no constrained target is not yet reached. Some nullability paths reach CGV as warnings, not errors (see [What exit 0 promises](#what-exit-0-promises)).
+Type checkers reach bugs that CGV does not. CGV reports a value only where it reaches a declared constraint, so a `None` dereference with no constrained target is not yet reached. The blocking property is that there is no declared constraint to check the value against, and the open question is which unconstrained dereferences a nullability model should treat as targets. Some nullability paths reach CGV as warnings, not errors (see [What exit 0 promises](#what-exit-0-promises)).
 
 **Comparison on the bench corpus.** `scripts/typecheck_compare.py` runs mypy and pyright on the pre-fix and fixed trees of each case in `bench/corpus`. A type checker flags a case when the pre-fix tree has an error in the bug's file, of a rule that the fix removes. The CGV column is the outcome in `bench/baseline.json` (see `bench/README.md`). Rerun the table with Python 3.12 or later:
 
@@ -328,8 +328,10 @@ RESULT: 1 error, 1 warning. Exit code 1.
 
 ### What exit 0 promises
 
-`runChecker_sound_all` proves that exit 0 means every data path of the translated graph is stepwise sound. Three qualifiers apply:
+`runChecker_sound_all` proves that exit 0 means every data path of the translated graph is stepwise sound. These qualifiers apply, and the list is not exhaustive (see [Trust model](#trust-model) for what is trusted and not proved):
 
 - **Only the paths the extractor discovered.** Extraction is not proved (see [Trust model](#trust-model)). A write the extractor does not see is not in the graph, so exit 0 says nothing about it.
 - **Writes outside the project's code are not yet reached.** This covers writes that Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a DRF serializer's `save()`), raw SQL, and fixtures. The property that blocks them is that the write happens in framework code or in the database, which the extractor does not read. The open question is how small a model of each framework's write paths can be and still be trusted.
-- **A missing guarantee is a warning, not an error.** When CGV cannot show that a value meets a requirement, it warns and still exits 0. A run that exits 0 with warnings has unknown paths, not consistent ones. `RESULT:` in the text report counts the warnings.
+- **Only paths that end at a model node.** A data path runs from a function node to a model node. A `flows_to` edge into a callee that never reaches a model node is not checked.
+- **Relative to the translated constraints, not to Django or pydantic.** Translation from the database to Lean is not proved, and `BehaviorModel.lean` is trusted, not proved. No theorem links the checked constraints to it. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is an annotation that Python does not enforce, so the claim holds for a type-correct program.
+- **A missing guarantee is a warning, not an error.** When CGV cannot show that a value meets a requirement, it warns and still exits 0. `runChecker_sound_all` is stated for runs that exit 0 with warnings. A warning names a requirement that CGV could not show, so read a run that exits 0 with warnings as having unknown paths, not consistent ones. `RESULT:` in the text report counts the warnings.

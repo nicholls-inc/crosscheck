@@ -109,19 +109,22 @@ def versions(python):
 def load_cases(corpus):
     cases = []
     for case_toml in sorted((corpus / "cases").glob("*/case.toml")):
-        with open(case_toml, "rb") as f:
-            case = tomllib.load(f)
-        case_dir = case_toml.parent
-        if "pre" not in case:
-            continue
-        cases.append({
-            "id": case.get("id", case_dir.name),
-            "kind": case["kind"],
-            "in_scope": case["in_scope"],
-            "pre": case_dir / case["pre"],
-            "fix": case_dir / case["fix"],
-            "files": sorted({b["file"] for b in case["bug"]}),
-        })
+        try:
+            with open(case_toml, "rb") as f:
+                case = tomllib.load(f)
+            case_dir = case_toml.parent
+            if "pre" not in case:
+                continue
+            cases.append({
+                "id": case.get("id", case_dir.name),
+                "kind": case["kind"],
+                "in_scope": case["in_scope"],
+                "pre": case_dir / case["pre"],
+                "fix": case_dir / case["fix"],
+                "files": sorted({b["file"] for b in case["bug"]}),
+            })
+        except (KeyError, tomllib.TOMLDecodeError) as e:
+            raise HarnessError(f"{case_toml} is malformed: {e!r}")
     return cases
 
 
@@ -158,7 +161,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         vers = versions(args.python)
-        cgv = {c["id"]: c["outcome"] for c in json.loads(args.bench_result.read_text())["cases"]}
+        try:
+            cgv = {c["id"]: c["outcome"] for c in json.loads(args.bench_result.read_text())["cases"]}
+        except (KeyError, json.JSONDecodeError) as e:
+            raise HarnessError(f"{args.bench_result} is malformed: {e!r}")
         rows = []
         for case in load_cases(args.corpus):
             with tempfile.TemporaryDirectory() as tmp:
