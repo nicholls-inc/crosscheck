@@ -143,17 +143,37 @@ class CorpusTest(unittest.TestCase):
             with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
                 tc.load_cases(Path(tmp))
 
-    def case_with(self, tmp, extra="", bug='[[bug]]\nfile = "a.py"\n', trees=("pre", "fix")):
+    def case_with(self, tmp, extra="", bug='[[bug]]\nfile = "a.py"\n', trees=("pre", "fix"),
+                  kind='"k"', in_scope="true"):
         case_dir = Path(tmp) / "cases" / "broken"
         case_dir.mkdir(parents=True)
         for t in trees:
             (case_dir / t).mkdir()
         (case_dir / "case.toml").write_text(
-            f'kind = "k"\nin_scope = true\npre = "pre"\nfix = "fix"\n{extra}\n{bug}')
+            f'kind = {kind}\nin_scope = {in_scope}\npre = "pre"\nfix = "fix"\n{extra}\n{bug}')
 
     def test_a_non_string_id_is_a_harness_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.case_with(tmp, extra="id = []")
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
+    def test_malformed_field_values_are_harness_errors(self):
+        for name, kwargs in (
+            ("empty id", {"extra": 'id = ""'}),
+            ("list kind", {"kind": "[]"}),
+            ("string in_scope", {"in_scope": '"false"'}),
+            ("int file", {"bug": "[[bug]]\nfile = 1\n"}),
+            ("empty file", {"bug": '[[bug]]\nfile = ""\n'}),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                self.case_with(tmp, **kwargs)
+                with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                    tc.load_cases(Path(tmp))
+
+    def test_a_deeply_nested_case_toml_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_case(tmp, "a = " + "[" * 100000)
             with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
                 tc.load_cases(Path(tmp))
 

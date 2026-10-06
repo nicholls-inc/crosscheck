@@ -119,10 +119,16 @@ def load_cases(corpus):
             case_id = case.get("id", case_dir.name)
             pre, fix = case_dir / case["pre"], case_dir / case["fix"]
             files = sorted({b["file"] for b in case["bug"]})
-            if not isinstance(case_id, str):
-                raise TypeError(f"id must be a string, not {case_id!r}")
+            if not isinstance(case_id, str) or not case_id:
+                raise TypeError(f"id must be a non-empty string, not {case_id!r}")
+            if not isinstance(case["kind"], str):
+                raise TypeError(f"kind must be a string, not {case['kind']!r}")
+            if not isinstance(case["in_scope"], bool):
+                raise TypeError(f"in_scope must be true or false, not {case['in_scope']!r}")
             if not files:
                 raise ValueError("bug must name at least one file")
+            if not all(isinstance(f, str) and f for f in files):
+                raise TypeError(f"bug files must be non-empty strings, not {files!r}")
             for tree in (pre, fix):
                 if not tree.is_dir():
                     raise OSError(f"{tree} is not a directory")
@@ -134,7 +140,7 @@ def load_cases(corpus):
                 "fix": fix,
                 "files": files,
             })
-        except (KeyError, TypeError, OSError, ValueError) as e:
+        except (KeyError, TypeError, OSError, ValueError, RecursionError) as e:
             raise HarnessError(f"{case_toml} is malformed: {e!r}")
     return cases
 
