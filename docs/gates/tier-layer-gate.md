@@ -32,9 +32,16 @@ A pull request declares its tier in one of two ways: a `Tier: N` line in the PR 
 
 `.claude/rules/protected-surfaces.md` lists paths — skill definitions, agent prompts, invariants, hooks, CI enforcement scripts, and the rules file itself — that define how Crosscheck decides what is correct. If a diff touches any of these, the gate imposes a **floor of Tier 3** regardless of what the PR declares. Declaring Tier 1 or Tier 2 on such a diff is not a judgement call the gate defers to you on — it is a straightforward failure, because a change to how safety is decided cannot be waved through as routine. You may always declare a tier *above* the floor; you may never declare one below it.
 
-## What the incident-eval check adds
+## Incidents are checked after the merge, not by this gate
 
-When a pull request fixes a bug that caused a production incident, the tier gate additionally expects a durable regression test: an **eval** under `evals/` that reproduces the incident and stays in the test suite permanently, so the same failure cannot silently recur. This follows the playbook's principle that every incident earns a permanent test, not just a one-off patch. If your PR resolves an incident and no matching eval is present, add one before the gate will pass.
+The tier gate reads no incident reference. A pull request that fixes an incident passes or fails this gate on its tier and artefacts alone, whether or not it adds an eval.
+
+A separate workflow, `incident-eval-check.yml` (the Incident Eval Check), checks incidents. It applies when a pull request has the `incident` label, or the text `Fixes-Incident: <id>` in its body or in one of its commit messages. It matches that text anywhere in a line, so a description that quotes it also counts. It then needs two files that contain the incident id:
+
+- an **eval** under `evals/` that reproduces the incident and stays in the suite, so the same failure cannot recur unnoticed;
+- a candidate invariant under `docs/invariants/` or `crosscheck/docs/invariants/`.
+
+The check runs only after the pull request is merged. It reports on the merge and cannot block it. No check asks for the eval or the invariant before the merge, so add both in the pull request that fixes the incident. Stage 5 of `docs/assurance/DEVELOPMENT-FRAMEWORK.md` lists its exit codes.
 
 ## What each decision means
 
