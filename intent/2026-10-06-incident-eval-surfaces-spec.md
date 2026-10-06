@@ -1,0 +1,23 @@
+# Spec: Describe the Incident Eval Check the same way everywhere
+
+Intent: `intent/2026-10-06-incident-eval-surfaces.md`. Governing roadmap item: PB-1. Task: PB-1.12.
+
+This spec revises IE-2 and IE-6 of `intent/2026-09-30-incident-eval-range-spec.md` and row 6 of TG-8 in `intent/2026-09-30-tier-anchor-spec.md`. Both files point here. It adds IE-8 and DOC-7.
+
+- **IE-2 (revised).** The exit-2 causes do not change: `PR_NUMBER` is not a decimal number, `HEAD_SHA` is not 40 hex characters, `BASE_REF` is empty, either git command fails, or the range holds no commits. The range is empty when the head is already on the base branch, as after a merge commit. A rebase merge on GitHub writes new commit SHAs, so the original head is not on the base branch, the range holds the pull request's commits, and the check reads them. The repository's ruleset allows only squash merges, so neither case occurs on `main` today.
+- **IE-6 (added case).** `scripts/ci/incident-eval-check.test.mjs` covers a rebase merge as GitHub performs it: the branch's commits are replayed onto the base with a different committer, so each gets a new SHA, and `HEAD_SHA` is the original head. With the incident line only in the oldest of two commits, the check exits 1 and the output names the incident. With no incident line, it exits 0 and prints the skip line.
+- **IE-8. Failure message.** The exit-1 output keeps the four-line gate shape of `docs/gates/README.md`:
+  1. `**Action needed: add an eval and candidate invariant**`
+  2. `You are being asked to add a regression eval and a candidate invariant for this incident in a follow-up pull request because this check runs after the merge and every production incident must leave both artefacts in the suite. Approving means the incident becomes a permanent regression check and a documented invariant; declining means the merged change leaves the incident with no regression check and no invariant. Full explanation: <link>.`
+
+  `<link>` is `https://github.com/<owner>/<repo>/blob/main/docs/gates/incident-eval-check.md` when `origin` is a GitHub URL, and `docs/gates/incident-eval-check.md` otherwise. The missing-item lines that follow do not change. Every exit-1 test asserts the whole output, so the tests pin the new text.
+- **TG-8 row 6 (revised).** `evals/**` is *not yet reached*. Property: `no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for a file that names the incident`. Question: `what runs an eval as a regression test, and which workflow runs it before the merge`. The row keeps its position, so the order of the rows and the first-match rule do not change. The tier gate's pass or fail result does not change. `scripts/ci/tier-gate.test.mjs` asserts the new line in the test whose changed files hit every class.
+- **DOC-7.** These documents agree with stage 5 of `docs/assurance/DEVELOPMENT-FRAMEWORK.md`:
+  - `docs/gates/incident-eval-check.md` (new) states the trigger, the two artefacts, that both tests are substring matches, exit 0, 1 and 2, that the workflow runs after the merge and cannot block it, what it does not catch (it runs no eval, and it matches the trigger anywhere in a line, so quoted prose fires it), and a local command that reproduces a run. `docs/gates/README.md` lists it as gate 18.
+  - `docs/assurance/TIER-LAYER-MAP.md` shows row 6 as "not yet reached" and gives its property and question in the list under the table.
+  - `evals/README.md` asks for the eval and the candidate invariant in every case, names both invariant directories, and says the check runs after the merge and cannot block it.
+  - Stage 6 and the stage table of `DEVELOPMENT-FRAMEWORK.md`, and the chain in `CLAUDE.md`, name the candidate invariant. Stage 5 links to the explainer.
+
+## Concerns flagged
+- **The follow-up pull request is not checked.** The check reads only the merged pull request's own label, body and commits. A follow-up that adds the eval and the invariant, without its own incident reference, is skipped, and the red run on the original merge stays red. The explainer says so. A re-run of the original run does not help either: for a `pull_request` event, `actions/checkout` checks out the event's merge commit, which predates the follow-up (inferred from GitHub's event documentation, not run). So nothing deterministic records that an incident was closed after the fact. A follow-up that carries its own incident reference is checked, and the explainer recommends that.
+- **Quoted prose fires the trigger.** PB-1.13 (proposed in #65) owns that fix. Until it lands, the explainer warns about it.
