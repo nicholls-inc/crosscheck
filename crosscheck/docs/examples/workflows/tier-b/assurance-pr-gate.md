@@ -315,8 +315,15 @@ If `plan.dafny_handoff_needed == true`, the block content is:
 > 3. `/crosscheck:extract-code` — compile the verified Dafny to
 >    Python or Go.
 >
-> Hellebuyck's Layer 5/6 output is best-effort; Dafny's Layer 1–3
-> verification is deterministic. Use the right tool for the layer.
+> Hellebuyck's Layer 5 output is probabilistic and its Layer 6 output is
+> search only: it points at gaps and is not evidence. Dafny's Layer 1
+> verification is deterministic. On the Dafny path, Layers 2 and 3 are not
+> yet reached. Layer 2 is blocked because the Dafny backends are trusted, not
+> verified; the open question is whether translation validation of each
+> extracted file can replace that trust. Layer 3 is blocked because
+> Dafny-verified units and their callers share no contract format; the open
+> question is how to check composition end to end, not pair by pair. Use the
+> right tool for the layer.
 
 If `plan.dafny_handoff_needed == false`, use "No Dafny candidates in this
 PR." as the block content.
