@@ -55,5 +55,6 @@ The unit tests cover DE-1, DE-5, DE-9 and DE-10 as pure functions, including a f
 - **The rerun names a tag, not a digest.** The rerun command uses the image name, so an auditor who built `crosscheck-dafny:latest` later may run a different image. The trusted base records the local image ID, and the Dockerfile pins Dafny 4.11.0, but the base image is `ubuntu:22.04` with no digest. The evidence record spec flags the toolchain pinning, and it stays open.
 - **Z3's own version is not read.** The Dafny release zip bundles Z3, and the record names the Dafny release rather than the Z3 build.
 - **The Docker runtime and the host are not in the trusted base.** On an arm64 host the amd64 image runs under emulation.
+- **Any warning refuses.** DE-6 inherits Dafny's default of failing on warnings, so a missing trigger or "unusual indentation" refuses as surely as an `assume`. That is the safe direction. On 2026-10-06 it refuses all three tracked specs under `crosscheck/mcp-server/specs/`, which also hold `assume false` and one verification error (issue #81).
 - **A record written into the tree dirties it.** DE-3 then refuses the next run until the record is committed, ignored, or written outside the tree.
 - **No skill calls the tool yet.** `/generate-verified` and `/spec-iterate` are Class A protected surfaces, and wiring them is a separate change, issue #80.
