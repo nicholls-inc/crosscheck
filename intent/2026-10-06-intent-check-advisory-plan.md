@@ -15,7 +15,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 5. `crosscheck/skills/protected-surface-amend/SKILL.md` Steps 3 and 7 (IA-6).
 6. `crosscheck/agents/hellebuyck.md` (IA-7): the skill table row, the routing row for protected-surface PRs, the FP-tracker quality gate, the authority gate, and the "Attestation over trust" guideline.
 7. `crosscheck/agents/add-orchestrator.md`, `crosscheck/agents/lowry.md`, `crosscheck/skills/draft-invariants/SKILL.md` (IA-8). Replace "lines 76–92" with the section name.
-8. `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md` (IA-3, IA-9).
+8. `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md` (IA-3, IA-9), and the line citation in `crosscheck/docs/orchestrator-coordination.md`.
 9. `docs/TASKS.md`: set VA-1.1 to `done` with this intent as its record, and add VA-1.3 for the example workflows. Add a root `JOURNAL.md` entry.
 
 ## Files
@@ -30,7 +30,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 | `crosscheck/agents/add-orchestrator.md` | yes | hand-off wording, section references |
 | `crosscheck/agents/lowry.md` | yes | intent check is optional, not the judgement |
 | `crosscheck/skills/intent-check/references/attestation-schema.md` | no | hook sections removed |
-| `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md` | no | wording, line pointers |
+| `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md`, `crosscheck/docs/orchestrator-coordination.md` | no | wording, line pointers |
 | `docs/TASKS.md`, `JOURNAL.md` | no | record |
 | `.assurance/protected-surface-amend/intent-check-advisory-2026-10-06.md` | no | governance note |
 | `intent/2026-10-06-intent-check-advisory*.md` | no | stage artefacts |
@@ -43,7 +43,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 ## Proof that it worked
 
-- `git grep -n -i -E "must be written \*\*before\*\* the commit|stops gating commits|keeps gating commits|attestation hook refuses|prior attestation|Attestation over trust|attestation regeneration|baseline refresh|intent-check attestation, and|can gate a commit|lines 76" -- crosscheck docs/gates` prints nothing. Run on `origin/main`, the same command prints the lines this change targets.
+- `git grep -n -i -E "must be written \*\*before\*\* the commit|stops gating commits|keeps gating commits|attestation hook refuses|prior attestation|Attestation over trust|attestation regeneration|baseline refresh|intent-check attestation, and|can gate a commit|lines 76" -- crosscheck/skills crosscheck/agents crosscheck/docs/orchestrator-coordination.md docs/gates` prints nothing. Run on `origin/main`, the same command prints the lines this change targets.
 - `git grep -n -i "pre-commit" -- crosscheck/skills/intent-check` prints only lines that say no hook reads the record.
 - `go run ./crosscheck/conformance crosscheck` exits 0 before and after the change.
 - `node scripts/ci/task-queue.mjs check` passes with `Task: VA-1.1`, and the Tier Gate passes at Tier 3 on the pull request.
