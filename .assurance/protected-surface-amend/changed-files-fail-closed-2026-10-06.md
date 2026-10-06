@@ -34,7 +34,7 @@ Task PB-1.15. An unset `CHANGED_FILES_PATH` gave the gate an empty list, so it s
 
 ### Test / Coverage Impact
 
-- `node --test scripts/ci/*.test.mjs` gains seven TG-18 cases. The three failure cases fail against the old gate.
+- `node --test scripts/ci/*.test.mjs` gains seven TG-18 cases. The four failure cases (unset, empty, missing file, directory) fail against the old gate.
 - The gate's result changes only for a run without a readable `CHANGED_FILES_PATH`, which now fails. A run with a readable list, as the workflow makes, gets the same result as before.
 - No invariant or eval changes.
 
