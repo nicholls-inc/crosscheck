@@ -15,7 +15,7 @@ A reader concludes that a Layer 5 run proves a spec matches intent 96% of the ti
 ## Proposed outcome
 Both files say, for each of Layers 4 to 6, what it proves, what it tests and what it only searches:
 
-- **Layer 4.** `/check-regressions` re-proves the Dafny source of each changed hard-constraint spec, so it proves that much. It does not prove the extracted code still matches, and its soft constraints are property tests. `/invariant-coverage-scaffold` checks deterministically that each non-aspirational invariant is referenced by a comment in a test file. That check does not show a test checks its invariant. The covering tests and `/assurance-probe`'s mutation probes test, on the inputs they run. `/rationale` proves and tests nothing itself. It hands formal leaves to byfuglien's pipelines (Dafny proves, the Lean DRT oracle tests), writes behavioural leaves as tests for CI to run, leaves semantic leaves to human judgment, and only searches with its static leaves, which an LLM checks by reading code.
+- **Layer 4.** `/check-regressions` re-proves the Dafny source of each changed hard-constraint spec, so it proves that much. It does not prove the extracted code still matches, and its soft constraints are property tests. `/invariant-coverage-scaffold` checks deterministically that each non-aspirational invariant is referenced by a comment in a test file. That check does not show a test checks its invariant. The covering tests test, on the inputs they run. `/assurance-probe`'s mutation probes only search for weak covering tests, and a person triages what they find. `/rationale` proves and tests nothing itself. It hands formal leaves to byfuglien's pipelines (Dafny proves, the Lean DRT oracle tests), writes behavioural leaves as tests for CI to run, leaves semantic leaves to human judgment, and only searches with its static leaves, which an LLM checks by reading code.
 - **Layer 5.** Spec–intent alignment is search only. `/intent-check` and `/audit-invariant-consistency` are LLM pipelines. The ~96% is the accuracy that Claimcheck reports for the round-trip method on its development benchmark (`crosscheck/docs/research/assurance-hierarchy.md`). It measures how often the search is right, not how strongly a spec matches intent, and `/intent-check`'s accuracy on real pull requests is unmeasured. `/acceptance-oracle-draft` drafts scenarios that a human approves and CI runs, so an approved scenario tests. A proof that a spec achieves its intent is not yet reached. The blocking property is that no formal requirement is tied to the spec, and the open question is RQ-1's.
 - **Layer 6.** Search only, as the files already say.
 
@@ -23,11 +23,11 @@ The grep `Probabilistic \(~96%\)|prove the specification is the right` finds not
 
 ## Affected users and systems
 - Anyone deciding how far to trust a Layer 4, 5 or 6 result.
-- `crosscheck/README.md`, `crosscheck/docs/assurance-hierarchy.md`, `crosscheck/JOURNAL.md` and `docs/TASKS.md`. None is protected, and no behaviour changes, so the change is Tier 1.
+- `crosscheck/README.md`, `crosscheck/docs/assurance-hierarchy.md`, `crosscheck/JOURNAL.md` and `docs/TASKS.md`. The queue changes are the VA-1.4 row set to `done`, a new VA-1.7 row (depends on VA-1.4) for the research doc, and an extension of the VA-1.5 row to own two skill-text strength claims that the layer docs now contradict: `/rationale` marking static leaves "Verified (static)", and `/acceptance-oracle-draft` saying it measures whether the spec was the right spec. None is protected, and no behaviour changes, so the change is Tier 1.
 
 ## Constraints
 - No skill, agent or code changes. VA-1.1 (open PR #72) owns the `intent-check` wording in skills and agents, and rewrites step 4 of the onboarding flow in `crosscheck/docs/assurance-hierarchy.md`. This change leaves that step alone so the two pull requests do not conflict.
-- `crosscheck/docs/research/assurance-hierarchy.md` holds the same Layer 5 claim. VA-1.6 owns that file.
+- `crosscheck/docs/research/assurance-hierarchy.md` holds the same Layer 5 claim. VA-1.7 owns the Layer 5 claim there, and VA-1.6 owns the file's other "out of scope", "not addressed" and "best-effort" phrasing.
 
 ## Open questions
 None. The strengths come from the vision's rule 7 and from what each skill's `SKILL.md` says it runs.
