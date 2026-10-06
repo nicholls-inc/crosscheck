@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "to_decimal -> Sample.level",
+      "source_guarantee": "type = Decimal",
+      "target_requirement": "type = float",
+      "target": "Sample.level"
+    },
+    {
+      "path": "to_text -> Sample.level",
+      "source_guarantee": "type = str",
+      "target_requirement": "type = float",
+      "target": "Sample.level"
+    },
+    {
+      "path": "float_into_int -> Sample.count",
+      "source_guarantee": "type = float",
+      "target_requirement": "type = int",
+      "target": "Sample.count"
+    }
+  ]
+}
