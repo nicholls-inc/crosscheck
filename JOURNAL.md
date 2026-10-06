@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - The framework states what the Incident Eval Check does
+
+**Type:** docs
+**Touches:** docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/TASKS.md
+**Why:** Stage 5 said the check fails on an incident record under `evals/` with no eval. The check never looks for incident records, needs a candidate invariant too, has an exit 2, and runs only after the merge.
+**Links:** [intent](intent/2026-10-06-incident-eval-doc.md), [plan](intent/2026-10-06-incident-eval-doc-plan.md)
+
+The bullet now names the trigger (the `incident` label, or a `Fixes-Incident:` line in the body or a commit), the eval and the candidate invariant it needs, exit 1, and exit 2 for commits it cannot read. It also says that the workflow runs on a merged pull request, so it reports on a merge and cannot block one. The run for #61 started four seconds after the merge, and the run for #60, closed without a merge, was skipped. `docs/gates/tier-layer-gate.md` still says the tier gate expects the eval before it passes. Task PB-1.11 fixes that.
+
+---
+
 ## 2026-10-01 - The Tier Gate step computes its own changed files
 
 **Type:** fix

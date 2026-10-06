@@ -123,8 +123,17 @@ branch requires no status checks:
   holds the evidence for each changed file.
 - `ci.yml` (Crosscheck) and `cgv-ci.yml` (CGV) are the tests, builds and proofs
   described in stage 4.
-- `incident-eval-check.yml` fails when an incident record under `evals/` has no
-  accompanying eval.
+- `incident-eval-check.yml` runs only after a pull request is merged, so it
+  reports on the merge and cannot block it. It applies when the pull request
+  has the `incident` label, or a `Fixes-Incident: <id>` line in its body or in
+  one of its commits. It exits 1 in either of these cases:
+  - no eval under `evals/`, or no candidate invariant under `docs/invariants/`
+    or `crosscheck/docs/invariants/`, names the incident id;
+  - the label is set and no id is found.
+
+  It exits 2 when it cannot read the pull request's commits, for example after
+  a merge commit, which puts them on the base branch where the check cannot
+  tell them apart from the base branch's own.
 - `task-queue.yml` fails when a row of `docs/TASKS.md` names no roadmap item,
   repeats a task ID, has a status other than `todo`, `blocked` or `done`, or
   depends on a task that is not in the queue. It also fails when the pull
