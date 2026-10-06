@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - The Tier Gate reads changed file names NUL-separated
+
+**Type:** fix
+**Touches:** .github/workflows/tier-gate.yml, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate-workflow.test.mjs, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** `git diff --name-only` C-quotes a name with a non-ASCII byte, a double quote, a backslash or a control character. The quoted name matched no protected glob, so `docs/assurance/é.md` passed the gate at `Tier: 1`.
+**Links:** [intent](intent/2026-10-06-unquoted-paths.md), [spec](intent/2026-10-06-unquoted-paths-spec.md), [plan](intent/2026-10-06-unquoted-paths-plan.md)
+
+The step now writes `git diff -z` to a temporary file and passes its path as `CHANGED_FILES_PATH`. The gate splits on NUL and keeps each name as written. `core.quotePath=false` was not enough, since it still quotes `"`, `\` and control characters. Once a name with a newline reached the gate intact, `**` compiled to `.*` still stopped at the newline, so each glob now compiles with the `s` flag. `.husky/commit-msg` has the quoting fault (PB-1.13), and the protected-surface hook has the newline fault (PB-1.14). The gate still reads an unset `CHANGED_FILES_PATH` as an empty list, which fails open. The maintainer kept that out of this task, and PB-1.15 makes it fail closed.
+
+---
+
 ## 2026-10-06 - The tier gate's explainer stops claiming it checks incident evals
 
 **Type:** docs

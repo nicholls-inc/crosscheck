@@ -110,6 +110,15 @@ test('TG-14: a file named EOF next to an unprotected file passes at Tier 1 and n
   assert.match(out, /tier-gate: PASS — Tier 1 artefacts present \(declared: 1, floor: none, base: main\)\./);
 });
 
+for (const name of ['docs/assurance/é.md', 'docs/assurance/a"b.md', 'docs/assurance/n\nl.md']) {
+  test(`TG-16: a protected file git would quote, ${JSON.stringify(name)}, keeps the Tier 3 floor`, () => {
+    const work = scratchPr({}, (dir) => write(dir, { [name]: 'x\n' }));
+    const { code, out } = runStep(work);
+    assert.equal(code, 1, out);
+    assert.ok(out.includes(`force a floor of Tier 3, but the PR declares Tier 1: ${name}`), out);
+  });
+}
+
 test('TG-1a: a protected file moved out of a protected path keeps the Tier 3 floor', () => {
   const work = scratchPr({ 'docs/assurance/x.md': 'x\n' }, (dir) => sh(dir, ['mv', 'docs/assurance/x.md', 'notes.md']));
   const { code, out } = runStep(work);
