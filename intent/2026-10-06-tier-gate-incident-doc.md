@@ -24,4 +24,4 @@ The section says that the tier gate does not check incidents, names the Incident
 ## Open questions
 None. The task row states the outcome, and the code states the behaviour.
 
-The Incident Eval Check matches its trigger anywhere in a line, so prose that quotes the trigger also fires it. The run for #62, whose body and commits described the check, failed after the merge with the id `<id>` followed by a backtick. This change adds row PB-1.13 for that and does not fix it.
+The Incident Eval Check matches its trigger anywhere in a line, so prose that quotes the trigger also fires it. The run for #62, whose body and commits described the check, failed after the merge with the id `<id>` followed by a backtick. This change adds row PB-1.16 for that and does not fix it.
