@@ -32,7 +32,7 @@ A claim is a JSON object with exactly seven fields. The tables give each field's
 |---|---|---|
 | `id` | string | Names the claim within the record. Lowercase letters, digits and `-`, starting with a letter or digit. |
 | `statement` | string | What is claimed, in plain language, for a reader who will not open the code. |
-| `requirement` | string or `null` | The approved requirement the claim traces to, as a repository path with an optional `#anchor`. `null` says the claim traces to no approved requirement yet. The field is required, so that a missing trace is stated rather than left out. |
+| `requirement` | string or `null` | The requirement the claim traces to (approval is not recorded; see "Concerns flagged"), as a repository path with an optional `#anchor`. `null` says the claim traces to no approved requirement yet. The field is required, so that a missing trace is stated rather than left out. |
 | `strength` | string | `"proved"`, `"tested"`, `"observed"` or `"judged"`. |
 | `basis` | object | The facts the strength needs. Its fields depend on `strength`; see below. |
 | `trusted_base` | array of components | At least one component. |
@@ -82,7 +82,7 @@ Five conventions apply to every rule:
 - **EV-13. Checker interface.** The checker takes the path of a record. It reads no network, calls no LLM, and runs no command from the record.
   - It exits 0 when the record satisfies EV-1 to EV-12.
   - It exits 1 when the record breaks a rule. It reports every broken rule, not only the first. Each problem is one line that begins with the rule name and a colon, such as `EV-9:`, and then names the claim `id` where there is one (or the claim's index when the `id` itself is broken), and the field. Claims are numbered from 0 in array order. A duplicate `id` is reported once for each claim after the first that uses it, and names that claim by its index. An element of `claims` that is not an object is reported under EV-5 with its index, and EV-6 to EV-12 are not applied to it. An index is written `claims[1]`.
-  - It exits 2 when it cannot read the file or the file is not JSON.
+  - It exits 2 when it cannot read the file, when the file is not JSON, or when it is run with no path. A syntactically valid JSON number is JSON whatever its magnitude, so a file holding `1e999` is not exit 2. It is a value that no integer rule accepts, and it exits 1 under the rule that applies.
 
 EV-9 and EV-12 are the two rejections the roadmap's acceptance for ER-1 names: a claim with no strength, and a claim with no rerun command.
 
@@ -107,7 +107,11 @@ ER-1.4 adds the checker. Its tests include, at least, one record per case below.
 - an empty `claims` array exits 1 and names EV-4;
 - a record with three broken claims reports all three;
 - a valid record whose `rerun.command` would create a file exits 0 and leaves no file behind (EV-13: the checker runs no command);
-- a file that is not JSON exits 2.
+- a file that is not JSON exits 2, and a run with no path argument exits 2;
+- a record with `"cases": 1.0` on a `tested` claim, and a record with `"exit_code": 1e0`, are each accepted as far as those two fields go, so the written form of an integer is not a reason to reject (a record with no other defect exits 0);
+- a record that is a JSON array exits 1, names EV-1, and does not name EV-2 to EV-12, and a record whose `claims` array holds the string `"x"` exits 1, names EV-5 with `claims[0]`, and does not name EV-6 to EV-12;
+- a `statement` of U+0085 alone, and a `statement` of U+FEFF alone, differ: the first is blank under the trimming rule and exits 1 naming EV-7, and the second is not blank and exits 0, because U+0085 has the `White_Space` property and U+FEFF does not (a checker built on a runtime's own trim function may disagree);
+- a `tested` claim with `"cases": 1e999` exits 1 and names EV-10, and does not exit 2.
 
 The valid record for the first case. The `observed` and `judged` reruns in it show only that a file is present; see "A rerun can be vacuous" under "Concerns flagged".
 
@@ -220,7 +224,7 @@ These are targets for ER-1.2 and ER-1.3, not output of either tool today. Comman
 }
 ```
 
-ER-1.3 chooses which Crosscheck pipeline emits first. A `dafny_verify` pass is the other candidate, and would give a `proved` claim whose trusted base names Dafny 4.11.0 and its Z3.
+ER-1.3 chooses which Crosscheck pipeline emits first. A `dafny_verify` pass is the other candidate, and would give a `proved` claim whose trusted base names Dafny 4.11.0 and Z3.
 
 ## Concerns flagged, not resolved here
 
@@ -231,7 +235,10 @@ ER-1.3 chooses which Crosscheck pipeline emits first. A `dafny_verify` pass is t
 - **A rerun can be vacuous.** A rerun that reproduces an `observed` or `judged` claim is not yet reached. The format asks every claim for a rerun command and does not guarantee that the command reproduces the claim, so rule 3 of the vision is only partly served for every strength. The property that blocks it is that the observation or judgment lives outside the repository, with no pinned input that a command can regenerate. Version 1 asks for a command that shows the recorded evidence is still in place. EV-12 accepts any non-empty command with any exit code, so `true` with exit code 0 passes for every strength, and no rule can tell a command that shows the evidence from one that exits 0. Review is the only check today. A command that reads a file under the record's commit also needs the evidence to exist before that commit, and an acceptance run or a sign-off on a commit happens after it. Where such evidence lives is left to ER-1.2 and ER-1.3, with the location of the record. The open question is what an `observed` or a `judged` claim should rerun.
 - **A record cannot sit in the commit it describes.** `commit` names a SHA, and a file inside that commit cannot know the commit's own SHA. Where a record lives (a CI artefact, a later commit, the pull request) is left to ER-1.2 and ER-1.3. The format does not depend on it.
 - **CGV's contract levels are not claim strengths.** CGV tags each contract `PROVED`, `TESTED`, `EXTRACTED` or `ASSUMED` (`cgv/src/db.rs`). A docstring `ensures:` clause is `ASSUMED`, so the proved claim above rests on contracts that no tool checked. ER-1.2 decides how to state that in the record, for example by adding the assumed contracts to the trusted base or by writing a separate claim for them. This spec does not map one vocabulary onto the other.
+- **A proof's axioms are not recorded.** A `proved` claim names theorems and nothing in the record says that each is free of `sorry` or which axioms it uses, and `lake build` accepts `sorry` with a warning. For CGV the axiom check is made by `cgv/prover/scripts/ProtectedStatements.lean`, which allows `propext`, `Classical.choice` and `Quot.sound`. A record does not carry that result. ER-1.2 decides whether the permitted axioms join the trusted base or the check becomes a claim of its own.
+- **Several independent checkers are not recorded.** Rule 2 of the vision asks for each proof to be rechecked by more than one independently written checker. A `proved` basis has `theorems` only, so a record cannot say which checkers confirmed it. This is not yet reached. The property that blocks it is a field, and a way to name each checker and its pinned version. The open question is how a second checker for Lean proofs is represented, since a replay by `lean4checker` is not yet part of CGV CI.
+- **The CGV example and the trusted semantics.** The example leaves `BehaviorModel.lean` out of the trusted base because it is not a premise of `runChecker_sound_all` (`cgv/README.md`, "Trust model"). `docs/VISION.md` and `.claude/rules/protected-surfaces.md` describe it as trusted, since the claim that Django behaves as the model says is not proved. Exit 0 is a claim about the translated constraints and not about Django. ER-1.2 decides how a record states that difference.
 - **Versions are free text.** EV-11 requires a non-empty `version` but does not check that it pins anything. `"latest"` passes.
-- **Requirements are mostly `null` today.** No claim either tool can make traces to an approved requirement yet. RQ-1 governs that work. EV-8 checks the field's shape and not that the path exists.
+- **Requirements are mostly `null` today.** No claim either tool can make traces to an approved requirement yet. RQ-1 governs that work. EV-8 checks the field's shape and not that the path exists, and nothing in a record shows that a person approved the requirement it names.
 - **Words in a statement are not checked.** EV-9 keeps `"verified"` out of `strength`. A `statement` that says "verified" passes.
 - **Duplicate JSON keys.** Most JSON parsers keep the last of two keys with the same name. A record that writes `strength` twice passes with the second value. A checker that rejects duplicate keys needs its own parser, and the spec does not require one.
