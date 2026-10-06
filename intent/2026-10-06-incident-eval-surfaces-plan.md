@@ -1,7 +1,7 @@
 # Plan: Describe the Incident Eval Check the same way everywhere
 
 Intent: `intent/2026-10-06-incident-eval-surfaces.md`
-Spec: `intent/2026-10-06-incident-eval-surfaces-spec.md` (IE-2, IE-6, IE-8, TG-8 row 6, DOC-7)
+Spec: `intent/2026-10-06-incident-eval-surfaces-spec.md` (IE-2, IE-6, IE-8, TG-8 row 6, DOC-IE-1)
 Governing roadmap item: PB-1. Task: PB-1.12. Tier: 3.
 
 This plan is not the root `plan.md`, which belongs to an earlier change. The pull request body cites this file with a `Plan:` line.
@@ -14,7 +14,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
    - `scripts/ci/incident-eval-check.test.mjs`: `failureOutput` expects the IE-8 text and link; a new helper builds a rebase-merged pull request, and two new tests cover it (IE-6).
    - `scripts/ci/tier-gate.mjs`: row 6 of `EVIDENCE_CLASSES` becomes `notYetReached` with the TG-8 property and question.
    - `scripts/ci/tier-gate.test.mjs`: the every-class test expects the new `evals/a.json` line.
-3. Prose, in one commit: the new explainer and its row in `docs/gates/README.md`; the `evals/**` row and its bullet in `TIER-LAYER-MAP.md`; `evals/README.md`; stage 5's explainer sentence, stage 6 and the stage table in `DEVELOPMENT-FRAMEWORK.md`; the chain in `CLAUDE.md`; pointer lines in the two earlier specs (DOC-7).
+3. Prose, in one commit: the new explainer and its row in `docs/gates/README.md`; the `evals/**` row and its bullet in `TIER-LAYER-MAP.md`; `evals/README.md`; stage 5's explainer sentence, stage 6 and the stage table in `DEVELOPMENT-FRAMEWORK.md`; the chain in `CLAUDE.md`; pointer lines in the two earlier specs (DOC-IE-1).
 4. Set PB-1.12 to `done` in `docs/TASKS.md` with this intent as its record, and add a root `JOURNAL.md` entry.
 
 ## Files
