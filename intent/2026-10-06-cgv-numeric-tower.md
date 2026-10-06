@@ -41,7 +41,7 @@ So `int` into `float` holds for every target that carries a `float` requirement.
 
 ## Constraints
 - No theorem statement changes. Only the value of `constraintImplies` and `checkTypeConsistency` changes.
-- `bool` into `float` stays an error. PEP 484 type checkers accept it, since `bool` subclasses `int`, but strict pydantic rejects it (measured above). That is a new question, filed as its own issue, not settled here.
+- `bool` into `float` stays an error. PEP 484 type checkers accept it, since `bool` subclasses `int`, but strict pydantic rejects it (measured above). That is a new question, filed as #86, not settled here.
 - `complex` stays without a `type` requirement. Accepting `int` or `float` into `complex` is already the behaviour, and the fixture pins it. Extracting a `complex` requirement is not yet reached: the blocking property is that strict pydantic rejects `int` and `float` into `complex`, so the check would need to know the field's strictness, and the open question is whether a strictness-aware `type` check belongs in the extractor or in `constraintImplies`.
 
 ## Open questions

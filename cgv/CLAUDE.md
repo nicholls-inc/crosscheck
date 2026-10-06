@@ -89,7 +89,7 @@ The trust boundary matters for correctness claims:
 
 **Contract composition:** `composeContracts` in Composition.lean evaluates dependent expressions through intermediate nodes, substituting upstream postcondition bounds as inputs. This is what enables multi-hop path checking to catch transitive inconsistencies that pairwise checking misses.
 
-**Constraint matching:** Constraints only interact when they share the same `ConstraintKind`. Checking dispatches by kind: precision/length/range use `<=` on static bounds, nullability checks null-producing vs non-null-accepting, type checks equality, choices checks subset.
+**Constraint matching:** Constraints only interact when they share the same `ConstraintKind`. Checking dispatches by kind: precision/length/range use `<=` on static bounds, nullability checks null-producing vs non-null-accepting, type checks equality except that `int` is accepted where `float` is required (`typeAccepts`, PEP 484), choices checks subset.
 
 ## Lean-specific notes
 
@@ -107,7 +107,7 @@ Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, req
 
 - `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path; nullable: 4dp writes into 2dp fields, and `return None` under a non-Optional annotation reported at the return site `apply_discount -> apply_discount.<return>`)
 - `plain_python/`, `plain_python_clean/`: no Django (clean version must pass)
-- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`, `r6_*`, `r7_*`: adversarial findings; `r8_*`: findings from the pr-swarm review of PR #3. Several include an `ok.py` with correct code so a false positive fails the fixture.
+- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`, `r6_*`, `r7_*`: adversarial findings; `r8_*`: findings from the pr-swarm review of PR #3. `numeric_tower/`: an `int` where `float` is required is accepted; `Decimal` or `str` into `float`, and `float` into `int`, are errors. Several include an `ok.py` with correct code so a false positive fails the fixture.
 - `V2_FIXTURE_NOTES.md`: how ambiguous verdicts were decided
 
 Design: `docs/design/dataflow-v2.md` (model, SQLite interface, and the round 3/5 addenda). Adversarial reports and repros from each round were kept outside the repo; their findings are recorded in the addenda and as fixtures.

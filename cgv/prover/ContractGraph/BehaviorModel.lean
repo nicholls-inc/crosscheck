@@ -97,4 +97,24 @@ def maxValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
 def minValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
   valueMicros ≥ limitMicros
 
+/-! ## Numeric tower
+
+PEP 484: where an argument is annotated `float`, an argument of type `int`
+is acceptable. mypy and pyright accept it for parameters and for dataclass,
+attrs, `NamedTuple` and `TypedDict` fields. pydantic 2.11.10 accepts an `int`
+for a `float` field in strict mode too (`ConfigDict(strict=True)`,
+`StrictFloat`, `Field(strict=True)`), storing `float(v)`. Lax pydantic numeric
+fields and Django `FloatField` writes carry no type requirement.
+
+Not stated here:
+- `bool` into `float`. PEP 484 checkers accept it (`bool` subclasses `int`),
+  but strict pydantic rejects it.
+- `int` or `float` into `complex`. PEP 484 accepts both, but strict pydantic
+  rejects both, and no `complex` requirement is extracted. -/
+
+/-- An annotation naming `targetType` accepts a value of `valueType`: the same
+    type, or an `int` where `float` is annotated. -/
+def annotationAcceptsNumeric (valueType targetType : String) : Prop :=
+  valueType = targetType ∨ (valueType = "int" ∧ targetType = "float")
+
 end ContractGraph.BehaviorModel

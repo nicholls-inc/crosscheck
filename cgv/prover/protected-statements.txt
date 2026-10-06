@@ -134,7 +134,7 @@ def ContractGraph.composedGuaranteeImplies :
 
 def ContractGraph.constraintImplies :
   ContractGraph.Constraint → ContractGraph.Constraint → Prop
-  value hash 1577221521
+  value hash 564077362
 
 def ContractGraph.depOrigin :
   ContractGraph.DepExpr → List ContractGraph.Constraint → Int → Prod String Nat
@@ -175,6 +175,10 @@ def ContractGraph.stepEdge :
 def ContractGraph.stepwiseSound :
   List ContractGraph.Edge → Prop
   value hash 2321363601
+
+def ContractGraph.typeAccepts :
+  String → String → Bool
+  value hash 3849918113
 
 def ContractGraph.weakerOf :
   ContractGraph.VerificationLevel → ContractGraph.VerificationLevel → ContractGraph.VerificationLevel
