@@ -4,6 +4,38 @@ A three-layer pipeline that extracts implicit contracts from Python application 
 
 **Status:** research prototype. It began as a three-node PoC (function A → function B → data model field) demonstrating that graph-level consistency checking catches bugs that pairwise checking structurally misses, and now checks real-scale graphs with a state-based checker. The target can be a Django model field or a field of a plain-Python data class; see [Python support](#python-support).
 
+## When to use it
+
+Use CGV next to mypy or pyright, not instead of them. A type checker asks whether a value has the right type. CGV asks whether a value meets the constraints that a model field or a data class declares: length (`max_length`), precision (`decimal_places`), range (validators, `ge`, `le`), choices, and nullability. It checks these across several hops, from the function that produces a value through the functions that pass it on to the field that stores it.
+
+Tests often miss these bugs too, because the database does not reject the value. PostgreSQL rounds a `numeric` value with more decimal places than the column's scale ([PostgreSQL 16 docs, Numeric Types](https://www.postgresql.org/docs/16/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL)), and SQLite stores a string of any length in a `VARCHAR(10)` column ([SQLite FAQ, question 9](https://www.sqlite.org/faq.html#q9)).
+
+Type checkers reach bugs that CGV does not. CGV reports a value only where it reaches a declared constraint, so a `None` dereference with no constrained target is not yet reached. Some nullability paths reach CGV as warnings, not errors (see [What exit 0 promises](#what-exit-0-promises)).
+
+**Comparison on the bench corpus.** `scripts/typecheck_compare.py` runs mypy and pyright on the pre-fix and fixed trees of each case in `bench/corpus`. A type checker flags a case when the pre-fix tree has an error in the bug's file, of a rule that the fix removes. The CGV column is the outcome in `bench/baseline.json` (see `bench/README.md`). Rerun the table with Python 3.12 or later:
+
+```bash
+python3 -m venv /tmp/tc && /tmp/tc/bin/pip install -r bench/typecheckers/requirements.txt
+scripts/typecheck_compare.py --python /tmp/tc/bin/python
+```
+
+mypy 2.4.0 (`strict`, django-stubs 6.1.2, pydantic plugin), pyright 1.1.414 (`strict`), Django 6.1.2, pydantic 2.13.5. CGV outcome from `bench/baseline.json`.
+
+| Case | Kind | CGV design reaches it | CGV | mypy | pyright |
+|---|---|---|---|---|---|
+| `dict-get-default` | non-null | yes | WARNING_ONLY | not flagged | not flagged |
+| `external-payload-null` | non-null | not yet reached | NOT_REPORTED | not flagged | not flagged |
+| `first-under-type-ignore` | non-null | yes | CAUGHT | not flagged | not flagged |
+| `guard-in-caller` | non-null | yes | DETECTED_NOT_CLEARED | not flagged | not flagged |
+| `length-address-defaults` | length | yes | CAUGHT | not flagged | not flagged |
+| `length-cross-model` | length | yes | CAUGHT | not flagged | not flagged |
+| `none-dereference` | non-null | not yet reached | NOT_REPORTED | flagged: line 6 `union-attr` | flagged: line 6 `reportOptionalMemberAccess` |
+| `optional-fields-to-params` | non-null | yes | CAUGHT | not flagged | not flagged |
+| `precision-two-hop` | precision | yes | CAUGHT | not flagged | not flagged |
+| `two-attribute-deep` | non-null | yes | WARNING_ONLY | flagged: line 5 `misc` | not flagged |
+
+Read the table with three facts in mind. The corpus has 10 synthetic cases, written to exercise CGV, so the table shows which tool reaches which kind of bug, not how often each kind occurs. Three cases (`first-under-type-ignore`, `guard-in-caller`, `optional-fields-to-params`) silence the type checker with `# type: ignore`, as real code does, and CGV does not read those comments. pyright with django-stubs reports the type of each Django model field read as unknown (`Type of "summary" is unknown`), so it cannot see that a field is nullable. django-stubs resolves field types through its mypy plugin, which pyright does not load.
+
 ## Architecture
 
 ```
@@ -288,8 +320,16 @@ RESULT: 1 error, 1 warning. Exit code 1.
 
 | Code | Meaning |
 |------|---------|
-| 0 | Every data path (function → model node) consistent |
+| 0 | Every data path (function → model node) that the extractor discovered is consistent; see [What exit 0 promises](#what-exit-0-promises) |
 | 1 | One or more inconsistencies found |
 | 2 | Extraction, parse or translation failure (including an unreadable database or a malformed contract row), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
 
 `--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.
+
+### What exit 0 promises
+
+`runChecker_sound_all` proves that exit 0 means every data path of the translated graph is stepwise sound. Three qualifiers apply:
+
+- **Only the paths the extractor discovered.** Extraction is not proved (see [Trust model](#trust-model)). A write the extractor does not see is not in the graph, so exit 0 says nothing about it.
+- **Writes outside the project's code are not yet reached.** This covers writes that Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a DRF serializer's `save()`), raw SQL, and fixtures. The property that blocks them is that the write happens in framework code or in the database, which the extractor does not read. The open question is how small a model of each framework's write paths can be and still be trusted.
+- **A missing guarantee is a warning, not an error.** When CGV cannot show that a value meets a requirement, it warns and still exits 0. A run that exits 0 with warnings has unknown paths, not consistent ones. `RESULT:` in the text report counts the warnings.
