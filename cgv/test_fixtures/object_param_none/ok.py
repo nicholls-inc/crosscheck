@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Union
 
 from models import Customer, Entry
 
@@ -28,3 +28,21 @@ def remember_nickname_any(customer: Customer) -> Entry:
 def remember_nickname_bare(customer: Customer) -> Entry:
     # SAFE: an unannotated parameter accepts None
     return remember_bare(customer.nickname)
+
+
+def remember_union(value: Union[object, int]) -> Entry:
+    return Entry.objects.create(text=str(value))
+
+
+def remember_bitor(value: object | int) -> Entry:
+    return Entry.objects.create(text=str(value))
+
+
+def remember_nickname_union(customer: Customer) -> Entry:
+    # SAFE: `Union[object, int]` is `object`, which accepts None
+    return remember_union(customer.nickname)
+
+
+def remember_nickname_bitor(customer: Customer) -> Entry:
+    # SAFE: `object | int` is `object`, which accepts None
+    return remember_bitor(customer.nickname)

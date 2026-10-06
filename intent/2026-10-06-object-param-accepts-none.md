@@ -10,9 +10,9 @@ The cause is in `cgv/src/function_extractor.rs`. `param_info` and `apply_aliases
 Two related annotations already behave the right way, and no fixture pins them. `value: Any` gets unknown nullability, and an unannotated parameter gets none. Each gives no precondition, so a caller's Optional value is not an error.
 
 ## Proposed outcome
-A parameter whose annotation names the type `object` gets the nullability `Some(true)`, the same as `Optional[object]`. It has no `non-null` precondition, so passing an Optional value is not an error. Inside the function, the parameter's value may be None, so a write of it into a non-null field is an error, as it is for an `Optional` parameter.
+A parameter whose annotation names the type `object` gets the nullability `Some(true)`, the same as `Optional[object]`. So does a parameter annotated with a union that has an `object` member (`Union[object, int]`, `object | int`, quoted or inside `Annotated`), because that union is `object`. The union rule is on the parameter path only. `annotation_facts` and its union walk are unchanged, so fields keep their behaviour until CG-1.12. It has no `non-null` precondition, so passing an Optional value is not an error. Inside the function, the parameter's value may be None, so a write of it into a non-null field is an error, as it is for an `Optional` parameter.
 
-A new fixture, `cgv/test_fixtures/object_param_none/`, pins the behaviour. Its `ok.py` passes an Optional value to parameters typed `object`, `Any` and nothing, and through each to a non-null field via `str(...)`, so no error is expected. Its `models.py` has one case where an `object` parameter is written into a non-null field. That is a real error, and the fixture expects it. The fixture's `expected.json` is the spec.
+A new fixture, `cgv/test_fixtures/object_param_none/`, pins the behaviour. Its `ok.py` passes an Optional value to parameters typed `object`, `Union[object, int]`, `object | int`, `Any` and nothing, and through each to a non-null field via `str(...)`, so no error is expected. Its `models.py` has one case where an `object` parameter is written into a non-null field. That is a real error, and the fixture expects it. The fixture's `expected.json` is the spec.
 
 The `object-param` case in the labelled benchmark stops being reported.
 

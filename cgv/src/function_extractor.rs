@@ -1,6 +1,6 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
-use crate::dataclass_extractor::{annotation_facts, VALUE_TYPES};
+use crate::dataclass_extractor::{annotation_facts, last_segment, VALUE_TYPES};
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
 use crate::docstring_parser::DocstringContract;
 use crate::resolve::qualify;
@@ -534,14 +534,33 @@ pub fn apply_external_types(func: &mut FunctionInfo, external: &std::collections
 }
 
 /// The value type and nullability a parameter annotation gives. `object`
-/// includes `None`, so a parameter typed `object` accepts it.
+/// includes `None`, so a parameter typed `object`, or a union with an
+/// `object` member, accepts it.
 fn param_annotation_facts(annotation: &Expr) -> (Option<String>, Option<bool>) {
     match annotation_facts(annotation) {
         Some((t, n)) => {
-            let n = if t.as_deref() == Some("object") { Some(true) } else { n };
+            let n = if t.as_deref() == Some("object") || union_has_object(annotation) { Some(true) } else { n };
             (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n)
         }
         None => (None, None),
+    }
+}
+
+/// `Union[object, X]` and `object | X`, also quoted or inside `Annotated`.
+fn union_has_object(annotation: &Expr) -> bool {
+    let is_object = |m: &Expr| {
+        annotation_facts(m).is_some_and(|(t, _)| t.as_deref() == Some("object")) || union_has_object(m)
+    };
+    match annotation {
+        Expr::BinOp(b) if matches!(b.op, ast::Operator::BitOr) => is_object(&b.left) || is_object(&b.right),
+        Expr::Subscript(sub) => match (last_segment(&sub.value).as_deref(), sub.slice.as_ref()) {
+            (Some("Union"), Expr::Tuple(t)) => t.elts.iter().any(is_object),
+            (Some("Annotated"), Expr::Tuple(t)) => t.elts.first().is_some_and(union_has_object),
+            _ => false,
+        },
+        Expr::StringLiteral(s) => ruff_python_parser::parse_expression(s.value.to_str().trim())
+            .is_ok_and(|parsed| union_has_object(parsed.expr())),
+        _ => false,
     }
 }
 
@@ -842,7 +861,7 @@ mod tests {
     #[test]
     fn test_object_param_accepts_none() {
         let mut fs = funcs(
-            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None): pass\n",
+            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None, v: Union[object, int], w: object | int, x: int | str | object, y: typing.Union[int, object], z: \"object | int\", aa: Annotated[object | int, 1], ab: int | str): pass\n",
         );
         let aliases: std::collections::HashMap<String, Expr> = [("Payload", "object"), ("Name", "str")]
             .into_iter()
@@ -867,6 +886,13 @@ mod tests {
                 ("s", None, Some(true)),
                 ("t", None, Some(true)),
                 ("u", None, Some(true)),
+                ("v", None, Some(true)),
+                ("w", None, Some(true)),
+                ("x", None, Some(true)),
+                ("y", None, Some(true)),
+                ("z", None, Some(true)),
+                ("aa", None, Some(true)),
+                ("ab", None, Some(false)),
             ]
         );
     }
