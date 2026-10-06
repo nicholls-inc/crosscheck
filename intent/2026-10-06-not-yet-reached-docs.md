@@ -21,7 +21,7 @@ Each of these statements says "not yet reached", names the blocking property and
 
 ## Constraints
 - No skill, agent or code changes. VA-1.1 owns the `intent-check` attestation wording in skills and agents, and VA-1.5 owns the "best-effort", "out of scope" and "not addressed" wording in them.
-- The same phrases appear in `crosscheck/docs/research/assurance-hierarchy.md` and other docs under `crosscheck/docs/`. This change adds row VA-1.6 for them and does not edit them.
+- The same phrases appear in `crosscheck/docs/research/assurance-hierarchy.md` and other docs under `crosscheck/docs/`. This change adds row VA-1.6 for them and does not edit them. VA-1.3 is intentionally unused here: open PR #72 adds a row with that ID.
 - Both files present `/intent-check`'s round-trip accuracy as Layer 5's confidence and say Layers 4 to 6 "prove" the spec is right. Rule 1 of the vision makes `/intent-check` a search tool. This change adds row VA-1.4 for that and does not edit it.
 
 ## Open questions
