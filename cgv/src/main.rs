@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crosscheck_contracts::{defaults, extractor, report};
+use crosscheck_contracts::{defaults, evidence, extractor, report};
 
 /// Stack size of the extraction thread: deeply nested Python (long operator
 /// chains, nested calls) recurses in the parser and the analyses.
@@ -82,6 +82,12 @@ enum Commands {
         /// Skip files with syntax errors (with a warning) instead of failing the run
         #[arg(long)]
         allow_parse_errors: bool,
+
+        /// After a run that exits 0, write an evidence record (JSON) to PATH.
+        /// Any other outcome removes the file. Needs a clean git checkout of
+        /// the checked path and the overrides file.
+        #[arg(long, value_name = "PATH")]
+        evidence_record: Option<PathBuf>,
     },
     /// Generate defaults table from Django source
     GenerateDefaults {
@@ -123,7 +129,14 @@ fn run(cli: Cli) -> Result<i32> {
             max_states_per_edge,
             exclude,
             allow_parse_errors,
+            evidence_record,
         } => {
+            let checkout = evidence_record
+                .as_deref()
+                .map(|record_path| evidence::begin(record_path, &app_path, overrides.as_deref(), &exclude))
+                .transpose()?;
+            let rerun_options = (exclude.clone(), django_version.clone());
+
             // Layer 1: extract contracts to SQLite (on a thread with a large stack)
             let options = extractor::ExtractOptions {
                 allow_parse_errors,
@@ -180,27 +193,53 @@ fn run(cli: Cli) -> Result<i32> {
                 }
                 return Ok(2);
             }
-            match format {
+            let code = match format {
                 OutputFormat::Json => {
                     std::io::stdout().write_all(&output.stdout)?;
-                    Ok(output.code.unwrap_or(2))
+                    output.code.unwrap_or(2)
                 }
                 OutputFormat::Text => {
                     let stdout_str = String::from_utf8_lossy(&output.stdout);
                     match report::parse(&stdout_str) {
                         Ok(checker_output) => {
                             print!("{}", report::render_text(&checker_output, no_warnings));
-                            Ok(checker_output.exit_code)
+                            checker_output.exit_code
                         }
                         Err(e) => {
                             eprintln!("Error: unrecognised checker result ({e}):");
                             std::io::stderr().write_all(&output.stdout)?;
                             eprintln!();
-                            Ok(2)
+                            2
                         }
                     }
                 }
+            };
+            if let (0, Some(checkout), Some(record_path)) = (code, checkout, evidence_record) {
+                let checker_output = report::parse(&String::from_utf8_lossy(&output.stdout))
+                    .map_err(|e| anyhow::anyhow!("cannot count warnings in the checker result: {e}"))?;
+                let checker = lean_binary.canonicalize()?;
+                let checker_path = checker.to_string_lossy();
+                let (exclude, django_version) = rerun_options;
+                let record = evidence::build_record(&evidence::RecordInputs {
+                    commit: &checkout.commit,
+                    warnings: checker_output.warning_count(),
+                    assumed: evidence::count_assumed(&db_path)?,
+                    checker_sha256: &evidence::sha256_hex(&checker)?,
+                    rerun_command: evidence::rerun_command(&evidence::RerunOptions {
+                        path: &checkout.path,
+                        django_version: &django_version,
+                        overrides: checkout.overrides.as_deref(),
+                        exclude: &exclude,
+                        allow_parse_errors,
+                        max_states,
+                        max_states_per_edge,
+                        checker: &checker_path,
+                    }),
+                });
+                evidence::recheck(&checkout)?;
+                evidence::write(&record_path, &record)?;
             }
+            Ok(code)
         }
         Commands::GenerateDefaults {
             django_source,
