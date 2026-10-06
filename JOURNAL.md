@@ -13,6 +13,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 `node scripts/check-evidence-record.mjs <path>` exits 0, 1 with one `EV-N:` line per broken rule, or 2 when the file is missing or not JSON. The rules live in the pure `checkRecord`, and one table maps each strength to its basis fields, so EV-9 and EV-10 read the same source. Three runtime defaults disagree with the spec, so the checker avoids them: `String.prototype.trim` strips U+FEFF and keeps U+0085, `TextDecoder` drops a leading byte order mark unless `ignoreBOM` is set, and `Number.isInteger` accepts 1e30. By hand, not by a committed test, a record that CGV's `--evidence-record` wrote on the ER-1.2 branch (#79) passed, and the same record with `strength` and `rerun.command` deleted failed on EV-5, EV-9 and EV-12. Once ER-1.2 merges, that record is worth keeping as a fixture. The checker checks shape, not truth: it runs no command from the record. No workflow runs its tests yet, because the tier gate runs only `scripts/ci/*.test.mjs`. ER-1.5 adds a CI step.
 
+## 2026-10-06 - CGV writes an evidence record
+
+**Type:** feature
+**Touches:** cgv/src/evidence.rs, cgv/src/main.rs, cgv/src/report.rs, cgv/build.rs, cgv/Cargo.toml, cgv/tests/e2e_evidence.rs, cgv/README.md, docs/TASKS.md
+**Why:** Exit 0 rests on `runChecker_sound_all`, but CGV's output named no theorem, commit, trusted base or rerun command. ER-1 asks CGV to emit a record in the format of ER-1.1.
+**Links:** [intent](intent/2026-10-06-cgv-evidence-record.md), [spec](intent/2026-10-06-cgv-evidence-record-spec.md)
+
+`contracts check --evidence-record PATH` writes one `proved` claim after a run that exits 0, and removes PATH after any other outcome. The commit comes from git, and CGV refuses (exit 2) a checked path or overrides file with uncommitted or untracked changes. The trusted base keeps `BehaviorModel.lean`, adds the three permitted axioms, pins the checker binary by SHA-256, and lists the docstring contracts tagged `ASSUMED` with their count. The rerun command repeats the run's options from the work-tree root, and names the checker by a local absolute path, so another machine must edit it. The record pins `Translation.lean` to the CLI's build commit, which matches the checker's sources only when both come from one checkout.
+
 ---
 
 ## 2026-10-06 - The evidence record has a format

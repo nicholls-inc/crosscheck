@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-06 — The research doc and the reference workflows say "not yet reached"
+
+**Type:** docs
+**Touches:** docs/research/assurance-hierarchy.md, docs/examples/workflows/example.md, docs/examples/workflows/tier-b/assurance-squad.md, docs/examples/workflows/tier-b/assurance-pr-gate.md, docs/orchestrator-coordination.md, ../docs/TASKS.md
+**Why:** VA-1.2 changed the README and the hierarchy guide, but the guide's "full treatment" still called Layer 6 "best-effort", said no theorem can prove a spec complete, and called performance, partition failures and security "out of scope for the hierarchy entirely". The reference workflows labelled Layer 6 issues `Layer 6 (best-effort)`.
+**Links:** [intent](../intent/2026-10-06-not-yet-reached-research-docs.md)
+
+The research doc's Scope section, its Layer 1, 2, 3 and 6 text, and its "What this hierarchy is not good for" section (now "Where this hierarchy does not reach yet") use the wording VA-1.2 gave the README. The workflows label Layer 6 "search only". Dated research records, the ADR, the reports and the ADD retrospectives keep their wording, since they record what was believed at the time. The research doc's Layer 5 confidence stays for VA-1.7.
+
+---
+
 ## 2026-10-06 — The README and the hierarchy guide say "not yet reached"
 
 **Type:** docs
