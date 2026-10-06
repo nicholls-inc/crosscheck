@@ -160,9 +160,10 @@ names the property that blocks a deterministic check and the open question:
   (`CLAUDE.md`, `AGENTS.md`, `REVIEW.md`). Their behaviour is prompt text that an agent
   interprets. The open question is what a replayable behavioural eval of a prompt
   artefact looks like.
-- **Evals** (`evals/**`). No CI job runs an eval. The Incident Eval Check reads
-  `evals/` only after a merge, and only to find a file that contains an incident id
-  (`docs/gates/incident-eval-check.md`), so it says nothing about what an eval checks.
+- **Evals** (`evals/**`). No CI job runs an eval. The Incident Eval Check runs only
+  after a merge, and only looks for an eval under `evals/` and a candidate invariant
+  that contain the incident id (`docs/gates/incident-eval-check.md`), so it says
+  nothing about what an eval checks.
   The open question is what runs an eval as a regression test, and which workflow runs
   it before the merge.
 - **Root invariant documents** (`docs/invariants/**`). No CI job maps these invariants

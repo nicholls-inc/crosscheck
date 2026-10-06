@@ -71,7 +71,7 @@ export const EVIDENCE_CLASSES = [
   {
     re: /^evals\//,
     kind: 'notYetReached',
-    property: 'no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for a file that names the incident',
+    property: 'no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for an eval under evals/ and a candidate invariant that name the incident',
     question: 'what runs an eval as a regression test, and which workflow runs it before the merge',
   },
   {

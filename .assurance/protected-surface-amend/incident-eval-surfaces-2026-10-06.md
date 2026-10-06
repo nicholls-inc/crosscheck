@@ -9,9 +9,9 @@
 
 1. `scripts/ci/incident-eval-check.mjs`: the failure message no longer says the change "stays blocked". It asks for the eval and the candidate invariant in a follow-up pull request and links to `docs/gates/incident-eval-check.md` instead of the gate index (IE-8). The empty-range comment names a merge commit and drops the rebase merge (IE-2). The trigger, the lookups and the exit codes do not change.
 2. `scripts/ci/incident-eval-check.test.mjs`: the expected failure output follows IE-8. Two new tests simulate GitHub's rebase merge and show that the check reads the pull request's commits (IE-6). In the incident case, the replay drops the incident line from the copies on `main`, and the test asserts no commit on `main` carries it, so the line exists only in the pull request's own commits (maintainer decision on PR #66, option (b)).
-3. `scripts/ci/tier-gate.mjs`: row 6 of `EVIDENCE_CLASSES`, `evals/**`, changes from checked by the Incident Eval Check to not yet reached, with a blocking property and an open question (TG-8 row 6). The gate's pass or fail result does not change.
+3. `scripts/ci/tier-gate.mjs`: row 6 of `EVIDENCE_CLASSES`, `evals/**`, changes from checked by the Incident Eval Check to not yet reached, with a blocking property and an open question (TG-8 row 6). The property says the check looks for an eval under `evals/` and a candidate invariant that name the incident, not for "a file" (maintainer decision on PR #66, option (b)). The gate's pass or fail result does not change.
 4. `scripts/ci/tier-gate.test.mjs`: the every-class report test expects the new line.
-5. `docs/assurance/TIER-LAYER-MAP.md`: the evidence table and its list of blocking properties follow TG-8 row 6.
+5. `docs/assurance/TIER-LAYER-MAP.md`: the evidence table and its list of blocking properties follow TG-8 row 6, including that the check looks for both an eval and a candidate invariant.
 6. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: the stage table and stage 6 name the candidate invariant, and stage 5 links to the new explainer instead of saying it does not exist.
 7. `evals/README.md`: "CI linkage" asks for the candidate invariant in every case, names both invariant directories, and says the check runs after the merge and cannot block it.
 
