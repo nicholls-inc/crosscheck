@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - The Tier Gate fails closed without its changed-file list
+
+**Type:** fix
+**Touches:** scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/TASKS.md
+**Why:** With `CHANGED_FILES_PATH` unset the gate read an empty list, saw no protected path, and passed a body declaring `Tier: 1` with an intent citation whatever the branch changed. A missing file crashed with a stack trace.
+**Links:** [intent](intent/2026-10-06-changed-files-fail-closed.md), [spec](intent/2026-10-06-changed-files-fail-closed-spec.md), [plan](intent/2026-10-06-changed-files-fail-closed-plan.md)
+
+An unset or empty `CHANGED_FILES_PATH`, or one that names a file the gate cannot read, now fails with the gate's fixed message and an item that names the variable, and for a read error the path and error code. The check sits in `main`, not `evaluate`, because the pre-commit hook imports the gate's functions and builds its own list. An empty readable file is still an empty diff. The gate cannot tell a list the workflow wrote from one written by hand, so a hand-written list that omits a protected path still passes.
+
+---
+
 ## 2026-10-06 - A pre-commit hook runs the checks that need no PR body
 
 **Type:** feature
