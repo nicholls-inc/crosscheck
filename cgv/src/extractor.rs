@@ -693,18 +693,7 @@ pub fn extract_with(
     let field_defaults = defaults::load_defaults(django_version)?;
 
     // Parse all Python files
-    let mut py_files = find_python_files(app_path)?;
-    py_files.sort();
-    if !options.exclude.is_empty() {
-        py_files.retain(|f| {
-            let rel = f
-                .strip_prefix(app_path)
-                .unwrap_or(f)
-                .to_string_lossy()
-                .replace('\\', "/");
-            !options.exclude.iter().any(|g| glob_excludes(g, &rel))
-        });
-    }
+    let py_files = python_files(app_path, &options.exclude)?;
     let mut modules = Vec::new();
     let mut parse_errors = Vec::new();
     for py_file in &py_files {
@@ -1097,6 +1086,21 @@ fn lookup(ids: &HashMap<String, i64>, names: &HashMap<String, String>, name: &st
         [id] => Some(*id),
         _ => None,
     }
+}
+
+/// The .py files a run under `app_path` analyses, sorted, after `--exclude`.
+pub fn python_files(app_path: &Path, exclude: &[String]) -> Result<Vec<std::path::PathBuf>> {
+    let mut py_files = find_python_files(app_path)?;
+    py_files.sort();
+    py_files.retain(|f| {
+        let rel = f
+            .strip_prefix(app_path)
+            .unwrap_or(f)
+            .to_string_lossy()
+            .replace('\\', "/");
+        !exclude.iter().any(|g| glob_excludes(g, &rel))
+    });
+    Ok(py_files)
 }
 
 /// Find all .py files in a directory recursively.
