@@ -503,10 +503,7 @@ pub fn apply_aliases(func: &mut FunctionInfo, aliases: &std::collections::HashMa
     for p in &mut func.params {
         let Some(Expr::Name(n)) = &p.annotation else { continue };
         let Some(alias) = aliases.get(n.id.as_str()) else { continue };
-        let (type_name, nullable) = match annotation_facts(alias) {
-            Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
-            None => (None, None),
-        };
+        let (type_name, nullable) = param_annotation_facts(alias);
         p.type_name = type_name;
         // A `= None` default keeps the parameter nullable.
         p.nullable = if p.nullable == Some(true) { Some(true) } else { nullable };
@@ -536,9 +533,21 @@ pub fn apply_external_types(func: &mut FunctionInfo, external: &std::collections
     }
 }
 
+/// The value type and nullability a parameter annotation gives. `object`
+/// includes `None`, so a parameter typed `object` accepts it.
+fn param_annotation_facts(annotation: &Expr) -> (Option<String>, Option<bool>) {
+    match annotation_facts(annotation) {
+        Some((t, n)) => {
+            let n = if t.as_deref() == Some("object") { Some(true) } else { n };
+            (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n)
+        }
+        None => (None, None),
+    }
+}
+
 fn param_info(p: &ast::Parameter, kind: ParamKind) -> ParamInfo {
-    let (type_name, nullable) = match p.annotation.as_deref().and_then(annotation_facts) {
-        Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
+    let (type_name, nullable) = match p.annotation.as_deref() {
+        Some(a) => param_annotation_facts(a),
         None => (None, None),
     };
     ParamInfo {
@@ -827,6 +836,35 @@ mod tests {
         assert_eq!(
             (fs[3].method_kind, fs[3].self_name()),
             (MethodKind::ClassMethod, Some("cls"))
+        );
+    }
+
+    #[test]
+    fn test_object_param_accepts_none() {
+        let mut fs = funcs(
+            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object]): pass\n",
+        );
+        let aliases: std::collections::HashMap<String, Expr> = [("Payload", "object"), ("Name", "str")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), ruff_python_parser::parse_expression(v).unwrap().into_expr()))
+            .collect();
+        apply_aliases(&mut fs[0], &aliases);
+        let facts: Vec<(&str, Option<&str>, Option<bool>)> = fs[0]
+            .params
+            .iter()
+            .map(|p| (p.name.as_str(), p.type_name.as_deref(), p.nullable))
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                ("a", None, Some(true)),
+                ("b", None, Some(true)),
+                ("c", None, None),
+                ("d", None, None),
+                ("e", None, Some(true)),
+                ("g", Some("str"), Some(false)),
+                ("h", None, Some(true)),
+            ]
         );
     }
 
