@@ -198,6 +198,13 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(runDafny).not.toHaveBeenCalled();
   });
 
+  it("names an untracked file inside a new directory, not the directory (DE-3)", async () => {
+    await mkdir(join(repo, "proofs", "new"));
+    await writeFile(join(repo, "proofs", "new", "Deep.dfy"), "");
+    const result = await dafnyEvidence(input);
+    expect(result.errors).toEqual([`work tree differs from ${commit}: ?? proofs/new/Deep.dfy`]);
+  });
+
   it("names every dirty path (DE-3)", async () => {
     await writeFile(join(repo, "proofs", "A.dfy"), "");
     await writeFile(join(repo, "proofs", "Abs.dfy"), SOURCE + "\n");
