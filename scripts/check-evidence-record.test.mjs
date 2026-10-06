@@ -81,7 +81,9 @@ function runOnBytes(bytes) {
 }
 
 function runWithArgs(args) {
-  const result = spawnSync(process.execPath, [CHECKER, ...args], { encoding: 'utf8' });
+  // NO_COLOR with FORCE_COLOR makes Node warn on stderr, which the stream tests would read.
+  const { NO_COLOR, FORCE_COLOR, ...env } = process.env;
+  const result = spawnSync(process.execPath, [CHECKER, ...args], { encoding: 'utf8', env });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -674,7 +676,7 @@ for (const code of WHITE_SPACE) {
   const label = `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
   test(`a statement of ${label} alone is blank and names EV-7`, () => {
     const result = run(mutated((r) => (r.claims[PROVED].statement = String.fromCodePoint(code))));
-    expectOutcome(result, { status: 1, names: ['EV-7'] });
+    expectOutcome(result, { status: 1, names: ['EV-7'], absent: noRulesBut('EV-7') });
   });
 }
 
@@ -706,7 +708,9 @@ test('a record that writes strength twice is judged on the last value (duplicate
 });
 
 test('stdout is empty on exit 0 and on exit 2, and holds only EV-N lines on exit 1', () => {
-  assert.equal(run(VALID).stdout, '');
+  const valid = run(VALID);
+  assert.equal(valid.stdout, '');
+  assert.equal(valid.stderr, '');
   assert.equal(run('this is not json').stdout, '');
   assert.equal(runWithArgs([]).stdout, '');
   const broken = run(
@@ -715,9 +719,9 @@ test('stdout is empty on exit 0 and on exit 2, and holds only EV-N lines on exit
       r.claims[TESTED].statement = ' ';
     })
   );
-  assert.equal(broken.status, 1);
+  expectOutcome(broken, { status: 1, names: ['EV-7', 'EV-9'] });
   const lines = broken.stdout.split('\n').filter((l) => l !== '');
-  assert.ok(lines.length >= 2, broken.stdout);
+  assert.equal(lines.length, 2, broken.stdout);
   for (const line of lines) assert.match(line, /^EV-\d+: /);
   assert.equal(broken.stderr, '');
 });
