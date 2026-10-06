@@ -3,7 +3,7 @@
 Task: PB-1.15. Governing roadmap item: PB-1.
 
 ## Problem statement
-`readChangedFiles` in `scripts/ci/tier-gate.mjs` returns an empty list when `CHANGED_FILES_PATH` is unset or empty. With an empty list the gate sees no protected path, so a run with `PR_BODY='Tier: 1'` and no `CHANGED_FILES_PATH` passes at Tier 1 whatever the branch changes. A manual run, or a workflow edit that drops or misspells the variable, therefore passes a protected change. When the variable names a file that does not exist, `readFileSync` throws and Node prints a stack trace with exit 1, which names neither the variable nor what to do.
+`readChangedFiles` in `scripts/ci/tier-gate.mjs` returns an empty list when `CHANGED_FILES_PATH` is unset or empty. With an empty list the gate sees no protected path, so a run whose body declares `Tier: 1` and cites an intent passes at Tier 1 whatever the branch changes. A local run in a scratch repository holding `scripts/ci/x.mjs` printed `tier-gate: PASS — Tier 1 artefacts present`. A manual run, or a workflow edit that drops or misspells the variable, therefore passes a protected change. When the variable names a file that does not exist, `readFileSync` throws and Node prints a stack trace with exit 1, which names neither the variable nor what to do.
 
 ## Proposed outcome
 - With `CHANGED_FILES_PATH` unset or empty, the gate exits 1 and its failure names `CHANGED_FILES_PATH` and the command that writes the list.

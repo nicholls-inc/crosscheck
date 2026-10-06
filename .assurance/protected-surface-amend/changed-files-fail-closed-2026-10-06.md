@@ -8,7 +8,7 @@
 ### Change Description
 
 1. `scripts/ci/tier-gate.mjs`: when `CHANGED_FILES_PATH` is unset or empty, or names a file the gate cannot read, the gate prints the TG-10 failure lines with an item naming `CHANGED_FILES_PATH` and exits 1. It no longer reads an unset variable as an empty list, and no longer prints a stack trace for a missing file (TG-17).
-2. `scripts/ci/tier-gate.test.mjs`: four cases run the gate as a script with the variable unset, empty, naming a missing file, and naming a readable list (TG-18).
+2. `scripts/ci/tier-gate.test.mjs`: five cases run the gate as a script with the variable unset, empty, naming a missing file, and naming two readable lists (TG-18).
 
 ### Rationale
 
@@ -34,7 +34,7 @@ Task PB-1.15. An unset `CHANGED_FILES_PATH` gave the gate an empty list, so it s
 
 ### Test / Coverage Impact
 
-- `node --test scripts/ci/*.test.mjs` gains four TG-18 cases. The three failure cases fail against the old gate.
+- `node --test scripts/ci/*.test.mjs` gains five TG-18 cases. The three failure cases fail against the old gate.
 - The gate's result changes only for a run without a readable `CHANGED_FILES_PATH`, which now fails. A run with a readable list, as the workflow makes, gets the same result as before.
 - No invariant or eval changes.
 
