@@ -149,6 +149,21 @@ branch requires no status checks:
   (`docs/gates/task-queue-check.md`).
 - `semantic-pr.yml` checks that the PR title is a conventional commit.
 
+Two of these checks also run before the commit, as the roadmap's dual-track
+principle asks. `npm install` at the repository root installs
+`.husky/pre-commit`, which runs `node scripts/ci/pre-commit.mjs` on the
+commit as staged. It runs only the rules that need no PR body:
+- when the commit stages a protected path, every protected path that the
+  branch changes must be named in a governance note that the branch changes
+  (the tier gate's governance-note rule);
+- when the commit stages `docs/TASKS.md` or `docs/assurance/ROADMAP.md`, the
+  queue must pass the task queue check's rules, except the `Task:` line rule.
+
+Each failure prints the command that fixes it. The hook never fetches and
+reads `origin/main` as last fetched. `git commit --no-verify` skips it, so CI
+stays the check that every pull request passes through
+(PC-1 to PC-8 in `intent/2026-10-06-pre-commit-hooks-spec.md`).
+
 ### 6. Maintain — incidents and evals
 
 An incident record plus its eval lands under `evals/`. `auditor` runs read-only

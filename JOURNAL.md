@@ -15,6 +15,17 @@ Each glob now compiles with the `s` flag, as the tier gate's has since PB-1.10. 
 
 ---
 
+## 2026-10-06 - A pre-commit hook runs the checks that need no PR body
+
+**Type:** feature
+**Touches:** .husky/pre-commit, scripts/ci/pre-commit.mjs, scripts/ci/pre-commit.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, scripts/ci/task-queue.mjs, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/assurance/TIER-LAYER-MAP.md, docs/gates/tier-layer-gate.md, docs/gates/task-queue-check.md, docs/TASKS.md
+**Why:** The roadmap's dual-track principle asks every deterministic check for a pre-commit hook as well as a CI job. The tier gate and the task queue check had only the CI job, and the PreToolUse hook sees only Claude Code's edit tools.
+**Links:** [intent](intent/2026-10-06-pre-commit-hooks.md), [spec](intent/2026-10-06-pre-commit-hooks-spec.md), [plan](intent/2026-10-06-pre-commit-hooks-plan.md)
+
+`.husky/pre-commit` runs `node scripts/ci/pre-commit.mjs` on the commit as staged. A commit that stages a protected path fails unless every protected path the branch changes is named in a governance note the branch changes, which is the tier gate's TG-5 with the branch set taken from the index against the merge base. A commit that stages the queue or the roadmap fails on QC-1 to QC-4. The `Task:` line, the tier declaration, the citations and the CGV section live in the PR body, so they stay in CI. The hook reuses the CI scripts' own functions, so the two enforcement points cannot drift apart on the rules they share. It never fetches, so a stale `origin/main` can make it disagree with CI, and `--no-verify` skips it. On this repository a failing commit took 0.26 s.
+
+---
+
 ## 2026-10-06 - The Tier Gate reads changed file names NUL-separated
 
 **Type:** fix
