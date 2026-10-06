@@ -133,7 +133,7 @@ fn run(cli: Cli) -> Result<i32> {
         } => {
             let checkout = evidence_record
                 .as_deref()
-                .map(|record_path| evidence::begin(record_path, &app_path, overrides.as_deref()))
+                .map(|record_path| evidence::begin(record_path, &app_path, overrides.as_deref(), &exclude))
                 .transpose()?;
             let rerun_options = (exclude.clone(), django_version.clone());
 
@@ -236,6 +236,7 @@ fn run(cli: Cli) -> Result<i32> {
                         checker: &checker_path,
                     }),
                 });
+                evidence::recheck(&checkout)?;
                 evidence::write(&record_path, &record)?;
             }
             Ok(code)

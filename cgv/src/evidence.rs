@@ -183,6 +183,9 @@ pub struct Checkout {
     /// The checked path relative to the work-tree root (`.` for the root).
     pub path: String,
     pub overrides: Option<String>,
+    top: PathBuf,
+    app: PathBuf,
+    exclude: Vec<String>,
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String> {
@@ -210,7 +213,12 @@ fn relative(top: &Path, path: &Path) -> Option<String> {
 
 /// Remove any file at `record_path` so that no failing run leaves one, then
 /// refuse a checked path that git cannot pin to a commit (CR-3).
-pub fn begin(record_path: &Path, app_path: &Path, overrides: Option<&Path>) -> Result<Checkout> {
+pub fn begin(
+    record_path: &Path,
+    app_path: &Path,
+    overrides: Option<&Path>,
+    exclude: &[String],
+) -> Result<Checkout> {
     match std::fs::remove_file(record_path) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
             return Err(e).with_context(|| format!("cannot remove {}", record_path.display()))
@@ -240,16 +248,67 @@ pub fn begin(record_path: &Path, app_path: &Path, overrides: Option<&Path>) -> R
         })?),
         None => None,
     };
-    let mut status = vec!["status", "--porcelain", "--untracked-files=all", "--", path.as_str()];
-    status.extend(overrides_rel.as_deref());
-    let changes = git(&top, &status)?;
+    let mut checkout = Checkout {
+        commit: String::new(),
+        path,
+        overrides: overrides_rel,
+        top,
+        app,
+        exclude: exclude.to_vec(),
+    };
+    checkout.commit = clean_commit(&checkout)?;
+    Ok(checkout)
+}
+
+/// Repeat the checks of `begin` just before the record is written, and refuse
+/// if the checkout changed or HEAD moved while the run was going (CR-3).
+pub fn recheck(checkout: &Checkout) -> Result<()> {
+    let commit = clean_commit(checkout).context("the checkout changed during the run")?;
+    if commit != checkout.commit {
+        bail!(
+            "--evidence-record refuses: HEAD moved from {} to {commit} during the run",
+            checkout.commit
+        );
+    }
+    Ok(())
+}
+
+/// HEAD, once git reports no change under the checked path or the overrides
+/// file and no ignored .py file the run would analyse.
+fn clean_commit(c: &Checkout) -> Result<String> {
+    let mut status = vec!["status", "--porcelain", "--untracked-files=all", "--", c.path.as_str()];
+    status.extend(c.overrides.as_deref());
+    let changes = git(&c.top, &status)?;
     if !changes.is_empty() {
         bail!(
             "--evidence-record needs a clean checkout of the checked path and overrides file, but git reports changes:\n{changes}"
         );
     }
-    let commit = git(&top, &["rev-parse", "HEAD"])?;
-    Ok(Checkout { commit, path, overrides: overrides_rel })
+    let ignored = ignored_python_files(c)?;
+    if !ignored.is_empty() {
+        bail!(
+            "--evidence-record refuses: git ignores these .py files, which the run would analyse, so the commit does not pin them (remove them or pass --exclude):\n{}",
+            ignored.join("\n")
+        );
+    }
+    git(&c.top, &["rev-parse", "HEAD"])
+}
+
+/// The files the run analyses that git ignores, relative to the work-tree root.
+fn ignored_python_files(c: &Checkout) -> Result<Vec<String>> {
+    let listed = git(
+        &c.top,
+        &["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", c.path.as_str()],
+    )?;
+    let ignored: std::collections::HashSet<&str> = listed.split('\0').filter(|f| f.ends_with(".py")).collect();
+    if ignored.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(crate::extractor::python_files(&c.app, &c.exclude)?
+        .iter()
+        .filter_map(|f| relative(&c.top, f))
+        .filter(|f| ignored.contains(f.as_str()))
+        .collect())
 }
 
 pub fn sha256_hex(path: &Path) -> Result<String> {

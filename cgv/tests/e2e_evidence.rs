@@ -382,3 +382,60 @@ fn a_record_that_cannot_be_written_exits_2_naming_the_path() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains(missing_dir.to_str().unwrap()));
 }
+
+fn ignore(s: &Scratch, patterns: &str) {
+    std::fs::write(s.repo().join(".gitignore"), patterns).unwrap();
+    git(&s.repo(), &["add", ".gitignore"]);
+    git(&s.repo(), &["commit", "-q", "-m", "ignore"]);
+}
+
+#[test]
+fn an_ignored_py_file_the_run_would_analyse_is_refused() {
+    let s = Scratch::new("def f(x):\n    return x\n");
+    ignore(&s, "gen/\n");
+    std::fs::create_dir_all(s.repo().join("app/gen")).unwrap();
+    std::fs::write(s.repo().join("app/gen/local.py"), "x = 1\n").unwrap();
+    assert_refused(&s, &s.repo().join("app"), &[], "app/gen/local.py");
+}
+
+#[test]
+fn ignored_files_the_run_does_not_analyse_are_allowed() {
+    let s = Scratch::new("def f(x):\n    return x\n");
+    ignore(&s, "*.log\ngen/\n__pycache__/\noutside.py\n");
+    std::fs::write(s.repo().join("app/run.log"), "noise\n").unwrap();
+    std::fs::create_dir_all(s.repo().join("app/gen")).unwrap();
+    std::fs::write(s.repo().join("app/gen/local.py"), "x = 1\n").unwrap();
+    std::fs::create_dir_all(s.repo().join("app/__pycache__")).unwrap();
+    std::fs::write(s.repo().join("app/__pycache__/cached.py"), "x = 1\n").unwrap();
+    std::fs::write(s.repo().join("outside.py"), "x = 1\n").unwrap();
+    let out = s.run(&s.repo().join("app"), &s.checker(CLEAN_BODY), &["--exclude", "gen/**"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(s.read_record()["commit"], json!(s.head()));
+}
+
+/// The checker changes the checkout while it runs: the record is refused.
+fn assert_refused_after_the_run(s: &Scratch, change: &str, stderr_has: &str) {
+    std::fs::write(s.record(), "stale").unwrap();
+    let out = s.run(&s.repo().join("app"), &s.checker(&format!("{change}\n{CLEAN_BODY}")), &[]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains(stderr_has), "{stderr}");
+    assert!(!s.record().exists(), "a record was written");
+}
+
+#[test]
+fn a_file_added_under_the_checked_path_during_the_run_is_refused() {
+    let s = Scratch::new("def f(x):\n    return x\n");
+    let late = s.repo().join("app/late.py");
+    assert_refused_after_the_run(&s, &format!("echo 'x = 1' > '{}'", late.display()), "app/late.py");
+}
+
+#[test]
+fn a_head_that_moves_during_the_run_is_refused() {
+    let s = Scratch::new("def f(x):\n    return x\n");
+    let commit = format!(
+        "git -C '{}' -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --allow-empty -m moved >&2",
+        s.repo().display()
+    );
+    assert_refused_after_the_run(&s, &commit, "HEAD moved");
+}
