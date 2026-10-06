@@ -13,14 +13,14 @@ Two of the first files a new user reads still state the old positions:
 A reader who trusts these files concludes that Crosscheck has given up on these classes, which the vision says is false.
 
 ## Proposed outcome
-Each of these statements says "not yet reached", names the blocking property and names the open question. The open questions come from the class table in `docs/VISION.md` where one fits. Layer 6 says that a proof of completeness is not yet reached because no requirement is written formally, points to roadmap item RQ-1, and says `/spec-adversary` findings are search results, not evidence. The grep `out of scope|not addressed|best[- ]effort` finds nothing in either file.
+Each of these statements says "not yet reached", names the blocking property and names the open question. The open questions come from the class table in `docs/VISION.md` where one fits. Layer 6 says that a proof of completeness is not yet reached because no formal requirement is tied to the spec, points to roadmap item RQ-1, and says `/spec-adversary` findings are search results, not evidence. The grep `out of scope|not addressed|best[- ]effort` finds nothing in either file. The Layer 3 row and the Byfuglien paragraph also say what CGV reaches and name its trusted base (the extractor, `Translation.lean`, `BehaviorModel.lean` and the soundness theorem statements), and name a blocking property and open question for Layers 2 and 3. Those two questions are not in the vision's class table, so this change proposes them.
 
 ## Affected users and systems
 - Anyone deciding whether Crosscheck fits their code.
 - `crosscheck/README.md`, `crosscheck/docs/assurance-hierarchy.md`, `crosscheck/JOURNAL.md` and `docs/TASKS.md`. None is protected, and no behaviour changes, so the change is Tier 1.
 
 ## Constraints
-- No skill, agent or code changes. VA-1.1 owns the skills and agents.
+- No skill, agent or code changes. VA-1.1 owns the `intent-check` attestation wording in skills and agents, and VA-1.5 owns the "best-effort", "out of scope" and "not addressed" wording in them.
 - The same phrases appear in `crosscheck/docs/research/assurance-hierarchy.md` and other docs under `crosscheck/docs/`. This change adds row VA-1.6 for them and does not edit them.
 - Both files present `/intent-check`'s round-trip accuracy as Layer 5's confidence and say Layers 4 to 6 "prove" the spec is right. Rule 1 of the vision makes `/intent-check` a search tool. This change adds row VA-1.4 for that and does not edit it.
 
