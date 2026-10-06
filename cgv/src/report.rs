@@ -54,7 +54,18 @@ pub struct CheckResult {
     pub suggestion: String,
 }
 
+impl CheckerOutput {
+    /// Results that are neither errors nor an incomplete run.
+    pub fn warning_count(&self) -> usize {
+        self.results.iter().filter(|r| r.is_warning()).count()
+    }
+}
+
 impl CheckResult {
+    fn is_warning(&self) -> bool {
+        !self.is_error() && !self.is_incomplete()
+    }
+
     fn is_error(&self) -> bool {
         self.severity == "error" && !self.is_incomplete()
     }
@@ -112,7 +123,7 @@ pub fn render_text(output: &CheckerOutput, no_warnings: bool) -> String {
     let warnings: Vec<&CheckResult> = output
         .results
         .iter()
-        .filter(|r| !r.is_error() && !r.is_incomplete())
+        .filter(|r| r.is_warning())
         .collect();
 
     for result in output.results.iter().filter(|r| r.is_incomplete()) {
