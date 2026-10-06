@@ -315,8 +315,9 @@ If `plan.dafny_handoff_needed == true`, the block content is:
 > 3. `/crosscheck:extract-code` — compile the verified Dafny to
 >    Python or Go.
 >
-> Hellebuyck's Layer 5/6 output is best-effort; Dafny's Layer 1–3
-> verification is deterministic. Use the right tool for the layer.
+> Hellebuyck's Layer 5/6 output is search: it points at gaps and is
+> not evidence. Dafny's Layer 1 verification is deterministic; Layers
+> 2–3 are not yet reached. Use the right tool for the layer.
 
 If `plan.dafny_handoff_needed == false`, use "No Dafny candidates in this
 PR." as the block content.

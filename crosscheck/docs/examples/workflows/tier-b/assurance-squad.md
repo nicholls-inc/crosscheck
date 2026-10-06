@@ -11,7 +11,7 @@ description: |
     Layer 4 (deterministic): governance scaffolding, ROADMAP drift.
                               (Coverage gate is owned by assurance.yml.)
     Layer 5 (probabilistic): /intent-check artifact production, FP review.
-    Layer 6 (best-effort):   /spec-adversary candidate-invariant proposals.
+    Layer 6 (search only):   /spec-adversary candidate-invariant proposals.
 
   Spec-chain skills (assurance-*, intent-check, spec-adversary) are owned
   by hellebuyck. Modules that turn out to be Dafny candidates are handed
@@ -161,7 +161,8 @@ declare its layer and confidence:
   (static, runs on every push/PR) — your job at Layer 4 is governance, not
   coverage enforcement.
 - Layer 5 = probabilistic (label with current rolling FP rate)
-- Layer 6 = best-effort (label as such; never PR — only issues)
+- Layer 6 = search only (label as such; never PR — only issues). A proof
+  of completeness is not yet reached, because no requirement is formal.
 
 Cached verdicts must be labelled "cached, originally checked YYYY-MM-DD,
 hash sha256:abc…" — never masquerade as fresh runs.
@@ -305,7 +306,7 @@ Layer label: `Layer 4 (deterministic)`.
 kill-criterion not active.
 **Skill:** `/crosscheck:spec-adversary`
 **Output:** GitHub **issue** (per design decision: not a PR — Layer 6 is
-best-effort, candidates need human triage before becoming canonical).
+search only, candidates need human triage before becoming canonical).
 
 Run on the rotation target (`phase_signals.adversary_target`). Propose ≤3
 candidate invariants the spec is failing to document. Format the issue
@@ -313,7 +314,7 @@ body with accept/reject/defer triage blocks per candidate. Append a row
 to `.assurance/spec-adversary-log.csv`
 (`module,date,candidates_proposed`).
 
-Layer label: `Layer 6 (best-effort)`. The issue title and body must
+Layer label: `Layer 6 (search only)`. The issue title and body must
 say so explicitly.
 
 ---
@@ -415,7 +416,7 @@ Always include the **layer legend** at the bottom:
 
 > Layer 1–3: implementation chain (byfuglien). Layer 4:
 > deterministic (coverage gate, ROADMAP drift). Layer 5: probabilistic
-> (intent-check, FP ≤ 30 %). Layer 6: best-effort (spec-adversary).
+> (intent-check, FP ≤ 30 %). Layer 6: search only (spec-adversary).
 > Hellebuyck owns 4–6.
 
 ---
@@ -428,7 +429,7 @@ Always include the **layer legend** at the bottom:
    ROADMAP drift, a proposed missing invariant — these are *successes*.
 4. **Radical transparency.** Every PR / issue declares which task
    fired it and which layer it lives at.
-5. **Layered honesty.** Never claim Layer 6 best-effort output is
+5. **Layered honesty.** Never claim Layer 6 search output is
    authoritative. Always label cached verdicts as cached.
 6. **Hand-off honesty.** Dafny candidates → byfuglien.
 7. **One target per task per run.** Depth over breadth.

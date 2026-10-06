@@ -376,8 +376,9 @@ Recommend the byfuglien chain:
 3. `/crosscheck:extract-code` — compile to Python and replace the
    current `queue/work_queue.py`.
 
-Hellebuyck's Layer 5/6 output is best-effort; Dafny's Layer 1–3
-verification is deterministic. Use the right tool for the layer.
+Hellebuyck's Layer 5/6 output is search: it points at gaps and is
+not evidence. Dafny's Layer 1 verification is deterministic; Layers
+2–3 are not yet reached. Use the right tool for the layer.
 ```
 
 The squad does **not** attempt the Dafny work itself — the spec chain is
