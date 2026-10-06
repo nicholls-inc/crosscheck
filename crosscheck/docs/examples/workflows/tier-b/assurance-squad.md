@@ -162,8 +162,8 @@ declare its layer and confidence:
   coverage enforcement.
 - Layer 5 = probabilistic (label with current rolling FP rate)
 - Layer 6 = search only (label as such; never PR — only issues). A proof
-  of completeness is not yet reached, because no formal requirement is tied
-  to the spec.
+  of completeness is not yet reached, because no requirement is written
+  formally, so none is tied to the spec.
 
 Cached verdicts must be labelled "cached, originally checked YYYY-MM-DD,
 hash sha256:abc…" — never masquerade as fresh runs.
