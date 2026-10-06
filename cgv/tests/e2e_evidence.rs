@@ -238,6 +238,21 @@ fn exit_1_removes_a_record_from_an_earlier_run() {
 }
 
 #[test]
+fn an_incomplete_run_removes_a_record_from_an_earlier_run() {
+    for (name, body) in [
+        ("exit 2 with JSON", "printf %s '{\"summary\": {\"contracts_checked\": 1, \"edges_checked\": 0, \"paths_checked\": 0}, \"results\": [], \"exit_code\": 2}'\nexit 2"),
+        ("output that is not JSON", "printf %s 'not json'\nexit 0"),
+        ("a crash with no output", "exit 139"),
+    ] {
+        let s = Scratch::new("def f(x):\n    return x\n");
+        std::fs::write(s.record(), "stale").unwrap();
+        let out = s.run(&s.repo().join("app"), &s.checker(body), &[]);
+        assert_ne!(out.status.code(), Some(0), "{name}");
+        assert!(!s.record().exists(), "{name}: a record survived");
+    }
+}
+
+#[test]
 fn a_record_inside_the_checked_path_does_not_make_the_next_run_dirty() {
     let s = Scratch::new("def f(x):\n    return x\n");
     let inside = s.repo().join("app/record.json");

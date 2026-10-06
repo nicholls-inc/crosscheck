@@ -269,6 +269,52 @@ pub fn count_assumed(db: &Path) -> Result<u64> {
 pub fn write(record_path: &Path, record: &Record) -> Result<()> {
     let mut json = serde_json::to_string_pretty(record)?;
     json.push('\n');
-    std::fs::write(record_path, json)
+    write_through_temp(record_path, |file| std::io::Write::write_all(file, json.as_bytes()))
         .with_context(|| format!("cannot write the evidence record to {}", record_path.display()))
+}
+
+/// Fill a temporary file beside `record_path`, then rename it into place, so a
+/// failed write never leaves a partial record at `record_path` (CR-2).
+fn write_through_temp(
+    record_path: &Path,
+    fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let name = record_path.file_name().ok_or_else(|| std::io::Error::other("no file name"))?;
+    let temp = record_path.with_file_name(format!(".{}.tmp-{}", name.to_string_lossy(), std::process::id()));
+    let result = std::fs::File::create(&temp)
+        .and_then(|mut file| fill(&mut file).and_then(|()| file.sync_all()))
+        .and_then(|()| std::fs::rename(&temp, record_path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result
+}
+
+#[cfg(test)]
+mod write_tests {
+    use super::write_through_temp;
+    use std::io::Write;
+
+    #[test]
+    fn a_failed_fill_leaves_neither_a_record_nor_a_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = dir.path().join("record.json");
+        let result = write_through_temp(&record, |file| {
+            file.write_all(b"{\"partial\":")?;
+            Err(std::io::Error::other("disk full"))
+        });
+        assert!(result.is_err());
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert!(left.is_empty(), "left behind: {left:?}");
+    }
+
+    #[test]
+    fn a_failed_fill_keeps_nothing_of_an_older_record_the_caller_removed_and_a_good_fill_replaces_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = dir.path().join("record.json");
+        write_through_temp(&record, |f| f.write_all(b"one")).unwrap();
+        write_through_temp(&record, |f| f.write_all(b"two")).unwrap();
+        assert_eq!(std::fs::read(&record).unwrap(), b"two");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 }
