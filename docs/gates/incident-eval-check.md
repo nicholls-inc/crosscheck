@@ -33,7 +33,7 @@ Both are plain substring matches, so a file that names `INC-12` also matches `IN
 
 - **0.** No incident reference (it prints `no incident reference — skipped`), or both files exist (it prints a `PASS` line).
 - **1.** The eval or the invariant is missing, or the `incident` label is set and no id is found. It prints the gate message and one line per missing item.
-- **2.** It could not read the pull request's commits: a malformed input, a git error, or an empty range. The range is empty when the pull request's head is already on the base branch, as after a merge commit. This can happen on any merged pull request, with or without an incident reference. A squash merge or a GitHub rebase merge leaves the commits readable, because GitHub keeps `refs/pull/<number>/head` and a rebase merge writes new commit SHAs. The repository's ruleset allows only squash merges.
+- **2.** It could not read the pull request's commits: a malformed input, a git error, or an empty range. The range is empty when the pull request's head is already on the base branch, as after a merge commit. This can happen on any merged pull request, with or without an incident reference. A squash merge or a GitHub rebase merge leaves the commits readable, because GitHub keeps `refs/pull/<number>/head` and a rebase merge writes new commit SHAs (the rebase case is tested against a simulated replay, not a real GitHub rebase merge). The repository's ruleset allows only squash merges.
 
 The full rules are IE-1 to IE-7 in `intent/2026-09-30-incident-eval-range-spec.md`, with IE-2 and IE-8 revised in `intent/2026-10-06-incident-eval-surfaces-spec.md`.
 
