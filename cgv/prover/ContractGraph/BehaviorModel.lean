@@ -100,9 +100,10 @@ def minValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
 /-! ## Numeric tower
 
 PEP 484: where an argument is annotated `float`, an argument of type `int`
-is acceptable. mypy and pyright accept it for parameters and for dataclass,
-attrs, `NamedTuple` and `TypedDict` fields. pydantic 2.11.10 accepts an `int`
-for a `float` field in strict mode too (`ConfigDict(strict=True)`,
+is acceptable. This is the PEP text for every annotation, so it covers
+parameters and dataclass, attrs, `NamedTuple` and `TypedDict` fields; no
+checker (mypy, pyright) or attrs validator was run for it. pydantic 2.11.10
+accepts an `int` for a `float` field in strict mode too (`ConfigDict(strict=True)`,
 `StrictFloat`, `Field(strict=True)`), storing `float(v)`. Lax pydantic numeric
 fields and Django `FloatField` writes carry no type requirement.
 

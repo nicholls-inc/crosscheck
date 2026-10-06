@@ -45,4 +45,5 @@ So `int` into `float` holds for every target that carries a `float` requirement.
 - `complex` stays without a `type` requirement. Accepting `int` or `float` into `complex` is already the behaviour, and the fixture pins it. Extracting a `complex` requirement is not yet reached: the blocking property is that strict pydantic rejects `int` and `float` into `complex`, so the check would need to know the field's strictness, and the open question is whether a strictness-aware `type` check belongs in the extractor or in `constraintImplies`.
 
 ## Open questions
-None.
+- Where does a strictness-aware `type` check belong, in the extractor or in `constraintImplies`? It decides both `bool` into `float` (PEP 484 accepts, strict pydantic rejects) and the `complex` half of the tower. Not settled here; filed as #86.
+- The evidence for "every extracted `float` requirement accepts an `int`" is the PEP 484 text and one pydantic 2.11.10 run. mypy, pyright and attrs validators were not run, so a new source of `float` requirements needs its own check before this rule is relied on for it.

@@ -335,7 +335,7 @@
       "false_positive": 3,
       "precision": 0.3333,
       "unlabelled": 0,
-      "stale_labels": 1,
+      "stale_labels": 0,
       "false_positive_causes": {
         "narrowing": 1,
         "no-return": 1,
