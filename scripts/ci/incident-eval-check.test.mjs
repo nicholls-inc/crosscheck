@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -288,6 +288,28 @@ test('IE-6: the incident line in the oldest commit of a rebase-merged PR is read
   const result = run(checkout, head);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
+});
+
+test('IE-8: a GitHub origin gets the absolute link to the explainer on main', () => {
+  const { checkout, head } = mergedPr({ branchMessages: ['fix: first\n\nFixes-Incident: INC-7'] });
+  // The scratch remote is a local path, so a shim git reports a GitHub URL for
+  // `git remote get-url origin` and passes every other command to the real git.
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const shimDir = mkdtempSync(join(tmpdir(), 'incident-eval-shim-'));
+  writeFileSync(
+    join(shimDir, 'git'),
+    `#!/bin/sh\nif [ "$1 $2 $3" = "remote get-url origin" ]; then echo git@github.com:acme/widgets.git; exit 0; fi\nexec "${realGit}" "$@"\n`
+  );
+  chmodSync(join(shimDir, 'git'), 0o755);
+  const result = run(checkout, head, { PATH: `${shimDir}:${process.env.PATH}` });
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(
+    result.stdout,
+    failureOutput([noEval('INC-7'), noInvariant('INC-7')]).replace(
+      'Full explanation: docs/gates/incident-eval-check.md.',
+      'Full explanation: https://github.com/acme/widgets/blob/main/docs/gates/incident-eval-check.md.'
+    )
+  );
 });
 
 test('IE-2: a rebase-merged PR with no incident reference is skipped, not an empty range', () => {
