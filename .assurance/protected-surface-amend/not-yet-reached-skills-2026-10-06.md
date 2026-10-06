@@ -22,7 +22,7 @@ Task VA-1.5. `docs/VISION.md` says no class of code is outside the vision: a too
 
 ### Governing Roadmap Item
 
-- **Path:** `docs/assurance/ROADMAP.md` (immediate horizon, item VA-1)
+- **Path:** `docs/assurance/ROADMAP.md` (Next (4-8 weeks) horizon, item VA-1)
 - **Title:** Bring what Crosscheck tells its users in line with the vision
 - **Scope coverage:** VA-1's scope says the skills and agents "call spec completeness 'best-effort', and they call some classes of code 'out of scope' or 'not addressed'". Its acceptance asks that each class a tool does not reach be described as "not yet reached", with the blocking property and the open question. Task VA-1.5 in `docs/TASKS.md` is this change.
 
@@ -47,6 +47,7 @@ Task VA-1.5. `docs/VISION.md` says no class of code is outside the vision: a too
 ### Test / Coverage Impact
 
 - No invariant, test or eval changes. No skill gains or loses a step, an output section, a routing token, a threshold or a kill criterion, so `go run ./crosscheck/conformance crosscheck` is unaffected.
+- Report content requirements grow, though no step or section is added: `/assurance-layer-audit` now says the Layer 2 open question and the Layer 6 proof status in its report, and its checklist requires every "not yet reached" claim to name the blocking property and the open question. `/acceptance-oracle-draft`'s "Why rejected" column names the blocking property.
 - Output changes a user can see: `/assurance-layer-audit`'s reach table reads "Not yet reached" for Layer 2 and "Search only" for Layer 6, and `/acceptance-oracle-draft`'s rejected-flows heading reads `## Rejected Flows (not yet reached by this oracle)`. A consumer that matched the old heading text in full breaks; `references/scenario-schema.md` cites only `## Rejected Flows`, which is unchanged.
 - No check enforces the new wording. A wording lint for skills and agents is not yet reached; the spec records the blocking property and the open question.
 

@@ -141,7 +141,7 @@ For the initial draft, scenarios can live at `acceptance/scenarios/` inside the 
 
 ### Step 7: Explicitly Enumerate Rejected Flows
 
-This is non-negotiable. At the end of the output, print a section titled `## Rejected Flows (not yet reached by this oracle)` listing every flow proposed during Step 2 that could not be mechanically verified. The "Why rejected" column names the property that blocks a mechanical check. A flow with no mechanical rewrite also names the open question; for a class in the vision's class table, such as user interfaces, use the open question the table gives. Example:
+This is non-negotiable. At the end of the output, print a section titled `## Rejected Flows (not yet reached by this oracle)` listing every flow proposed during Step 2 that could not be mechanically verified. The "Why rejected" column names the property that blocks a mechanical check. A flow with no mechanical rewrite also names the open question; for a purely visual flow, the open question is how to specify "looks right". Example:
 
 ```
 ## Rejected Flows (not yet reached by this oracle)

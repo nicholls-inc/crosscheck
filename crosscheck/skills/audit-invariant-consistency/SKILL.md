@@ -411,8 +411,9 @@ The skill is a search. Its findings point at contradictions and are not
 evidence that none remain. A proof that an invariant set is consistent
 and complete is not yet reached: no formal requirement is tied to the
 spec, and the open question is how to write requirements formally and
-prove that a spec achieves them (roadmap item RQ-1 in the Crosscheck
-repository). The goal is high-signal findings, not exhaustive coverage.
+prove that a spec achieves them ([roadmap item
+RQ-1](https://github.com/nicholls-inc/crosscheck/blob/main/docs/assurance/ROADMAP.md)).
+The goal is high-signal findings, not exhaustive coverage.
 ```
 
 ### Step 9: Kill criteria
