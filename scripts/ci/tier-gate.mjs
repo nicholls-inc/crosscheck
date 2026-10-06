@@ -7,10 +7,12 @@
 // Inputs (env):
 //   PR_BODY           - full pull request description text
 //   PR_LABELS         - comma-separated label list (e.g. "tier:2,needs-review")
-//   CHANGED_FILES     - newline-separated list of changed file paths (repo-relative)
+//   CHANGED_FILES_PATH - path of a file holding the changed file paths
+//                        (repo-relative), NUL-separated as `git diff -z
+//                        --name-only` writes them, so no name is quoted (TG-16)
 //   BASE_REF          - the PR's base branch/commit (accepted for interface
 //                        completeness and included in the pass summary; the
-//                        actual diff is supplied via CHANGED_FILES)
+//                        actual diff is supplied via CHANGED_FILES_PATH)
 //   CROSSCHECK_PROTECTED_RULES - optional override path to the protected-surfaces
 //                        rules file (default: .claude/rules/protected-surfaces.md)
 //
@@ -106,7 +108,7 @@ export function globToRegExp(glob) {
     const escaped = part.replace(/[.+^${}()|[\]\\]/g, '\\$&');
     return escaped.replace(/\*/g, '[^/]*');
   });
-  return new RegExp(`^${parts.join('/')}$`);
+  return new RegExp(`^${parts.join('/')}$`, 's');
 }
 
 export function loadProtectedGlobs(rulesPath) {
@@ -351,11 +353,16 @@ export function evaluate({
   };
 }
 
+function readChangedFiles(path) {
+  if (!path) return [];
+  return readFileSync(path, 'utf8').split('\0').filter((s) => s.length > 0);
+}
+
 function main() {
   const result = evaluate({
     prBody: process.env.PR_BODY || '',
     prLabels: splitList(process.env.PR_LABELS, ','),
-    changedFiles: splitList(process.env.CHANGED_FILES, '\n'),
+    changedFiles: readChangedFiles(process.env.CHANGED_FILES_PATH),
     baseRef: process.env.BASE_REF || '(unspecified)',
     rulesPath: process.env.CROSSCHECK_PROTECTED_RULES || DEFAULT_RULES_PATH,
   });
