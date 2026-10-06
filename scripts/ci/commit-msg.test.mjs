@@ -52,6 +52,7 @@ for (const path of [
   'crosscheck/agents/a"b.md',
   'crosscheck/skills/n\nl/SKILL.md',
   'crosscheck/agents/x\ny.md',
+  'crosscheck/skills/a\\nb/SKILL.md',
 ]) {
   test(`CM-2, CM-4: docs: blocks ${JSON.stringify(path)} and names it`, () => {
     const { status, output } = runHook(path, 'docs: x');
@@ -74,7 +75,7 @@ test('CM-1: fix: passes with a quoted SKILL.md name', () => {
   assert.equal(output, '');
 });
 
-for (const path of ['docs/é.md', 'crosscheck/skills/SKILL.md\nx']) {
+for (const path of ['docs/é.md', 'crosscheck/skills/SKILL.md\nx', 'crosscheck/agents/x.txt']) {
   test(`CM-2: docs: passes for ${JSON.stringify(path)}, which is not behavioural`, () => {
     const { status, output } = runHook(path, 'docs: x');
     assert.equal(status, 0, output);

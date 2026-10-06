@@ -9,7 +9,7 @@ The hook itself is not protected. The test is, because `scripts/ci/**` is, and C
 ## Order of work
 
 1. Write the governance note `.assurance/protected-surface-amend/commit-msg-names-2026-10-06.md`, naming `scripts/ci/commit-msg.test.mjs`.
-2. Add `scripts/ci/commit-msg.test.mjs` with the CM-5 cases. Run `node --test scripts/ci/*.test.mjs` and see the three unusual-name `docs:` cases and the `refactor:` case fail against the current hook. Commit the test on its own.
+2. Add `scripts/ci/commit-msg.test.mjs` with the CM-5 cases. Run `node --test scripts/ci/*.test.mjs` and see the four unusual-name `docs:` cases and the `refactor:` case fail against the current hook. Commit the test on its own.
 3. In `.husky/commit-msg`, read the names as CM-3 says.
 4. Run `node --test scripts/ci/*.test.mjs`. Check each new case by mutation: revert the hook, drop `*agents/*.md` from the pattern, make the check never block, and make it block every `docs:` commit. Each mutation fails at least one case.
 5. Set PB-1.13 to `done` in `docs/TASKS.md`, with the intent as its record. Add a root `JOURNAL.md` entry.

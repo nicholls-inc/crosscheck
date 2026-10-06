@@ -38,7 +38,7 @@ if [ -n "$BLOCKED_TYPE" ]; then
     echo "  that does not touch any of these files."
     echo ""
     echo "  Affected files:"
-    echo "$BEHAVIORAL_FILES" | sed 's/^/    /'
+    printf '%s\n' "$BEHAVIORAL_FILES" | sed 's/^/    /'
     echo ""
     exit 1
   fi
