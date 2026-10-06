@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -97,13 +97,21 @@ function scratchNoOrigin() {
 
 // Milliseconds the pre-commit hook process ran, as git's trace2 records it
 // around that one child (PC-7). Git's own work and the test's setup are not in
-// it.
-function hookMillis(traceFile) {
-  const events = readFileSync(traceFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+// it. The `hook_name` field of trace2's `child_start` event needs a recent git;
+// an older git records no such event and the assertion below fails.
+function hookMillis(traceFile, gitOutput) {
+  const events = readFileSync(traceFile, 'utf8').trim().split('\n').map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      assert.fail(`git wrote a trace2 line that is not JSON: ${line}`);
+    }
+  });
   const starts = events.filter((e) => e.event === 'child_start' && e.child_class === 'hook' && e.hook_name === 'pre-commit');
-  assert.equal(starts.length, 1, 'git ran the pre-commit hook once');
+  assert.equal(starts.length, 1, `git ran the pre-commit hook once; git printed: ${gitOutput}`);
   const exit = events.find((e) => e.event === 'child_exit' && e.sid === starts[0].sid && e.child_id === starts[0].child_id);
   assert.ok(exit, 'git recorded the pre-commit hook exiting');
+  assert.equal(typeof exit.t_rel, 'number', 'git recorded how long the pre-commit hook ran');
   return Math.round(exit.t_rel * 1000);
 }
 
@@ -114,10 +122,16 @@ function commit(work, files) {
   write(work, files);
   git(work, ['add', '--', ...Object.keys(files)]);
   const before = git(work, ['rev-parse', 'HEAD']);
-  const traceFile = join(mkdtempSync(join(tmpdir(), 'pre-commit-trace-')), 'events.json');
+  const traceDir = mkdtempSync(join(tmpdir(), 'pre-commit-trace-'));
+  const traceFile = join(traceDir, 'events.json');
   const r = spawnSync('git', ['commit', '-m', 'x'], { cwd: work, env: { ...GIT_ENV, GIT_TRACE2_EVENT: traceFile }, encoding: 'utf8' });
   const after = git(work, ['rev-parse', 'HEAD']);
-  const ms = hookMillis(traceFile);
+  let ms;
+  try {
+    ms = hookMillis(traceFile, `${r.stdout}${r.stderr}`);
+  } finally {
+    rmSync(traceDir, { recursive: true, force: true });
+  }
   assert.ok(ms < 5000, `the pre-commit hook ran for ${ms} ms, over the 5000 ms budget (PC-7)`);
   const rerun = r.status === 0 ? null : spawnSync('node', ['scripts/ci/pre-commit.mjs'], { cwd: work, env: GIT_ENV, encoding: 'utf8' });
   if (rerun) assert.equal(`${rerun.stdout}${rerun.stderr}`, `${r.stdout}${r.stderr}`.replace(/^[\s\S]*?(?=pre-commit:)/, ''), 'the rerun prints what the hook printed');
