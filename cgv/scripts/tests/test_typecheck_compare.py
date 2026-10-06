@@ -348,6 +348,17 @@ class RunToolTest(unittest.TestCase):
                 tc.run_pyright(Path("."), "/x/python")
 
 
+    def test_each_runner_and_the_version_probe_names_its_own_tool(self):
+        for label, call in (
+            ("mypy", lambda: tc.run_mypy(Path("."), "/x/python")),
+            ("pyright", lambda: tc.run_pyright(Path("."), "/x/python")),
+            ("python", lambda: tc.versions("/x/python")),
+        ):
+            with self.subTest(label), mock.patch.object(tc.subprocess, "run", side_effect=FileNotFoundError("nope")):
+                with self.assertRaisesRegex(tc.HarnessError, rf"cannot run {label} with /x/python: "):
+                    call()
+
+
 class CheckTreeTest(unittest.TestCase):
     def test_copies_the_tree_writes_config_and_runs_both_checkers_on_the_copy(self):
         seen = {}
@@ -480,7 +491,7 @@ class MainTest(unittest.TestCase):
                 code = tc.main(["--corpus", str(corpus), "--bench-result", str(result),
                                 "--python", str(Path(tmp) / "no-such-python")])
         self.assertEqual((code, out.getvalue()), (2, ""))
-        self.assertIn("cannot run mypy with", err.getvalue())
+        self.assertIn("cannot run python with", err.getvalue())
         self.assertIn("no-such-python", err.getvalue())
 
     def test_a_relative_interpreter_path_is_made_absolute(self):

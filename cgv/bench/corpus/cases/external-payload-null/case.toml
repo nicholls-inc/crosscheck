@@ -1,4 +1,4 @@
-description = "A pydantic model built from response.json() where the remote API may send null; nothing in project code produces None, so not yet reached by the design (blocked because nothing in project code is the source of the None)."
+description = "A pydantic model built from response.json() where the remote API may send null; nothing in project code produces None, so not yet reached by the design. The open question is stated in cgv/README.md, \"When to use it\"."
 kind = "non-null"
 in_scope = false
 source = "synthetic"

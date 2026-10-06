@@ -111,7 +111,7 @@ def versions(python):
     out = {}
     for pkg in ("mypy", "pyright", "django-stubs", "django", "pydantic"):
         proc = run_tool(
-            pkg, [python, "-c", f"import importlib.metadata as m; print(m.version({pkg!r}))"],
+            "python", [python, "-c", f"import importlib.metadata as m; print(m.version({pkg!r}))"],
             capture_output=True, text=True,
         )
         if proc.returncode != 0:
