@@ -9,7 +9,8 @@
 # Usage: scripts/typecheck_compare.py [--corpus DIR] [--bench-result JSON]
 #                                     [--python PATH]
 # --python names an interpreter with the pinned packages of
-# bench/typecheckers/requirements.txt installed. Exit 0 ok, 2 harness failure.
+# bench/typecheckers/requirements.txt installed. Exit 0 ok, 2 harness failure
+# (ValueError covers invalid TOML, invalid JSON and non-UTF-8 input).
 import argparse
 import collections
 import json
@@ -123,7 +124,7 @@ def load_cases(corpus):
                 "fix": case_dir / case["fix"],
                 "files": sorted({b["file"] for b in case["bug"]}),
             })
-        except (KeyError, TypeError, OSError, tomllib.TOMLDecodeError) as e:
+        except (KeyError, TypeError, OSError, ValueError) as e:
             raise HarnessError(f"{case_toml} is malformed: {e!r}")
     return cases
 
@@ -163,7 +164,7 @@ def main(argv=None):
         vers = versions(args.python)
         try:
             cgv = {c["id"]: c["outcome"] for c in json.loads(args.bench_result.read_text())["cases"]}
-        except (KeyError, TypeError, OSError, json.JSONDecodeError) as e:
+        except (KeyError, TypeError, OSError, ValueError) as e:
             raise HarnessError(f"{args.bench_result} is malformed: {e!r}")
         rows = []
         for case in load_cases(args.corpus):

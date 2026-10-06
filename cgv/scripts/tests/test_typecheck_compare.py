@@ -125,6 +125,20 @@ class CorpusTest(unittest.TestCase):
             with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
                 tc.load_cases(Path(tmp))
 
+    def test_a_case_toml_that_cannot_be_read_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "cases" / "broken" / "case.toml").mkdir(parents=True)
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
+    def test_a_case_toml_that_is_not_utf8_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp) / "cases" / "broken"
+            case_dir.mkdir(parents=True)
+            (case_dir / "case.toml").write_bytes(b"\xff\xfe=")
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
     def test_a_bug_table_instead_of_an_array_is_a_harness_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.write_case(tmp, 'kind = "k"\nin_scope = true\npre = "p"\nfix = "f"\n[bug]\nfile = "a.py"\n')
@@ -271,10 +285,11 @@ class MainTest(unittest.TestCase):
     def test_a_malformed_bench_result_exits_two(self):
         for name, text in (("key", json.dumps({"cases": [{"id": "c1"}]})),
                            ("json", "not json"),
-                           ("list", "[]")):
+                           ("list", "[]"),
+                           ("utf8", b"\xff\xfe")):
             with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
                 bad = Path(tmp) / "bad.json"
-                bad.write_text(text)
+                (bad.write_bytes if isinstance(text, bytes) else bad.write_text)(text)
                 code, out, err = self.run_main(tmp, True, [[], []], bench_result=bad)
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn("malformed", err)
