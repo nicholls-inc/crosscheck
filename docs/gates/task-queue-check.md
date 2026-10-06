@@ -32,6 +32,10 @@ Fix the separator row in the pull request. If the base branch's queue is the bro
 
 It does not check that the pull request sets its own task to `done`, that a task ID was never used before, that dependencies form no cycle, or that a `blocked` row says what unblocks it. These are listed under "Concerns flagged" in `intent/2026-10-01-queue-check-spec.md`.
 
+## Before you commit
+
+`npm install` at the repository root installs a pre-commit hook, `.husky/pre-commit`. When a commit stages `docs/TASKS.md` or `docs/assurance/ROADMAP.md`, the hook runs every rule above except the last, on the files as staged. The `Task:` line is in the PR body, so only CI checks which row a pull request sets to `done`. Run `node scripts/ci/pre-commit.mjs` to recheck after a fix.
+
 ## How long this takes
 
 Usually a minute: fix the row the message names, or add the `Task:` line. Run `BASE_REF=main PR_BODY="$(gh pr view --json body -q .body)" node scripts/ci/task-queue.mjs check` locally to see the same result.

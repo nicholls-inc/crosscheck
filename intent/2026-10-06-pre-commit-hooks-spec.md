@@ -34,7 +34,7 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - Base unresolved: `Fix: git fetch origin`.
 - **PC-6. Applies only when needed.** A commit whose staged set has no protected path, no `docs/TASKS.md` and no `docs/assurance/ROADMAP.md` passes after reading the staged set and the rules file, and reads nothing else. It does not need `origin`.
 - **PC-7. Budget.** No network, no LLM, and under 5 seconds on this repository. The test asserts the 5 seconds on each commit it makes.
-- **PC-8. Tests.** `scripts/ci/pre-commit.test.mjs` copies `.husky/pre-commit`, `scripts/ci/pre-commit.mjs`, `scripts/ci/tier-gate.mjs`, `scripts/ci/task-queue.mjs` and the rules file into a scratch clone of a scratch bare remote, sets `core.hooksPath` to `.husky`, and runs `git commit`. Each case asserts the commit's exit status, whether `HEAD` moved, and literal text in the output:
+- **PC-8. Tests.** `scripts/ci/pre-commit.test.mjs` copies `.husky/pre-commit`, `scripts/ci/pre-commit.mjs`, `scripts/ci/tier-gate.mjs`, `scripts/ci/task-queue.mjs` and the rules file into a scratch clone of a scratch bare remote, sets `core.hooksPath` to `.husky`, and runs `git commit`. `git commit` exits 1 for any failing hook, so each case asserts whether the commit failed, whether `HEAD` moved, the exit code of `node scripts/ci/pre-commit.mjs` rerun in the same clone, and literal text in the output:
   - a staged protected path with no note fails, names the path, and prints `Fix:` with `/crosscheck:protected-surface-amend` (PC-3, PC-5);
   - the same commit with a new note that names the path passes (PC-3);
   - a note committed earlier on the branch counts (PC-3);
