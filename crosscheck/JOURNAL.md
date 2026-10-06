@@ -11,7 +11,7 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 **Why:** `docs/VISION.md` says no class of code is outside the vision and that spec completeness is provable relative to a formal requirement. The README called performance, partition failures and security "out of scope", Layers 2 and 3 "deliberately not addressed", and Layer 6 "best-effort".
 **Links:** [intent](../intent/2026-10-06-not-yet-reached-docs.md)
 
-Each of those statements now says "not yet reached", names the blocking property, and names the open question, taken from the vision's class table where one fits. Layer 6 points at roadmap item RQ-1 and calls `/spec-adversary` a search. "What Crosscheck is not good for" became "Where Crosscheck does not reach yet". The research doc still has the old wording (VA-1.3), and both files still give Layer 5 the `/intent-check` accuracy as a confidence (VA-1.4).
+Each of those statements now says "not yet reached", names the blocking property, and names the open question, taken from the vision's class table where one fits. Layer 6 points at roadmap item RQ-1 and calls `/spec-adversary` a search. "What Crosscheck is not good for" became "Where Crosscheck does not reach yet". The research doc still has the old wording (VA-1.3), and both files still give Layer 5 the `/intent-check` accuracy as a confidence (VA-1.4). The Layer 3 row of the hierarchy table now says what is reached (CGV) and what is not. Agents and skills still say "best-effort" in places, and they are protected surfaces, so VA-1.5 owns them.
 
 ---
 
