@@ -1,0 +1,16 @@
+# Spec: The CGV README says what CGV is for next to type checkers, and what exit 0 promises
+
+Intent: `intent/2026-10-06-cgv-readme-type-checkers.md`. Governing roadmap item: CG-1. Task: CG-1.1.
+
+- **TC-1. Cases.** `cgv/scripts/typecheck_compare.py` reads every `cases/*/case.toml` of the corpus (default `cgv/bench/corpus`). It checks each case that names `pre` and `fix` directories. It skips a git-based case, which has no directories to copy.
+- **TC-2. Runs.** For each tree it copies the tree to a temporary directory and writes a Django settings module whose `INSTALLED_APPS` lists every top-level package that has a `models.py`. It runs mypy with `strict = True`, the django-stubs plugin and the pydantic plugin, and pyright in `strict` mode, both with the interpreter that `--python` names. It keeps each error as (file, line, rule, message), and drops notes and warnings.
+- **TC-3. Flagged.** A type checker flags a case when the pre tree has an error in one of the case's bug files whose (file, rule) pair occurs fewer times in the fix tree. Lines and message text are not compared, since a fix moves lines and can change the wording of an error it does not remove. The cell names the line and rule of each such error, or says "not flagged".
+- **TC-4. Output.** The script prints one line with the versions of mypy, pyright, django-stubs, Django and pydantic, read from the interpreter, and one Markdown row per case: ID, kind, whether CGV's design reaches it (`in_scope`, printed as "yes" or "not yet reached"), CGV's outcome from the bench result (default `cgv/bench/baseline.json`), and the mypy and pyright cells.
+- **TC-5. Failure.** A missing package, a mypy exit other than 0 or 1, or pyright output that is not JSON exits 2 with a message naming the tool. Otherwise the script exits 0.
+- **TC-6. Pins.** `cgv/bench/typecheckers/requirements.txt` pins every package the run reads. The table in `cgv/README.md` is the script's output from an interpreter with those pins, pasted unchanged.
+- **TC-7. README.** `cgv/README.md` gains "When to use it", with the table and the command that reruns it, and "What exit 0 promises" under "Exit codes". The exit-0 row links to it. The new text uses "not yet reached" for writes outside the project's code and names the blocking property and the open question.
+
+**Known gaps, not rules.**
+- CGV CI does not run the script or its tests, because it installs no Python type checkers. The table can go stale when the corpus or the baseline changes. Whether CGV CI should install the pinned packages and diff the README table is an open question for CG-1.
+- The CGV column comes from the committed bench baseline, not from a fresh pipeline run. `scripts/bench.py run --compare bench/baseline.json` checks that the baseline is current.
+- pyright downloads its Node package on first run. The pinned pip version fixes the pyright version.
