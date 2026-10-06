@@ -37,9 +37,15 @@ The skill is the mirror image of `/spec-adversary`:
 | `/audit-spec-coverage` | "Given a prose spec, what is the invariant doc set missing about the spec?" |
 
 `/spec-adversary` probes the code-vs-doc gap. This skill probes the
-spec-vs-doc gap. Use both for full Layer 6 coverage.
+spec-vs-doc gap. Use both.
 
-This is **best-effort, like all Layer 6 work.** Coverage by section and
+This is **search, like all Layer 6 work today.** Its findings point at gaps
+and are not evidence that none remain. A proof that a spec is complete is not
+yet reached. The property that blocks it is that no formal requirement is tied
+to the spec, so there is nothing to prove the spec complete against. The open
+question is how to write requirements formally and prove that a spec achieves
+them ([roadmap item RQ-1](https://github.com/nicholls-inc/crosscheck/blob/main/docs/assurance/ROADMAP.md)).
+Coverage by section and
 audit-finding ID is a structural check; it does not catch cross-module
 semantic gaps where the same constraint hides under different domain nouns,
 and it does not catch constraints the spec itself omits but the code
@@ -300,7 +306,7 @@ overlap, no direct citation) as `PARTIAL` and probe further.
 
 ### Step 9: Kill criteria
 
-This skill is Layer 6 best-effort. Track its signal-to-noise:
+This skill is a Layer 6 search tool. Track its signal-to-noise:
 
 - **Signal-to-noise < 1:5 after 4 runs** (fewer than 1 accepted gap per
   5 emitted) → the audit is mostly false positives; recalibrate domain-noun

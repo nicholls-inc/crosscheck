@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-06 — The skills and agents say "not yet reached"
+
+**Type:** fix
+**Touches:** agents/hellebuyck.md, skills/{audit-spec-coverage,audit-invariant-consistency,spec-adversary,assurance-layer-audit,drt-oracle,acceptance-oracle-draft,intent-check}/SKILL.md, ../docs/TASKS.md
+**Why:** VA-1.2 aligned the README and the hierarchy guide with `docs/VISION.md`, but the skills and agents still told users that Layer 6 is "best-effort", that Layer 2 is "not addressable" for Go and Python, and that spec-internal contradictions, the Aeneas route for Rust and purely visual flows are "out of scope".
+**Links:** [intent](../intent/2026-10-06-not-yet-reached-skills.md), [spec](../intent/2026-10-06-not-yet-reached-skills-spec.md), [plan](../intent/2026-10-06-not-yet-reached-skills-plan.md)
+
+Each statement now says "not yet reached", names the blocking property and names the open question. Layer 6 uses the README's wording: search only, with a proof of completeness blocked by the lack of a formal requirement (RQ-1). Visual flows take the vision's open question for user interfaces. Spec-internal contradictions and the Aeneas route take a blocking property and an open question the spec proposes. `/assurance-layer-audit`'s reach table and `/acceptance-oracle-draft`'s rejected-flows heading change in the reports users see; `## Rejected Flows` keeps its first two words, which `references/scenario-schema.md` cites. Hits that mean something else stay, and the spec lists them. Layer 5's "probabilistic (~96%)" and Layer 3's "aspirational" in the skills are not one of the phrases, so VA-1.8 owns them. No check enforces the wording yet.
+
+---
+
 ## 2026-10-06 — The README and the hierarchy guide say "not yet reached"
 
 **Type:** docs

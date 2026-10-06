@@ -10,7 +10,7 @@ Intent: `intent/2026-10-06-not-yet-reached-skills.md`. Spec: `intent/2026-10-06-
 | `crosscheck/skills/audit-spec-coverage/SKILL.md` | "best-effort, like all Layer 6 work"; Step 9 intro | NR-2 |
 | `crosscheck/skills/audit-invariant-consistency/SKILL.md` | layer note; `/intent-check` comparison row; blind spot 2; closing note of "What this does NOT catch"; Step 9 intro | NR-2, NR-4 |
 | `crosscheck/skills/spec-adversary/SKILL.md` | frontmatter description; Step 7 intro | NR-2 |
-| `crosscheck/skills/assurance-layer-audit/SKILL.md` | Layer 6 reach paragraph; reach table Layer 2 and Layer 6 rows; "Layer 6 work last" heuristic | NR-2, NR-3 |
+| `crosscheck/skills/assurance-layer-audit/SKILL.md` | Layer 2 language bullets; Layer 6 reach paragraph; reach table Layer 2 and Layer 6 rows; "Layer 6 work last" heuristic; checklist line | NR-2, NR-3 |
 | `crosscheck/skills/drt-oracle/SKILL.md` | Aeneas reference bullet | NR-5 |
 | `crosscheck/skills/acceptance-oracle-draft/SKILL.md` | CRUCIAL RULE; Step 7 heading text and example | NR-6 |
 | `crosscheck/skills/intent-check/SKILL.md` | Step 9 intro sentence | NR-7 |

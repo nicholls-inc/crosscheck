@@ -40,7 +40,7 @@ Orchestrator for specification-chain assurance and governance scaffolding. Named
 | Skill | What it does |
 |-------|-------------|
 | `/intent-check` | Layer 5 two-LLM round-trip informalization over (invariant prose, covering test, code diff); appends to FP-tracker CSV and emits a JSON attestation |
-| `/spec-adversary` | Layer 6 best-effort — propose up to 3 candidate invariants the spec is missing, formatted for accept/reject/defer triage |
+| `/spec-adversary` | Layer 6 search, not proof — propose up to 3 candidate invariants the spec is missing, formatted for accept/reject/defer triage |
 | `/audit-spec-coverage` | Layer 6 doc-wide — emit section→invariant and audit-finding-ID→invariant coverage matrices, cap output at 15 prioritised gaps with 4-path triage blocks |
 | `/audit-invariant-consistency` | Layer 5+6 hybrid — three passes (within-module, cross-module, invariant-vs-spec) emitting capped consistency findings with `Accept (amend spec)` as a first-class triage option |
 
@@ -58,7 +58,7 @@ Orchestrator for specification-chain assurance and governance scaffolding. Named
 
 ## Task Classification
 
-Classify the user's request to determine which skill to invoke. The spec chain degrades from deterministic (Layer 4, Dafny-backed — that's byfuglien's territory) to probabilistic (Layer 5, `/intent-check`) to best-effort (Layer 6, `/spec-adversary`). Bootstrap tasks precede verification tasks; status tasks require onboarding to be complete.
+Classify the user's request to determine which skill to invoke. The spec chain degrades from deterministic (Layer 4, Dafny-backed — that's byfuglien's territory) to probabilistic (Layer 5, `/intent-check`) to search (Layer 6, `/spec-adversary`), where a proof that the spec is complete is not yet reached. Bootstrap tasks precede verification tasks; status tasks require onboarding to be complete.
 
 | Category | Trigger Signals | Path |
 |----------|----------------|------|
@@ -157,7 +157,7 @@ Every result must pass these quality gates before delivery:
 - **Signal-to-noise** — `/spec-adversary` proposes ≤3 candidate invariants; `/audit-spec-coverage` and `/audit-invariant-consistency` cap at ≤15 prioritised findings each. Avoid spraying low-value suggestions
 - **Paired evidence** — `/audit-spec-coverage` cites spec line ranges + invariant IDs; `/audit-invariant-consistency` cites paired file:line evidence (invariant ↔ invariant, or invariant ↔ spec) for every finding
 - **4-path triage** — `/audit-spec-coverage` and `/audit-invariant-consistency` emit a 4-path triage block per finding (`Accept (fix invariant)` / `Accept (amend spec via /protected-surface-amend)` / `Reject` / `Defer`), with the spec-amend path first-class — not buried
-- **Best-effort honesty** — Layer 6 output is explicitly labelled best-effort; every audit skill includes a "What this does NOT catch" section enumerating known blind spots; no false claim of completeness
+- **Search honesty** — Layer 6 output is labelled search, not evidence, and says that a proof of completeness is not yet reached; every audit skill includes a "What this does NOT catch" section enumerating known blind spots; no false claim of completeness
 
 **For governance output (`/protected-surface-amend`):**
 - **Amendment block complete** — rationale, authority, linked roadmap item, diff plan all present
@@ -179,7 +179,7 @@ If any gate fails, re-execute the skill with explicit instructions to address th
 ### Specification chain
 - Spec correctness is not code correctness — even a perfectly verified proof (byfuglien's domain) can be wrong if the spec doesn't capture intent; `/intent-check` is the escalation point when byfuglien's proof is clean but intent alignment is uncertain
 - Layer 5 is probabilistic — `/intent-check` reports false positives (~17–30% on real repos); enforce the configured FP kill criterion (default 30%, configurable per `/intent-check` Configuration) via the per-repo FP-tracker and escalate if the rate trends up
-- Layer 6 is best-effort — no theorem proves spec completeness; `/spec-adversary` proposes, humans triage; avoid treating its output as authoritative
+- Layer 6 is search, not proof — a proof that a spec is complete is not yet reached. The property that blocks it is that no formal requirement is tied to the spec, so there is nothing to prove the spec complete against. The open question is how to write requirements formally and prove that a spec achieves them ([roadmap item RQ-1](https://github.com/nicholls-inc/crosscheck/blob/main/docs/assurance/ROADMAP.md)). Until then `/spec-adversary` proposes and humans triage; its findings point at gaps and are never evidence that none remain
 - Structural separation matters — the back-translator must be blind to the original requirement; if the two contexts share state, the check is worthless
 - Enforce onboarding before status — refuse to run `/assurance-status` Phase 2 if governance scaffolding is missing, rather than emitting a falsely-green dashboard
 

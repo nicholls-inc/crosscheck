@@ -11,7 +11,7 @@
 2. `crosscheck/skills/audit-spec-coverage/SKILL.md`: the Layer 6 note and the Step 9 intro say the same.
 3. `crosscheck/skills/audit-invariant-consistency/SKILL.md`: the layer note, the comparison row, the closing note of "What this does NOT catch" and the Step 9 intro say the same. Blind spot 2 says spec-internal contradictions are not yet reached, with a blocking property and an open question.
 4. `crosscheck/skills/spec-adversary/SKILL.md`: the frontmatter description and the Step 7 intro say the same.
-5. `crosscheck/skills/assurance-layer-audit/SKILL.md`: the Layer 6 reach paragraph, the "Layer 6 work last" heuristic, and the Layer 2 and Layer 6 rows of the reach table the skill writes into its report.
+5. `crosscheck/skills/assurance-layer-audit/SKILL.md`: the Layer 2 language bullets, the Layer 6 reach paragraph, the "Layer 6 work last" heuristic, the verification checklist, and the Layer 2 and Layer 6 rows of the reach table the skill writes into its report. "Not addressable" becomes "Not yet reached", with the blocking property and the open question.
 6. `crosscheck/skills/drt-oracle/SKILL.md`: the Aeneas reference says the Rust route is not yet reached, with a blocking property and an open question.
 7. `crosscheck/skills/acceptance-oracle-draft/SKILL.md`: a flow with no programmatic observable is reported as not yet reached by the oracle, under `## Rejected Flows (not yet reached by this oracle)`. The "Dashboard looks nice" example names the vision's open question for user interfaces.
 8. `crosscheck/skills/intent-check/SKILL.md`: the Step 9 intro calls the pipeline a Layer 5 search tool whose verdict is not evidence.
@@ -39,7 +39,7 @@ Task VA-1.5. `docs/VISION.md` says no class of code is outside the vision: a too
 | 2 | `crosscheck/skills/audit-spec-coverage/SKILL.md` | Description, Step 9 | reworded |
 | 3 | `crosscheck/skills/audit-invariant-consistency/SKILL.md` | layer note, "Distinct from /intent-check" table, Step 8 blind spot 2 and closing note, Step 9 | reworded |
 | 4 | `crosscheck/skills/spec-adversary/SKILL.md` | frontmatter description, Step 7 | reworded |
-| 5 | `crosscheck/skills/assurance-layer-audit/SKILL.md` | Step 4 Layer 6, Step 5 reach table (Layer 2, Layer 6), Step 6 heuristics | reworded |
+| 5 | `crosscheck/skills/assurance-layer-audit/SKILL.md` | Step 4 Layer 2 and Layer 6, Step 5 reach table (Layer 2, Layer 6), Step 6 heuristics, Verification Checklist | reworded |
 | 6 | `crosscheck/skills/drt-oracle/SKILL.md` | References, Aeneas bullet | reworded |
 | 7 | `crosscheck/skills/acceptance-oracle-draft/SKILL.md` | CRUCIAL RULE, Step 7 | reworded; section heading text changed |
 | 8 | `crosscheck/skills/intent-check/SKILL.md` | Step 9 intro | reworded |
