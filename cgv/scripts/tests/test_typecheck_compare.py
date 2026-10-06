@@ -53,6 +53,8 @@ class CorpusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cases = Path(tmp) / "cases"
             (cases / "a").mkdir(parents=True)
+            (cases / "a" / "pre").mkdir()
+            (cases / "a" / "fix").mkdir()
             (cases / "a" / "case.toml").write_text(textwrap.dedent("""\
                 kind = "length"
                 in_scope = true
@@ -99,6 +101,8 @@ class CorpusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             case_dir = Path(tmp) / "cases" / "dirname"
             case_dir.mkdir(parents=True)
+            (case_dir / "pre").mkdir()
+            (case_dir / "fix").mkdir()
             (case_dir / "case.toml").write_text(
                 'id = "explicit"\nkind = "k"\nin_scope = false\npre = "pre"\nfix = "fix"\n'
                 '[[bug]]\nfile = "a.py"\nline = 1\n'
@@ -138,6 +142,39 @@ class CorpusTest(unittest.TestCase):
             (case_dir / "case.toml").write_bytes(b"\xff\xfe=")
             with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
                 tc.load_cases(Path(tmp))
+
+    def case_with(self, tmp, extra="", bug='[[bug]]\nfile = "a.py"\n', trees=("pre", "fix")):
+        case_dir = Path(tmp) / "cases" / "broken"
+        case_dir.mkdir(parents=True)
+        for t in trees:
+            (case_dir / t).mkdir()
+        (case_dir / "case.toml").write_text(
+            f'kind = "k"\nin_scope = true\npre = "pre"\nfix = "fix"\n{extra}\n{bug}')
+
+    def test_a_non_string_id_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.case_with(tmp, extra="id = []")
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
+    def test_an_empty_bug_list_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.case_with(tmp, bug="bug = []")
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
+    def test_a_missing_tree_is_a_harness_error(self):
+        for trees in ((), ("pre",), ("fix",)):
+            with self.subTest(trees), tempfile.TemporaryDirectory() as tmp:
+                self.case_with(tmp, trees=trees)
+                with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                    tc.load_cases(Path(tmp))
+
+    def test_a_well_formed_case_with_both_trees_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.case_with(tmp)
+            loaded = tc.load_cases(Path(tmp))
+        self.assertEqual([(c["id"], c["files"]) for c in loaded], [("broken", ["a.py"])])
 
     def test_a_bug_table_instead_of_an_array_is_a_harness_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -286,6 +323,8 @@ class MainTest(unittest.TestCase):
         for name, text in (("key", json.dumps({"cases": [{"id": "c1"}]})),
                            ("json", "not json"),
                            ("list", "[]"),
+                           ("cases-int", json.dumps({"cases": 5})),
+                           ("case-int", json.dumps({"cases": [5]})),
                            ("utf8", b"\xff\xfe")):
             with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
                 bad = Path(tmp) / "bad.json"

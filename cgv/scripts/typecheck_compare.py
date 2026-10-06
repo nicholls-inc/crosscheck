@@ -116,13 +116,23 @@ def load_cases(corpus):
             case_dir = case_toml.parent
             if "pre" not in case:
                 continue
+            case_id = case.get("id", case_dir.name)
+            pre, fix = case_dir / case["pre"], case_dir / case["fix"]
+            files = sorted({b["file"] for b in case["bug"]})
+            if not isinstance(case_id, str):
+                raise TypeError(f"id must be a string, not {case_id!r}")
+            if not files:
+                raise ValueError("bug must name at least one file")
+            for tree in (pre, fix):
+                if not tree.is_dir():
+                    raise OSError(f"{tree} is not a directory")
             cases.append({
-                "id": case.get("id", case_dir.name),
+                "id": case_id,
                 "kind": case["kind"],
                 "in_scope": case["in_scope"],
-                "pre": case_dir / case["pre"],
-                "fix": case_dir / case["fix"],
-                "files": sorted({b["file"] for b in case["bug"]}),
+                "pre": pre,
+                "fix": fix,
+                "files": files,
             })
         except (KeyError, TypeError, OSError, ValueError) as e:
             raise HarnessError(f"{case_toml} is malformed: {e!r}")
