@@ -76,4 +76,23 @@ test('EC-1: the step fails when checkRecord accepts everything', () => {
   assert.ok(source.includes(signature), `${CHECKER} defines ${signature}`);
   const { code, out } = runStep(scratchCopy(source.replace(signature, `${signature}\n  return [];`)));
   assert.notEqual(code, 0, out);
+  // A crash or a missing file also exits non-zero. The failure must come from
+  // the checker's own tests failing, so the TAP summary must count failures.
+  // A file that fails to load reports `# pass 0`, so tests must also have run.
+  assert.match(out, /^# fail [1-9]\d*$/m, `the exit is from failing checker tests:\n${out}`);
+  const pass = out.match(/^# pass (\d+)$/m);
+  assert.ok(pass && Number(pass[1]) > 0, `checker tests ran and some passed:\n${out}`);
+});
+
+test('EC-1: no step or job condition, swallowed failure, path filter or expression can skip or hide the check', () => {
+  const lines = readFileSync(join(REPO_ROOT, WORKFLOW), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'));
+  const text = lines.join('\n');
+  assert.doesNotMatch(text, /^\s*(-\s+)?if:/m, 'no `if:` on the job or any step');
+  assert.doesNotMatch(text, /continue-on-error/, 'no `continue-on-error`');
+  assert.doesNotMatch(text, /^\s*paths(-ignore)?:/m, 'no path filter');
+  assert.doesNotMatch(text, /\$\{\{/, 'no expression in the workflow');
+  assert.match(text, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened\]$/m);
+  assert.match(text, /^permissions:\n {2}contents: read\n\n/m, 'contents: read is the only permission');
 });
