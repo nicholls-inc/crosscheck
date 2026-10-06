@@ -316,6 +316,12 @@ WARNING  utils.py:27 → utils.py:27
 RESULT: 1 error, 1 warning. Exit code 1.
 ```
 
+### Evidence record
+
+`--evidence-record PATH` writes a JSON evidence record to PATH when the run exits 0. It holds one claim, `cgv-data-paths`, with strength `proved`, the theorem `ContractGraph.runChecker_sound_all`, the trusted base with pinned versions, and a command that reruns the check from the root of the project's git work tree. Any other outcome removes the file at PATH and writes none.
+
+The checked path and the `--overrides` file must sit in a git work tree with no changes under them. A dirty or non-git checkout is refused with exit 2 before extraction, and the checker does not run. Git ignores ignored files, so the check does not cover them. The format is in `intent/2026-10-06-evidence-record-spec.md` (rules EV-1 to EV-12). What CGV writes is in `intent/2026-10-06-cgv-evidence-record-spec.md` (requirements CR-1 to CR-8).
+
 ## Exit codes
 
 | Code | Meaning |
