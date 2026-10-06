@@ -11,7 +11,7 @@ It serves two readers:
 - **A reviewer** who wants to see what the pipeline said, without rerunning it. The content hash tells them whether the files changed after the run.
 - **A human classifying the FP tracker**, who needs the verdict context to fill `human_verdict`.
 
-Earlier versions of this document described a pre-commit hook that rejected a commit unless the attestation recorded `pass`. That hook made an LLM verdict a commit gate, so it is gone. A repository that installed it should remove it through `/protected-surface-amend`.
+Earlier versions of this document described a pre-commit hook that rejected a commit unless the attestation recorded `pass`. That hook made an LLM verdict a commit gate, so it is gone. A repository that installed it should remove it, through `/protected-surface-amend` if the hook's path is protected.
 
 ## Schema
 

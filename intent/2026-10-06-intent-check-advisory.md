@@ -27,7 +27,7 @@ A repository that follows these instructions makes an LLM verdict a commit gate.
 - Roadmap item VA-1 governs the change. Every `SKILL.md` and `agents/*.md` edit is a Class A protected surface, so the change is Tier 3 and carries a governance note.
 - `/intent-check` keeps its pipeline, its tracker schema, its kill criterion and its attestation schema. Only the claims about what the record is for change. Repositories that already read the tracker or the file keep working.
 - The session-marker hash in `add-orchestrator` and `draft-invariants` must not change.
-- `crosscheck/README.md` and `crosscheck/docs/assurance-hierarchy.md` belong to task VA-1.2. The example workflows under `crosscheck/docs/examples/workflows/`, which describe a "Mandatory L5 gate" that runs `/intent-check`, are not a skill or agent, so this change adds task VA-1.3 for them instead of changing them.
+- `crosscheck/README.md` belongs to task VA-1.2, and so does the "not yet reached" wording in `crosscheck/docs/assurance-hierarchy.md`. Step 4 of that file's adoption order, which told a repository to run `/intent-check` on every invariant-related change, is reworded here, because it presents the check as routine. The example workflows under `crosscheck/docs/examples/workflows/`, which describe a "Mandatory L5 gate" that runs `/intent-check`, are not a skill or agent, so this change adds task VA-1.3 for them instead of changing them.
 
 ## Open questions
 None. `docs/VISION.md` rule 1 and the "No LLM verdict is an artefact" paragraph of `docs/assurance/TIER-LAYER-MAP.md` settle the direction.

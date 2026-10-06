@@ -169,7 +169,7 @@ Write `.assurance/intent-check-attestation.json` with the schema documented in `
 
 The attestation is an advisory record. Do not tell the user to commit it, to rerun the skill until it says `pass`, or to wire it into a pre-commit hook, a CI job or a merge rule. Nothing has to wait for it. The content hash lets a reader see whether the files changed after the run, so a reviewer who reads the record knows which contents the verdict was about.
 
-Earlier versions of this skill drafted a pre-commit hook that rejected a commit unless this file recorded `pass`. Look for one with `grep -rl intent-check-attestation .pre-commit-config.yaml lefthook.yml .husky .git/hooks/pre-commit 2>/dev/null`. If one is installed, tell the user that it makes an LLM verdict a commit gate and should be removed, through `/protected-surface-amend` if the hook's path is protected.
+Earlier versions of this skill drafted a pre-commit hook that rejected a commit unless this file recorded `pass`. Look for one with `grep -rl intent-check-attestation .pre-commit-config.yaml lefthook.yml .husky .git/hooks/pre-commit 2>/dev/null`. If one is installed, tell the user that it makes an LLM verdict a commit gate and should be removed, through `/protected-surface-amend` if the hook's path is protected. Draft files an earlier run left behind (`ls .assurance/intent-check-hook.draft.* 2>/dev/null`) encode the same gate, so tell the user to delete them rather than apply them.
 
 ### Step 7: Report
 

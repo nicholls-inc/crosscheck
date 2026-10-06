@@ -31,7 +31,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 | `crosscheck/agents/lowry.md` | yes | intent check is optional, not the judgement |
 | `crosscheck/skills/assurance-status/SKILL.md` | yes | Step 2.3 stops reading the attestation |
 | `crosscheck/skills/intent-check/references/attestation-schema.md` | no | hook sections removed |
-| `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md`, `crosscheck/docs/orchestrator-coordination.md` | no | wording, line pointers |
+| `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md`, `docs/gates/lowry-drift-packet.md`, `crosscheck/docs/orchestrator-coordination.md`, `crosscheck/docs/agents.md`, `crosscheck/docs/assurance-hierarchy.md` (step 4), `crosscheck/docs/add/phase4-design-decisions.md`, `crosscheck/skills/intent-check/references/fp-tracker-schema.md` | no | wording, line pointers |
 | `docs/TASKS.md`, `JOURNAL.md` | no | record |
 | `.assurance/protected-surface-amend/intent-check-advisory-2026-10-06.md` | no | governance note |
 | `intent/2026-10-06-intent-check-advisory*.md` | no | stage artefacts |

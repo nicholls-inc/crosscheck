@@ -7,7 +7,7 @@
 
 ### Change Description
 
-1. `crosscheck/skills/intent-check/SKILL.md`: the description, the opening paragraphs, the Step 0 refusal, the Step 5 `phase_verdict` bullet and Step 6 describe `.assurance/intent-check-attestation.json` as an advisory record of an LLM run that no gate, hook or reviewer may require. Step 7, which drafted a pre-commit hook that rejects a commit without a passing attestation, is removed. Report and "What this does NOT catch" become Steps 7 and 8. The verification checklist drops the hook line. Step 6 gains a one-line `grep` that finds a hook an earlier version of the skill drafted, and tells the user to remove it. The Step 7 banner and the checklist still offer classifying a verdict `spurious` in the tracker, which the tracker schema already defined; the kill-criterion arithmetic is unchanged.
+1. `crosscheck/skills/intent-check/SKILL.md`: the description, the opening paragraphs, the Step 0 refusal, the Step 5 `phase_verdict` bullet and Step 6 describe `.assurance/intent-check-attestation.json` as an advisory record of an LLM run that no gate, hook or reviewer may require. Step 7, which drafted a pre-commit hook that rejects a commit without a passing attestation, is removed. Report and "What this does NOT catch" become Steps 7 and 8. The verification checklist drops the hook line. Step 6 gains a one-line `grep` that finds a hook an earlier version of the skill drafted, and an `ls` that finds the draft files it left behind, and tells the user to remove them. The Step 7 banner and the checklist still offer classifying a verdict `spurious` in the tracker, which the tracker schema already defined; the kill-criterion arithmetic is unchanged.
 2. `crosscheck/skills/assurance-init/SKILL.md`: step 6.7d lists the Tier 3 artefacts as a plan and a governance-note block, and says no LLM verdict is a tier artefact. The roadmap principle it seeds says pre-commit hooks run deterministic checks and never require an LLM verdict, in place of "fast attestation checks".
 3. `crosscheck/skills/protected-surface-amend/SKILL.md`: Steps 3 and 7 no longer ask a Class A amendment to state or queue an attestation regeneration or an `intent-check` baseline refresh.
 4. `crosscheck/skills/draft-invariants/SKILL.md`: cites the hash discipline by section name, and describes the attestation as an advisory record rather than a pre-commit check.
@@ -47,14 +47,14 @@ Task VA-1.1. `docs/VISION.md` rule 1 says no guarantee rests on the judgement of
 ### Test / Coverage Impact
 
 - No invariant, test or eval changes. No skill gains or loses a routing token, so `go run ./crosscheck/conformance crosscheck` is unaffected.
-- The `/intent-check` pipeline, tracker schema, kill criterion, attestation schema and hash algorithm are unchanged. The session-marker hash that `add-orchestrator` and `draft-invariants` compute is unchanged.
+- The `/intent-check` pipeline, tracker schema fields and arithmetic, kill criterion thresholds, attestation schema fields and hash algorithm are unchanged. The prose of `fp-tracker-schema.md` and `attestation-schema.md` is reworded to match. The session-marker hash that `add-orchestrator` and `draft-invariants` compute is unchanged.
 - No check enforces the new wording. A wording lint for skills and agents is not yet reached; the spec records the open question.
 
 ### Review Checklist
 
 - [x] Rationale is anchored to `docs/VISION.md` rule 1 and the TIER-LAYER-MAP paragraph.
-- [x] Authoriser is a named human.
-- [x] VA-1 covers skills and agents that present an LLM verdict as a required artefact.
+- [ ] REQUIRES HUMAN VERIFICATION: Authoriser is a named human.
+- [ ] REQUIRES HUMAN VERIFICATION: VA-1 covers skills and agents that present an LLM verdict as a required artefact.
 - [x] The diff plan names every changed protected file.
 - [ ] REQUIRES HUMAN VERIFICATION: No check is weakened. A commit gate on an LLM verdict is removed from a draft the skill wrote; no deterministic check changes.
-- [ ] REQUIRES HUMAN VERIFICATION: A repository that applied the old draft hook by hand keeps it until its owner acts. Step 6 of `/intent-check` and the attestation schema now tell the user to remove such a hook through `/protected-surface-amend`.
+- [ ] REQUIRES HUMAN VERIFICATION: A repository that applied the old draft hook by hand keeps it until its owner acts. Step 6 of `/intent-check` and the attestation schema now tell the user to remove such a hook, through `/protected-surface-amend` if the hook's path is protected.
