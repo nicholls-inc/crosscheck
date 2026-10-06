@@ -651,3 +651,73 @@ test('an Infinity token exits 2', () => {
 test('bytes that are not UTF-8 exit 2', () => {
   assert.equal(runOnBytes(Buffer.from([0x22, 0xff, 0x22])).status, 2);
 });
+
+// Every code point of the Unicode White_Space property, so a narrowed NON_BLANK
+// class in the checker fails a test.
+const WHITE_SPACE = [
+  ...Array.from({ length: 5 }, (_, i) => 0x09 + i),
+  0x20,
+  0x85,
+  0xa0,
+  0x1680,
+  ...Array.from({ length: 11 }, (_, i) => 0x2000 + i),
+  0x2028,
+  0x2029,
+  0x202f,
+  0x205f,
+  0x3000,
+];
+// Neighbours of the set that are not White_Space, so a widened class fails too.
+const NOT_WHITE_SPACE = [0x08, 0x0e, 0x1c, 0x21, 0x180e, 0x200b, 0x2010, 0x2060, 0xfeff];
+
+for (const code of WHITE_SPACE) {
+  const label = `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
+  test(`a statement of ${label} alone is blank and names EV-7`, () => {
+    const result = run(mutated((r) => (r.claims[PROVED].statement = String.fromCodePoint(code))));
+    expectOutcome(result, { status: 1, names: ['EV-7'] });
+  });
+}
+
+for (const code of NOT_WHITE_SPACE) {
+  const label = `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
+  test(`a statement of ${label} alone is not blank and passes`, () => {
+    const result = run(mutated((r) => (r.claims[PROVED].statement = String.fromCodePoint(code))));
+    expectOutcome(result, { status: 0, absent: ALL_RULES });
+  });
+}
+
+test('a claim with neither strength nor basis names EV-5 and EV-9 and not EV-10', () => {
+  const result = run(
+    mutated((r) => {
+      delete r.claims[TESTED].strength;
+      delete r.claims[TESTED].basis;
+    })
+  );
+  expectOutcome(result, { status: 1, names: ['EV-5', 'EV-9'], absent: ['EV-10'] });
+});
+
+test('a record that writes strength twice is judged on the last value (duplicate keys are accepted)', () => {
+  const text = JSON.stringify(VALID, null, 2).replace(
+    '"strength": "tested"',
+    '"strength": "verified", "strength": "tested"'
+  );
+  assert.ok(text.includes('"verified"'), 'the duplicate key was planted');
+  expectOutcome(run(text), { status: 0, absent: ALL_RULES });
+});
+
+test('stdout is empty on exit 0 and on exit 2, and holds only EV-N lines on exit 1', () => {
+  assert.equal(run(VALID).stdout, '');
+  assert.equal(run('this is not json').stdout, '');
+  assert.equal(runWithArgs([]).stdout, '');
+  const broken = run(
+    mutated((r) => {
+      r.claims[PROVED].strength = 'verified';
+      r.claims[TESTED].statement = ' ';
+    })
+  );
+  assert.equal(broken.status, 1);
+  const lines = broken.stdout.split('\n').filter((l) => l !== '');
+  assert.ok(lines.length >= 2, broken.stdout);
+  for (const line of lines) assert.match(line, /^EV-\d+: /);
+  assert.equal(broken.stderr, '');
+});

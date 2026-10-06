@@ -3,7 +3,7 @@
 Task: ER-1.4. Governing roadmap item: ER-1. Spec: `intent/2026-10-06-evidence-record-spec.md`.
 
 ## Problem statement
-`intent/2026-10-06-evidence-record-spec.md` defines version 1 of the evidence record and the rules EV-1 to EV-13 that a checker applies. No checker exists. A record with a claim that names no strength, or no rerun command, is accepted by anything that reads it today, so the roadmap's acceptance for ER-1 is not met. ER-1.2 (CGV) and ER-1.3 (Dafny) emit records, and nothing outside each emitter's own tests says whether a record is well formed.
+`intent/2026-10-06-evidence-record-spec.md` defines version 1 of the evidence record and the rules EV-1 to EV-13 that a checker applies. No checker exists. A record with a claim that names no strength, or no rerun command, is accepted by anything that reads it today, so the roadmap's acceptance for ER-1 is not met. ER-1.2 (CGV) and ER-1.3 (one Crosscheck pipeline, not yet chosen) emit records, and nothing outside each emitter's own tests says whether a record is well formed.
 
 ## Proposed outcome
 - `scripts/check-evidence-record.mjs` takes the path of a record and applies EV-1 to EV-12 as the spec writes them. It exits 0 on a well-formed record, 1 with one line per broken rule, and 2 when it cannot read the file, the file is not JSON, or it gets no path (EV-13).
