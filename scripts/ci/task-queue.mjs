@@ -110,8 +110,8 @@ export function newlyDoneIds(rows, baseRows) {
   return rows.filter((r) => r.status === 'done' && !doneAtBase.has(r.id)).map((r) => r.id);
 }
 
-// QC-1 to QC-5. An empty array means the queue passes.
-export function checkQueue({ rows, baseRows, itemIds, prBody }) {
+// QC-1 to QC-4. An empty array means the rows pass.
+export function checkRows({ rows, itemIds }) {
   const problems = [];
   const ids = new Set(rows.map((r) => r.id));
   const seen = new Set();
@@ -131,6 +131,12 @@ export function checkQueue({ rows, baseRows, itemIds, prBody }) {
       if (!ids.has(dep)) problems.push(`${row.id}: depends on ${dep}, which is not a row of the queue`);
     }
   }
+  return problems;
+}
+
+// QC-1 to QC-5. An empty array means the queue passes.
+export function checkQueue({ rows, baseRows, itemIds, prBody }) {
+  const problems = checkRows({ rows, itemIds });
   const taskLine = parseTaskLine(prBody);
   for (const id of newlyDoneIds(rows, baseRows)) {
     if (id !== taskLine) {
