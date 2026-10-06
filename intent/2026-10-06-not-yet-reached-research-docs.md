@@ -18,7 +18,7 @@ These files are left as written, because each is a dated record or a retrospecti
 - `crosscheck/docs/research/adr/0001-behavioral-specs-at-layer-4.md`, a decision record;
 - everything under `crosscheck/docs/add/.retrospective/` and `crosscheck/docs/reports/`.
 
-These matches mean something other than a class of code or a layer, so they stay: "out of scope for this analysis" in `logic-distribution-analysis.md`, "Excluded: fully Dafny-verified slices" in `crosscheck-tla-vgd-addendum.md` (DRT is redundant there, not unreached), "out-of-scope latent risk" in `add/orchestrator-improvements.md`, a best-effort cache key and a best-effort count in the tier-b workflows, "excluded from both numerator and denominator" in the workflows README, the `excluded` paths in `invariants/shouldExclude.md`, and "out of scope for I1–I7" in `invariants/parseDafnyOutput.md`, which names an input format that no invariant covers.
+These matches mean something other than a class of code or a layer, so they stay: "was out of scope for this static-only approach" in `logic-distribution-analysis.md`, "Excluded: fully Dafny-verified slices" in `crosscheck-tla-vgd-addendum.md` (DRT is redundant there, not unreached), "out-of-scope latent risk" in `add/orchestrator-improvements.md`, a best-effort cache key and a best-effort count in the tier-b workflows, "excluded from both numerator and denominator" in the workflows README, the `excluded` paths in `invariants/shouldExclude.md`, and "out of scope for I1–I7" in `invariants/parseDafnyOutput.md`, which names an input format that no invariant covers.
 
 ## Affected users and systems
 - Anyone who follows the hierarchy guide's link to the full treatment, and anyone who copies the reference workflows into their own repository.
