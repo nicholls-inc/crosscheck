@@ -181,6 +181,13 @@ test('PC-3: a rules file with no machine-readable list exits 2', () => {
   assert.equal(r.hook, 2);
   assert.equal(r.moved, false);
   assert.match(r.output, /Machine-readable path list/);
+  assert.match(r.output, /^Fix: restore the .* \(git restore \.claude\/rules\/protected-surfaces\.md /m, 'a Fix line names the rules file');
+});
+
+test('PC-5: a printed git restore quotes a staged path that has a space', () => {
+  const r = commit(scratchClone(), { 'docs/assurance/a b.md': 'x\n' });
+  assert.equal(r.status, 1);
+  assert.match(r.output, /git restore --staged 'docs\/assurance\/a b\.md'$/m);
 });
 
 test('PC-4, PC-5: a staged queue with an unknown status fails and names the row', () => {

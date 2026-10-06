@@ -41,6 +41,9 @@ function git(args) {
 
 const splitZ = (out) => out.split('\0').filter((p) => p.length > 0);
 
+// Quote a path for the shell only when it needs it, so a printed command runs as shown.
+const shellQuote = (path) => (/^[A-Za-z0-9._/@%+=:,-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`);
+
 // PC-3. The same rule as the PreToolUse hook: origin/HEAD, else origin/main.
 function defaultBranch() {
   for (const ref of ['origin/HEAD', 'origin/main']) {
@@ -68,7 +71,7 @@ function checkGovernanceNotes({ staged, matchesProtected }) {
     'Fix: run /crosscheck:protected-surface-amend in Claude Code to write a note under .assurance/protected-surface-amend/ that names each path above, then git add .assurance/protected-surface-amend/<note>.md',
   ];
   const mistaken = unnamed.filter((path) => staged.includes(path));
-  if (mistaken.length > 0) fix.push(`Or, if staged by mistake: git restore --staged ${mistaken.join(' ')}`);
+  if (mistaken.length > 0) fix.push(`Or, if staged by mistake: git restore --staged ${mistaken.map(shellQuote).join(' ')}`);
   return { problems, fix };
 }
 
@@ -139,7 +142,11 @@ export function main(rulesPath) {
   }
   for (const check of CHECKS) {
     if (check === CHECKS[0] && rulesError) {
-      lines.push(...block(check, [rulesError], []));
+      lines.push(
+        ...block(check, [rulesError], [
+          `Fix: restore the "## Machine-readable path list" block in ${rulesPath} (git restore ${shellQuote(rulesPath)} if the file was edited or deleted)`,
+        ]),
+      );
       code = 2;
       continue;
     }
