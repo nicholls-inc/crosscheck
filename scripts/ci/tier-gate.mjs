@@ -68,6 +68,11 @@ export const EVIDENCE_CLASSES = [
     kind: 'checked',
     workflow: 'Tier Gate workflow (node --test scripts/ci/*.test.mjs)',
   },
+  {
+    re: /^scripts\/check-evidence-record(\.test)?\.mjs$/,
+    kind: 'checked',
+    workflow: 'Evidence Record workflow (node --test scripts/check-evidence-record.test.mjs)',
+  },
   { re: /^evals\//, kind: 'checked', workflow: 'Incident Eval Check workflow' },
   {
     re: /^docs\/invariants\//,
