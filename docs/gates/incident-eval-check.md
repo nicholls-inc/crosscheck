@@ -42,7 +42,7 @@ The full rules are IE-1 to IE-7 in `intent/2026-09-30-incident-eval-range-spec.m
 - **Approving (adding both artefacts)**: open a follow-up pull request that adds the eval and the candidate invariant. Put the same incident reference in its body, so that the check runs on it too and its merge shows a green result. The incident becomes a permanent regression check and a documented invariant.
 - **Declining (leaving them out)**: the run on the merge stays red. The merged change leaves the incident with no regression check and no invariant. The ruleset on the default branch requires no status checks, so nothing else happens.
 
-A follow-up pull request with no incident reference of its own is skipped, and re-running the original run checks out the original merge again, so neither turns the original run green.
+A follow-up pull request with no incident reference of its own is skipped, and re-running the original run is expected to check out the original merge again (inferred from GitHub's event documentation, not run), so neither is expected to turn the original run green.
 
 ## What the check does not catch
 

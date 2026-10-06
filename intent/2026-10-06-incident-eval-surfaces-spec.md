@@ -20,4 +20,4 @@ This spec revises IE-2 and IE-6 of `intent/2026-09-30-incident-eval-range-spec.m
 
 ## Concerns flagged
 - **The follow-up pull request is not checked.** The check reads only the merged pull request's own label, body and commits. A follow-up that adds the eval and the invariant, without its own incident reference, is skipped, and the red run on the original merge stays red. The explainer says so. A re-run of the original run does not help either: for a `pull_request` event, `actions/checkout` checks out the event's merge commit, which predates the follow-up (inferred from GitHub's event documentation, not run). So nothing deterministic records that an incident was closed after the fact. A follow-up that carries its own incident reference is checked, and the explainer recommends that.
-- **Quoted prose fires the trigger.** PB-1.13 (proposed in #65) owns that fix. Until it lands, the explainer warns about it.
+- **Quoted prose fires the trigger.** PB-1.16 owns that fix. Until it lands, the explainer warns about it.

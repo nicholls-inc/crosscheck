@@ -28,7 +28,7 @@ PB-1.8 rewrote the `incident-eval-check.yml` bullet in stage 5 of `docs/assuranc
 ## Constraints
 - The check's trigger, its exit codes and its workflow do not change. Only the failure message's second sentence and link change.
 - The tier gate's pass or fail result does not change. Only the report line for `evals/**` changes.
-- `docs/gates/tier-layer-gate.md` belongs to PB-1.11 (#65), and the trigger that matches quoted prose belongs to PB-1.13, proposed in #65. This change does not edit that file or the trigger, and the explainer states the current trigger behaviour.
+- `docs/gates/tier-layer-gate.md` belongs to PB-1.11 (#65), and the trigger that matches quoted prose belongs to PB-1.16. This change does not edit that file or the trigger, and the explainer states the current trigger behaviour.
 - `crosscheck/skills/assurance-init/SKILL.md` and `docs/assurance/ROADMAP.md` also quote the chain as "incident record + eval". The skill scaffolds that chain into other repositories, whose incident job may differ, and the roadmap quotes the playbook's chain by name. Neither describes this repository's check, so neither changes here.
 - The pull request body and its commit messages must not contain the trigger text with its colon, or the check will fire on this pull request's own merge, as it did on #62.
 
