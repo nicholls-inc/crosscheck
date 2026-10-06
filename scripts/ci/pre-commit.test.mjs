@@ -171,12 +171,11 @@ test('PC-3: a note committed earlier on the branch counts', () => {
 });
 
 test('PC-3: a note deleted on the branch is not read', () => {
-  const work = scratchClone();
-  assert.equal(commit(work, { [NOTE]: `Amends ${PROTECTED}\n` }).status, 0);
+  const work = scratchClone({ [NOTE]: `Amends ${PROTECTED}\n` });
   git(work, ['rm', '-q', NOTE]);
   const r = commit(work, { [PROTECTED]: 'x\n' });
   assert.equal(r.status, 1);
-  assert.equal(r.hook, 1);
+  assert.equal(r.hook, 1, 'a deleted note is not read, so the path is unnamed and the hook does not exit 2');
   assert.equal(r.moved, false);
   assert.match(r.output, /^- docs\/assurance\/x\.md/m);
 });

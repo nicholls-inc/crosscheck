@@ -32,12 +32,14 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - Governance notes: `Fix:` names `/crosscheck:protected-surface-amend` and `git add .assurance/protected-surface-amend/<note>.md`, and, for a file staged by mistake, `git restore --staged <path>` with the unnamed staged paths.
   - Queue: `Fix:` names the edit to `docs/TASKS.md` that each problem line states, then `git add docs/TASKS.md`.
   - Base unresolved: `Fix: git fetch origin`.
+  - Any other input the hook cannot read: `Fix:` tells the user to run the git command printed in the problem line by hand and resolve its error.
 - **PC-6. Applies only when needed.** A commit whose staged set has no protected path, no `docs/TASKS.md` and no `docs/assurance/ROADMAP.md` passes after reading the staged set and the rules file, and reads nothing else. It does not need `origin`.
 - **PC-7. Budget.** No network, no LLM, and under 5 seconds on this repository. The test asserts the 5 seconds on each commit it makes. It times the hook process alone, from git's trace2 `child_start` and `child_exit` events for the `pre-commit` hook (`GIT_TRACE2_EVENT`), so git's own work and the test's setup are not counted. The assertion message states the measured milliseconds.
 - **PC-8. Tests.** `scripts/ci/pre-commit.test.mjs` copies `.husky/pre-commit`, `scripts/ci/pre-commit.mjs`, `scripts/ci/tier-gate.mjs`, `scripts/ci/task-queue.mjs` and the rules file into a scratch clone of a scratch bare remote, sets `core.hooksPath` to `.husky`, and runs `git commit`. `git commit` exits 1 for any failing hook, so each case asserts whether the commit failed, whether `HEAD` moved, the exit code of `node scripts/ci/pre-commit.mjs` rerun in the same clone, and literal text in the output:
   - a staged protected path with no note fails, names the path, and prints `Fix:` with `/crosscheck:protected-surface-amend` (PC-3, PC-5);
   - the same commit with a new note that names the path passes (PC-3);
   - a note committed earlier on the branch counts (PC-3);
+  - a note deleted on the branch, though it is on the default branch, is not read (PC-3);
   - a note on the default branch that names the path, unchanged on the branch, does not count (PC-3);
   - a staged protected path with no `origin/HEAD` or `origin/main` exits 2 and prints `Fix: git fetch origin` (PC-3);
   - a staged queue with an unknown status fails and names the row (PC-4);
@@ -45,7 +47,6 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - a staged queue with no separator row exits 2 (PC-4);
   - a staged `docs/TASKS.md` with no queue fails (PC-4);
   - a queue file staged as a deletion exits 2 and prints `Fix: git restore --staged <path>` (PC-4, PC-5);
-  - a note deleted on the branch is not read (PC-3);
   - an unrelated commit in a clone with no `origin` passes (PC-6);
   - on each commit, the pre-commit hook process runs for under 5 seconds, as git's trace2 records it (PC-7).
 

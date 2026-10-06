@@ -24,6 +24,9 @@ const TASKS_PATH = 'docs/TASKS.md';
 const ROADMAP_PATH = 'docs/assurance/ROADMAP.md';
 const RERUN = 'node scripts/ci/pre-commit.mjs';
 
+// PC-5. The fix for any unreadable input that has no more specific one.
+const GENERIC_FIX = 'Fix: run the git command above by hand and resolve the error it prints';
+
 class CannotRead extends Error {
   constructor(message, fix = []) {
     super(message);
@@ -133,7 +136,7 @@ export function main(rulesPath) {
   try {
     staged = splitZ(git(['diff', '--cached', '--name-only', '--no-renames', '-z']));
   } catch (err) {
-    console.error(block(CHECKS[0], [err.message], []).join('\n'));
+    console.error(block(CHECKS[0], [err.message], [GENERIC_FIX]).join('\n'));
     return 2;
   }
   const { globs, missing } = loadProtectedGlobs(resolve(rulesPath));
@@ -162,7 +165,7 @@ export function main(rulesPath) {
       }
     } catch (err) {
       if (!(err instanceof CannotRead)) throw err;
-      const fix = err.fix.length > 0 ? err.fix : ['Fix: run the git command above by hand and resolve the error it prints'];
+      const fix = err.fix.length > 0 ? err.fix : [GENERIC_FIX];
       lines.push(...block(check, [err.message], fix));
       code = 2;
     }
