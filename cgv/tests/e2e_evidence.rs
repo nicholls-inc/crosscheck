@@ -413,6 +413,22 @@ fn ignored_files_the_run_does_not_analyse_are_allowed() {
     assert_eq!(s.read_record()["commit"], json!(s.head()));
 }
 
+#[test]
+fn an_ignored_overrides_file_is_refused_and_a_tracked_one_is_not() {
+    let s = Scratch::new("def f(x):\n    return x\n");
+    ignore(&s, "local.toml\n");
+    std::fs::write(s.repo().join("local.toml"), "").unwrap();
+    let ignored = s.repo().join("local.toml");
+    assert_refused(&s, &s.repo().join("app"), &["--overrides", ignored.to_str().unwrap()], "git ignores the --overrides file local.toml");
+
+    std::fs::write(s.repo().join("o.toml"), "").unwrap();
+    git(&s.repo(), &["add", "o.toml"]);
+    git(&s.repo(), &["commit", "-q", "-m", "overrides"]);
+    let tracked = s.repo().join("o.toml");
+    let out = s.run(&s.repo().join("app"), &s.checker(CLEAN_BODY), &["--overrides", tracked.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
 /// The checker changes the checkout while it runs: the record is refused.
 fn assert_refused_after_the_run(s: &Scratch, change: &str, stderr_has: &str) {
     std::fs::write(s.record(), "stale").unwrap();

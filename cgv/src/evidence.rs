@@ -291,6 +291,17 @@ fn clean_commit(c: &Checkout) -> Result<String> {
             ignored.join("\n")
         );
     }
+    if let Some(overrides) = c.overrides.as_deref() {
+        let listed = git(
+            &c.top,
+            &["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", overrides],
+        )?;
+        if !listed.is_empty() {
+            bail!(
+                "--evidence-record refuses: git ignores the --overrides file {overrides}, which the run reads, so the commit does not pin it (track it or stop ignoring it)"
+            );
+        }
+    }
     git(&c.top, &["rev-parse", "HEAD"])
 }
 
