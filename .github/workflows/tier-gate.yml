@@ -22,19 +22,13 @@ jobs:
       - name: Test the tier gate
         run: node --test scripts/ci/*.test.mjs
 
-      - name: Compute changed files vs base
-        id: diff
-        run: |
-          git fetch origin "${{ github.event.pull_request.base.ref }}" --depth=1
-          {
-            echo "changed_files<<EOF"
-            git diff --name-only --no-renames "origin/${{ github.event.pull_request.base.ref }}...HEAD"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Run tier gate
         env:
-          CHANGED_FILES: ${{ steps.diff.outputs.changed_files }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: node scripts/ci/tier-gate.mjs
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          CHANGED_FILES="$(git diff --name-only --no-renames "origin/$BASE_REF...HEAD")"
+          export CHANGED_FILES
+          node scripts/ci/tier-gate.mjs
