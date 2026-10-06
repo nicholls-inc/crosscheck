@@ -36,7 +36,7 @@ A pull request declares its tier in one of two ways: a `Tier: N` line in the PR 
 
 The tier gate reads no incident reference. A pull request that fixes an incident passes or fails this gate on its tier and artefacts alone, whether or not it adds an eval.
 
-A separate workflow, `incident-eval-check.yml` (the Incident Eval Check), checks incidents. It applies when a pull request has the `incident` label, or the text `Fixes-Incident: <id>` in its body or in one of its commit messages. It matches that text anywhere in a line, so a description that quotes it also counts. It then needs two files that contain the incident id:
+A separate workflow, `incident-eval-check.yml` (the Incident Eval Check), checks incidents. It applies when a pull request has the `incident` label, or a line in its body or in one of its commit messages that holds only `Fixes-Incident:` and one id, optionally indented. The trigger in the middle of a line, after a list or quote marker, or followed by more than one word does not count, so a description that quotes it does not fire the check. It then needs two files that contain the incident id:
 
 - an **eval** under `evals/` that reproduces the incident and stays in the suite, so the same failure cannot recur unnoticed;
 - a candidate invariant under `docs/invariants/` or `crosscheck/docs/invariants/`.

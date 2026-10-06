@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - Only a whole `Fixes-Incident:` line is an incident reference
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/tier-layer-gate.md, intent/2026-09-30-incident-eval-range-spec.md, docs/TASKS.md
+**Why:** The check matched its trigger anywhere in a line. The run for #62 failed after the merge with the incident id `<id>` and a backtick, because the body quoted the trigger and a commit wrapped a sentence onto it.
+**Links:** [intent](intent/2026-10-06-incident-line.md), [spec](intent/2026-10-06-incident-line-spec.md), [plan](intent/2026-10-06-incident-line-plan.md)
+
+A line now counts only when it holds the trigger and one id, optionally indented, with nothing else on it. That is the anchor the tier gate uses for `Tier:` and the queue check for `Task:`, with one extra condition: no second word after the id, because wrapped commit prose can start a line with the trigger. The body is matched one line at a time, so an empty trigger line no longer takes the next line's first word. Replaying #62 against the remote now prints the skip line. A reference written as a sentence is now skipped silently; the `incident` label still forces the check. A trigger line in a fenced code block and a placeholder id still count. The spec records all three as not yet reached.
+
+---
+
 ## 2026-10-06 - The tier gate's explainer stops claiming it checks incident evals
 
 **Type:** docs

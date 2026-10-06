@@ -2,6 +2,8 @@
 
 Intent: `intent/2026-09-30-incident-eval-range.md`. Governing roadmap item: PB-1.
 
+IE-5 and IE-6 are revised, and IE-9 added, by `intent/2026-10-06-incident-line-spec.md`: only a whole `Fixes-Incident:` line is an incident reference, and the PR body is matched one line at a time.
+
 - **IE-1.** `scripts/ci/incident-eval-check.mjs` reads three inputs from the environment: `PR_NUMBER`, `BASE_REF` and `HEAD_SHA`. It fetches `refs/pull/<PR_NUMBER>/head` from `origin` and reads the message of every commit in `origin/<BASE_REF>..<HEAD_SHA>`. It reads them after a squash merge whose head branch was deleted, and reads up to 256 MiB of `git log` output, not Node's 1 MiB default. Output past that limit exits 2 (IE-2), with Node's `ENOBUFS` error in place of git's.
 - **IE-2.** If `PR_NUMBER` is not a decimal number, `HEAD_SHA` is not 40 hex characters, `BASE_REF` is empty, either git command fails, or the range holds no commits, the check exits 2. The workflow runs for every base branch, so a merge commit or a rebase merge into any base, not only the default one, exits 2. It prints the git command and git's error. It does not print "no incident reference — skipped".
 - **IE-3.** Git runs without a shell, with its arguments passed as an array. This includes `git remote get-url origin`.

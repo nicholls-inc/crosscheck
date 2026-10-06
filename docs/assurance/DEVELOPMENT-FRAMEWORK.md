@@ -132,9 +132,13 @@ branch requires no status checks:
   `intent/2026-09-30-incident-eval-range-spec.md`).
 
   The check then applies when the pull request has the `incident` label, or
-  the text `Fixes-Incident: <id>`, in any case and anywhere in a line, in its
-  body or in one of its commit messages (IE-5). It exits 1 in either of these
-  cases:
+  an incident line in its body or in one of its commit messages (IE-5). An
+  incident line holds only `Fixes-Incident:`, in any case, and one id,
+  optionally indented (IE-9 in `intent/2026-10-06-incident-line-spec.md`). The
+  trigger in the middle of a line, after a list or quote marker, or followed by
+  more than one word is not an incident line, so prose that quotes it does not
+  fire the check. Write one incident line per incident. It exits 1 in either
+  of these cases:
   - no eval under `evals/` contains the incident id in its path or content, or
     no candidate invariant under `docs/invariants/` or
     `crosscheck/docs/invariants/` contains it in its content. Both tests are

@@ -114,10 +114,14 @@ function gateDocLink() {
   return `https://github.com/${ownerRepo}/blob/main/docs/gates/${GATE_DOC}`;
 }
 
+// IE-9. Only a line that is the trigger and one id is a reference, so prose
+// that quotes the trigger, lists it, or wraps onto it does not fire the check.
+const INCIDENT_LINE = /^[ \t]*Fixes-Incident:[ \t]*(\S+)[ \t]*$/i;
+
 function findIncidentId(prBody, commitLines) {
-  const sources = [prBody || '', ...commitLines];
-  for (const text of sources) {
-    const m = text.match(/Fixes-Incident:\s*(\S+)/i);
+  const lines = [...(prBody || '').split(/\r?\n/), ...commitLines];
+  for (const line of lines) {
+    const m = line.match(INCIDENT_LINE);
     if (m) return m[1].replace(/[.,;]$/, '');
   }
   return undefined;
