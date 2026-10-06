@@ -47,6 +47,20 @@ class CellTest(unittest.TestCase):
         pre = [("app/models.py", 3, "misc", "x")]
         self.assertEqual(tc.cell(pre, [], self.FILES), "not flagged")
 
+    def test_two_cleared_errors_are_listed_with_a_comma(self):
+        pre = [("app/logic.py", 5, "a", "x"), ("app/logic.py", 7, "b", "y")]
+        self.assertEqual(tc.cell(pre, [], self.FILES), "flagged: line 5 `a`, line 7 `b`")
+
+    def test_a_fix_repeating_one_rule_does_not_hide_a_different_removed_rule(self):
+        pre = [("app/logic.py", 5, "a", "x"), ("app/logic.py", 7, "b", "y")]
+        fix = [("app/logic.py", 5, "a", "x"), ("app/logic.py", 6, "a", "x")]
+        self.assertEqual(tc.cell(pre, fix, self.FILES), "flagged: line 7 `b`")
+
+    def test_an_error_the_fix_has_in_another_file_does_not_hide_a_removed_one(self):
+        pre = [("app/logic.py", 5, "a", "x")]
+        fix = [("app/other.py", 5, "a", "x")]
+        self.assertEqual(tc.cell(pre, fix, self.FILES), "flagged: line 5 `a`")
+
 
 class CorpusTest(unittest.TestCase):
     def test_reads_directory_cases_and_skips_git_cases(self):
@@ -288,6 +302,70 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(out, {p: "9.9" for p in ("mypy", "pyright", "django-stubs", "django", "pydantic")})
 
 
+class CommandLineTest(unittest.TestCase):
+    def test_mypy_command_and_environment(self):
+        with mock.patch.object(tc.subprocess, "run", return_value=proc(0, "")) as run:
+            tc.run_mypy(Path("/tmp/tree"), "/venv/bin/python")
+        cmd, kw = run.call_args.args[0], run.call_args.kwargs
+        self.assertEqual(cmd, [
+            "/venv/bin/python", "-m", "mypy", "--config-file", "mypy.ini", "--no-error-summary",
+            "--no-pretty", "--hide-error-context", "--cache-dir", "/dev/null", ".",
+        ])
+        self.assertEqual(kw["cwd"], Path("/tmp/tree"))
+        for key, value in (("MYPY_FORCE_COLOR", "0"), ("NO_COLOR", "1"), ("TERM", "dumb")):
+            self.assertEqual(kw["env"][key], value)
+
+    def test_pyright_command_uses_the_named_interpreter_and_the_tree_config(self):
+        with mock.patch.object(tc.subprocess, "run", return_value=proc(0, '{"generalDiagnostics": []}')) as run:
+            tc.run_pyright(Path("/tmp/tree"), "/venv/bin/python")
+        self.assertEqual(run.call_args.args[0], [
+            "/venv/bin/python", "-m", "pyright", "--outputjson", "--pythonpath", "/venv/bin/python",
+            "-p", "pyrightconfig.json",
+        ])
+        self.assertEqual(run.call_args.kwargs["cwd"], Path("/tmp/tree"))
+
+    def test_pyright_output_with_an_unexpected_shape_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            for name, out in (
+                ("no key", {}),
+                ("outside the tree", {"generalDiagnostics": [
+                    {"file": "/elsewhere/x.py", "severity": "error", "message": "m",
+                     "range": {"start": {"line": 0, "character": 0}}}]}),
+                ("no range", {"generalDiagnostics": [
+                    {"file": str(tree / "x.py"), "severity": "error", "message": "m"}]}),
+            ):
+                with self.subTest(name), mock.patch.object(tc.subprocess, "run", return_value=proc(1, json.dumps(out))):
+                    with self.assertRaisesRegex(tc.HarnessError, "unexpected shape"):
+                        tc.run_pyright(tree, "python3")
+
+
+class CheckTreeTest(unittest.TestCase):
+    def test_copies_the_tree_writes_config_and_runs_both_checkers_on_the_copy(self):
+        seen = {}
+
+        def fake_mypy(tree, python):
+            seen["mypy"] = (tree, (tree / "mypy.ini").exists(), (tree / "app" / "logic.py").exists())
+            return ["mypy-result"]
+
+        def fake_pyright(tree, python):
+            seen["pyright"] = (tree, (tree / "pyrightconfig.json").exists())
+            return ["pyright-result"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "pre"
+            (src / "app").mkdir(parents=True)
+            (src / "app" / "logic.py").write_text("x = 1\n")
+            work = Path(tmp) / "work"
+            work.mkdir()
+            with mock.patch.object(tc, "run_mypy", fake_mypy), mock.patch.object(tc, "run_pyright", fake_pyright):
+                out = tc.check_tree(src, "python3", work)
+            self.assertFalse((src / "mypy.ini").exists())
+        self.assertEqual(out, {"mypy": ["mypy-result"], "pyright": ["pyright-result"]})
+        self.assertEqual(seen["mypy"], (work / "pre", True, True))
+        self.assertEqual(seen["pyright"], (work / "pre", True))
+
+
 class MainTest(unittest.TestCase):
     VERSIONS = {"mypy": "1", "pyright": "2", "django-stubs": "3", "django": "4", "pydantic": "5"}
 
@@ -358,6 +436,65 @@ class MainTest(unittest.TestCase):
             code, out, err = self.run_main(tmp, True, [[], []], bench_result=Path(tmp) / "absent.json")
         self.assertEqual((code, out), (2, ""))
         self.assertIn("malformed", err)
+
+
+    def test_pre_tree_is_checked_before_fix_tree_and_the_cell_reads_pre_minus_fix(self):
+        trees = []
+
+        def fake(tree, python):
+            trees.append(tree.name)
+            return [("app/logic.py", 3, "union-attr", "m")] if tree.parent.name == "pre" else []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus, result = self.corpus(tmp, True)
+            out = io.StringIO()
+            with mock.patch.object(tc, "versions", return_value=self.VERSIONS), \
+                    mock.patch.object(tc, "run_mypy", side_effect=fake), \
+                    mock.patch.object(tc, "run_pyright", return_value=[]), \
+                    contextlib.redirect_stdout(out):
+                tc.main(["--corpus", str(corpus), "--bench-result", str(result)])
+        self.assertEqual(trees, ["pre", "fix"])
+        self.assertIn("flagged: line 3 `union-attr`", out.getvalue())
+
+    def test_header_names_the_bench_result_outside_the_repo_by_its_full_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, out, _ = self.run_main(tmp, True, [[], []])
+            self.assertIn(f"CGV outcome from `{(Path(tmp) / 'result.json').resolve()}`.", out)
+
+    def test_display_is_relative_to_the_repo_inside_it(self):
+        self.assertEqual(tc.display(tc.REPO_ROOT / "bench" / "baseline.json"), Path("bench/baseline.json"))
+
+    def test_a_missing_interpreter_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus, result = self.corpus(tmp, True)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()) as out:
+                code = tc.main(["--corpus", str(corpus), "--bench-result", str(result),
+                                "--python", str(Path(tmp) / "no-such-python")])
+        self.assertEqual((code, out.getvalue()), (2, ""))
+        self.assertIn("error:", err.getvalue())
+
+    def test_a_relative_interpreter_path_is_made_absolute(self):
+        seen = []
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus, result = self.corpus(tmp, True)
+            with mock.patch.object(tc, "versions", side_effect=lambda py: seen.append(py) or self.VERSIONS), \
+                    mock.patch.object(tc, "run_mypy", return_value=[]), \
+                    mock.patch.object(tc, "run_pyright", return_value=[]), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                tc.main(["--corpus", str(corpus), "--bench-result", str(result), "--python", ".venv/bin/python"])
+        self.assertEqual(seen, [str(Path(".venv/bin/python").absolute())])
+
+    def test_a_bare_interpreter_name_is_left_for_path_lookup(self):
+        seen = []
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus, result = self.corpus(tmp, True)
+            with mock.patch.object(tc, "versions", side_effect=lambda py: seen.append(py) or self.VERSIONS), \
+                    mock.patch.object(tc, "run_mypy", return_value=[]), \
+                    mock.patch.object(tc, "run_pyright", return_value=[]), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                tc.main(["--corpus", str(corpus), "--bench-result", str(result), "--python", "python3"])
+        self.assertEqual(seen, ["python3"])
 
 
 if __name__ == "__main__":

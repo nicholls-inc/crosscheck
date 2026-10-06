@@ -10,7 +10,8 @@
 #                                     [--python PATH]
 # --python names an interpreter with the pinned packages of
 # bench/typecheckers/requirements.txt installed. Exit 0 ok, 2 harness failure
-# (ValueError covers invalid TOML, invalid JSON and non-UTF-8 input).
+# (ValueError covers invalid TOML, invalid JSON and non-UTF-8 input; OSError
+# covers a missing interpreter or an unreadable tree).
 import argparse
 import collections
 import json
@@ -79,11 +80,14 @@ def run_pyright(tree, python):
     except json.JSONDecodeError:
         raise HarnessError(f"pyright failed in {tree}:\n{proc.stdout}{proc.stderr}")
     diags = []
-    for d in out["generalDiagnostics"]:
-        if d["severity"] != "error":
-            continue
-        rel = Path(d["file"]).resolve().relative_to(tree.resolve()).as_posix()
-        diags.append((rel, d["range"]["start"]["line"] + 1, d.get("rule", ""), d["message"]))
+    try:
+        for d in out["generalDiagnostics"]:
+            if d["severity"] != "error":
+                continue
+            rel = Path(d["file"]).resolve().relative_to(tree.resolve()).as_posix()
+            diags.append((rel, d["range"]["start"]["line"] + 1, d.get("rule", ""), d["message"]))
+    except (KeyError, TypeError, ValueError) as e:
+        raise HarnessError(f"pyright output in {tree} has an unexpected shape: {e!r}")
     return diags
 
 
@@ -176,6 +180,10 @@ def main(argv=None):
     ap.add_argument("--bench-result", type=Path, default=DEFAULT_BENCH_RESULT)
     ap.add_argument("--python", default=sys.executable)
     args = ap.parse_args(argv)
+    # The runners use cwd=<temp tree>, so a relative path to an interpreter
+    # must be made absolute here. A bare command name is left to PATH lookup.
+    if os.sep in args.python:
+        args.python = os.path.abspath(args.python)
     try:
         vers = versions(args.python)
         try:
@@ -188,7 +196,7 @@ def main(argv=None):
                 pre = check_tree(case["pre"], args.python, Path(tmp) / "pre")
                 fix = check_tree(case["fix"], args.python, Path(tmp) / "fix")
             rows.append((case, pre, fix))
-    except HarnessError as e:
+    except (HarnessError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     print(
