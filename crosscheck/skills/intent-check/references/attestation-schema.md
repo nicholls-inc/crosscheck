@@ -40,10 +40,10 @@ Earlier versions of this document described a pre-commit hook that rejected a co
 | `content_hash`                   | yes      | Lowercase hex SHA-256 of `concat(read_bytes(f) for f in protected_files)` with **no** delimiter between files. Order matches `protected_files`.                   |
 | `verdict`                        | yes      | `pass` if the diff-checker returned `match=true` AND `confidence_pct>=80`; otherwise `fail`. Low-confidence matches are not passes.                                |
 | `checked_at`                     | yes      | RFC3339 timestamp in UTC (e.g. `2026-04-24T14:32:10Z`). Lets a reader tell whether the record is older than the files it names.                            |
-| `pipeline_output.back_translation` | yes    | Section 1 + Section 2 from the blind back-translator, verbatim. Making this human-readable is a deliberate forgery-cost decision — see "why the pipeline output is a field".     |
+| `pipeline_output.back_translation` | yes    | Section 1 + Section 2 from the blind back-translator, verbatim. Human-readable so a reviewer can see what the pipeline saw — see "Why `pipeline_output` is a field".     |
 | `pipeline_output.diff_result`    | yes      | Full JSON object from the diff-checker after semantic validation (not the raw pre-validation output).                                                            |
 
-Readers should tolerate unknown/extra fields for forward compatibility, but they but SHOULD NOT be added without updating this doc and the skill's verification checklist.
+Readers should tolerate unknown or extra fields for forward compatibility, but new fields SHOULD NOT be added without updating this doc and the skill's verification checklist.
 
 ## Example
 

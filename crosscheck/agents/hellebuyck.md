@@ -68,7 +68,7 @@ Classify the user's request to determine which skill to invoke. The spec chain d
 | Bootstrap acceptance | "User-observable flows", "acceptance oracle", "scenarios for smoke" | `/acceptance-oracle-draft` |
 | Status dashboard | "How's the repo doing?", "assurance status", "weekly check-in" | `/assurance-status` |
 | Roadmap drift | "Are the docs accurate?", "ROADMAP check", Status field sanity | `/assurance-roadmap-check` |
-| Spec-intent alignment (Layer 5) | Protected-surface PR, "does the spec match the code", "run intent-check" | `/intent-check` |
+| Spec-intent alignment (Layer 5) | User asks for an advisory spec-intent search: "does the spec match the code", "run intent-check", optionally on a protected-surface PR. Never a required step | `/intent-check` |
 | Spec completeness (Layer 6) | "What are we missing?", "adversarial invariants", quarterly module review | `/spec-adversary` |
 | Spec coverage probe (Layer 6) | "spec coverage", "coverage matrix", "which spec sections lack invariants", "audit-finding coverage" | `/audit-spec-coverage` |
 | Invariant consistency audit (Layer 5+6) | "are these invariants consistent", "find contradictions", "consistency audit", "invariant contradictions" | `/audit-invariant-consistency` |

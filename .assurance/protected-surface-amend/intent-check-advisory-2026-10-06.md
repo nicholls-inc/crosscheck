@@ -1,6 +1,6 @@
 ## Protected-Surface Amendment
 
-**Target file(s):** `crosscheck/skills/intent-check/SKILL.md` (+ 6 others, see Diff Plan)
+**Target file(s):** `crosscheck/skills/intent-check/SKILL.md` (+ 7 others, see Diff Plan)
 **Class:** A (skill and agent behaviour definitions)
 **Matched rule:** `crosscheck/skills/*/SKILL.md`, `crosscheck/agents/*.md`
 **Date:** 2026-10-06
@@ -8,12 +8,13 @@
 ### Change Description
 
 1. `crosscheck/skills/intent-check/SKILL.md`: the description, the opening paragraphs, the Step 0 refusal, the Step 5 `phase_verdict` bullet and Step 6 describe `.assurance/intent-check-attestation.json` as an advisory record of an LLM run that no gate, hook or reviewer may require. Step 7, which drafted a pre-commit hook that rejects a commit without a passing attestation, is removed. Report and "What this does NOT catch" become Steps 7 and 8. The verification checklist drops the hook line.
-2. `crosscheck/skills/assurance-init/SKILL.md`: step 6.7d lists the Tier 3 artefacts as a plan and a governance-note block, and says no LLM verdict is a tier artefact.
+2. `crosscheck/skills/assurance-init/SKILL.md`: step 6.7d lists the Tier 3 artefacts as a plan and a governance-note block, and says no LLM verdict is a tier artefact. The roadmap principle it seeds says pre-commit hooks run deterministic checks and never require an LLM verdict, in place of "fast attestation checks".
 3. `crosscheck/skills/protected-surface-amend/SKILL.md`: Steps 3 and 7 no longer ask a Class A amendment to state or queue an attestation regeneration or an `intent-check` baseline refresh.
 4. `crosscheck/skills/draft-invariants/SKILL.md`: cites the hash discipline by section name, and describes the attestation as an advisory record rather than a pre-commit check.
 5. `crosscheck/agents/hellebuyck.md`: the skill table, the routing row, the FP-tracker gate, the authority gate (no "prior attestation") and the "Attestation over trust" guideline are reworded.
 6. `crosscheck/agents/add-orchestrator.md`: the hellebuyck hand-off offers `/intent-check` as an optional search, and the hash discipline is cited by section name.
 7. `crosscheck/agents/lowry.md`: the completion disclaimer and the green hand-off name intent as a human judgement that `/intent-check` and `/rationale` can inform, not decide.
+8. `crosscheck/skills/assurance-status/SKILL.md`: Step 2.3 finds protected-surface edits from `git log` only, no longer from the attestation.
 
 ### Rationale
 
@@ -35,12 +36,13 @@ Task VA-1.1. `docs/VISION.md` rule 1 says no guarantee rests on the judgement of
 | # | File | Section | Action |
 |---|------|---------|--------|
 | 1 | `crosscheck/skills/intent-check/SKILL.md` | description, Description, Steps 0, 5, 6, 7, 8, 9, checklist | reworded; Step 7 removed; Steps 8 and 9 renumbered |
-| 2 | `crosscheck/skills/assurance-init/SKILL.md` | 6.7d | reworded |
+| 2 | `crosscheck/skills/assurance-init/SKILL.md` | roadmap principles, 6.7d | reworded |
 | 3 | `crosscheck/skills/protected-surface-amend/SKILL.md` | Step 3, Step 7 template | attestation follow-ups removed |
 | 4 | `crosscheck/skills/draft-invariants/SKILL.md` | §1c marker validation and coordination note | reworded |
 | 5 | `crosscheck/agents/hellebuyck.md` | skill table, routing table, quality gates, Governance guidelines | reworded |
 | 6 | `crosscheck/agents/add-orchestrator.md` | Step 5 marker, hellebuyck hand-off, checklist | reworded |
 | 7 | `crosscheck/agents/lowry.md` | completion contract, terminal states | reworded |
+| 8 | `crosscheck/skills/assurance-status/SKILL.md` | Step 2.3 | attestation cross-reference removed |
 
 ### Test / Coverage Impact
 

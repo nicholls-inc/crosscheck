@@ -134,7 +134,7 @@ Create the file with the following sections (filled with generalised language �
    >
    > Workflow phases are **not a substitute** for either enforcement point.
    >
-   > Pre-commit hooks are fast attestation checks only — they must never invoke LLMs or run slow test suites. Heavy verification lives in CI and in dedicated binaries that the pre-commit hook verifies were run.
+   > Pre-commit hooks run fast deterministic checks only — they must never invoke LLMs, run slow test suites, or require an LLM verdict to pass. Heavy verification lives in CI and in dedicated binaries that the pre-commit hook verifies were run.
 
 4. **Horizon Index** — four empty tables titled `Immediate (start now)`, `Next (4–8 weeks)`, `Medium-term (2–3 months)`, `Aspirational (scope and commit later)`, each with columns `# | Item | Cost | Doc`. Seed each table with a single `TODO` placeholder row so the format is obvious.
 5. **Kill Criteria** — paragraph explaining: "Stop and re-plan the entire roadmap if any of the following becomes true." Seed with three editable TODO bullets the user must replace, covering (a) a first-kernel failure criterion (e.g., formal-verification pipeline unusable after N weeks), (b) a spec-alignment false-positive ceiling (default 30%, enforced later by `/intent-check`), and (c) an immediate-horizon delivery criterion (e.g., no item merged within 4 weeks).
