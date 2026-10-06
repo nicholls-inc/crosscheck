@@ -8,7 +8,7 @@
 ### Change Description
 
 1. `scripts/ci/pre-commit.mjs` (new): run by `.husky/pre-commit`. It reads the commit from the index. When the commit stages a protected path, it fails unless every protected path changed on the branch is named in a governance note changed on the branch (TG-5, PC-3). When the commit stages `docs/TASKS.md` or `docs/assurance/ROADMAP.md`, it fails on QC-1 to QC-4 (PC-4). Each failure prints a `Fix:` command and the rerun command (PC-5). It never fetches, and it reads nothing beyond the staged list and the rules file for an unrelated commit (PC-6).
-2. `scripts/ci/pre-commit.test.mjs` (new): the PC-8 cases, each a real `git commit` through the hook in a scratch clone, with a 5-second budget per commit.
+2. `scripts/ci/pre-commit.test.mjs` (new): the PC-8 cases, each a real `git commit` through the hook in a scratch clone, with a 5-second budget on each run of the hook process, timed from git's trace2 events.
 3. `scripts/ci/tier-gate.mjs`: exports `loadProtectedGlobs`, `globToRegExp` and `isGovernanceNotePath`. The TG-5 comparison moves into an exported `unnamedProtectedFiles`, which `evaluate` calls. `.husky/pre-commit` joins the Tier Gate row of `EVIDENCE_CLASSES`. The gate's result on any pull request does not change, apart from that report row.
 4. `scripts/ci/tier-gate.test.mjs`: a case for the new evidence row.
 5. `scripts/ci/task-queue.mjs`: QC-1 to QC-4 move out of `checkQueue` into an exported `checkRows`, which `checkQueue` calls. The check's result does not change.

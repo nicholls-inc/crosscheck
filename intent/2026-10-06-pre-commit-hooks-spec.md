@@ -33,7 +33,7 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - Queue: `Fix:` names the edit to `docs/TASKS.md` that each problem line states, then `git add docs/TASKS.md`.
   - Base unresolved: `Fix: git fetch origin`.
 - **PC-6. Applies only when needed.** A commit whose staged set has no protected path, no `docs/TASKS.md` and no `docs/assurance/ROADMAP.md` passes after reading the staged set and the rules file, and reads nothing else. It does not need `origin`.
-- **PC-7. Budget.** No network, no LLM, and under 5 seconds on this repository. The test asserts the 5 seconds on each commit it makes.
+- **PC-7. Budget.** No network, no LLM, and under 5 seconds on this repository. The test asserts the 5 seconds on each commit it makes. It times the hook process alone, from git's trace2 `child_start` and `child_exit` events for the `pre-commit` hook (`GIT_TRACE2_EVENT`), so git's own work and the test's setup are not counted. The assertion message states the measured milliseconds.
 - **PC-8. Tests.** `scripts/ci/pre-commit.test.mjs` copies `.husky/pre-commit`, `scripts/ci/pre-commit.mjs`, `scripts/ci/tier-gate.mjs`, `scripts/ci/task-queue.mjs` and the rules file into a scratch clone of a scratch bare remote, sets `core.hooksPath` to `.husky`, and runs `git commit`. `git commit` exits 1 for any failing hook, so each case asserts whether the commit failed, whether `HEAD` moved, the exit code of `node scripts/ci/pre-commit.mjs` rerun in the same clone, and literal text in the output:
   - a staged protected path with no note fails, names the path, and prints `Fix:` with `/crosscheck:protected-surface-amend` (PC-3, PC-5);
   - the same commit with a new note that names the path passes (PC-3);
@@ -44,7 +44,7 @@ This spec adds PC-1 to PC-8. The TG requirements (`intent/2026-09-29-determinist
   - a staged queue that sets a row to `done` with no `Task:` line passes (PC-4);
   - a staged queue with no separator row exits 2 (PC-4);
   - an unrelated commit in a clone with no `origin` passes (PC-6);
-  - each commit finishes in under 5 seconds (PC-7).
+  - on each commit, the pre-commit hook process runs for under 5 seconds, as git's trace2 records it (PC-7).
 
 ## Evidence report
 

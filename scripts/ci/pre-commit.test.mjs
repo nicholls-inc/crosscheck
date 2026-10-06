@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,6 +95,18 @@ function scratchNoOrigin() {
   return work;
 }
 
+// Milliseconds the pre-commit hook process ran, as git's trace2 records it
+// around that one child (PC-7). Git's own work and the test's setup are not in
+// it.
+function hookMillis(traceFile) {
+  const events = readFileSync(traceFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  const starts = events.filter((e) => e.event === 'child_start' && e.child_class === 'hook' && e.hook_name === 'pre-commit');
+  assert.equal(starts.length, 1, 'git ran the pre-commit hook once');
+  const exit = events.find((e) => e.event === 'child_exit' && e.sid === starts[0].sid && e.child_id === starts[0].child_id);
+  assert.ok(exit, 'git recorded the pre-commit hook exiting');
+  return Math.round(exit.t_rel * 1000);
+}
+
 // Stage `files`, run `git commit`, and report what happened. git commit exits
 // 1 for any failing hook, so a failed commit's `hook` is the exit code of the
 // same command rerun by hand (PC-2); it is null when the commit went through.
@@ -102,11 +114,11 @@ function commit(work, files) {
   write(work, files);
   git(work, ['add', '--', ...Object.keys(files)]);
   const before = git(work, ['rev-parse', 'HEAD']);
-  const started = Date.now();
-  const r = spawnSync('git', ['commit', '-m', 'x'], { cwd: work, env: GIT_ENV, encoding: 'utf8' });
-  const elapsed = Date.now() - started;
+  const traceFile = join(mkdtempSync(join(tmpdir(), 'pre-commit-trace-')), 'events.json');
+  const r = spawnSync('git', ['commit', '-m', 'x'], { cwd: work, env: { ...GIT_ENV, GIT_TRACE2_EVENT: traceFile }, encoding: 'utf8' });
   const after = git(work, ['rev-parse', 'HEAD']);
-  assert.ok(elapsed < 5000, `the commit took ${elapsed} ms, over the 5000 ms budget (PC-7)`);
+  const ms = hookMillis(traceFile);
+  assert.ok(ms < 5000, `the pre-commit hook ran for ${ms} ms, over the 5000 ms budget (PC-7)`);
   const rerun = r.status === 0 ? null : spawnSync('node', ['scripts/ci/pre-commit.mjs'], { cwd: work, env: GIT_ENV, encoding: 'utf8' });
   if (rerun) assert.equal(`${rerun.stdout}${rerun.stderr}`, `${r.stdout}${r.stderr}`.replace(/^[\s\S]*?(?=pre-commit:)/, ''), 'the rerun prints what the hook printed');
   return { status: r.status, hook: rerun && rerun.status, moved: before !== after, output: `${r.stdout}${r.stderr}` };
