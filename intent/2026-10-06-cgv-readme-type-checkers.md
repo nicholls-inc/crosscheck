@@ -21,7 +21,7 @@ Issue #10 reports a comparison with mypy and pyright on the fixtures. Its result
 - No change to the extractor, the checker or the proofs.
 - Every claim in the new text either cites a rerunnable command or a pinned external source.
 - Per `docs/VISION.md`, a class of code the tool does not reach is "not yet reached", with the blocking property and the open question.
-- The comparison script needs no network once the pinned packages are installed, and does not run in CGV CI, which installs no Python type checkers.
+- The comparison script needs no network once the pinned packages are installed and pyright has fetched its Node package, and it does not run in CGV CI, which installs no Python type checkers.
 
 ## Open questions
 None. The issue states the outcome.
