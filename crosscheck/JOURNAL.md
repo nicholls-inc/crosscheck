@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-06 - The README and the hierarchy guide say "not yet reached"
+
+**Type:** docs
+**Touches:** README.md, docs/assurance-hierarchy.md, ../docs/TASKS.md
+**Why:** `docs/VISION.md` says no class of code is outside the vision and that spec completeness is provable relative to a formal requirement. The README called performance, partition failures and security "out of scope", Layers 2 and 3 "deliberately not addressed", and Layer 6 "best-effort".
+**Links:** [intent](../intent/2026-10-06-not-yet-reached-docs.md)
+
+Each of those statements now says "not yet reached", names the blocking property, and names the open question, taken from the vision's class table where one fits. Layer 6 points at roadmap item RQ-1 and calls `/spec-adversary` a search. "What Crosscheck is not good for" became "Where Crosscheck does not reach yet". The research doc still has the old wording (VA-1.3), and both files still give Layer 5 the `/intent-check` accuracy as a confidence (VA-1.4).
+
+---
+
 ## 2026-05-14 — release pipeline: drain the 2.4.0 → 2.5.0 backlog and harden the commit convention
 
 **Type:** release-process / governance
