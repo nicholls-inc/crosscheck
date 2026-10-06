@@ -4,6 +4,38 @@ A three-layer pipeline that extracts implicit contracts from Python application 
 
 **Status:** research prototype. It began as a three-node PoC (function A → function B → data model field) demonstrating that graph-level consistency checking catches bugs that pairwise checking structurally misses, and now checks real-scale graphs with a state-based checker. The target can be a Django model field or a field of a plain-Python data class; see [Python support](#python-support).
 
+## When to use it
+
+Use CGV next to mypy or pyright, not instead of them. A type checker asks whether a value has the right type. CGV asks whether a value meets the constraints that a model field or a data class declares: length (`max_length`), precision (`decimal_places`), range (validators, `ge`, `le`), choices, and nullability. It checks these across several hops, from the function that produces a value through the functions that pass it on to the field that stores it.
+
+Tests often miss these bugs too, because the database does not reject the value. PostgreSQL rounds a `numeric` value with more decimal places than the column's scale ([PostgreSQL 16 docs, Numeric Types](https://www.postgresql.org/docs/16/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL)), and SQLite stores a string of any length in a `VARCHAR(10)` column ([SQLite FAQ, question 9](https://www.sqlite.org/faq.html#q9)).
+
+Type checkers reach bugs that CGV does not. CGV reports a value only where it reaches a declared constraint, so a `None` dereference with no constrained target is not yet reached. The blocking property is that there is no declared constraint to check the value against, and the open question is which unconstrained dereferences a nullability model should treat as targets. A pydantic model built from `response.json()`, where the remote API may send null (`external-payload-null`), is also not yet reached. The blocking property is that nothing in project code produces the `None`, so no function node in the graph is the source of the bad value, and the open question is whether a call that parses an external payload should be a source node with an unknown value. Some nullability paths reach CGV as warnings, not errors (see [What exit 0 promises](#what-exit-0-promises)).
+
+**Comparison on the bench corpus.** `scripts/typecheck_compare.py` runs mypy and pyright on the pre-fix and fixed trees of each case in `bench/corpus`. A type checker flags a case when the pre-fix tree has an error in the bug's file, of a rule that the fix removes. The CGV column is the outcome in `bench/baseline.json` (see `bench/README.md`). Rerun the table with Python 3.12 or later:
+
+```bash
+python3 -m venv /tmp/tc && /tmp/tc/bin/pip install -r bench/typecheckers/requirements.txt
+scripts/typecheck_compare.py --python /tmp/tc/bin/python
+```
+
+mypy 2.4.0 (`strict`, django-stubs 6.1.2, pydantic plugin), pyright 1.1.414 (`strict`), Django 6.1.2, pydantic 2.13.5. CGV outcome from `bench/baseline.json`.
+
+| Case | Kind | CGV design reaches it | CGV | mypy | pyright |
+|---|---|---|---|---|---|
+| `dict-get-default` | non-null | yes | WARNING_ONLY | not flagged | not flagged |
+| `external-payload-null` | non-null | not yet reached | NOT_REPORTED | not flagged | not flagged |
+| `first-under-type-ignore` | non-null | yes | CAUGHT | not flagged | not flagged |
+| `guard-in-caller` | non-null | yes | DETECTED_NOT_CLEARED | not flagged | not flagged |
+| `length-address-defaults` | length | yes | CAUGHT | not flagged | not flagged |
+| `length-cross-model` | length | yes | CAUGHT | not flagged | not flagged |
+| `none-dereference` | non-null | not yet reached | NOT_REPORTED | flagged: line 6 `union-attr` | flagged: line 6 `reportOptionalMemberAccess` |
+| `optional-fields-to-params` | non-null | yes | CAUGHT | not flagged | not flagged |
+| `precision-two-hop` | precision | yes | CAUGHT | not flagged | not flagged |
+| `two-attribute-deep` | non-null | yes | WARNING_ONLY | flagged: line 5 `misc` | not flagged |
+
+Read the table with three facts in mind. The corpus has 10 synthetic cases, written to exercise CGV, so the table shows which tool reaches which kind of bug, not how often each kind occurs. Three cases (`first-under-type-ignore`, `guard-in-caller`, `optional-fields-to-params`) silence the type checker with `# type: ignore`, as real code does, and CGV does not read those comments. pyright with django-stubs reports the type of each Django model field read as unknown (`Type of "summary" is unknown`), so it cannot see that a field is nullable. django-stubs resolves field types through its mypy plugin, which pyright does not load. The line in a `flagged` cell is the line of the type checker's error, which need not be the line of the bug.
+
 ## Architecture
 
 ```
@@ -288,8 +320,18 @@ RESULT: 1 error, 1 warning. Exit code 1.
 
 | Code | Meaning |
 |------|---------|
-| 0 | Every data path (function → model node) consistent |
+| 0 | Every data path (function → model node) that the extractor discovered is consistent; see [What exit 0 promises](#what-exit-0-promises) |
 | 1 | One or more inconsistencies found |
 | 2 | Extraction, parse or translation failure (including an unreadable database or a malformed contract row), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
 
 `--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.
+
+### What exit 0 promises
+
+`runChecker_sound_all` proves that exit 0 means every data path of the translated graph is stepwise sound. These qualifiers apply (see [Trust model](#trust-model) for what is trusted and not proved):
+
+- **Only the paths the extractor discovered.** Extraction is not proved (see [Trust model](#trust-model)). A write the extractor does not see is not in the graph, so exit 0 says nothing about it.
+- **Writes outside the project's code are not yet reached.** This covers writes that Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a DRF serializer's `save()`), raw SQL, and fixtures. The property that blocks them is that the write happens in framework code or in the database, which the extractor does not read. The open question is how small a model of each framework's write paths can be and still be trusted.
+- **Only paths that end at a model node.** A data path runs from a function node to a model node. A `flows_to` edge into a callee that never reaches a model node is not yet reached. The blocking property is that the theorem's notion of a data path (`IsDataPath`) requires the path to end at a model node, so it says nothing about a hop that has no route to one. The open question is how a callee's contract should be modelled when the callee has no model node.
+- **Relative to the translated constraints, not to Django or pydantic.** Translation from the database to Lean is not proved, and `BehaviorModel.lean` is trusted, not proved. No theorem links the checked constraints to it. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is an annotation that Python does not enforce, so the claim holds for a type-correct program. A program that is not type-correct is not yet reached: the blocking property is that CGV does not read the type checker's verdict, and the open question is whether it should require one.
+- **A missing guarantee is a warning, not an error.** When a hop's target has a requirement that could reject a value and the source has no guarantee of that kind, CGV warns and still exits 0. The theorem's "stepwise sound" (`stepwiseSound`) is vacuously true for such a hop: it compares only guarantees and requirements of the same kind, so it proves nothing about the requirement that has no guarantee. That is why `runChecker_sound_all` can hold for runs that exit 0 with warnings. That every such case produces a warning is the checker's behaviour and is not proved. A warning names a requirement that CGV could not show, so read a run that exits 0 with warnings as having unknown paths, not consistent ones. `RESULT:` in the text report counts the warnings.

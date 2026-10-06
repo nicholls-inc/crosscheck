@@ -51,7 +51,7 @@ This file is the ordered queue of work on this repository. The order of the rows
 | ER-1.2 | todo | CGV emits an evidence record | ER-1.1 | | |
 | ER-1.3 | todo | One Crosscheck pipeline emits an evidence record | ER-1.1 | | |
 | ER-1.4 | todo | Add a deterministic checker for evidence records | ER-1.1 | | |
-| CG-1.1 | todo | CGV README: say what the tool is for relative to type checkers, and qualify the exit 0 claim | | #10 | |
+| CG-1.1 | done | CGV README: say what the tool is for relative to type checkers, and qualify the exit 0 claim | | #10 | `intent/2026-10-06-cgv-readme-type-checkers.md` |
 | CG-1.2 | todo | Reduce false-positive errors: numeric tower, object parameters, `NoReturn`, narrowing, pydantic validation | | #5 | |
 | CG-1.3 | todo | Close the extractor gaps that turn real nullability bugs into warnings | | #6 | |
 | CG-1.4 | todo | Hide missing-guarantee warnings by default, and report them as coverage for each module | | #9 | |
