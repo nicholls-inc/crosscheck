@@ -11,7 +11,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 1. Write the governance note `.assurance/protected-surface-amend/intent-check-advisory-2026-10-06.md`, naming every protected file below, and commit it with the intent, the spec and this plan. The protected-surface hook allows the edits only once the note is on the branch.
 2. `crosscheck/skills/intent-check/SKILL.md` (IA-1 to IA-3). Reword the description, the opening paragraphs, the Step 0 refusal, the Step 5 `phase_verdict` bullet and Step 6 so the attestation is an advisory record. Delete Step 7, renumber Report and "What this does NOT catch" to Steps 7 and 8, and drop the hook line from the verification checklist.
 3. `crosscheck/skills/intent-check/references/attestation-schema.md` (IA-4). Replace the opening and "Why an attestation" with a statement of what the record is for and that no gate reads it. Delete "Pre-commit hook" and "Registering the hook". Reword the hook mentions in the field table, the hash section, the `pipeline_output` section and the `/protected-surface-amend` section.
-4. `crosscheck/skills/assurance-init/SKILL.md` step 6.7d (IA-5).
+4. `crosscheck/skills/assurance-init/SKILL.md` step 6.7d (IA-5), and the roadmap principle it seeds about pre-commit hooks. `crosscheck/skills/assurance-status/SKILL.md` Step 2.3 stops offering the attestation as a way to find protected-surface edits.
 5. `crosscheck/skills/protected-surface-amend/SKILL.md` Steps 3 and 7 (IA-6).
 6. `crosscheck/agents/hellebuyck.md` (IA-7): the skill table row, the routing row for protected-surface PRs, the FP-tracker quality gate, the authority gate, and the "Attestation over trust" guideline.
 7. `crosscheck/agents/add-orchestrator.md`, `crosscheck/agents/lowry.md`, `crosscheck/skills/draft-invariants/SKILL.md` (IA-8). Replace "lines 76–92" with the section name.
@@ -29,6 +29,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 | `crosscheck/agents/hellebuyck.md` | yes | five lines |
 | `crosscheck/agents/add-orchestrator.md` | yes | hand-off wording, section references |
 | `crosscheck/agents/lowry.md` | yes | intent check is optional, not the judgement |
+| `crosscheck/skills/assurance-status/SKILL.md` | yes | Step 2.3 stops reading the attestation |
 | `crosscheck/skills/intent-check/references/attestation-schema.md` | no | hook sections removed |
 | `docs/gates/intent-check-verdict.md`, `docs/gates/intent-check-kill-criterion.md`, `docs/gates/README.md`, `crosscheck/docs/orchestrator-coordination.md` | no | wording, line pointers |
 | `docs/TASKS.md`, `JOURNAL.md` | no | record |
