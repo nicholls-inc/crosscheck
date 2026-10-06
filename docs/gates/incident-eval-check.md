@@ -22,7 +22,7 @@ The text is matched anywhere in a line, so a description that only quotes it als
 
 ## What it needs
 
-When it applies, the check walks the checkout of the merged commit and needs:
+When it applies, the check walks the tree the workflow checks out (`actions/checkout` with no `ref:` on a `pull_request` `closed` event, which this document infers is GitHub's merge ref for the pull request, not run) and needs:
 
 - a file under `evals/` whose path or content contains the id;
 - a file under `docs/invariants/` or `crosscheck/docs/invariants/` whose content contains the id.
@@ -52,7 +52,7 @@ A follow-up pull request with no incident reference of its own is skipped, and r
 
 ## How long this takes
 
-Writing the eval and the invariant is the work: often an hour. To see what the check saw for a merged pull request `<n>`, run from a clone of the repository:
+Writing the eval and the invariant is the work. To see what the check saw for a merged pull request `<n>`, run from a clone of the repository:
 
 ```bash
 git fetch origin
