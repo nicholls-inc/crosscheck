@@ -89,7 +89,7 @@ Conventional commits enforced via commitlint + husky. Use the tool as the scope:
 
 Every change to this repository starts as `intent/<slug>.md` — problem statement, proposed outcome, affected users and systems, constraints, open questions. Behavioural changes gain a committed `spec.md`, and anything touching a protected surface gains a `plan.md` too, before implementation begins. Do not open a PR whose stage artefacts do not exist.
 
-- `docs/assurance/DEVELOPMENT-FRAMEWORK.md` — the artefact chain (intent → spec → plan → diff + tests → PR → incident record + eval), which commit or event triggers each stage, and where each Crosscheck skill and agent sits in it.
+- `docs/assurance/DEVELOPMENT-FRAMEWORK.md` — the artefact chain (intent → spec → plan → diff + tests → PR → incident record + eval + candidate invariant), which commit or event triggers each stage, and where each Crosscheck skill and agent sits in it.
 - `docs/assurance/TIER-LAYER-MAP.md` — the three change tiers and the artefacts each one requires. PRs declare their tier in the body.
 - `REVIEW.md` — the review passes (bugs and logic, security, compliance with spec and plan) and the Important/Nit severity rules.
 

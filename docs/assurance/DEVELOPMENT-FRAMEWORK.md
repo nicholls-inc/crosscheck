@@ -30,7 +30,7 @@ red.
 | 3. Build | `plan.md`, then diff + tests | `plan.md` at repo root | accepted spec committed |
 | 4. Test | verification logs, attestations | `.assurance/` | diff pushed |
 | 5. Deploy | PR body with tier, review findings, approval records | GitHub PR | branch pushed |
-| 6. Maintain | incident record + eval | `evals/` | production or dogfood failure |
+| 6. Maintain | incident record + eval + candidate invariant | `evals/`, `docs/invariants/` or `crosscheck/docs/invariants/` | production or dogfood failure |
 
 Stage 6 feeds a fresh `intent/<slug>.md` back into stage 1. That loop is the
 framework; each production incident gets an eval, and the eval stays in the
@@ -141,7 +141,7 @@ branch requires no status checks:
     plain substring matches, so a file naming `INC-12` also matches `INC-1`;
   - the label is set and no id is found.
 
-  The check has no explainer under `docs/gates/` yet. Task PB-1.12 adds one.
+  Its explainer is `docs/gates/incident-eval-check.md`.
 - `task-queue.yml` fails when a row of `docs/TASKS.md` names no roadmap item,
   repeats a task ID, has a status other than `todo`, `blocked` or `done`, or
   depends on a task that is not in the queue. It also fails when the pull
@@ -151,7 +151,11 @@ branch requires no status checks:
 
 ### 6. Maintain — incidents and evals
 
-An incident record plus its eval lands under `evals/`. `auditor` runs read-only
+The pull request that fixes an incident adds an incident record and its eval
+under `evals/`, and a candidate invariant under `docs/invariants/` or
+`crosscheck/docs/invariants/`, each naming the incident id. After that pull
+request merges, the Incident Eval Check (stage 5) looks for the eval and the
+invariant (`docs/gates/incident-eval-check.md`). `auditor` runs read-only
 consolidation passes and renders settled / active / drifted per artefact for
 human adjudication (`docs/gates/auditor-verdicts.md`); it never edits what it
 audits.

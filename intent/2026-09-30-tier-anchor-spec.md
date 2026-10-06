@@ -24,7 +24,7 @@ This spec revises TG-1 and TG-8 of `intent/2026-09-29-deterministic-evidence-spe
   | 3 | `crosscheck/mcp-server/**`, `crosscheck/docs/invariants/**` | checked | `CI workflow (npm test, including the property tests)` |
   | 4 | `crosscheck/conformance/**` | checked | `CI workflow, conformance job (go vet, go test, go run . ..)` |
   | 5 | `scripts/ci/**`, `.claude/hooks/protected-surface-guard.mjs` | checked | `Tier Gate workflow (node --test scripts/ci/*.test.mjs)` |
-  | 6 | `evals/**` | checked | `Incident Eval Check workflow` |
+  | 6 | `evals/**` | not yet reached | Revised by `intent/2026-10-06-incident-eval-surfaces-spec.md`. Property: `no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for a file that names the incident`. Question: `what runs an eval as a regression test, and which workflow runs it before the merge` |
   | 7 | `docs/invariants/**` | not yet reached | Property: `no CI job maps these invariants to the tests that cover them`. Question: `which test covers each invariant, and which workflow checks that mapping` |
   | 8 | `.github/workflows/**` | not yet reached | Property: `a workflow runs only on GitHub's runners, on GitHub's events`. Question: `how to replay a workflow against recorded events before it merges` |
   | 9 | any other path ending `.md` or `.pdf` | not yet reached | Property: `prose has no executable meaning, so no check reads what it claims`. Question: `which claims in a prose document, such as cited paths and commands, a deterministic check can verify` |
