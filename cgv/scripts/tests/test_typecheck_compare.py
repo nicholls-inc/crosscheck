@@ -114,6 +114,23 @@ class CorpusTest(unittest.TestCase):
             with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
                 tc.load_cases(Path(tmp))
 
+    def write_case(self, tmp, text):
+        case_dir = Path(tmp) / "cases" / "broken"
+        case_dir.mkdir(parents=True)
+        (case_dir / "case.toml").write_text(text)
+
+    def test_invalid_toml_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_case(tmp, "kind = = oops")
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
+    def test_a_bug_table_instead_of_an_array_is_a_harness_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_case(tmp, 'kind = "k"\nin_scope = true\npre = "p"\nfix = "f"\n[bug]\nfile = "a.py"\n')
+            with self.assertRaisesRegex(tc.HarnessError, "broken.*malformed"):
+                tc.load_cases(Path(tmp))
+
     def test_settings_install_every_package_with_models(self):
         with tempfile.TemporaryDirectory() as tmp:
             tree = Path(tmp)
@@ -187,10 +204,17 @@ class RunnerTest(unittest.TestCase):
             with self.assertRaisesRegex(tc.HarnessError, "pyright failed"):
                 tc.run_pyright(Path("."), "python3")
 
-    def test_a_missing_package_is_a_harness_error(self):
-        with mock.patch.object(tc.subprocess, "run", return_value=proc(1)):
-            with self.assertRaisesRegex(tc.HarnessError, "mypy is not installed"):
+    def test_a_missing_package_is_named_in_the_harness_error(self):
+        def fake(cmd, **kw):
+            return proc(1 if "'django-stubs'" in cmd[2] else 0, "9.9")
+        with mock.patch.object(tc.subprocess, "run", side_effect=fake):
+            with self.assertRaisesRegex(tc.HarnessError, "django-stubs is not installed"):
                 tc.versions("python3")
+
+    def test_versions_reads_each_pinned_package(self):
+        with mock.patch.object(tc.subprocess, "run", return_value=proc(0, "9.9\n")):
+            out = tc.versions("python3")
+        self.assertEqual(out, {p: "9.9" for p in ("mypy", "pyright", "django-stubs", "django", "pydantic")})
 
 
 class MainTest(unittest.TestCase):
@@ -245,10 +269,19 @@ class MainTest(unittest.TestCase):
         self.assertIn("error: mypy failed in x", err)
 
     def test_a_malformed_bench_result_exits_two(self):
+        for name, text in (("key", json.dumps({"cases": [{"id": "c1"}]})),
+                           ("json", "not json"),
+                           ("list", "[]")):
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                bad = Path(tmp) / "bad.json"
+                bad.write_text(text)
+                code, out, err = self.run_main(tmp, True, [[], []], bench_result=bad)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("malformed", err)
+
+    def test_a_missing_bench_result_exits_two(self):
         with tempfile.TemporaryDirectory() as tmp:
-            bad = Path(tmp) / "bad.json"
-            bad.write_text(json.dumps({"cases": [{"id": "c1"}]}))
-            code, out, err = self.run_main(tmp, True, [[], []], bench_result=bad)
+            code, out, err = self.run_main(tmp, True, [[], []], bench_result=Path(tmp) / "absent.json")
         self.assertEqual((code, out), (2, ""))
         self.assertIn("malformed", err)
 
