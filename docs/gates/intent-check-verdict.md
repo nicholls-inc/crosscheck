@@ -15,22 +15,22 @@ that trio: the code does something the invariant doesn't claim, the
 invariant claims something the code and test don't cover, or the test is
 too weak to prove what the invariant says. `pass` requires both agreement
 and high model confidence — a low-confidence match is still recorded as
-`fail`, because a shaky "probably fine" should not silently authorise a
-protected change. This attestation is written to
-`.assurance/intent-check-attestation.json` and can gate a commit through a
-companion pre-commit hook.
+`fail`, because a shaky "probably fine" should not read as a clean pass.
+The verdict is written to
+`.assurance/intent-check-attestation.json`.
 
-In this repository the verdict is advisory. It is an LLM's judgement, and
-`docs/VISION.md` counts only deterministic checks and human judgement as
-evidence. CI does not run `/intent-check`, and the tier gate does not read the
-attestation. Run it locally when a second opinion on an invariant change would
+The verdict is advisory, in this repository and in every repository that uses
+the skill. It is an LLM's judgement, and `docs/VISION.md` counts only
+deterministic checks and human judgement as evidence. No gate, hook or CI job
+may require the attestation, or require it to say `pass`. CI does not run
+`/intent-check`, and the tier gate does not read the attestation. Run it locally when a second opinion on an invariant change would
 help, and treat a `fail` as a prompt to look harder, not as a verdict.
 
 ## What you are being asked to decide
 
 When you see a fail verdict, the skill's report tells you what the code
 and test appear to guarantee versus what the invariant prose claims. From
-there you choose one of three remediations:
+there you choose one of four routes:
 
 - **Fix the code** — the invariant and test are correct; the implementation
   needs to change to actually satisfy the invariant.
@@ -44,9 +44,13 @@ there you choose one of three remediations:
   changing and under what authority) before the invariant file — a
   **protected surface**, meaning a file that cannot be edited without that
   extra scrutiny — can be touched.
+- **Classify the verdict as wrong** — the code, test and invariant agree, and
+  the pipeline misread them. Set the `human_verdict` of the run's tracker row to `spurious`, so the
+  false-positive rate counts it.
 
 Only the third option changes what is being verified; the first two change
-the thing being checked against a verification that stays fixed. This
+the thing being checked against a verification that stays fixed, and the
+fourth changes neither. This
 matters because it is the difference between "the code doesn't yet meet
 the bar" and "the bar itself needs to move" — the second one always needs
 the extra paper trail so a reviewer can see why the guarantee changed.
@@ -54,6 +58,7 @@ the extra paper trail so a reviewer can see why the guarantee changed.
 ## How long this takes
 
 Reading the mismatch report and picking a route is usually a few minutes.
+Nothing waits on the choice: the verdict blocks no commit and no merge.
 The remediation itself — fixing code, strengthening a test, or writing a
 governance note for an amendment — takes as long as that kind of change
 normally takes in this repository.
