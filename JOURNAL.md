@@ -15,6 +15,17 @@ The step now writes `git diff -z` to a temporary file and passes its path as `CH
 
 ---
 
+## 2026-10-06 - The tier gate's explainer stops claiming it checks incident evals
+
+**Type:** docs
+**Touches:** docs/gates/tier-layer-gate.md, docs/TASKS.md
+**Why:** The explainer said the tier gate expects an incident's eval before it passes. The tier gate reads no incident reference. A run with the `incident` label, an incident id and no eval passes it.
+**Links:** [intent](intent/2026-10-06-tier-gate-incident-doc.md)
+
+The section now says that the Incident Eval Check, a separate workflow, checks incidents, names its trigger and the eval and candidate invariant it needs, and says that it runs after the merge and cannot block it. The run for #62 failed after its merge because the pull request quoted the trigger in prose. Task PB-1.16 covers that.
+
+---
+
 ## 2026-10-06 - The framework states what the Incident Eval Check does
 
 **Type:** docs
