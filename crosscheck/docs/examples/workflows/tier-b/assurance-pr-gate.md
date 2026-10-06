@@ -317,8 +317,11 @@ If `plan.dafny_handoff_needed == true`, the block content is:
 >
 > Hellebuyck's Layer 5 output is probabilistic and its Layer 6 output is
 > search only: it points at gaps and is not evidence. Dafny's Layer 1
-> verification is deterministic. On the Dafny path, Layers 2–3 are not
-> yet reached. Use the right tool for the layer.
+> verification is deterministic. On the Dafny path, Layers 2 and 3 are not yet reached: the Dafny
+> backends are trusted, not verified (Layer 2), and Dafny-verified units and
+> their callers share no contract format (Layer 3). The open questions are in
+> the layer table of `crosscheck/docs/assurance-hierarchy.md`. Use the right
+> tool for the layer.
 
 If `plan.dafny_handoff_needed == false`, use "No Dafny candidates in this
 PR." as the block content.

@@ -4,7 +4,7 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
-## 2026-10-06 - The research doc and the reference workflows say "not yet reached"
+## 2026-10-06 — The research doc and the reference workflows say "not yet reached"
 
 **Type:** docs
 **Touches:** docs/research/assurance-hierarchy.md, docs/examples/workflows/example.md, docs/examples/workflows/tier-b/assurance-squad.md, docs/examples/workflows/tier-b/assurance-pr-gate.md, docs/orchestrator-coordination.md, ../docs/TASKS.md
