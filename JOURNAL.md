@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - A checker reads an evidence record and says which rules it breaks
+
+**Type:** feature
+**Touches:** scripts/check-evidence-record.mjs, scripts/check-evidence-record.test.mjs, intent/2026-10-06-evidence-record-checker.md, docs/TASKS.md
+**Why:** ER-1's acceptance asks for a deterministic checker that rejects a claim with no strength or no rerun command. The spec's rules EV-1 to EV-13 had no implementation.
+**Links:** [intent](intent/2026-10-06-evidence-record-checker.md), [spec](intent/2026-10-06-evidence-record-spec.md)
+
+`node scripts/check-evidence-record.mjs <path>` exits 0, 1 with one `EV-N:` line per broken rule, or 2 when the file is missing or not JSON. The rules live in the pure `checkRecord`, and one table maps each strength to its basis fields, so EV-9 and EV-10 read the same source. Three runtime defaults disagree with the spec, so the checker avoids them: `String.prototype.trim` strips U+FEFF and keeps U+0085, `TextDecoder` drops a leading byte order mark unless `ignoreBOM` is set, and `Number.isInteger` accepts 1e30. A record that CGV's `--evidence-record` wrote on the ER-1.2 branch passes, and the same record with `strength` and `rerun.command` deleted fails on EV-5, EV-9 and EV-12. The checker checks shape, not truth: it runs no command from the record. No workflow runs its tests yet, because the tier gate runs only `scripts/ci/*.test.mjs`. ER-1.5 adds a CI step.
+
+---
+
 ## 2026-10-06 - The evidence record has a format
 
 **Type:** docs
