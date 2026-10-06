@@ -316,7 +316,7 @@ fn a_docstring_ensures_clause_adds_the_assumed_component() {
     assert_eq!(
         rows[7],
         (
-            "ASSUMED contracts in the checked project: 1 docstring ensures: clauses that no tool checked".to_string(),
+            "Docstring requires: and ensures: contracts in the checked project, tagged ASSUMED and checked by no tool: 1".to_string(),
             with.head()
         )
     );

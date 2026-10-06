@@ -124,7 +124,7 @@ fn trusted_base(inputs: &RecordInputs) -> Vec<Component> {
     if inputs.assumed >= 1 {
         rows.push(Component {
             component: format!(
-                "ASSUMED contracts in the checked project: {} docstring ensures: clauses that no tool checked",
+                "Docstring requires: and ensures: contracts in the checked project, tagged ASSUMED and checked by no tool: {}",
                 inputs.assumed
             ),
             version: inputs.commit.to_string(),

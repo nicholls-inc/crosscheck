@@ -30,7 +30,7 @@ This spec adds the requirements CR-1 to CR-8 for `crosscheck-contracts contracts
   | `CGV Rust extractor and command line` | the CGV build commit (CR-6) |
   | `CGV Translation.lean` | the CGV build commit |
   | `CGV BehaviorModel.lean` | the CGV build commit |
-  | `ASSUMED contracts in the checked project: N docstring ensures: clauses that no tool checked` | the project commit. Present only when N, the number of contracts the extractor tagged `ASSUMED`, is at least 1 |
+  | `Docstring requires: and ensures: contracts in the checked project, tagged ASSUMED and checked by no tool: N` | the project commit. Present only when N, the number of contracts the extractor tagged `ASSUMED`, is at least 1 |
 
 - **CR-6. The CGV build commit.** `cargo build` records `git rev-parse HEAD` of the CGV source, with the suffix `-dirty` when `git status --porcelain` lists a change under `cgv/`. When git cannot answer, the version is `unknown`.
 - **CR-7. The rerun.** `rerun.exit_code` is 0. `rerun.command` runs from the root of the project's work tree:

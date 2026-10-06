@@ -14,7 +14,7 @@ The format spec leaves five decisions to this task: where the record lives, whet
 - The five decisions, each stated in `intent/2026-10-06-cgv-evidence-record-spec.md`:
   - The record is a file the caller names. CI artefact, later commit or pull request: the caller chooses where it goes.
   - `BehaviorModel.lean` stays in the trusted base, as the format spec's worked example has it. An understated trusted base is the unsafe error.
-  - Contracts tagged `ASSUMED` (docstring `ensures:` clauses) join the trusted base as one component that gives their count, pinned to the project commit, whenever the run has any.
+  - Contracts tagged `ASSUMED` (docstring `requires:` and `ensures:` clauses) join the trusted base as one component that gives their count, pinned to the project commit, whenever the run has any.
   - The axioms `propext`, `Classical.choice` and `Quot.sound` join the trusted base as one component.
   - The checker binary joins the trusted base pinned by its SHA-256, since the CLI cannot otherwise tell which Lean sources the binary was built from.
 - `docs/TASKS.md` marks ER-1.2 `done` with this file as its record. `cgv/README.md` documents the option.
