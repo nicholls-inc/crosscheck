@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-06 — The Dafny pipeline emits an evidence record
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/docker.ts, mcp-server/src/index.ts, mcp-server/dist/index.js, README.md, ../CLAUDE.md, ../docs/TASKS.md
+**Why:** ER-1's acceptance asks for one Crosscheck pipeline to emit an evidence record. `dafny_verify` returned success on a source string, with no commit, no trusted base and no rerun command.
+**Links:** [intent](../intent/2026-10-06-dafny-evidence-record.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md), #80
+
+The new MCP tool `dafny_evidence` takes a committed `.dfy` file in a clean work tree and the theorems that prove a statement. It runs `dafny verify` and `dafny audit` with the work tree mounted, and emits a record with one `proved` claim, or refuses. The audit is the load-bearing part: a probe showed that a bodiless `lemma {:axiom}` passes `dafny verify` with exit 0, and that `dafny audit` reports it but also exits 0, so the tool and the rerun command both require the text "completed with 0 findings". The trusted base names the Dafny version the image reports, the Z3 in that release, and the local image ID. The rerun command names the image tag, not a digest, so a later rebuild can change what it runs. The theorem-name check is lexical, and nothing checks that the statement matches the contracts. No skill calls the tool yet, because the skills are protected surfaces; #80 tracks wiring `/generate-verified`.
+
+---
+
 ## 2026-10-06 — The README and the hierarchy guide say "not yet reached"
 
 **Type:** docs

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { dafnyVerify } from "./tools/verify.js";
 import { dafnyCompile } from "./tools/compile.js";
 import { dafnyCleanup } from "./tools/cleanup.js";
+import { dafnyEvidence } from "./tools/evidence.js";
 import { leanCheck } from "./tools/leanCheck.js";
 import { leanRun } from "./tools/leanRun.js";
 import { leanTest } from "./tools/leanTest.js";
@@ -22,6 +23,33 @@ export function createServer(): McpServer {
     },
     async ({ source }) => {
       const result = await dafnyVerify({ source });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "dafny_evidence",
+    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree. Runs `dafny verify` and `dafny audit` on the file as committed, checks each named theorem is declared in it, and refuses unless verification passes and the audit has 0 findings (an `{:axiom}` passes verify but not the audit). Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
+    {
+      repoPath: z.string().describe("Absolute path inside the git work tree"),
+      file: z.string().describe("Path of the .dfy file relative to the work tree's top level, with / separators"),
+      statement: z.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
+      requirement: z
+        .string()
+        .nullable()
+        .describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
+      theorems: z
+        .array(z.string())
+        .describe("Names of the lemmas, methods or functions whose contracts prove the statement, optionally module-qualified as M.Name"),
+      outputPath: z
+        .string()
+        .optional()
+        .describe("Where to write the record; relative paths resolve against the work tree's top level"),
+    },
+    async (args) => {
+      const result = await dafnyEvidence(args);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };

@@ -37,7 +37,7 @@ So an `{:axiom}` declaration passes `dafny verify` with exit 0, and `dafny audit
 ## Constraints
 - The record must satisfy EV-1 to EV-12 of the evidence record spec.
 - No LLM decides any part of the claim's strength. The caller, usually an LLM, drafts the statement and names the theorems. The tool decides `proved` only from Dafny's exit code, the audit's finding count and the theorem names that the file declares. Rule 1 of `docs/VISION.md` makes the statement a draft that a person reviews, and the record cannot show that a person did. The spec flags it.
-- The skills that drive the Dafny pipeline are Class A protected surfaces. This task does not edit them, so no skill calls the tool yet. A follow-up issue covers wiring `/generate-verified` to call it.
+- The skills that drive the Dafny pipeline are Class A protected surfaces. This task does not edit them, so no skill calls the tool yet. Issue #80 covers wiring `/generate-verified` to call it.
 - No new dependency.
 
 ## Open questions

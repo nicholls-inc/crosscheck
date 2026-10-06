@@ -90,6 +90,21 @@ function runDocker(
   });
 }
 
+export function dockerImageId(image: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const proc = spawn("docker", ["image", "inspect", "--format", "{{.Id}}", image]);
+    let stdout = "";
+    proc.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    proc.on("close", (code) => {
+      const id = stdout.trim();
+      resolve(code === 0 && id !== "" ? id : null);
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
+
 export async function runDafny(
   tempDir: string,
   args: string[]

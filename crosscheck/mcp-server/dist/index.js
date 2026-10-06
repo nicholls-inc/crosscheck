@@ -21049,6 +21049,20 @@ function runDocker(image, tempDir, args, opts) {
     });
   });
 }
+function dockerImageId(image) {
+  return new Promise((resolve) => {
+    const proc = spawn("docker", ["image", "inspect", "--format", "{{.Id}}", image]);
+    let stdout = "";
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    proc.on("close", (code) => {
+      const id = stdout.trim();
+      resolve(code === 0 && id !== "" ? id : null);
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
 async function runDafny(tempDir, args) {
   return runDocker(getDockerImage(), tempDir, args, {
     memory: "512m",
@@ -21337,8 +21351,144 @@ async function dafnyCleanup() {
   return { cleaned };
 }
 
+// src/tools/evidence.ts
+import { execFile } from "node:child_process";
+import { readFile as readFile2, writeFile as writeFile3 } from "node:fs/promises";
+import { isAbsolute, resolve as resolvePath } from "node:path";
+var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
+var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
+function validateEvidenceInput(input) {
+  const errors = [];
+  if (!isAbsolute(input.repoPath)) errors.push(`repoPath must be absolute: ${input.repoPath}`);
+  const segments = input.file.split("/");
+  if (isAbsolute(input.file) || input.file.includes("\\") || segments.some((s) => s === ".." || s === "." || s === "") || !input.file.endsWith(".dfy")) {
+    errors.push(`file must be a relative path to a .dfy file with no "." or ".." segment: ${input.file}`);
+  }
+  if (input.statement.trim() === "") errors.push("statement is blank");
+  if (input.requirement !== null && input.requirement.trim() === "") {
+    errors.push("requirement is blank; pass null when the claim traces to no requirement");
+  }
+  if (input.theorems.length === 0) errors.push("theorems is empty");
+  for (const name of input.theorems) {
+    if (!NAME.test(name)) errors.push(`not a Dafny name: ${name}`);
+  }
+  return errors;
+}
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function declares(source, keywords, name) {
+  const pattern = new RegExp(
+    `\\b(?:${keywords})\\s+(?:\\{:[^}]*\\}\\s*)*${escapeRegExp(name)}(?![A-Za-z0-9_'?])`
+  );
+  return pattern.test(source);
+}
+function undeclaredTheorems(source, theorems) {
+  return theorems.filter((theorem) => {
+    const parts = theorem.split(".");
+    const last = parts.pop();
+    return !declares(source, "lemma|method|function|predicate", last) || parts.some((q) => !declares(source, "module", q));
+  });
+}
+function shellQuote(s) {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+function rerunCommand(image, file) {
+  const run = `docker run --rm --network=none -v "$PWD":/work ${shellQuote(image)}`;
+  const path = shellQuote(`/work/${file}`);
+  return `${run} verify ${path} && ${run} audit ${path} 2>&1 | grep -q '${AUDIT_CLEAN}'`;
+}
+function claimId(file) {
+  const slug = file.replace(/\.dfy$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug === "" ? "dafny" : `dafny-${slug}`;
+}
+function buildRecord(facts) {
+  return {
+    format: "evidence-record/1",
+    commit: facts.commit,
+    claims: [
+      {
+        id: claimId(facts.file),
+        statement: facts.statement.trim(),
+        requirement: facts.requirement === null ? null : facts.requirement.trim(),
+        strength: "proved",
+        basis: { theorems: [...facts.theorems] },
+        trusted_base: [
+          { component: "Dafny verifier", version: facts.dafnyVersion },
+          { component: "Z3 solver shipped with the Dafny release", version: `Dafny ${facts.dafnyVersion}` },
+          { component: `Dafny Docker image ${facts.image}`, version: facts.imageId }
+        ],
+        rerun: { command: rerunCommand(facts.image, facts.file), exit_code: 0 }
+      }
+    ]
+  };
+}
+function git(cwd, args) {
+  return new Promise((done) => {
+    execFile("git", ["-C", cwd, ...args], (err, stdout) => {
+      done({ ok: err === null, stdout: String(stdout) });
+    });
+  });
+}
+function refuse(errors, record2 = null) {
+  return { success: false, errors, record: record2, writtenTo: null };
+}
+async function dafnyEvidence(input) {
+  const inputErrors = validateEvidenceInput(input);
+  if (inputErrors.length > 0) return refuse(inputErrors);
+  const top = await git(input.repoPath, ["rev-parse", "--show-toplevel"]);
+  const head = await git(input.repoPath, ["rev-parse", "HEAD"]);
+  if (!top.ok || !head.ok) return refuse([`not a git work tree with a commit: ${input.repoPath}`]);
+  const root = top.stdout.trim();
+  const commit = head.stdout.trim();
+  const status = await git(root, ["status", "--porcelain"]);
+  const dirty = status.stdout.split("\n").filter((l) => l !== "");
+  if (!status.ok) return refuse([`git status failed in ${root}`]);
+  if (dirty.length > 0) return refuse(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
+  if (!(await git(root, ["ls-files", "--error-unmatch", "--", input.file])).ok) {
+    return refuse([`not committed: ${input.file}`]);
+  }
+  const source = await readFile2(resolvePath(root, input.file), "utf-8");
+  const undeclared = undeclaredTheorems(source, input.theorems);
+  if (undeclared.length > 0) {
+    return refuse(undeclared.map((t) => `theorem not declared in ${input.file}: ${t}`));
+  }
+  const path = `/work/${input.file}`;
+  const verify = await runDafny(root, ["verify", path]);
+  if (verify.timedOut || verify.exitCode !== 0) {
+    return refuse([
+      `dafny verify exited ${verify.timedOut ? "on timeout" : verify.exitCode}`,
+      (verify.stdout + "\n" + verify.stderr).trim()
+    ]);
+  }
+  const audit = await runDafny(root, ["audit", path]);
+  const auditOutput = audit.stdout + "\n" + audit.stderr;
+  if (audit.timedOut || audit.exitCode !== 0 || !auditOutput.includes(AUDIT_CLEAN)) {
+    return refuse([`dafny audit did not report 0 findings`, auditOutput.trim()]);
+  }
+  const version2 = await runDafny(root, ["--version"]);
+  const dafnyVersion = version2.stdout.trim();
+  if (version2.exitCode !== 0 || !/^\d+\.\d+\.\d+\S*$/.test(dafnyVersion)) {
+    return refuse([`could not read the Dafny version: ${dafnyVersion}`]);
+  }
+  const image = getDockerImage();
+  const imageId = await dockerImageId(image);
+  if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
+  const record2 = buildRecord({ ...input, commit, dafnyVersion, image, imageId });
+  if (input.outputPath === void 0) {
+    return { success: true, errors: [], record: record2, writtenTo: null };
+  }
+  const out = resolvePath(root, input.outputPath);
+  try {
+    await writeFile3(out, JSON.stringify(record2, null, 2) + "\n", "utf-8");
+  } catch (err) {
+    return refuse([`could not write ${out}: ${err.message}`], record2);
+  }
+  return { success: true, errors: [], record: record2, writtenTo: out };
+}
+
 // src/tools/leanCheck.ts
-import { writeFile as writeFile3 } from "node:fs/promises";
+import { writeFile as writeFile4 } from "node:fs/promises";
 import { join as join4 } from "node:path";
 function parseLeanOutput(stdout, stderr) {
   const combined = stdout + "\n" + stderr;
@@ -21382,7 +21532,7 @@ async function leanCheck(input) {
   const tempDir = await createTempDir("lean-");
   try {
     const programPath = join4(tempDir, "program.lean");
-    await writeFile3(programPath, input.source, "utf-8");
+    await writeFile4(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["check", "/work/program.lean"]);
     if (result.timedOut) {
       return {
@@ -21415,13 +21565,13 @@ async function leanCheck(input) {
 }
 
 // src/tools/leanRun.ts
-import { writeFile as writeFile4 } from "node:fs/promises";
+import { writeFile as writeFile5 } from "node:fs/promises";
 import { join as join5 } from "node:path";
 async function leanRun(input) {
   const tempDir = await createTempDir("lean-");
   try {
     const programPath = join5(tempDir, "program.lean");
-    await writeFile4(programPath, input.source, "utf-8");
+    await writeFile5(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["run", "/work/program.lean"]);
     return {
       success: !result.timedOut && result.exitCode === 0,
@@ -21436,13 +21586,13 @@ async function leanRun(input) {
 }
 
 // src/tools/leanTest.ts
-import { writeFile as writeFile5 } from "node:fs/promises";
+import { writeFile as writeFile6 } from "node:fs/promises";
 import { join as join6 } from "node:path";
 async function leanTest(input) {
   const tempDir = await createTempDir("lean-");
   try {
     const programPath = join6(tempDir, "program.lean");
-    await writeFile5(programPath, input.source, "utf-8");
+    await writeFile6(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["test", "/work/program.lean"]);
     const { errors, warnings } = parseLeanOutput(result.stdout, result.stderr);
     const success = !result.timedOut && result.exitCode === 0 && errors.length === 0;
@@ -21473,6 +21623,24 @@ function createServer() {
     },
     async ({ source }) => {
       const result = await dafnyVerify({ source });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+      };
+    }
+  );
+  server.tool(
+    "dafny_evidence",
+    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree. Runs `dafny verify` and `dafny audit` on the file as committed, checks each named theorem is declared in it, and refuses unless verification passes and the audit has 0 findings (an `{:axiom}` passes verify but not the audit). Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
+    {
+      repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
+      file: external_exports.string().describe("Path of the .dfy file relative to the work tree's top level, with / separators"),
+      statement: external_exports.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
+      requirement: external_exports.string().nullable().describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
+      theorems: external_exports.array(external_exports.string()).describe("Names of the lemmas, methods or functions whose contracts prove the statement, optionally module-qualified as M.Name"),
+      outputPath: external_exports.string().optional().describe("Where to write the record; relative paths resolve against the work tree's top level")
+    },
+    async (args) => {
+      const result = await dafnyEvidence(args);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
       };
