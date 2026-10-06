@@ -226,6 +226,19 @@ test('PC-5: a printed git restore quotes a staged path that has a space', () => 
   assert.match(r.output, /git restore --staged 'docs\/assurance\/a b\.md'$/m);
 });
 
+for (const [label, path] of [['a newline', 'docs/assurance/n\nl.md'], ['a non-ASCII byte', 'docs/assurance/\u00e9.md']]) {
+  test(`PC-3: a staged protected path with ${label} fails with no note and passes with one that names it`, () => {
+    const failing = commit(scratchClone(), { [path]: 'x\n' });
+    assert.equal(failing.status, 1);
+    assert.equal(failing.hook, 1);
+    assert.equal(failing.moved, false);
+    assert.match(failing.output, /pre-commit: governance notes/);
+    const passing = commit(scratchClone(), { [path]: 'x\n', [NOTE]: `Amends ${path}\n` });
+    assert.equal(passing.status, 0);
+    assert.equal(passing.moved, true);
+  });
+}
+
 test('PC-4, PC-5: a staged queue with an unknown status fails and names the row', () => {
   const r = commit(scratchClone(), { 'docs/TASKS.md': tasks({ row2: '| PB-1.2 | wip | second | PB-1.1 | | |' }) });
   assert.equal(r.status, 1);
