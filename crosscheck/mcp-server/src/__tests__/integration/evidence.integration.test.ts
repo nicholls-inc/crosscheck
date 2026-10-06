@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -153,17 +153,97 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(result.errors).toEqual(["not committed: proofs/Missing.dfy"]);
   });
 
+  it("treats file as a literal path, not a glob (DE-4)", async () => {
+    await writeFile(join(repo, "proofs", "Glob.dfy"), SOURCE);
+    git(repo, "add", ".");
+    git(repo, "commit", "-q", "-m", "second");
+    const result = await dafnyEvidence({ ...input, file: "proofs/*.dfy" });
+    expect(result.errors).toEqual(["not committed: proofs/*.dfy"]);
+    expect(runDafny).not.toHaveBeenCalled();
+  });
+
+  it("refuses a tracked symbolic link as the file (DE-4)", async () => {
+    await symlink("Abs.dfy", join(repo, "proofs", "Link.dfy"));
+    git(repo, "add", ".");
+    git(repo, "commit", "-q", "-m", "link");
+    const result = await dafnyEvidence({ ...input, file: "proofs/Link.dfy" });
+    expect(result.errors).toEqual(["proofs/Link.dfy is a symbolic link; pass the file it points to"]);
+    expect(runDafny).not.toHaveBeenCalled();
+  });
+
+  it("still sees an untracked file when status.showUntrackedFiles is no (DE-3)", async () => {
+    git(repo, "config", "status.showUntrackedFiles", "no");
+    await writeFile(join(repo, "proofs", "Extra.dfy"), "");
+    const result = await dafnyEvidence(input);
+    expect(result.errors).toEqual([`work tree differs from ${commit}: ?? proofs/Extra.dfy`]);
+  });
+
+  it("refuses an audit that exits non-zero even with the clean text (DE-7)", async () => {
+    stubDafny({ audit: { exitCode: 2, stdout: `${AUDIT_CLEAN}\n`, stderr: "", timedOut: false } });
+    const result = await dafnyEvidence(input);
+    expect(result.success).toBe(false);
+    expect(result.errors[0]).toBe("dafny audit did not report 0 findings");
+  });
+
+  it("refuses an audit timeout even with the clean text (DE-7)", async () => {
+    stubDafny({ audit: { exitCode: 0, stdout: `${AUDIT_CLEAN}\n`, stderr: "", timedOut: true } });
+    const result = await dafnyEvidence(input);
+    expect(result.success).toBe(false);
+    expect(result.errors[0]).toBe("dafny audit did not report 0 findings");
+  });
+
   it("refuses an undeclared theorem before running Dafny (DE-5)", async () => {
     const result = await dafnyEvidence({ ...input, theorems: ["AbsNonneg", "AbsPositive"] });
     expect(result.errors).toEqual(["theorem not declared in proofs/Abs.dfy: AbsPositive"]);
     expect(runDafny).not.toHaveBeenCalled();
   });
 
+  it("names every dirty path (DE-3)", async () => {
+    await writeFile(join(repo, "proofs", "A.dfy"), "");
+    await writeFile(join(repo, "proofs", "Abs.dfy"), SOURCE + "\n");
+    git(repo, "add", "proofs/A.dfy");
+    const result = await dafnyEvidence(input);
+    expect(result.errors).toEqual([
+      `work tree differs from ${commit}: A  proofs/A.dfy`,
+      `work tree differs from ${commit}:  M proofs/Abs.dfy`,
+    ]);
+  });
+
+  it("refuses a repository with no commit (DE-2)", async () => {
+    const bare = realpathSync(await mkdtemp(join(tmpdir(), "nocommit-")));
+    try {
+      git(bare, "init", "-q");
+      const result = await dafnyEvidence({ ...input, repoPath: bare });
+      expect(result.errors).toEqual([`not a git work tree with a commit: ${bare}`]);
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts the clean audit line on stderr (DE-7)", async () => {
+    stubDafny({ audit: { exitCode: 0, stdout: "", stderr: `warnings first\n${AUDIT_CLEAN}\n`, timedOut: false } });
+    expect((await dafnyEvidence(input)).success).toBe(true);
+  });
+
+  it("refuses an unreadable version whatever the exit code, and strict versions only (DE-8)", async () => {
+    stubDafny({ "--version": { exitCode: 1, stdout: "4.11.0\n", stderr: "", timedOut: false } });
+    expect((await dafnyEvidence(input)).success).toBe(false);
+    for (const bad of ["4.11", "x4.11.0", "4.11.0 extra"]) {
+      stubDafny({ "--version": ok(`${bad}\n`) });
+      expect((await dafnyEvidence(input)).errors).toEqual([`could not read the Dafny version: ${bad}`]);
+    }
+  });
+
+  it("reads the ID of the image it names (DE-8)", async () => {
+    await dafnyEvidence(input);
+    expect(dockerImageId).toHaveBeenCalledWith("crosscheck-dafny:latest");
+  });
+
   it("refuses a failed verify (DE-6)", async () => {
-    stubDafny({ verify: { exitCode: 4, stdout: "1 error", stderr: "", timedOut: false } });
+    stubDafny({ verify: { exitCode: 4, stdout: "1 error", stderr: "warn on stderr", timedOut: false } });
     const result = await dafnyEvidence(input);
     expect(result.success).toBe(false);
-    expect(result.errors[0]).toBe("dafny verify exited 4");
+    expect(result.errors).toEqual(["dafny verify exited 4", "1 error\nwarn on stderr"]);
     expect(result.record).toBeNull();
   });
 

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { lstat, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 import { dockerImageId, getDockerImage, runDafny } from "../docker.js";
 
@@ -140,7 +140,7 @@ export function buildRecord(facts: {
 
 function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
   return new Promise((done) => {
-    execFile("git", ["-C", cwd, ...args], (err, stdout) => {
+    execFile("git", ["--literal-pathspecs", "-C", cwd, ...args], (err, stdout) => {
       done({ ok: err === null, stdout: String(stdout) });
     });
   });
@@ -160,7 +160,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   const root = top.stdout.trim();
   const commit = head.stdout.trim();
 
-  const status = await git(root, ["status", "--porcelain"]);
+  const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
   const dirty = status.stdout.split("\n").filter((l) => l !== "");
   if (!status.ok) return refuse([`git status failed in ${root}`]);
   if (dirty.length > 0) return refuse(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
@@ -168,7 +168,15 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
     return refuse([`not committed: ${input.file}`]);
   }
 
-  const source = await readFile(resolvePath(root, input.file), "utf-8");
+  let source: string;
+  try {
+    if ((await lstat(resolvePath(root, input.file))).isSymbolicLink()) {
+      return refuse([`${input.file} is a symbolic link; pass the file it points to`]);
+    }
+    source = await readFile(resolvePath(root, input.file), "utf-8");
+  } catch (err) {
+    return refuse([`could not read ${input.file}: ${(err as Error).message}`]);
+  }
   const undeclared = undeclaredTheorems(source, input.theorems);
   if (undeclared.length > 0) {
     return refuse(undeclared.map((t) => `theorem not declared in ${input.file}: ${t}`));

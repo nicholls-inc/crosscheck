@@ -82,6 +82,15 @@ lemma Step_2() {}
     expect(undeclaredTheorems("lemma L() ensures Helper() {}", ["Helper"])).toEqual(["Helper"]);
   });
 
+  it("rejects a declaration keyword glued to a longer word, and a name that continues with a digit", () => {
+    expect(undeclaredTheorems("xlemma Foo() {}", ["Foo"])).toEqual(["Foo"]);
+    expect(undeclaredTheorems("lemma Abs1() {}", ["Abs"])).toEqual(["Abs"]);
+  });
+
+  it("rejects a qualifier that is a lemma, not a module", () => {
+    expect(undeclaredTheorems("lemma Q() {}\nlemma R() {}", ["Q.R"])).toEqual(["Q.R"]);
+  });
+
   it("rejects an undeclared module qualifier", () => {
     expect(undeclaredTheorems(source, ["Other.AbsNonneg"])).toEqual(["Other.AbsNonneg"]);
   });
@@ -122,7 +131,7 @@ describe("buildRecord (DE-8, DE-10)", () => {
       file: "proofs/Abs.dfy",
       statement: "  Abs never returns a negative number. ",
       requirement: " docs/req.md#abs ",
-      theorems: ["AbsNonneg", "Arith.Abs"],
+      theorems: ["Arith.Abs", "AbsNonneg"],
       dafnyVersion: "4.11.0+fcb2042d",
       image: "crosscheck-dafny:latest",
       imageId: "sha256:feed",
@@ -136,7 +145,7 @@ describe("buildRecord (DE-8, DE-10)", () => {
           statement: "Abs never returns a negative number.",
           requirement: "docs/req.md#abs",
           strength: "proved",
-          basis: { theorems: ["AbsNonneg", "Arith.Abs"] },
+          basis: { theorems: ["Arith.Abs", "AbsNonneg"] },
           trusted_base: [
             { component: "Dafny verifier", version: "4.11.0+fcb2042d" },
             { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
