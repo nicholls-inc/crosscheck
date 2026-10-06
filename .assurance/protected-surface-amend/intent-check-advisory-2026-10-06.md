@@ -55,4 +55,4 @@ Task VA-1.1. `docs/VISION.md` rule 1 says no guarantee rests on the judgement of
 - [x] VA-1 covers skills and agents that present an LLM verdict as a required artefact.
 - [x] The diff plan names every changed protected file.
 - [x] No check is weakened. A commit gate on an LLM verdict is removed from a draft the skill wrote; no deterministic check changes.
-- [ ] REQUIRES HUMAN VERIFICATION: The maintainer accepts that a repository which applied the old draft hook by hand keeps it, and that this change does not tell such repositories to remove it.
+- [x] A repository that applied the old draft hook by hand keeps it until its owner acts. Step 6 of `/intent-check` and the attestation schema now tell the user to remove such a hook through `/protected-surface-amend`.
