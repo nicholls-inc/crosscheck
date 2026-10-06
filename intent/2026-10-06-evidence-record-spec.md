@@ -14,7 +14,7 @@ This spec defines version 1 of the evidence record and the rules EV-1 to EV-12 t
   - `observed`: seen in the world, for example by an acceptance test against a real system or by production monitoring;
   - `judged`: decided by a named person.
 - **Trusted base.** The components whose correctness the claim assumes and does not check, each with a pinned version. For a CGV proof these are the Lean kernel, the Lean compiler and runtime that built the checker binary, the Rust extractor and command line, and `Translation.lean`.
-- **Rerun.** A shell command that a reader runs from the root of the repository at the record's commit, and the exit code it must produce for the claim to stand. For an `observed` or `judged` claim the rerun is a command that shows the recorded source or judgment is still in place, for example one that prints the log entry or the signed approval. See "Concerns flagged".
+- **Rerun.** A shell command that a reader runs from the root of the repository at the record's commit, and the exit code it must produce for the claim to stand. For an `observed` or `judged` claim no command can reproduce the claim. Version 1 asks for a command that shows the recorded evidence is still in place, for example one that prints the log entry or the approval record. This is a version 1 convention, not a settled meaning, and it weakens rule 3 of the vision for those two strengths. See "Concerns flagged".
 
 ## The shape
 
@@ -43,7 +43,7 @@ A claim is a JSON object with exactly seven fields. The tables give each field's
 | `strength` | `basis` fields |
 |---|---|
 | `proved` | `theorems`: a non-empty array of the fully qualified names of the theorems that prove the statement. |
-| `tested` | `cases`: a positive integer, the number of inputs checked. `seed`: a string that reproduces the sampled inputs, or `null` when the inputs are fixed and not sampled. EV-10 requires a non-empty string. |
+| `tested` | `cases`: a positive integer, the number of inputs checked. `seed`: a string that reproduces the sampled inputs, or `null` when the inputs are fixed and not sampled. A string seed must be non-empty (EV-10). |
 | `observed` | `source`: a non-empty string that says what was observed, where, and when. |
 | `judged` | `judge`: the name of the person who judged. `date`: the date of the judgment, as `YYYY-MM-DD`. |
 
@@ -58,8 +58,9 @@ A checker that implements this spec reads one record and applies EV-1 to EV-12. 
 Three conventions apply to every rule:
 
 - A pattern matches the whole string, and `\d` means the ASCII digits `0` to `9`. So `"<sha>\n"` does not match EV-3.
-- An integer is a JSON number written without a fraction or an exponent. `1.0`, `1e3` and `true` are not integers.
-- A claim that lacks a field breaks EV-5, and also the rule for that field, because an absent value is not of the type that rule requires. A missing `strength` breaks EV-5 and EV-9, a missing `rerun` breaks EV-5 and EV-12, and a missing `basis` breaks EV-5 and EV-10.
+- An integer is a JSON number whose value is a whole number. `1.5` and `true` are not integers. A parser such as `JSON.parse` does not keep the written form, so the spec cannot tell `1` from `1.0`. A checker that keeps the written form may reject `1.0` and `1e3`, and the spec does not require it.
+- Trimming white space removes the characters that the Unicode `White_Space` property lists. A real calendar date is a date in the proleptic Gregorian calendar with a year from 0001 to 9999.
+- A claim that lacks a field breaks EV-5, and also the rule for that field, because an absent value is not of the type that rule requires. EV-10 is the exception: it is applied only when `strength` passes EV-9. A missing `strength` breaks EV-5 and EV-9, a missing `rerun` breaks EV-5 and EV-12, a missing `basis` on a claim with a valid `strength` breaks EV-5 and EV-10, and a claim that lacks both `strength` and `basis` breaks EV-5 and EV-9.
 
 - **EV-1. Closed object.** The record is a JSON object whose fields are exactly `format`, `commit` and `claims`. A missing field or any other field is an error. A misspelled top-level field such as `"claimz"` therefore fails rather than reading as absent.
 - **EV-2. Format.** `format` is the string `"evidence-record/1"`.
@@ -79,7 +80,7 @@ Three conventions apply to every rule:
 - **EV-12. Rerun.** `rerun` is present and is an object whose fields are exactly `command` and `exit_code`. `command` is a string that is not empty after trimming white space. `exit_code` is an integer from 0 to 255.
 - **EV-13. Checker interface.** The checker takes the path of a record. It reads no network, calls no LLM, and runs no command from the record.
   - It exits 0 when the record satisfies EV-1 to EV-12.
-  - It exits 1 when the record breaks a rule. It reports every broken rule, not only the first. Each problem is one line that names the rule, the claim `id` where there is one (or the claim's index when the `id` itself is broken), and the field. Claims are numbered from 0 in array order. A duplicate `id` is reported once for each claim after the first that uses it, and names that claim by its index. An element of `claims` that is not an object is reported under EV-5 with its index.
+  - It exits 1 when the record breaks a rule. It reports every broken rule, not only the first. Each problem is one line that names the rule, the claim `id` where there is one (or the claim's index when the `id` itself is broken), and the field. Claims are numbered from 0 in array order. A duplicate `id` is reported once for each claim after the first that uses it, and names that claim by its index. An element of `claims` that is not an object is reported under EV-5 with its index, and EV-6 to EV-12 are not applied to it. An index is written `claims[1]`.
   - It exits 2 when it cannot read the file or the file is not JSON.
 
 EV-9 and EV-12 are the two rejections the roadmap's acceptance for ER-1 names: a claim with no strength, and a claim with no rerun command.
@@ -92,7 +93,7 @@ ER-1.4 adds the checker. Its tests include, at least, one record per case below.
 - a claim with no `strength` exits 1 and names EV-5 and EV-9;
 - a claim with `"strength": "verified"` and any `basis` exits 1, names EV-9, and does not name EV-10;
 - a claim with no `rerun` exits 1 and names EV-5 and EV-12, and a claim whose `rerun.command` is `"  "` exits 1 and names EV-12;
-- a claim with no `basis` exits 1 and names EV-5 and EV-10;
+- a claim with a valid `strength` and no `basis` exits 1 and names EV-5 and EV-10;
 - a `tested` claim whose `basis` has `theorems` instead of `cases` and `seed` exits 1 and names EV-10;
 - a `judged` claim with `"date": "2026-02-30"` exits 1 and names EV-10;
 - a `commit` of 39 hex characters, and a `commit` with an upper-case letter, each exit 1 and name EV-3;
@@ -107,7 +108,7 @@ ER-1.4 adds the checker. Its tests include, at least, one record per case below.
 - a valid record whose `rerun.command` would create a file exits 0 and leaves no file behind (EV-13: the checker runs no command);
 - a file that is not JSON exits 2.
 
-The valid record for the first case:
+The valid record for the first case. The `observed` and `judged` reruns in it show only that a file is present; see "A rerun can be vacuous" under "Concerns flagged".
 
 ```json
 {
@@ -190,7 +191,7 @@ These are targets for ER-1.2 and ER-1.3, not output of either tool today. Comman
 
 ### Crosscheck: a passing `/drt-oracle` run
 
-`/drt-oracle` runs a Lean model as an oracle against an implementation on sampled inputs, and its report already records the seed and the number of inputs (`crosscheck/skills/drt-oracle/SKILL.md`). A pass is `tested`, not `proved`. The skill's own text says that the absence of divergences is evidence, not proof.
+`/drt-oracle` runs a Lean model as an oracle against an implementation on sampled inputs, and its report already records the seed and the number of inputs (`crosscheck/skills/drt-oracle/SKILL.md`). The skill defines a reproducer command only for a divergence, pinned to the failing seed. A passing run prints a pass line with the count and the seed and no reproducer, so ER-1.3 must add a pass-case reproducer before it can emit this record. A pass is `tested`, not `proved`. The skill's own text says that the absence of divergences is evidence, not proof.
 
 ```json
 {
@@ -210,7 +211,7 @@ These are targets for ER-1.2 and ER-1.3, not output of either tool today. Comman
         { "component": "DRT input generator", "version": "<commit SHA>" }
       ],
       "rerun": {
-        "command": "<the reproducer command from the report, pinned to the seed>",
+        "command": "<a pass-case reproducer that ER-1.3 adds, pinned to the seed>",
         "exit_code": 0
       }
     }
@@ -225,7 +226,7 @@ ER-1.3 chooses which Crosscheck pipeline emits first. A `dafny_verify` pass is t
 - **Combining strengths.** The record keeps each claim's strength and has no overall verdict. How a `proved` claim, a `tested` claim and a `judged` claim combine into one verdict on a pull request is an open question of `docs/VISION.md`. A future version of the format may add a verdict once the question has an answer. Version 1 does not guess one.
 - **The checker checks shape, not truth.** EV-13 forbids the checker from running the rerun commands. A record whose commands fail still passes EV-1 to EV-12. Rerunning every claim, which is the auditor's job in the vision, is not yet reached. The property that blocks it is a pinned, sandboxed environment for each command. The open question is how to pin the toolchains: the Crosscheck Docker images use the `ubuntu:22.04` tag with no digest, and the Lean image installs elan from an unpinned branch.
 - **A judge must be a person, and a rerun must not call an LLM.** Rule 1 of the vision requires both. No rule above can decide either from the record. The checker accepts any non-empty `judge` and any command. Review is the only check today.
-- **A rerun can be vacuous.** An `observed` or `judged` claim has no command that reproduces it, only one that shows the recorded source or judgment is still in place. EV-12 accepts any non-empty command with any exit code, so `true` with exit code 0 passes for every strength. No rule can tell a command that shows the claim from one that exits 0. Review is the only check today. The open question is what an `observed` or a `judged` claim should rerun.
+- **A rerun can be vacuous.** A rerun that reproduces an `observed` or `judged` claim is not yet reached, so rule 3 of the vision holds for `proved` and `tested` claims only. The property that blocks it is that the observation or judgment lives outside the repository, with no pinned input that a command can regenerate. Version 1 asks for a command that shows the recorded evidence is still in place. EV-12 accepts any non-empty command with any exit code, so `true` with exit code 0 passes for every strength, and no rule can tell a command that shows the evidence from one that exits 0. Review is the only check today. A command that reads a file under the record's commit also needs the evidence to exist before that commit, and an acceptance run or a sign-off on a commit happens after it. Where such evidence lives is left to ER-1.2 and ER-1.3, with the location of the record. The open question is what an `observed` or a `judged` claim should rerun.
 - **A record cannot sit in the commit it describes.** `commit` names a SHA, and a file inside that commit cannot know the commit's own SHA. Where a record lives (a CI artefact, a later commit, the pull request) is left to ER-1.2 and ER-1.3. The format does not depend on it.
 - **CGV's contract levels are not claim strengths.** CGV tags each contract `PROVED`, `TESTED`, `EXTRACTED` or `ASSUMED` (`cgv/src/db.rs`). A docstring `ensures:` clause is `ASSUMED`, so the proved claim above rests on contracts that no tool checked. ER-1.2 decides how to state that in the record, for example by adding the assumed contracts to the trusted base or by writing a separate claim for them. This spec does not map one vocabulary onto the other.
 - **Versions are free text.** EV-11 requires a non-empty `version` but does not check that it pins anything. `"latest"` passes.
