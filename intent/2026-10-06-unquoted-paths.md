@@ -31,4 +31,4 @@ The `Run tier gate` step in `.github/workflows/tier-gate.yml` sets `CHANGED_FILE
 ## Open questions
 None. The task row states the outcome.
 
-`.husky/commit-msg` reads `git diff --cached --name-only` the same way, so a `SKILL.md` under a directory with a non-ASCII name escapes its commit-type check. That is a separate surface and gets its own row, PB-1.13.
+`.husky/commit-msg` reads `git diff --cached --name-only` the same way, so a `SKILL.md` under a directory with a non-ASCII name escapes its commit-type check. That is a separate surface and gets its own row, PB-1.13. `.claude/hooks/protected-surface-guard.mjs` compiles `**` to `.*`, which stops at a newline, and gets row PB-1.14.

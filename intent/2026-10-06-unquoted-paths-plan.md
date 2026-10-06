@@ -10,10 +10,10 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 1. Write the governance note `.assurance/protected-surface-amend/unquoted-paths-2026-10-06.md`, naming the three protected files below.
 2. Add the three TG-15 cases to `scripts/ci/tier-gate-workflow.test.mjs`. Run `node --test scripts/ci/*.test.mjs` and see them fail against the current workflow: each file reaches the gate quoted and passes at Tier 1. Commit the test on its own.
-3. In `scripts/ci/tier-gate.mjs`, read `CHANGED_FILES_PATH` as TG-16 says and stop reading `CHANGED_FILES`. In `.github/workflows/tier-gate.yml`, write the `-z` list to a `mktemp` file and export its path (TG-14).
+3. In `scripts/ci/tier-gate.mjs`, read `CHANGED_FILES_PATH` as TG-16 says and stop reading `CHANGED_FILES`. Compile each protected glob with the `s` flag, so `**` matches a newline. In `.github/workflows/tier-gate.yml`, write the `-z` list to a `mktemp` file and export its path (TG-14).
 4. Run `node --test scripts/ci/*.test.mjs` and `actionlint .github/workflows/tier-gate.yml`.
 5. Update the input list in `intent/2026-09-29-deterministic-evidence-spec.md`.
-6. Set PB-1.10 to `done` in `docs/TASKS.md`, with this intent as its record. Add row PB-1.13 for `.husky/commit-msg`. Add a root `JOURNAL.md` entry.
+6. Set PB-1.10 to `done` in `docs/TASKS.md`, with this intent as its record. Add row PB-1.13 for `.husky/commit-msg` and row PB-1.14 for the newline gap in `.claude/hooks/protected-surface-guard.mjs`. Add a root `JOURNAL.md` entry.
 
 ## Files
 

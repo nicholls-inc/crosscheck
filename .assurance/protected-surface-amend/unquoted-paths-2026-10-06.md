@@ -8,7 +8,7 @@
 ### Change Description
 
 1. `.github/workflows/tier-gate.yml`: the `Run tier gate` step writes `git diff -z --name-only --no-renames "origin/$BASE_REF...HEAD"` to a `mktemp` file and exports its path as `CHANGED_FILES_PATH`, in place of the newline-separated `CHANGED_FILES` (TG-14 revised).
-2. `scripts/ci/tier-gate.mjs`: the gate reads the changed files from `CHANGED_FILES_PATH`, splits on NUL, and keeps each name as written, with no trim. It no longer reads `CHANGED_FILES` (TG-16).
+2. `scripts/ci/tier-gate.mjs`: the gate reads the changed files from `CHANGED_FILES_PATH`, splits on NUL, and keeps each name as written, with no trim. It no longer reads `CHANGED_FILES`. Each protected glob compiles with the `s` flag, so `**` matches a newline (TG-16).
 3. `scripts/ci/tier-gate-workflow.test.mjs`: three cases add `docs/assurance/é.md`, `docs/assurance/a"b.md` and `docs/assurance/n<newline>l.md` at `Tier: 1` and expect the Tier 3 floor (TG-15 revised).
 
 ### Rationale
@@ -31,7 +31,7 @@ Task PB-1.10. `git diff --name-only` C-quotes a name with a non-ASCII byte, a do
 | # | File | Section | Action |
 |---|------|---------|--------|
 | 1 | `.github/workflows/tier-gate.yml` | `Run tier gate` | `-z` list in a temporary file |
-| 2 | `scripts/ci/tier-gate.mjs` | header comment, `main` | reads `CHANGED_FILES_PATH` |
+| 2 | `scripts/ci/tier-gate.mjs` | header comment, `globToRegExp`, `main` | reads `CHANGED_FILES_PATH` |
 | 3 | `scripts/ci/tier-gate-workflow.test.mjs` | new cases | added |
 
 ### Test / Coverage Impact
