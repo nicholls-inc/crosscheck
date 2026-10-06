@@ -124,16 +124,24 @@ branch requires no status checks:
 - `ci.yml` (Crosscheck) and `cgv-ci.yml` (CGV) are the tests, builds and proofs
   described in stage 4.
 - `incident-eval-check.yml` runs only after a pull request is merged, so it
-  reports on the merge and cannot block it. It applies when the pull request
-  has the `incident` label, or a `Fixes-Incident: <id>` line in its body or in
-  one of its commits. It exits 1 in either of these cases:
-  - no eval under `evals/`, or no candidate invariant under `docs/invariants/`
-    or `crosscheck/docs/invariants/`, names the incident id;
+  reports on the merge and cannot block it. On every merged pull request it
+  first reads the pull request's commits, and exits 2 if it cannot, for
+  example after a merge commit, which puts them on the base branch where the
+  check cannot tell them apart from the base branch's own. A pull request with
+  no incident reference can therefore still exit 2 (IE-2 in
+  `intent/2026-09-30-incident-eval-range-spec.md`).
+
+  The check then applies when the pull request has the `incident` label, or
+  the text `Fixes-Incident: <id>`, in any case and anywhere in a line, in its
+  body or in one of its commit messages (IE-5). It exits 1 in either of these
+  cases:
+  - no eval under `evals/` contains the incident id in its path or content, or
+    no candidate invariant under `docs/invariants/` or
+    `crosscheck/docs/invariants/` contains it in its content. Both tests are
+    plain substring matches, so a file naming `INC-12` also matches `INC-1`;
   - the label is set and no id is found.
 
-  It exits 2 when it cannot read the pull request's commits, for example after
-  a merge commit, which puts them on the base branch where the check cannot
-  tell them apart from the base branch's own.
+  The check has no explainer under `docs/gates/` yet. Task PB-1.12 adds one.
 - `task-queue.yml` fails when a row of `docs/TASKS.md` names no roadmap item,
   repeats a task ID, has a status other than `todo`, `blocked` or `done`, or
   depends on a task that is not in the queue. It also fails when the pull

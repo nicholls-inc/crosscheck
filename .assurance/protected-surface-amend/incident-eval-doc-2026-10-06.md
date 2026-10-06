@@ -7,11 +7,11 @@
 
 ### Change Description
 
-1. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: stage 5 replaces the `incident-eval-check.yml` bullet. The old bullet said the check fails when an incident record under `evals/` has no eval. The new bullet names the trigger (the `incident` label, or a `Fixes-Incident:` line in the body or a commit), the two artefacts it needs (an eval and a candidate invariant), exit 1, exit 2, and that the workflow runs after the merge and cannot block it.
+1. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: stage 5 replaces the `incident-eval-check.yml` bullet. The old bullet said the check fails when an incident record under `evals/` has no eval. The new bullet names the trigger (the `incident` label, or a `Fixes-Incident:` line in the body or a commit), the two artefacts it needs (an eval and a candidate invariant, each matched by substring), exit 1, exit 2, and that the workflow runs after the merge and cannot block it. It states that exit 2 can happen on any merged pull request, because the check reads the commits before it looks for an incident reference, and that the check has no explainer yet.
 
 ### Rationale
 
-Task PB-1.8. The old bullet described a check that does not exist. `scripts/ci/incident-eval-check.mjs` never looks for incident records. It starts from the pull request's label, body and commits, needs a candidate invariant as well as an eval, and exits 2 when it cannot read the commits. `.github/workflows/incident-eval-check.yml` runs on `pull_request` `closed` with `merged == true`, so the check reports after the merge. Intent: `intent/2026-10-06-incident-eval-doc.md`. Plan: `intent/2026-10-06-incident-eval-doc-plan.md`.
+Task PB-1.8. The old bullet described a check that does not exist. `scripts/ci/incident-eval-check.mjs` never looks for incident records. It starts from the pull request's label, body and commits, needs a candidate invariant as well as an eval, and exits 2 when it cannot read the commits. `.github/workflows/incident-eval-check.yml` runs on `pull_request` `closed` with `merged == true`, so the check reports after the merge. #61 merged at 17:59:08 UTC on 2026-10-06 and its Incident Eval Check run started at 17:59:12; the run for #60, closed without a merge, was skipped. Intent: `intent/2026-10-06-incident-eval-doc.md`. Plan: `intent/2026-10-06-incident-eval-doc-plan.md`.
 
 ### Governing Roadmap Item
 
@@ -42,4 +42,4 @@ Task PB-1.8. The old bullet described a check that does not exist. `scripts/ci/i
 - [x] PB-1 covers `incident-eval-check.yml` and `DEVELOPMENT-FRAMEWORK.md`.
 - [x] The diff plan names every changed protected file.
 - [x] No check is weakened. Only prose changes.
-- [ ] The maintainer accepts that `docs/gates/tier-layer-gate.md` keeps its wrong claim until task PB-1.11.
+- [ ] REQUIRES HUMAN VERIFICATION: The maintainer accepts that `docs/gates/tier-layer-gate.md` keeps its wrong claim until task PB-1.11, and that the surfaces PB-1.12 names (the check's failure message, `TIER-LAYER-MAP.md`, `evals/README.md`, and stage 6 of `DEVELOPMENT-FRAMEWORK.md`) keep theirs until that task.
