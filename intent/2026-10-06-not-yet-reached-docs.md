@@ -25,4 +25,4 @@ Each of these statements says "not yet reached", names the blocking property and
 - Both files present `/intent-check`'s round-trip accuracy as Layer 5's confidence and say Layers 4 to 6 "prove" the spec is right. Rule 1 of the vision makes `/intent-check` a search tool. This change adds row VA-1.4 for that and does not edit it.
 
 ## Open questions
-None. The task row names the outcome, and the vision names the wording and the open questions.
+The vision names the wording and the open questions for the classes in its table. The Layer 2 blocking property and question (translation validation of each extracted file) and the Layer 3 ones (no shared contract format; composition checked end to end, not pair by pair) are not in that table. This change proposes them. The maintainer ratifies them by merging, or adds them to the vision's class table.
