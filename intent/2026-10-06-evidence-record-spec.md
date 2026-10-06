@@ -14,7 +14,7 @@ This spec defines version 1 of the evidence record and the rules EV-1 to EV-12 t
   - `observed`: seen in the world, for example by an acceptance test against a real system or by production monitoring;
   - `judged`: decided by a named person.
 - **Trusted base.** The components whose correctness the claim assumes and does not check, each with a pinned version. For a CGV proof these are the Lean kernel, the Lean compiler and runtime that built the checker binary, the Rust extractor and command line, and `Translation.lean`.
-- **Rerun.** A shell command that a reader runs from the root of the repository at the record's commit, and the exit code it must produce for the claim to stand. For an `observed` or `judged` claim no command can reproduce the claim. Version 1 asks for a command that shows the recorded evidence is still in place, for example one that prints the log entry or the approval record. This is a version 1 convention, not a settled meaning, and it weakens rule 3 of the vision for those two strengths. See "Concerns flagged".
+- **Rerun.** A shell command that a reader runs from the root of the repository at the record's commit, and the exit code it must produce for the claim to stand. For an `observed` or `judged` claim no command reproduces the claim today. Version 1 asks for a command that shows the recorded evidence is still in place, for example one that prints the log entry or the approval record. This is a version 1 convention, not a settled meaning, and it weakens rule 3 of the vision for those two strengths. The evidence may also not exist at the record's commit. See "A rerun can be vacuous" under "Concerns flagged".
 
 ## The shape
 
@@ -55,12 +55,12 @@ The record has no field for an overall verdict. Each claim keeps its own strengt
 
 A checker that implements this spec reads one record and applies EV-1 to EV-12. EV-13 states its interface.
 
-Three conventions apply to every rule:
+Four conventions apply to every rule:
 
 - A pattern matches the whole string, and `\d` means the ASCII digits `0` to `9`. So `"<sha>\n"` does not match EV-3.
-- An integer is a JSON number whose value is a whole number. `1.5` and `true` are not integers. A parser such as `JSON.parse` does not keep the written form, so the spec cannot tell `1` from `1.0`. A checker that keeps the written form may reject `1.0` and `1e3`, and the spec does not require it.
-- Trimming white space removes the characters that the Unicode `White_Space` property lists. A real calendar date is a date in the proleptic Gregorian calendar with a year from 0001 to 9999.
-- A claim that lacks a field breaks EV-5, and also the rule for that field, because an absent value is not of the type that rule requires. EV-10 is the exception: it is applied only when `strength` passes EV-9. A missing `strength` breaks EV-5 and EV-9, a missing `rerun` breaks EV-5 and EV-12, a missing `basis` on a claim with a valid `strength` breaks EV-5 and EV-10, and a claim that lacks both `strength` and `basis` breaks EV-5 and EV-9.
+- An integer is a JSON number whose value is a whole number. `1.5` and `true` are not integers. So `1`, `1.0` and `1e3` are all integers, however they are written, and a checker must not reject a number because of its written form. A parser such as `JSON.parse` does not keep the written form, so the spec could not ask for it.
+- A string that a rule calls non-empty is not empty after trimming white space. Trimming removes the characters that the Unicode `White_Space` property lists. A real calendar date is a date in the proleptic Gregorian calendar with a year from 0001 to 9999.
+- A record or claim that lacks a field breaks EV-1 or EV-5, and also the rule for that field, because an absent value is not of the type that rule requires. EV-10 is the exception: it is applied only when `strength` passes EV-9. A missing `strength` breaks EV-5 and EV-9, a missing `rerun` breaks EV-5 and EV-12, a missing `basis` on a claim with a valid `strength` breaks EV-5 and EV-10, and a claim that lacks both `strength` and `basis` breaks EV-5 and EV-9. At the top level, a missing `format` breaks EV-1 and EV-2, a missing `commit` breaks EV-1 and EV-3, and a missing `claims` breaks EV-1 and EV-4.
 
 - **EV-1. Closed object.** The record is a JSON object whose fields are exactly `format`, `commit` and `claims`. A missing field or any other field is an error. A misspelled top-level field such as `"claimz"` therefore fails rather than reading as absent.
 - **EV-2. Format.** `format` is the string `"evidence-record/1"`.
@@ -80,14 +80,14 @@ Three conventions apply to every rule:
 - **EV-12. Rerun.** `rerun` is present and is an object whose fields are exactly `command` and `exit_code`. `command` is a string that is not empty after trimming white space. `exit_code` is an integer from 0 to 255.
 - **EV-13. Checker interface.** The checker takes the path of a record. It reads no network, calls no LLM, and runs no command from the record.
   - It exits 0 when the record satisfies EV-1 to EV-12.
-  - It exits 1 when the record breaks a rule. It reports every broken rule, not only the first. Each problem is one line that names the rule, the claim `id` where there is one (or the claim's index when the `id` itself is broken), and the field. Claims are numbered from 0 in array order. A duplicate `id` is reported once for each claim after the first that uses it, and names that claim by its index. An element of `claims` that is not an object is reported under EV-5 with its index, and EV-6 to EV-12 are not applied to it. An index is written `claims[1]`.
+  - It exits 1 when the record breaks a rule. It reports every broken rule, not only the first. Each problem is one line that begins with the rule name and a colon, such as `EV-9:`, and then names the claim `id` where there is one (or the claim's index when the `id` itself is broken), and the field. Claims are numbered from 0 in array order. A duplicate `id` is reported once for each claim after the first that uses it, and names that claim by its index. An element of `claims` that is not an object is reported under EV-5 with its index, and EV-6 to EV-12 are not applied to it. An index is written `claims[1]`.
   - It exits 2 when it cannot read the file or the file is not JSON.
 
 EV-9 and EV-12 are the two rejections the roadmap's acceptance for ER-1 names: a claim with no strength, and a claim with no rerun command.
 
 ## Tests the checker must have
 
-ER-1.4 adds the checker. Its tests include, at least, one record per case below. Each asserts the exit code, and that the output contains the literal rule names listed. The output may name more rules than the list gives. The list is a floor: every rule EV-1 to EV-12 also needs a negative case of its own.
+ER-1.4 adds the checker. Its tests include, at least, one record per case below. Each asserts the exit code, and that the output has a line beginning with each listed rule name and a colon. So `EV-1:` is not matched by a line that begins `EV-10:`. A case that says it does not name a rule asserts that no such line exists. The output may name more rules than the list gives. The list is a floor: every rule EV-1 to EV-12 also needs a negative case of its own.
 
 - the valid record below exits 0;
 - a claim with no `strength` exits 1 and names EV-5 and EV-9;
@@ -95,7 +95,7 @@ ER-1.4 adds the checker. Its tests include, at least, one record per case below.
 - a claim with no `rerun` exits 1 and names EV-5 and EV-12, and a claim whose `rerun.command` is `"  "` exits 1 and names EV-12;
 - a claim with a valid `strength` and no `basis` exits 1 and names EV-5 and EV-10;
 - a `tested` claim whose `basis` has `theorems` instead of `cases` and `seed` exits 1 and names EV-10;
-- a `judged` claim with `"date": "2026-02-30"` exits 1 and names EV-10;
+- a `judged` claim with `"date": "2026-02-30"` exits 1 and names EV-10, and a `judged` claim with `"judge": "  "` exits 1 and names EV-10;
 - a `commit` of 39 hex characters, and a `commit` with an upper-case letter, each exit 1 and name EV-3;
 - a blank `statement` exits 1 and names EV-7, and a `requirement` of `"  "` exits 1 and names EV-8;
 - an empty `trusted_base`, and two components with the same `component`, each exit 1 and name EV-11;
@@ -191,7 +191,7 @@ These are targets for ER-1.2 and ER-1.3, not output of either tool today. Comman
 
 ### Crosscheck: a passing `/drt-oracle` run
 
-`/drt-oracle` runs a Lean model as an oracle against an implementation on sampled inputs, and its report already records the seed and the number of inputs (`crosscheck/skills/drt-oracle/SKILL.md`). The skill defines a reproducer command only for a divergence, pinned to the failing seed. A passing run prints a pass line with the count and the seed and no reproducer, so ER-1.3 must add a pass-case reproducer before it can emit this record. A pass is `tested`, not `proved`. The skill's own text says that the absence of divergences is evidence, not proof.
+`/drt-oracle` runs a Lean model as an oracle against an implementation on sampled inputs, and its report already records the seed and the number of inputs (`crosscheck/skills/drt-oracle/SKILL.md`). The skill defines a reproducer command only for a divergence, pinned to the failing seed. A passing run prints a pass line with the count and the seed and no reproducer, so ER-1.3 must add a pass-case reproducer before it can emit this record. That is an edit to `crosscheck/skills/drt-oracle/SKILL.md`, a protected surface, so choosing `/drt-oracle` brings a governance note with it. A pass is `tested`, not `proved`. The skill's own text says that the absence of divergences is evidence, not proof.
 
 ```json
 {

@@ -25,6 +25,7 @@ ER-1.2, ER-1.3 and ER-1.4 each depend on this task. They need one format to emit
 
 ## Constraints
 - The format serves rules 3 and 7 of `docs/VISION.md`. It names four strengths and no others, so "verified" cannot appear as a strength.
+- Rule 3 holds for `proved` and `tested` claims. Reproducing an `observed` or `judged` claim is not yet reached. The property that blocks it is that the observation or judgment lives outside the repository, with no pinned input that a command can regenerate. The spec asks those claims for a command that shows the evidence is in place, and flags the gap.
 - Rule 1 holds. An LLM's verdict is never a claim's evidence. A `judged` claim names a person.
 - The checker that ER-1.4 adds must be deterministic and need no network and no LLM. So every rule in the spec is one a program can decide from the record alone. A rule that needs the world, such as whether a judge is a person or whether a rerun still passes, is flagged in the spec as a concern, not written as a checker rule.
 - No new dependency. The format is plain JSON that Node, Rust and Lean read without a schema library.
