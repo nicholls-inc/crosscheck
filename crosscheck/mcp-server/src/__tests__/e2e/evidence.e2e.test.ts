@@ -44,6 +44,21 @@ describe.skipIf(!process.env.RUN_E2E)("dafny_evidence E2E", () => {
     expect(rerun.status).toBe(0);
   }, 300_000);
 
+  it("takes a theorem in a module only by its fully qualified name", async () => {
+    const repo = await repoWith("module M {\n  class C {\n    lemma L(x: int) ensures x * 1 == x {}\n  }\n}\n");
+    const input = {
+      repoPath: repo,
+      file: "Abs.dfy",
+      statement: "Multiplying by one changes nothing.",
+      requirement: null,
+    };
+    expect((await dafnyEvidence({ ...input, theorems: ["M.C.L"] })).errors).toEqual([]);
+    expect((await dafnyEvidence({ ...input, theorems: ["L", "M.L"] })).errors).toEqual([
+      "theorem not verified in Abs.dfy: L; name it as Dafny's verification log does, qualified by every enclosing module and type",
+      "theorem not verified in Abs.dfy: M.L; name it as Dafny's verification log does, qualified by every enclosing module and type",
+    ]);
+  }, 300_000);
+
   it("refuses an {:axiom} lemma that dafny verify accepts", async () => {
     const repo = await repoWith("lemma {:axiom} Bad(x: int) ensures x > 0\n");
     const result = await dafnyEvidence({

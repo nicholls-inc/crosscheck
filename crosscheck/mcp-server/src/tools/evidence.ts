@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { lstat, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { lstat, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, posix, relative, resolve as resolvePath, sep } from "node:path";
 import { dockerImageId, getDockerImage, runDafny } from "../docker.js";
 
 export interface EvidenceInput {
@@ -66,26 +66,23 @@ export function validateEvidenceInput(input: EvidenceInput): string[] {
   return errors;
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const LOG_HEADER = "TestResult.DisplayName,";
+
+export function verifiedNames(verifyStdout: string): Set<string> {
+  const lines = verifyStdout.split(/\r?\n/);
+  const header = lines.findIndex((l) => l.startsWith(LOG_HEADER));
+  const names = new Set<string>();
+  if (header < 0) return names;
+  for (const line of lines.slice(header + 1)) {
+    const match = /^(\S+) \([a-z-]+\),Passed,/.exec(line);
+    if (match) names.add(match[1]);
+  }
+  return names;
 }
 
-function declares(source: string, keywords: string, name: string): boolean {
-  const pattern = new RegExp(
-    `\\b(?:${keywords})\\s+(?:\\{:[^}]*\\}\\s*)*${escapeRegExp(name)}(?![A-Za-z0-9_'?])`
-  );
-  return pattern.test(source);
-}
-
-export function undeclaredTheorems(source: string, theorems: string[]): string[] {
-  return theorems.filter((theorem) => {
-    const parts = theorem.split(".");
-    const last = parts.pop()!;
-    return (
-      !declares(source, "lemma|method|function|predicate", last) ||
-      parts.some((q) => !declares(source, "module", q))
-    );
-  });
+export function unverifiedTheorems(verifyStdout: string, theorems: string[]): string[] {
+  const names = verifiedNames(verifyStdout);
+  return theorems.filter((t) => !names.has(t));
 }
 
 export function shellQuote(s: string): string {
@@ -95,7 +92,10 @@ export function shellQuote(s: string): string {
 export function rerunCommand(image: string, file: string): string {
   const run = `docker run --rm --network=none -v "$PWD":/work ${shellQuote(image)}`;
   const path = shellQuote(`/work/${file}`);
-  return `${run} verify ${path} && ${run} audit ${path} 2>&1 | grep -q '${AUDIT_CLEAN}'`;
+  return (
+    `${run} verify ${path} && out=$(${run} audit ${path} 2>&1) && ` +
+    `case "$out" in *'${AUDIT_CLEAN}'*) true ;; *) false ;; esac`
+  );
 }
 
 export function claimId(file: string): string {
@@ -146,6 +146,82 @@ function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string
   });
 }
 
+async function treeChanges(root: string): Promise<string[] | null> {
+  const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
+  return status.ok ? status.stdout.split("\n").filter((l) => l !== "") : null;
+}
+
+async function untrackedReason(root: string, path: string): Promise<string | null> {
+  if (!(await git(root, ["ls-files", "--error-unmatch", "--", path])).ok) return `not committed: ${path}`;
+  const stats = await lstat(resolvePath(root, path));
+  if (stats.isSymbolicLink()) return `${path} is a symbolic link; pass the file it points to`;
+  if (!stats.isFile()) return `${path} is not a regular file`;
+  return null;
+}
+
+const INCLUDE = /\binclude\s+"([^"]*)"/g;
+
+async function includedFiles(
+  root: string,
+  file: string,
+  source: string
+): Promise<{ files: string[]; errors: string[] }> {
+  const files = [file];
+  const errors: string[] = [];
+  const queue: Array<[string, string]> = [[file, source]];
+  while (queue.length > 0) {
+    const [from, text] = queue.shift()!;
+    for (const [, target] of text.matchAll(INCLUDE)) {
+      const path = posix.normalize(posix.join(posix.dirname(from), target));
+      const outside = isAbsolute(target) || target.includes("\\") || path === ".." || path.startsWith("../");
+      if (!outside && files.includes(path)) continue;
+      let reason: string | null = `resolves outside the work tree: ${target}`;
+      if (!outside) {
+        try {
+          reason = await untrackedReason(root, path);
+          if (reason === null) queue.push([path, await readFile(resolvePath(root, path), "utf-8")]);
+        } catch (err) {
+          reason = `could not be read: ${(err as Error).message}`;
+        }
+      }
+      if (reason === null) files.push(path);
+      else errors.push(`include "${target}" in ${from} is outside the tracked files: ${reason}`);
+    }
+  }
+  return { files, errors };
+}
+
+async function outputTarget(
+  root: string,
+  outputPath: string,
+  covered: string[]
+): Promise<{ out: string; error: null } | { out: null; error: string }> {
+  const fail = (why: string) => ({ out: null, error: `outputPath ${outputPath} ${why}` });
+  const out = resolvePath(root, outputPath);
+  const rel = relative(root, out);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
+    return fail(`is not inside the work tree ${root}`);
+  }
+  if (rel.split(sep).includes(".git")) return fail("is inside .git");
+  let parent: string;
+  try {
+    parent = await realpath(dirname(out));
+  } catch {
+    return fail(`names a directory that does not exist: ${dirname(out)}`);
+  }
+  if (parent !== join(await realpath(root), dirname(rel))) return fail("passes through a symbolic link");
+  const existing = await lstat(out).catch(() => null);
+  if (existing === null) return { out, error: null };
+  if (existing.isSymbolicLink()) return fail("is a symbolic link");
+  for (const path of covered) {
+    const target = await stat(resolvePath(root, path));
+    if (target.ino === existing.ino && target.dev === existing.dev) {
+      return fail(`would overwrite ${path}, which the record covers`);
+    }
+  }
+  return { out, error: null };
+}
+
 function refuse(errors: string[], record: EvidenceRecord | null = null): EvidenceOutput {
   return { success: false, errors, record, writtenTo: null };
 }
@@ -160,56 +236,70 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   const root = top.stdout.trim();
   const commit = head.stdout.trim();
 
-  const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
-  const dirty = status.stdout.split("\n").filter((l) => l !== "");
-  if (!status.ok) return refuse([`git status failed in ${root}`]);
+  const dirty = await treeChanges(root);
+  if (dirty === null) return refuse([`git status failed in ${root}`]);
   if (dirty.length > 0) return refuse(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
-  if (!(await git(root, ["ls-files", "--error-unmatch", "--", input.file])).ok) {
-    return refuse([`not committed: ${input.file}`]);
-  }
 
   let source: string;
   try {
-    if ((await lstat(resolvePath(root, input.file))).isSymbolicLink()) {
-      return refuse([`${input.file} is a symbolic link; pass the file it points to`]);
-    }
+    const reason = await untrackedReason(root, input.file);
+    if (reason !== null) return refuse([reason]);
     source = await readFile(resolvePath(root, input.file), "utf-8");
   } catch (err) {
     return refuse([`could not read ${input.file}: ${(err as Error).message}`]);
   }
-  const undeclared = undeclaredTheorems(source, input.theorems);
-  if (undeclared.length > 0) {
-    return refuse(undeclared.map((t) => `theorem not declared in ${input.file}: ${t}`));
+  const included = await includedFiles(root, input.file, source);
+  if (included.errors.length > 0) return refuse(included.errors);
+
+  let out: string | null = null;
+  if (input.outputPath !== undefined) {
+    const target = await outputTarget(root, input.outputPath, included.files);
+    if (target.error !== null) return refuse([target.error]);
+    out = target.out;
   }
 
+  const image = getDockerImage();
+  const imageId = await dockerImageId(image);
+  if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
+
   const path = `/work/${input.file}`;
-  const verify = await runDafny(root, ["verify", path]);
+  const verify = await runDafny(root, ["verify", path, "--log-format", "csv;LogFileName=/dev/stdout"], imageId);
   if (verify.timedOut || verify.exitCode !== 0) {
     return refuse([
       `dafny verify exited ${verify.timedOut ? "on timeout" : verify.exitCode}`,
       (verify.stdout + "\n" + verify.stderr).trim(),
     ]);
   }
-  const audit = await runDafny(root, ["audit", path]);
+  const audit = await runDafny(root, ["audit", path], imageId);
   const auditOutput = audit.stdout + "\n" + audit.stderr;
   if (audit.timedOut || audit.exitCode !== 0 || !auditOutput.includes(AUDIT_CLEAN)) {
     return refuse([`dafny audit did not report 0 findings`, auditOutput.trim()]);
   }
+  const unverified = unverifiedTheorems(verify.stdout, input.theorems);
+  if (unverified.length > 0) {
+    return refuse(
+      unverified.map(
+        (t) => `theorem not verified in ${input.file}: ${t}; name it as Dafny's verification log does, qualified by every enclosing module and type`
+      )
+    );
+  }
 
-  const version = await runDafny(root, ["--version"]);
+  const version = await runDafny(root, ["--version"], imageId);
   const dafnyVersion = version.stdout.trim();
   if (version.exitCode !== 0 || !/^\d+\.\d+\.\d+\S*$/.test(dafnyVersion)) {
     return refuse([`could not read the Dafny version: ${dafnyVersion}`]);
   }
-  const image = getDockerImage();
-  const imageId = await dockerImageId(image);
-  if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
+
+  const headAfter = await git(root, ["rev-parse", "HEAD"]);
+  if (!headAfter.ok || headAfter.stdout.trim() !== commit) {
+    return refuse([`HEAD moved from ${commit} while Dafny ran: ${headAfter.stdout.trim()}`]);
+  }
+  const dirtyAfter = await treeChanges(root);
+  if (dirtyAfter === null) return refuse([`git status failed in ${root}`]);
+  if (dirtyAfter.length > 0) return refuse(dirtyAfter.map((l) => `work tree changed while Dafny ran: ${l}`));
 
   const record = buildRecord({ ...input, commit, dafnyVersion, image, imageId });
-  if (input.outputPath === undefined) {
-    return { success: true, errors: [], record, writtenTo: null };
-  }
-  const out = resolvePath(root, input.outputPath);
+  if (out === null) return { success: true, errors: [], record, writtenTo: null };
   try {
     await writeFile(out, JSON.stringify(record, null, 2) + "\n", "utf-8");
   } catch (err) {

@@ -22,7 +22,7 @@ Today a passing `dafny_verify` returns `{ success: true, errors, warnings, rawOu
 So an `{:axiom}` declaration passes `dafny verify` with exit 0, and `dafny audit` reports it but also exits 0. A `proved` claim that rests only on the verify exit code could rest on an axiom.
 
 ## Proposed outcome
-- A new MCP tool, `dafny_evidence`, takes a git repository, the path of a committed `.dfy` file, a plain-language statement, the requirement it traces to or `null`, and the names of the theorems that prove the statement. It runs `dafny verify` and `dafny audit` on the file as committed, and emits a version 1 evidence record with one `proved` claim when verification passes, the audit has no findings, and every named theorem is declared in the file. Otherwise it refuses and says why.
+- A new MCP tool, `dafny_evidence`, takes a git repository, the path of a committed `.dfy` file, a plain-language statement, the requirement it traces to or `null`, and the names of the theorems that prove the statement. It runs `dafny verify` and `dafny audit` on the file as committed, and emits a version 1 evidence record with one `proved` claim when verification passes, the audit has no findings, and Dafny's verification log names every theorem by its fully qualified name. Otherwise it refuses and says why.
 - The record's trusted base names the Dafny version that the image reports, the Z3 solver that ships in the same Dafny release, and the local image's ID. Its rerun command runs the same two Docker commands from the repository root, and exits 0 only when both pass.
 - The tool writes the record to a path when asked, and always returns it.
 - The spec, `intent/2026-10-06-dafny-evidence-record-spec.md`, states the inputs, the refusals and the record the tool builds.

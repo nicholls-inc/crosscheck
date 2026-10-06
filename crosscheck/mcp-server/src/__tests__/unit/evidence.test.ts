@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   buildRecord,
   claimId,
   rerunCommand,
   shellQuote,
-  undeclaredTheorems,
+  unverifiedTheorems,
   validateEvidenceInput,
   type EvidenceInput,
 } from "../../tools/evidence.js";
@@ -51,48 +54,41 @@ describe("validateEvidenceInput (DE-1)", () => {
   });
 });
 
-describe("undeclaredTheorems (DE-5)", () => {
-  const source = `
-module Arith {
-  function Abs(x: int): int { if x < 0 then -x else x }
-  lemma {:induction false} {:isolate_assertions} AbsNonneg(x: int) ensures Abs(x) >= 0 {}
-  ghost predicate Pos?(x: int) { x > 0 }
-  twostate lemma Frame'() {}
-}
-method Main() {}
-lemma Step_2() {}
-`;
+describe("unverifiedTheorems (DE-5)", () => {
+  const log = [
+    "Dafny program verifier finished with 4 verified, 0 errors",
+    "TestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed",
+    "Top (correctness),Passed,00:00:00.1097333,2473,0",
+    "M.C.Mm (correctness),Passed,00:00:00.0744907,4122,0",
+    "M.L (correctness),Passed,00:00:00.0263585,3461,0",
+    "M.F' (well-formedness),Passed,00:00:00.0137694,3053,0",
+    "M.Bad (correctness),Failed,00:00:00.0137694,3053,0",
+    "Results File: /dev/stdout",
+  ].join("\n");
 
-  it("finds declarations after keywords and attributes", () => {
-    expect(
-      undeclaredTheorems(source, ["Abs", "AbsNonneg", "Pos?", "Frame'", "Main", "Arith.AbsNonneg"])
-    ).toEqual([]);
+  it("accepts the fully qualified names the log reports as passed", () => {
+    expect(unverifiedTheorems(log, ["Top", "M.C.Mm", "M.L", "M.F'"])).toEqual([]);
   });
 
-  it("rejects a name that only prefixes a declaration", () => {
-    expect(undeclaredTheorems(source, ["AbsNon", "Pos", "Frame", "Step"])).toEqual([
-      "AbsNon",
-      "Pos",
-      "Frame",
-      "Step",
+  it("refuses an unqualified, a partly qualified, an over-qualified and a failed name", () => {
+    expect(unverifiedTheorems(log, ["L", "C.Mm", "M.Top", "_module.Top", "M.Bad", "M"])).toEqual([
+      "L",
+      "C.Mm",
+      "M.Top",
+      "_module.Top",
+      "M.Bad",
+      "M",
     ]);
   });
 
-  it("rejects a name used but not declared", () => {
-    expect(undeclaredTheorems("lemma L() ensures Helper() {}", ["Helper"])).toEqual(["Helper"]);
-  });
-
-  it("rejects a declaration keyword glued to a longer word, and a name that continues with a digit", () => {
-    expect(undeclaredTheorems("xlemma Foo() {}", ["Foo"])).toEqual(["Foo"]);
-    expect(undeclaredTheorems("lemma Abs1() {}", ["Abs"])).toEqual(["Abs"]);
-  });
-
-  it("rejects a qualifier that is a lemma, not a module", () => {
-    expect(undeclaredTheorems("lemma Q() {}\nlemma R() {}", ["Q.R"])).toEqual(["Q.R"]);
-  });
-
-  it("rejects an undeclared module qualifier", () => {
-    expect(undeclaredTheorems(source, ["Other.AbsNonneg"])).toEqual(["Other.AbsNonneg"]);
+  it("reads names only after the log header", () => {
+    expect(unverifiedTheorems("Spoof (correctness),Passed,0,0,0\n", ["Spoof"])).toEqual(["Spoof"]);
+    expect(
+      unverifiedTheorems("Spoof (correctness),Passed,0,0,0\nTestResult.DisplayName,x\nReal (correctness),Passed,0,0,0", [
+        "Spoof",
+        "Real",
+      ])
+    ).toEqual(["Spoof"]);
   });
 });
 
@@ -100,9 +96,32 @@ describe("rerunCommand (DE-9)", () => {
   it("is the exact command for a plain path", () => {
     expect(rerunCommand("crosscheck-dafny:latest", "proofs/Abs.dfy")).toBe(
       `docker run --rm --network=none -v "$PWD":/work 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' && ` +
-        `docker run --rm --network=none -v "$PWD":/work 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1 | ` +
-        `grep -q 'Dafny auditor completed with 0 findings'`
+        `out=$(docker run --rm --network=none -v "$PWD":/work 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
+        `case "$out" in *'Dafny auditor completed with 0 findings'*) true ;; *) false ;; esac`
     );
+  });
+
+  it.each([
+    ["verify and audit pass", 0, 0, "Dafny auditor completed with 0 findings", 0],
+    ["verify fails", 4, 0, "Dafny auditor completed with 0 findings", 4],
+    ["the audit exits non-zero with the clean line", 0, 3, "Dafny auditor completed with 0 findings", 3],
+    ["the audit reports a finding", 0, 0, "Dafny auditor completed with 1 findings", 1],
+  ])("exits as Dafny does when %s", (_label, verifyExit, auditExit, auditLine, expected) => {
+    const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
+    try {
+      writeFileSync(
+        join(bin, "docker"),
+        `#!/bin/sh\nfor a; do last2=$prev; prev=$a; done\n` +
+          `case "$last2" in verify) exit ${verifyExit} ;; audit) echo '${auditLine}' >&2; exit ${auditExit} ;; esac\nexit 99\n`
+      );
+      chmodSync(join(bin, "docker"), 0o755);
+      const run = spawnSync("sh", ["-c", rerunCommand("img", "Abs.dfy")], {
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      });
+      expect(run.status).toBe(expected);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 
   it("quotes a quote and a space so the shell passes the path through", () => {

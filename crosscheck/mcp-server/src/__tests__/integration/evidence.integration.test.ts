@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -15,13 +15,21 @@ import { dockerImageId, runDafny } from "../../docker.js";
 import { dafnyEvidence, rerunCommand, type EvidenceInput } from "../../tools/evidence.js";
 
 const AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
+const LOG_FORMAT = "csv;LogFileName=/dev/stdout";
+const VERIFY_LOG = [
+  "Dafny program verifier finished with 2 verified, 0 errors",
+  "TestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed",
+  "AbsNonneg (correctness),Passed,00:00:00.1,2473,0",
+  "Arith.Twice (correctness),Passed,00:00:00.1,2473,0",
+  "Results File: /dev/stdout",
+].join("\n");
 
 type Run = { exitCode: number; stdout: string; stderr: string; timedOut: boolean };
 const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: "", timedOut: false });
 
 function stubDafny(over: Partial<Record<"verify" | "audit" | "--version", Run>> = {}) {
   const runs: Record<string, Run> = {
-    verify: ok("Dafny program verifier finished with 1 verified, 0 errors\n"),
+    verify: ok(VERIFY_LOG),
     audit: ok(`${AUDIT_CLEAN}\n\nDafny program verifier did not attempt verification\n`),
     "--version": ok("4.11.0+fcb2042d\n"),
     ...over,
@@ -99,10 +107,10 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(await readFile(join(repo, "out", "record.json"), "utf-8")).toBe(
       JSON.stringify(expected, null, 2) + "\n"
     );
-    expect(vi.mocked(runDafny).mock.calls.map((c) => [c[0], ...c[1]])).toEqual([
-      [repo, "verify", "/work/proofs/Abs.dfy"],
-      [repo, "audit", "/work/proofs/Abs.dfy"],
-      [repo, "--version"],
+    expect(vi.mocked(runDafny).mock.calls).toEqual([
+      [repo, ["verify", "/work/proofs/Abs.dfy", "--log-format", LOG_FORMAT], "sha256:feed"],
+      [repo, ["audit", "/work/proofs/Abs.dfy"], "sha256:feed"],
+      [repo, ["--version"], "sha256:feed"],
     ]);
   });
 
@@ -192,10 +200,18 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(result.errors[0]).toBe("dafny audit did not report 0 findings");
   });
 
-  it("refuses an undeclared theorem before running Dafny (DE-5)", async () => {
-    const result = await dafnyEvidence({ ...input, theorems: ["AbsNonneg", "AbsPositive"] });
-    expect(result.errors).toEqual(["theorem not declared in proofs/Abs.dfy: AbsPositive"]);
-    expect(runDafny).not.toHaveBeenCalled();
+  it("refuses a theorem the verification log does not report under that name (DE-5)", async () => {
+    const result = await dafnyEvidence({ ...input, theorems: ["AbsNonneg", "Twice", "Arith.Twice", "AbsPositive"] });
+    const hint = "name it as Dafny's verification log does, qualified by every enclosing module and type";
+    expect(result).toEqual({
+      success: false,
+      errors: [
+        `theorem not verified in proofs/Abs.dfy: Twice; ${hint}`,
+        `theorem not verified in proofs/Abs.dfy: AbsPositive; ${hint}`,
+      ],
+      record: null,
+      writtenTo: null,
+    });
   });
 
   it("names an untracked file inside a new directory, not the directory (DE-3)", async () => {
@@ -241,9 +257,14 @@ describe("dafnyEvidence against a real git repository", () => {
     }
   });
 
-  it("reads the ID of the image it names (DE-8)", async () => {
+  it("reads the ID of the image it names before any Dafny run, and runs that ID (DE-8)", async () => {
+    vi.mocked(runDafny).mockClear();
     await dafnyEvidence(input);
-    expect(dockerImageId).toHaveBeenCalledWith("crosscheck-dafny:latest");
+    expect(vi.mocked(dockerImageId).mock.calls).toEqual([["crosscheck-dafny:latest"]]);
+    expect(vi.mocked(dockerImageId).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(runDafny).mock.invocationCallOrder[0]
+    );
+    expect(vi.mocked(runDafny).mock.calls.map((c) => c[2])).toEqual(["sha256:feed", "sha256:feed", "sha256:feed"]);
   });
 
   it("refuses a failed verify (DE-6)", async () => {
@@ -277,13 +298,202 @@ describe("dafnyEvidence against a real git repository", () => {
     expect((await dafnyEvidence(input)).errors).toEqual([
       "could not read the ID of image crosscheck-dafny:latest",
     ]);
+    expect(runDafny).not.toHaveBeenCalled();
   });
 
   it("returns the record but fails when the write fails (DE-11)", async () => {
-    const result = await dafnyEvidence({ ...input, outputPath: "no/such/dir/r.json" });
+    await mkdir(join(repo, "out", "taken.json"), { recursive: true });
+    const result = await dafnyEvidence({ ...input, outputPath: "out/taken.json" });
     expect(result.success).toBe(false);
     expect(result.record?.commit).toBe(commit);
     expect(result.writtenTo).toBeNull();
-    expect(result.errors[0]).toContain(`could not write ${join(repo, "no/such/dir/r.json")}`);
+    expect(result.errors[0]).toContain(`could not write ${join(repo, "out", "taken.json")}`);
   });
+
+  describe("outputPath containment (DE-11)", () => {
+    async function refusesBeforeDafny(outputPath: string, why: string) {
+      const result = await dafnyEvidence({ ...input, outputPath });
+      expect(result).toEqual({
+        success: false,
+        errors: [`outputPath ${outputPath} ${why}`],
+        record: null,
+        writtenTo: null,
+      });
+      expect(runDafny).not.toHaveBeenCalled();
+    }
+
+    it("refuses a relative path that leaves the work tree", async () => {
+      await refusesBeforeDafny("../escape.json", `is not inside the work tree ${repo}`);
+    });
+
+    it("refuses an absolute path outside the work tree", async () => {
+      await refusesBeforeDafny(join(tmpdir(), "escape.json"), `is not inside the work tree ${repo}`);
+    });
+
+    it("refuses the work tree itself", async () => {
+      await refusesBeforeDafny(".", `is not inside the work tree ${repo}`);
+    });
+
+    it("refuses a path inside .git", async () => {
+      await refusesBeforeDafny(".git/hooks/pre-commit", "is inside .git");
+    });
+
+    it("refuses a missing directory before running Dafny", async () => {
+      await refusesBeforeDafny("no/such/dir/r.json", `names a directory that does not exist: ${join(repo, "no/such/dir")}`);
+    });
+
+    it("refuses a directory reached through a symbolic link", async () => {
+      const outside = realpathSync(await mkdtemp(join(tmpdir(), "outside-")));
+      try {
+        await mkdir(join(repo, "out"));
+        await symlink(outside, join(repo, "out", "ext"));
+        await refusesBeforeDafny("out/ext/r.json", "passes through a symbolic link");
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses an existing symbolic link as the output file", async () => {
+      await mkdir(join(repo, "out"));
+      await symlink(join(repo, "proofs", "Abs.dfy"), join(repo, "out", "r.json"));
+      await refusesBeforeDafny("out/r.json", "is a symbolic link");
+    });
+
+    it("refuses to overwrite the verified file, under any spelling", async () => {
+      await refusesBeforeDafny("proofs/Abs.dfy", "would overwrite proofs/Abs.dfy, which the record covers");
+      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", "would overwrite proofs/Abs.dfy, which the record covers");
+    });
+
+    it("refuses to overwrite a hard link to the verified file", async () => {
+      await mkdir(join(repo, "out"));
+      await link(join(repo, "proofs", "Abs.dfy"), join(repo, "out", "r.json"));
+      await refusesBeforeDafny("out/r.json", "would overwrite proofs/Abs.dfy, which the record covers");
+    });
+
+    it("refuses to overwrite a file the verified file includes", async () => {
+      await commitFiles({
+        "proofs/Abs.dfy": `include "Lib.dfy"\n${SOURCE}`,
+        "proofs/Lib.dfy": "lemma Lib() ensures true {}\n",
+      });
+      await refusesBeforeDafny("proofs/Lib.dfy", "would overwrite proofs/Lib.dfy, which the record covers");
+    });
+
+    it("overwrites an earlier record inside the tree", async () => {
+      await commitFiles({ "evidence/abs.json": "{}\n" });
+      const result = await dafnyEvidence({ ...input, outputPath: "evidence/abs.json" });
+      expect(result.writtenTo).toBe(join(repo, "evidence", "abs.json"));
+      expect(JSON.parse(await readFile(join(repo, "evidence", "abs.json"), "utf-8")).commit).toBe(git(repo, "rev-parse", "HEAD"));
+    });
+  });
+
+  describe("includes (DE-12)", () => {
+    async function refusesBeforeDafny(errors: string[]) {
+      const result = await dafnyEvidence(input);
+      expect(result).toEqual({ success: false, errors, record: null, writtenTo: null });
+      expect(runDafny).not.toHaveBeenCalled();
+    }
+
+    it("accepts tracked includes, nested and repeated", async () => {
+      await commitFiles({
+        "proofs/Abs.dfy": `include "lib/A.dfy"\ninclude "lib/B.dfy"\n${SOURCE}`,
+        "proofs/lib/A.dfy": `include "B.dfy"\n`,
+        "proofs/lib/B.dfy": `include "../lib/A.dfy"\n`,
+      });
+      expect((await dafnyEvidence(input)).errors).toEqual([]);
+    });
+
+    it("refuses an include of an ignored file", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `include "../out/Gen.dfy"\n${SOURCE}` });
+      await mkdir(join(repo, "out"));
+      await writeFile(join(repo, "out", "Gen.dfy"), "lemma {:axiom} Gen()\n");
+      await refusesBeforeDafny([
+        'include "../out/Gen.dfy" in proofs/Abs.dfy is outside the tracked files: not committed: out/Gen.dfy',
+      ]);
+    });
+
+    it("refuses an ignored file included by a tracked include", async () => {
+      await commitFiles({
+        "proofs/Abs.dfy": `include "Lib.dfy"\n${SOURCE}`,
+        "proofs/Lib.dfy": `include "../out/Gen.dfy"\n`,
+      });
+      await refusesBeforeDafny([
+        'include "../out/Gen.dfy" in proofs/Lib.dfy is outside the tracked files: not committed: out/Gen.dfy',
+      ]);
+    });
+
+    it("refuses a tracked symbolic link as an include", async () => {
+      await symlink("Abs.dfy", join(repo, "proofs", "Link.dfy"));
+      await commitFiles({ "proofs/Abs.dfy": `include "Link.dfy"\n${SOURCE}` });
+      await refusesBeforeDafny([
+        'include "Link.dfy" in proofs/Abs.dfy is outside the tracked files: proofs/Link.dfy is a symbolic link; pass the file it points to',
+      ]);
+    });
+
+    it("refuses an include reached through a symbolic link to a directory", async () => {
+      await mkdir(join(repo, "real"));
+      await writeFile(join(repo, "real", "Lib.dfy"), "");
+      await symlink("real", join(repo, "alias"));
+      await commitFiles({ "proofs/Abs.dfy": `include "../alias/Lib.dfy"\n${SOURCE}` });
+      await refusesBeforeDafny([
+        'include "../alias/Lib.dfy" in proofs/Abs.dfy is outside the tracked files: not committed: alias/Lib.dfy',
+      ]);
+    });
+
+    it("refuses an include that names a tracked directory", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `include "lib"\n${SOURCE}`, "proofs/lib/A.dfy": "" });
+      await refusesBeforeDafny([
+        'include "lib" in proofs/Abs.dfy is outside the tracked files: proofs/lib is not a regular file',
+      ]);
+    });
+
+    it("refuses an include outside the work tree, relative or absolute", async () => {
+      await commitFiles({
+        "proofs/Abs.dfy": `include "../../Up.dfy"\ninclude "/work/proofs/Abs.dfy"\ninclude "/Abs.dfy"\n${SOURCE}`,
+      });
+      await refusesBeforeDafny([
+        'include "../../Up.dfy" in proofs/Abs.dfy is outside the tracked files: resolves outside the work tree: ../../Up.dfy',
+        'include "/work/proofs/Abs.dfy" in proofs/Abs.dfy is outside the tracked files: resolves outside the work tree: /work/proofs/Abs.dfy',
+        'include "/Abs.dfy" in proofs/Abs.dfy is outside the tracked files: resolves outside the work tree: /Abs.dfy',
+      ]);
+    });
+  });
+
+  describe("state after the Dafny runs (DE-13)", () => {
+    it("refuses when HEAD moves while Dafny runs", async () => {
+      vi.mocked(runDafny).mockImplementation(async (_dir, args) => {
+        if (args[0] === "audit") git(repo, "commit", "-q", "--allow-empty", "-m", "during");
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const result = await dafnyEvidence(input);
+      expect(result).toEqual({
+        success: false,
+        errors: [`HEAD moved from ${commit} while Dafny ran: ${git(repo, "rev-parse", "HEAD")}`],
+        record: null,
+        writtenTo: null,
+      });
+    });
+
+    it("refuses when the work tree changes while Dafny runs", async () => {
+      vi.mocked(runDafny).mockImplementation(async (_dir, args) => {
+        if (args[0] === "verify") await writeFile(join(repo, "proofs", "Abs.dfy"), SOURCE + "// edited\n");
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const result = await dafnyEvidence(input);
+      expect(result).toEqual({
+        success: false,
+        errors: ["work tree changed while Dafny ran:  M proofs/Abs.dfy"],
+        record: null,
+        writtenTo: null,
+      });
+    });
+  });
+
+  async function commitFiles(files: Record<string, string>) {
+    for (const [path, content] of Object.entries(files)) {
+      await mkdir(join(repo, path, ".."), { recursive: true });
+      await writeFile(join(repo, path), content);
+    }
+    git(repo, "add", ".");
+    git(repo, "commit", "-q", "-m", "files");
+  }
 });

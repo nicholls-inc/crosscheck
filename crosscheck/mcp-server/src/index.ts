@@ -31,7 +31,7 @@ export function createServer(): McpServer {
 
   server.tool(
     "dafny_evidence",
-    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree. Runs `dafny verify` and `dafny audit` on the file as committed, checks each named theorem is declared in it, and refuses unless verification passes and the audit has 0 findings (an `{:axiom}` passes verify but not the audit). Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
+    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree, and that the file and every file it includes are tracked regular files. Runs `dafny verify` and `dafny audit` on the file as committed, and refuses unless verification passes, the audit has 0 findings (an `{:axiom}` passes verify but not the audit), each named theorem appears in Dafny's verification log under its fully qualified name, and HEAD and the work tree did not change while Dafny ran. Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
     {
       repoPath: z.string().describe("Absolute path inside the git work tree"),
       file: z.string().describe("Path of the .dfy file relative to the work tree's top level, with / separators"),
@@ -42,11 +42,11 @@ export function createServer(): McpServer {
         .describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
       theorems: z
         .array(z.string())
-        .describe("Names of the lemmas, methods or functions whose contracts prove the statement, optionally module-qualified as M.Name"),
+        .describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
       outputPath: z
         .string()
         .optional()
-        .describe("Where to write the record; relative paths resolve against the work tree's top level"),
+        .describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. Refused when it would overwrite a file the record covers"),
     },
     async (args) => {
       const result = await dafnyEvidence(args);

@@ -107,9 +107,10 @@ export function dockerImageId(image: string): Promise<string | null> {
 
 export async function runDafny(
   tempDir: string,
-  args: string[]
+  args: string[],
+  image: string = getDockerImage()
 ): Promise<DockerResult> {
-  return runDocker(getDockerImage(), tempDir, args, {
+  return runDocker(image, tempDir, args, {
     memory: "512m",
     cpus: "1",
     timeoutMs: DEFAULT_TIMEOUT_MS,
