@@ -95,7 +95,9 @@ function scratchNoOrigin() {
   return work;
 }
 
-// Stage `files`, run `git commit`, and report what happened.
+// Stage `files`, run `git commit`, and report what happened. git commit exits
+// 1 for any failing hook, so a failed commit's `hook` is the exit code of the
+// same command rerun by hand (PC-2); it is null when the commit went through.
 function commit(work, files) {
   write(work, files);
   git(work, ['add', '--', ...Object.keys(files)]);
@@ -105,12 +107,15 @@ function commit(work, files) {
   const elapsed = Date.now() - started;
   const after = git(work, ['rev-parse', 'HEAD']);
   assert.ok(elapsed < 5000, `the commit took ${elapsed} ms, over the 5000 ms budget (PC-7)`);
-  return { status: r.status, moved: before !== after, output: `${r.stdout}${r.stderr}` };
+  const rerun = r.status === 0 ? null : spawnSync('node', ['scripts/ci/pre-commit.mjs'], { cwd: work, env: GIT_ENV, encoding: 'utf8' });
+  if (rerun) assert.equal(`${rerun.stdout}${rerun.stderr}`, `${r.stdout}${r.stderr}`.replace(/^[\s\S]*?(?=pre-commit:)/, ''), 'the rerun prints what the hook printed');
+  return { status: r.status, hook: rerun && rerun.status, moved: before !== after, output: `${r.stdout}${r.stderr}` };
 }
 
 test('PC-3, PC-5: a staged protected path with no note fails and says how to fix it', () => {
   const r = commit(scratchClone(), { [PROTECTED]: 'x\n' });
   assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
   assert.equal(r.moved, false);
   assert.match(r.output, /pre-commit: governance notes/);
   assert.match(r.output, /^- docs\/assurance\/x\.md/m);
@@ -124,6 +129,7 @@ test('PC-3, PC-5: a staged protected path with no note fails and says how to fix
 test('PC-3: the same commit with a new note that names the path passes', () => {
   const r = commit(scratchClone(), { [PROTECTED]: 'x\n', [NOTE]: `Amends ${PROTECTED}\n` });
   assert.equal(r.status, 0);
+  assert.equal(r.hook, null);
   assert.equal(r.moved, true);
   assert.doesNotMatch(r.output, /pre-commit:/);
 });
@@ -134,12 +140,14 @@ test('PC-3: a note committed earlier on the branch counts', () => {
   assert.equal(first.status, 0);
   const r = commit(work, { [PROTECTED]: 'x\n' });
   assert.equal(r.status, 0);
+  assert.equal(r.hook, null);
   assert.equal(r.moved, true);
 });
 
 test('PC-3: a note on the default branch, unchanged on the branch, does not count', () => {
   const r = commit(scratchClone({ [NOTE]: `Amends ${PROTECTED}\n` }), { [PROTECTED]: 'x\n' });
   assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
   assert.equal(r.moved, false);
   assert.match(r.output, /^- docs\/assurance\/x\.md/m);
 });
@@ -151,6 +159,7 @@ test('PC-3: a note that names only another path leaves the unnamed path failing'
     [NOTE]: 'Amends docs/assurance/y.md\n',
   });
   assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
   assert.match(r.output, /^- docs\/assurance\/x\.md/m);
   assert.doesNotMatch(r.output, /^- docs\/assurance\/y\.md/m);
   assert.match(r.output, /git restore --staged docs\/assurance\/x\.md$/m);
@@ -158,7 +167,8 @@ test('PC-3: a note that names only another path leaves the unnamed path failing'
 
 test('PC-3, PC-5: a staged protected path with no origin/HEAD or origin/main exits 2 and says to fetch', () => {
   const r = commit(scratchNoOrigin(), { [PROTECTED]: 'x\n' });
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 1, 'git commit exits 1 whatever the hook exits with');
+  assert.equal(r.hook, 2);
   assert.equal(r.moved, false);
   assert.match(r.output, /^Fix: git fetch origin$/m);
 });
@@ -167,7 +177,8 @@ test('PC-3: a rules file with no machine-readable list exits 2', () => {
   const work = scratchClone();
   write(work, { '.claude/rules/protected-surfaces.md': '# no list here\n' });
   const r = commit(work, { 'README.md': 'y\n' });
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 1, 'git commit exits 1 whatever the hook exits with');
+  assert.equal(r.hook, 2);
   assert.equal(r.moved, false);
   assert.match(r.output, /Machine-readable path list/);
 });
@@ -175,6 +186,7 @@ test('PC-3: a rules file with no machine-readable list exits 2', () => {
 test('PC-4, PC-5: a staged queue with an unknown status fails and names the row', () => {
   const r = commit(scratchClone(), { 'docs/TASKS.md': tasks({ row2: '| PB-1.2 | wip | second | PB-1.1 | | |' }) });
   assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
   assert.equal(r.moved, false);
   assert.match(r.output, /pre-commit: task queue/);
   assert.match(r.output, /^- PB-1\.2: the status "wip" is not todo, blocked or done$/m);
@@ -186,12 +198,14 @@ test('PC-4, PC-5: a staged queue with an unknown status fails and names the row'
 test('PC-4: a staged queue that sets a row to done with no Task: line passes', () => {
   const r = commit(scratchClone(), { 'docs/TASKS.md': tasks({ row2: '| PB-1.2 | done | second | PB-1.1 | | |' }) });
   assert.equal(r.status, 0);
+  assert.equal(r.hook, null);
   assert.equal(r.moved, true);
 });
 
 test('PC-4: a staged queue with no separator row exits 2', () => {
   const r = commit(scratchClone(), { 'docs/TASKS.md': tasks({ separator: '' }) });
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 1, 'git commit exits 1 whatever the hook exits with');
+  assert.equal(r.hook, 2);
   assert.equal(r.moved, false);
   assert.match(r.output, /the queue table has no separator row/);
 });
@@ -202,6 +216,7 @@ test('PC-4: a roadmap change is checked against the staged queue', () => {
     [NOTE]: 'Amends docs/assurance/ROADMAP.md\n',
   });
   assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
   assert.match(r.output, /^- PB-1\.1: PB-1 is not an item in docs\/assurance\/ROADMAP\.md$/m);
 });
 
@@ -211,6 +226,7 @@ test('PC-2: every failing check prints its block before the commit fails', () =>
     'docs/TASKS.md': tasks({ row2: '| PB-1.2 | wip | second | PB-1.1 | | |' }),
   });
   assert.equal(r.status, 1);
+  assert.equal(r.hook, 1);
   assert.match(r.output, /pre-commit: governance notes/);
   assert.match(r.output, /pre-commit: task queue/);
 });
@@ -220,7 +236,8 @@ test('PC-2: exit 2 wins over exit 1 when one check cannot read and another fails
     [PROTECTED]: 'x\n',
     'docs/TASKS.md': tasks({ row2: '| PB-1.2 | wip | second | PB-1.1 | | |' }),
   });
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 1, 'git commit exits 1 whatever the hook exits with');
+  assert.equal(r.hook, 2);
   assert.match(r.output, /^Fix: git fetch origin$/m);
   assert.match(r.output, /^- PB-1\.2: the status "wip"/m);
 });
@@ -228,6 +245,7 @@ test('PC-2: exit 2 wins over exit 1 when one check cannot read and another fails
 test('PC-6: an unrelated commit in a clone with no origin passes without output', () => {
   const r = commit(scratchNoOrigin(), { 'README.md': 'y\n' });
   assert.equal(r.status, 0);
+  assert.equal(r.hook, null);
   assert.equal(r.moved, true);
   assert.doesNotMatch(r.output, /pre-commit/);
 });
