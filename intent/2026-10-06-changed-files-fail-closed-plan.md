@@ -9,7 +9,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 ## Order of work
 
 1. Write the governance note `.assurance/protected-surface-amend/changed-files-fail-closed-2026-10-06.md`, naming the two protected files below.
-2. Add the five TG-18 cases to `scripts/ci/tier-gate.test.mjs`. Run `node --test scripts/ci/*.test.mjs` and see the three failure cases fail against the current gate: unset and empty pass at Tier 1, and the missing file prints a stack trace. Commit the tests on their own.
+2. Add the seven TG-18 cases to `scripts/ci/tier-gate.test.mjs`. Run `node --test scripts/ci/*.test.mjs` and see the three failure cases fail against the current gate: unset and empty pass at Tier 1, and the missing file prints a stack trace. Commit the tests on their own.
 3. In `scripts/ci/tier-gate.mjs`, make `readChangedFiles` return either the list or a failure item, and make `main` print the TG-10 failure lines and exit 1 on a failure item (TG-17). Update the header comment.
 4. Run `node --test scripts/ci/*.test.mjs`. Mutate the fix back (return `[]` for an unset variable, rethrow on a read error) and see the cases fail.
 5. Set PB-1.15 to `done` in `docs/TASKS.md`, with this intent as its record. Add a root `JOURNAL.md` entry.
@@ -19,7 +19,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 | File | Protected | Change |
 |---|---|---|
 | `scripts/ci/tier-gate.mjs` | yes (`scripts/ci/**`) | fails closed on `CHANGED_FILES_PATH` (TG-17) |
-| `scripts/ci/tier-gate.test.mjs` | yes (`scripts/ci/**`) | five TG-18 cases |
+| `scripts/ci/tier-gate.test.mjs` | yes (`scripts/ci/**`) | seven TG-18 cases |
 | `docs/TASKS.md` | no | PB-1.15 `done` |
 | `JOURNAL.md` | no | entry |
 | `.assurance/protected-surface-amend/changed-files-fail-closed-2026-10-06.md` | no | new governance note |

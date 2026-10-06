@@ -43,6 +43,10 @@ A separate workflow, `incident-eval-check.yml` (the Incident Eval Check), checks
 
 The check runs only after the pull request is merged. It reports on the merge and cannot block it. No check asks for the eval or the invariant before the merge, so add both in the pull request that fixes the incident. Stage 5 of `docs/assurance/DEVELOPMENT-FRAMEWORK.md` lists its exit codes.
 
+## When the gate cannot read its changed-file list
+
+The gate reads the changed files from the file that `CHANGED_FILES_PATH` names. If the variable is unset or empty, or names a file the gate cannot read, the gate fails with an item that names the variable, because with no list it cannot see a protected path. The workflow sets the variable itself. For a manual run, write the list with `git diff -z --name-only --no-renames "origin/$BASE_REF...HEAD" > "$CHANGED_FILES_PATH"` and export the path. An empty readable file is an empty diff.
+
 ## What each decision means
 
 - **Approving (declaring the correct tier and supplying its artefacts)**: the pull request now carries an auditable record matching its actual risk level, and the tier gate passes, opening the review gate.
