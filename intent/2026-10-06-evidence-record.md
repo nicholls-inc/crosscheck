@@ -13,12 +13,7 @@ ER-1.2, ER-1.3 and ER-1.4 each depend on this task. They need one format to emit
 
 ## Proposed outcome
 - A spec, `intent/2026-10-06-evidence-record-spec.md`, defines version 1 of the evidence record: a JSON document that names the commit it describes and lists its claims.
-- Each claim states, in a fixed set of fields:
-  - what is claimed, in plain language;
-  - its strength, which is one of `proved`, `tested`, `observed` or `judged`, and the facts that strength needs: the theorems for a proof, the number of cases and the seed for a test, the source of an observation, and the person and date for a judgment;
-  - its trusted base, as named components with pinned versions;
-  - the command that reruns it, and the exit code that the rerun must reproduce;
-  - the approved requirement it traces to, or an explicit `null` where it traces to none yet.
+- Each claim states what is claimed, its strength and the facts that strength needs, its trusted base, the command that reruns it with the exit code the rerun must reproduce, and the approved requirement it traces to or an explicit `null`. The spec's tables give the fields.
 - The spec lists the rules that the ER-1.4 checker applies, so that the checker rejects a record when a claim names no strength or no rerun command, as the roadmap's acceptance for ER-1 asks.
 - The spec gives one worked record for CGV's exit 0 and one for a Crosscheck pipeline, so that ER-1.2 and ER-1.3 have a target.
 - `docs/TASKS.md` marks ER-1.1 `done` with this file as its record.
@@ -26,14 +21,14 @@ ER-1.2, ER-1.3 and ER-1.4 each depend on this task. They need one format to emit
 ## Affected users and systems
 - Whoever decides whether to trust a change: an executive reads the claims and their strengths, an engineer reads the trusted base and reruns a command, and an auditor reruns every command and compares the results with the record.
 - ER-1.2 (CGV emits a record), ER-1.3 (one Crosscheck pipeline emits a record) and ER-1.4 (a deterministic checker) build on the spec. This task changes no code in either tool.
-- `docs/TASKS.md`, for the row of this task.
+- `docs/TASKS.md` and `JOURNAL.md`, for the row and the entry of this task.
 
 ## Constraints
 - The format serves rules 3 and 7 of `docs/VISION.md`. It names four strengths and no others, so "verified" cannot appear as a strength.
 - Rule 1 holds. An LLM's verdict is never a claim's evidence. A `judged` claim names a person.
 - The checker that ER-1.4 adds must be deterministic and need no network and no LLM. So every rule in the spec is one a program can decide from the record alone. A rule that needs the world, such as whether a judge is a person or whether a rerun still passes, is flagged in the spec as a concern, not written as a checker rule.
 - No new dependency. The format is plain JSON that Node, Rust and Lean read without a schema library.
-- This task touches no protected surface. It writes two files under `intent/` and one row of `docs/TASKS.md`.
+- This task touches no protected surface. It writes two files under `intent/`, one row of `docs/TASKS.md` and one entry of `JOURNAL.md`.
 
 ## Flagged for the vision, not settled here
 How evidence of different strengths combines into one verdict on a pull request is an open question of `docs/VISION.md`, and the roadmap asks this intent to flag it. The format does not answer it. Each claim keeps its own strength, and the record has no overall verdict field. That choice leaves the question open rather than settling it by accident, for example by treating a record whose claims are all `tested` as equal to one whose claims are all `proved`. ER-1's acceptance does not need a combined verdict, so the question does not block ER-1.2 to ER-1.4.
