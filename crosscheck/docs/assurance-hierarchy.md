@@ -20,7 +20,7 @@ Crosscheck organises correctness into six layers of assurance. Layers 1–3 prov
 1. Run [`/assurance-layer-audit`](../skills/assurance-layer-audit/SKILL.md) to scope which layers are reachable in your repo (language, tooling, ecosystem maturity).
 2. Run [`/assurance-init`](../skills/assurance-init/SKILL.md) to scaffold the governance skeletons (ROADMAP, protected surfaces, skeleton invariant docs for 1–3 modules).
 3. Run [`/invariant-coverage-scaffold`](../skills/invariant-coverage-scaffold/SKILL.md) once per supported language to install the pre-commit + CI gate that ties invariant docs to property tests.
-4. On every protected-surface change: run [`/protected-surface-amend`](../skills/protected-surface-amend/SKILL.md) to generate the governance-note amendment block; on every invariant-related change: run [`/intent-check`](../skills/intent-check/SKILL.md) to verify the spec→test alignment survived the diff.
+4. On every protected-surface change: run [`/protected-surface-amend`](../skills/protected-surface-amend/SKILL.md) to generate the governance-note amendment block; on an invariant-related change, optionally run [`/intent-check`](../skills/intent-check/SKILL.md) as an advisory search for spec→test mismatches; its verdict is an LLM's judgement, so no gate or reviewer may require it.
 5. Run [`/assurance-status`](../skills/assurance-status/SKILL.md) weekly to surface drift, FP rate, and kill-criterion triggers.
 6. Run [`/assurance-probe`](../skills/assurance-probe/SKILL.md) every 2-4 weeks on active modules (rotation-based) to measure test strength via mutation probes.
 7. Run [`/spec-adversary`](../skills/spec-adversary/SKILL.md) on stable modules to probe for invariants the spec is missing — Layer 6 is iterative, not deterministic.
