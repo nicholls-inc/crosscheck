@@ -6,7 +6,7 @@ Each requirement has an ID. The tests cite these IDs.
 
 ## Tier gate (`scripts/ci/tier-gate.mjs`)
 
-Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `CROSSCHECK_PROTECTED_RULES`. A path *changed in this pull request* is one listed in `CHANGED_FILES` that still exists in the working tree. A deleted file does not count as an artefact.
+Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `CROSSCHECK_PROTECTED_RULES`. TG-16 in `intent/2026-10-06-unquoted-paths-spec.md` replaces `CHANGED_FILES` with `CHANGED_FILES_PATH`, a file of NUL-separated names. A path *changed in this pull request* is one listed in the changed-file list that still exists in the working tree. A deleted file does not count as an artefact.
 
 - **TG-1. Declaration and floor are unchanged.** Revised by TG-1 in `intent/2026-09-30-tier-anchor-spec.md`, which anchors the `Tier:` line. A tier comes from a `Tier: N` line or a `tier:N` label. If the diff touches a protected path, the floor is Tier 3. A declaration below the floor fails.
 - **TG-2. Tier 1 is unchanged.** Tier 1 passes when the pull request changes an intent file under `intent/` (other than `README.md` or `TEMPLATE.md`), or when an `Intent: <path>` line cites an existing file. A citation line starts with the keyword, optionally indented or after a list or quote marker (`- `, `* `, `+ `, `> `); the keyword in the middle of a line does not count. The same holds for `Spec:` and `Plan:`. Which lines count and which paths are valid is revised by TG-12 in `intent/2026-09-30-citation-rule-spec.md`: any citation line counts, and the path must be a regular file inside the repository.
