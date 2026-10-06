@@ -8,7 +8,7 @@
 ### Change Description
 
 1. `scripts/ci/incident-eval-check.mjs`: the failure message no longer says the change "stays blocked". It asks for the eval and the candidate invariant in a follow-up pull request and links to `docs/gates/incident-eval-check.md` instead of the gate index (IE-8). The empty-range comment names a merge commit and drops the rebase merge (IE-2). The trigger, the lookups and the exit codes do not change.
-2. `scripts/ci/incident-eval-check.test.mjs`: the expected failure output follows IE-8. Two new tests simulate GitHub's rebase merge and show that the check reads the pull request's commits (IE-6).
+2. `scripts/ci/incident-eval-check.test.mjs`: the expected failure output follows IE-8. Two new tests simulate GitHub's rebase merge and show that the check reads the pull request's commits (IE-6). In the incident case, the replay drops the incident line from the copies on `main`, and the test asserts no commit on `main` carries it, so the line exists only in the pull request's own commits (maintainer decision on PR #66, option (b)).
 3. `scripts/ci/tier-gate.mjs`: row 6 of `EVIDENCE_CLASSES`, `evals/**`, changes from checked by the Incident Eval Check to not yet reached, with a blocking property and an open question (TG-8 row 6). The gate's pass or fail result does not change.
 4. `scripts/ci/tier-gate.test.mjs`: the every-class report test expects the new line.
 5. `docs/assurance/TIER-LAYER-MAP.md`: the evidence table and its list of blocking properties follow TG-8 row 6.
@@ -35,7 +35,7 @@ Task PB-1.12. PB-1.8 made stage 5 of `DEVELOPMENT-FRAMEWORK.md` describe the che
 | # | File | Section | Action |
 |---|------|---------|--------|
 | 1 | `scripts/ci/incident-eval-check.mjs` | `GATE_DOC`, `printFailure`, empty-range comment | changed |
-| 2 | `scripts/ci/incident-eval-check.test.mjs` | `failureOutput`, rebase-merge helper and tests | changed, added |
+| 2 | `scripts/ci/incident-eval-check.test.mjs` | `failureOutput`, rebase-merge helper (`replayMessage`) and tests | changed, added |
 | 3 | `scripts/ci/tier-gate.mjs` | `EVIDENCE_CLASSES` row 6 | changed |
 | 4 | `scripts/ci/tier-gate.test.mjs` | every-class report test | one expected line changed |
 | 5 | `docs/assurance/TIER-LAYER-MAP.md` | "Evidence and sign-off" | row and bullet changed |
@@ -45,6 +45,7 @@ Task PB-1.12. PB-1.8 made stage 5 of `DEVELOPMENT-FRAMEWORK.md` describe the che
 ### Test / Coverage Impact
 
 - `node --test scripts/ci/*.test.mjs` gains the two IE-6 rebase-merge cases. Every exit-1 case asserts the whole IE-8 output.
+- Mutation check for the IE-6 incident case: with the check's range changed from `origin/main..<head>` to `origin/main~2..origin/main`, so it reads the replayed commits on `main` instead of the pull request's, the test fails (exit 0, expected 1). The earlier version of the test, which kept the incident line on `main`, passed under the same mutation. The script was restored after the run.
 - The tier gate's report for `evals/**` now says "not yet reached". This narrows what the report claims as evidence. It weakens no check: the Incident Eval Check never ran an eval, and the gate's result does not depend on the report.
 - No invariant or eval changes.
 

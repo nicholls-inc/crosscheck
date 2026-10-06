@@ -40,8 +40,10 @@ function commit(cwd, message) {
 // Pull request #1 is merged into main. Its head is published only as
 // refs/pull/1/head, as GitHub does once the branch is deleted, so a fresh
 // clone does not contain it. A rebase merge replays the commits with GitHub as
-// committer, so each gets a new SHA and the head is not on main.
-function mergedPr({ branchMessages, mergedFromMain, merge = 'squash' }) {
+// committer, so each gets a new SHA and the head is not on main. `replayMessage`
+// rewrites each replayed message, so a test can keep a line out of every commit
+// on main and prove the check read it from the pull request's own commits.
+function mergedPr({ branchMessages, mergedFromMain, merge = 'squash', replayMessage = (m) => m }) {
   const root = mkdtempSync(join(tmpdir(), 'incident-eval-test-'));
   const remote = join(root, 'remote.git');
   const work = join(root, 'work');
@@ -64,7 +66,12 @@ function mergedPr({ branchMessages, mergedFromMain, merge = 'squash' }) {
   git(work, 'switch', '-q', 'main');
   if (merge === 'rebase') {
     const replayer = { ...GIT_ENV, GIT_COMMITTER_NAME: 'GitHub', GIT_COMMITTER_EMAIL: 'noreply@github.com', GIT_COMMITTER_DATE: '2030-01-01T00:00:00Z' };
-    execFileSync('git', ['cherry-pick', `main..${head}`], { cwd: work, env: replayer });
+    for (const sha of git(work, 'rev-list', '--reverse', `main..${head}`).split('\n')) {
+      git(work, 'cherry-pick', '-n', sha);
+      const messageFile = join(root, `replay-${sha}.txt`);
+      writeFileSync(messageFile, replayMessage(git(work, 'log', '-1', '--format=%B', sha)));
+      execFileSync('git', ['commit', '-q', '--cleanup=verbatim', '-F', messageFile], { cwd: work, env: replayer });
+    }
     assert.throws(() => git(work, 'merge-base', '--is-ancestor', head, 'main'), 'rebase merge rewrote the SHAs');
   } else {
     git(work, 'merge', '-q', '--squash', 'feat');
@@ -275,7 +282,9 @@ test('IE-6: the incident line in the oldest commit of a rebase-merged PR is read
   const { checkout, head } = mergedPr({
     merge: 'rebase',
     branchMessages: ['fix: first\n\nFixes-Incident: INC-7', 'fix: second'],
+    replayMessage: (m) => m.replace(/\n*Fixes-Incident: INC-7\n?/, '\n'),
   });
+  assert.doesNotMatch(git(checkout, 'log', '--format=%B', 'origin/main'), /INC-7/, 'no commit on main carries the incident line');
   const result = run(checkout, head);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
