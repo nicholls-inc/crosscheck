@@ -74,14 +74,14 @@ Each `JOURNAL.md`'s content is preceded by a delimiter line on its own line, imm
 
 For example: `=== crosscheck/skills/JOURNAL.md ===`. The path is always relative to the enclosing repo root (the same root `git rev-parse --show-toplevel` returns in I1); absolute paths and `~`-expanded paths are not emitted. No trailing delimiter follows a file's content — the next `=== … ===` line marks the next boundary, and the empty case (I6) replaces the entire delimited block with its single explicit message.
 
-The delimiter is fixed shape because downstream consumers — agents loading context, humans skimming output, and any future `/journal-lint` parser — are expected to grep or split on it. A floating delimiter form would force every consumer to reinvent the parser.
+The delimiter is fixed shape because downstream consumers — agents loading context, humans skimming output, and any future `journal-lint` parser — are expected to grep or split on it. A floating delimiter form would force every consumer to reinvent the parser.
 
 **Covering test:** `# Invariant I7: each file's content is preceded by an === <path> === delimiter`
 
 ## Carve-outs / known scope limits
 
 - **Filename match only, not semantic.** The skill matches the literal filename `JOURNAL.md`. A fixture or test directory containing a file named `JOURNAL.md` that is not a real journal will be included. The skill is filename-deterministic; semantic filtering is the journal author's responsibility.
-- **No content validation.** The skill does not lint journal entries for shape (date / type / why / links), missing `Supersedes:` targets, or contradictions between entries. That is the job of a separate `/journal-lint` skill (v2 §3.4) if and when it is built.
+- **No content validation.** The skill does not lint journal entries for shape (date / type / why / links), missing `Supersedes:` targets, or contradictions between entries. That is the job of a separate `journal-lint` skill (v2 §3.4) if and when it is built.
 - **No filtering by date, type, or relevance.** The skill emits every journal file it walks past in full. A consumer that wants only recent entries, or only entries of a specific type, filters the output itself.
 - **No cross-repo composition.** A single invocation walks within one git repository's tree. Multi-repo orchestration (monorepos with submodules, sibling repos checked out under a shared parent) is out of scope for v1; the working shape if that need arises is to invoke the skill once per repo and concatenate, not to teach the walk to cross repo boundaries.
 - **Not a context loader.** The skill emits text. Putting that text into an agent's context window is the caller's job; the skill does not call agent APIs, write to a context cache, or otherwise manage the lifecycle of how its output is consumed.
