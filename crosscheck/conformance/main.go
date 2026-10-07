@@ -29,7 +29,10 @@
 // such as 'reviewed-disclsed' cannot pass as a reviewed claim.
 //
 // A missing claims.json is an empty ledger. A claims.json that cannot be read,
-// or does not parse as the ledger shape, is an ERROR.
+// including a symlink to a missing target, or does not parse as the ledger
+// shape, is an ERROR. The shape is a schema: the top level, each claim and each
+// check must be objects, narrative_claims must be present and not null, and
+// every key must be one the schema names, matched exactly.
 package main
 
 import (
@@ -475,11 +478,20 @@ func readMCPSource(root string) string {
 }
 
 // loadLedger reads conformance/claims.json. A missing file is an empty ledger;
-// a file that cannot be read or parsed is an error, so a broken ledger fails
-// the run instead of passing with zero claims.
+// a file that cannot be read, cannot be parsed, or breaks the ledger schema
+// (checkLedgerSchema) is an error, so a broken ledger fails
+// the run instead of passing with zero claims. A symlink to a missing target,
+// at claims.json or at conformance, cannot be read.
 func loadLedger(root string) ([]claim, error) {
-	data, err := os.ReadFile(filepath.Join(root, "conformance", "claims.json"))
+	dir := filepath.Join(root, "conformance")
+	path := filepath.Join(dir, "claims.json")
+	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
+		for _, p := range []string{path, dir} {
+			if danglingSymlink(p) {
+				return nil, fmt.Errorf("cannot read conformance/claims.json: %s is a symbolic link to a missing target: %w", p, err)
+			}
+		}
 		return nil, nil
 	}
 	if err != nil {
@@ -489,7 +501,85 @@ func loadLedger(root string) ([]claim, error) {
 	if err := json.Unmarshal(data, &lf); err != nil {
 		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
+	if err := checkLedgerSchema(data); err != nil {
+		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
+	}
 	return lf.NarrativeClaims, nil
+}
+
+// The ledger schema: the keys each object in claims.json may carry. Key names
+// match exactly, because json.Unmarshal matches them without regard to case
+// and drops any key it cannot place.
+var (
+	ledgerKeys = map[string]bool{"version": true, "description": true, "narrative_claims": true}
+	claimKeys  = map[string]bool{"id": true, "source": true, "claim": true, "reality": true, "status": true, "check": true, "tracked_in": true}
+	checkKeys  = map[string]bool{"type": true, "path": true, "expect_present": true}
+)
+
+// checkLedgerSchema rejects JSON that json.Unmarshal accepts into ledgerFile
+// but that is not a ledger: a value that should be an object and is not, a
+// missing or null narrative_claims, or a key the schema does not name.
+func checkLedgerSchema(data []byte) error {
+	top, err := schemaObject(data, "the ledger", ledgerKeys)
+	if err != nil {
+		return err
+	}
+	raw, ok := top["narrative_claims"]
+	if !ok {
+		return errors.New("narrative_claims is missing")
+	}
+	var claims []json.RawMessage
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return fmt.Errorf("narrative_claims: %w", err)
+	}
+	if claims == nil {
+		return errors.New("narrative_claims is null")
+	}
+	for i, c := range claims {
+		where := fmt.Sprintf("narrative_claims[%d]", i)
+		fields, err := schemaObject(c, where, claimKeys)
+		if err != nil {
+			return err
+		}
+		if check, ok := fields["check"]; ok {
+			if _, err := schemaObject(check, where+".check", checkKeys); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// schemaObject decodes data as a JSON object whose keys are all in allowed.
+func schemaObject(data []byte, where string, allowed map[string]bool) (map[string]json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, fmt.Errorf("%s: %w", where, err)
+	}
+	if fields == nil {
+		return nil, fmt.Errorf("%s is null", where)
+	}
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !allowed[k] {
+			return nil, fmt.Errorf("%s has unknown key %q", where, k)
+		}
+	}
+	return fields, nil
+}
+
+// danglingSymlink reports whether path exists as a directory entry but not
+// once its symbolic links are followed.
+func danglingSymlink(path string) bool {
+	if _, err := os.Lstat(path); err != nil {
+		return false
+	}
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // report renders the human-readable oracle report from a result.

@@ -423,22 +423,30 @@ func TestLedgerLoad(t *testing.T) {
 			}
 		}
 	}
+	symlink := func(target string) func(t *testing.T, path string) {
+		return func(t *testing.T, path string) {
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	tests := []struct {
 		name       string
 		setup      func(t *testing.T, path string)
 		wantPrefix string
+		wantClaims int
 	}{
-		{"missing", func(*testing.T, string) {}, ""},
+		{"missing", func(*testing.T, string) {}, "", 0},
 		{"no_conformance_dir", func(t *testing.T, path string) {
 			if err := os.RemoveAll(filepath.Dir(path)); err != nil {
 				t.Fatal(err)
 			}
-		}, ""},
+		}, "", 0},
 		{"directory", func(t *testing.T, path string) {
 			if err := os.Mkdir(path, 0o755); err != nil {
 				t.Fatal(err)
 			}
-		}, readErr},
+		}, readErr, 0},
 		{"no_permission", func(t *testing.T, path string) {
 			if os.Geteuid() == 0 {
 				t.Skip("root reads a mode-000 file")
@@ -447,13 +455,51 @@ func TestLedgerLoad(t *testing.T) {
 			if err := os.Chmod(path, 0o000); err != nil {
 				t.Fatal(err)
 			}
-		}, readErr},
-		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr},
-		{"empty", writeLedger(``), parseErr},
-		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr},
+		}, readErr, 0},
+		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr, 0},
+		{"empty", writeLedger(``), parseErr, 0},
+		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr, 0},
 		// The first claim decodes, the second has a type error: json.Unmarshal
 		// returns the decoded claim and the error, and the ledger must still be empty.
-		{"partial_decode", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},{"id":5}]}`), parseErr},
+		{"partial_decode", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},{"id":5}]}`), parseErr, 0},
+		{"dangling_symlink", symlink("missing.json"), readErr, 0},
+		{"dangling_symlink_chain", func(t *testing.T, path string) {
+			symlink("missing.json")(t, filepath.Join(filepath.Dir(path), "hop.json"))
+			symlink("hop.json")(t, path)
+		}, readErr, 0},
+		{"dangling_conformance_dir", func(t *testing.T, path string) {
+			dir := filepath.Dir(path)
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+			symlink("missing-dir")(t, dir)
+		}, readErr, 0},
+		{"conformance_dir_symlink_no_ledger", func(t *testing.T, path string) {
+			dir := filepath.Dir(path)
+			if err := os.Rename(dir, dir+"-real"); err != nil {
+				t.Fatal(err)
+			}
+			symlink(filepath.Base(dir)+"-real")(t, dir)
+		}, "", 0},
+		{"symlink_to_ledger", func(t *testing.T, path string) {
+			writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"}]}`)(t, filepath.Join(filepath.Dir(path), "real.json"))
+			symlink("real.json")(t, path)
+		}, "", 1},
+		{"top_null", writeLedger(`null`), parseErr + "the ledger is null", 0},
+		{"top_array", writeLedger(`[]`), parseErr, 0},
+		{"top_empty_object", writeLedger(`{}`), parseErr + "narrative_claims is missing", 0},
+		{"claims_missing", writeLedger(`{"version":1}`), parseErr + "narrative_claims is missing", 0},
+		{"claims_null", writeLedger(`{"version":1,"narrative_claims":null}`), parseErr + "narrative_claims is null", 0},
+		{"claim_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},null]}`), parseErr + "narrative_claims[1] is null", 0},
+		{"check_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":null}]}`), parseErr + "narrative_claims[0].check is null", 0},
+		{"check_not_object", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":"manual"}]}`), parseErr, 0},
+		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"k5":1,"k9":1,"k3":1,"k8":1,"k1":1,"k7":1,"k2":1,"k6":1,"k4":1}`), parseErr + `the ledger has unknown key "k1"`, 0},
+		{"unknown_claim_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"known-gap","tracked-in":"#1"}]}`), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
+		{"unknown_check_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":{"type":"present_artifact","path":"README.md","expect-present":false}}]}`), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
+		{"key_case_mismatch", writeLedger(`{"Narrative_Claims":[]}`), parseErr + `the ledger has unknown key "Narrative_Claims"`, 0},
+		{"every_schema_key", writeLedger(`{"version":1,"description":"d","narrative_claims":[` +
+			`{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","tracked_in":"",` +
+			`"check":{"type":"present_artifact","path":"README.md","expect_present":true}}]}`), "", 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -469,7 +515,10 @@ func TestLedgerLoad(t *testing.T) {
 			out := report(r)
 			if tc.wantPrefix == "" {
 				if len(r.errors) != 0 || !strings.Contains(out, "RESULT: PASS") {
-					t.Errorf("missing ledger must pass with no errors, got: %v", r.errors)
+					t.Errorf("want a pass with no errors, got: %v", r.errors)
+				}
+				if len(r.ledger) != tc.wantClaims {
+					t.Errorf("ledger claims = %d, want %d", len(r.ledger), tc.wantClaims)
 				}
 				return
 			}

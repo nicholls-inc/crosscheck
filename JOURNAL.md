@@ -70,6 +70,17 @@ The maintainer then settled the review's open questions with one rule: exit 0 pr
 
 ---
 
+## 2026-10-06 - pydantic `model_validate` is a validation boundary
+
+**Type:** fix
+**Touches:** cgv/src/edge_discovery.rs, cgv/src/dataclass_extractor.rs, cgv/src/resolve.rs, cgv/src/extractor.rs, cgv/test_fixtures/pydantic_validate_boundary/, cgv/README.md, cgv/docs/design/dataflow-v2.md, docs/TASKS.md
+**Why:** CGV checked each entry of the dict given to `Model.model_validate` against the field, as if it were a typed constructor argument. `model_validate` takes `Any`, coerces in lax mode and rejects invalid input on purpose, so the errors were false. It was 4 of the triaged false positives in the real-codebase evaluation.
+**Links:** [intent](intent/2026-10-06-pydantic-validate-boundary.md)
+
+At `model_validate`, `model_validate_json`, `model_validate_strings`, `parse_obj` and `parse_raw` on a pydantic class, an entry is no longer a write when validation enforces the field's contract. The first draft dropped every entry. Review and a pydantic 2.13.5 run showed that this left reads of some fields resting on a contract nothing checked: `decimal_places` and `max_digits` count digits after trailing zeros are dropped, and `SkipValidation`, `PlainValidator` and `WrapValidator` can store None in a `str` field. Those fields, and a `None` default that pydantic v1 reads as Optional, keep their writes. A later review found that matching those markers by literal name lets a renamed import or an alias drop the write, so the rule is now an allowlist: a field counts as validated only when every name in its annotation, every union member and every `Annotated` metadata item is on a list of types and constraints that pydantic validates, and anything else keeps the write. A project name that shadows a listed name is still read as the listed type (CG-1.43), and container arguments and aliased validator decorators are not inspected (CG-1.44). So `r5_write_patterns` keeps its `model_validate` precision error. A typed constructor call and `model_copy(update=...)` stay writes. `BehaviorModel.lean` needs no rule for lax coercion, but its `pydanticDecimalAccepts` is false for trailing zeros (CG-1.17), and `Annotated` validators do not clear requirements as the decorator forms do (CG-1.18). `model_construct` records no write (CG-1.16).
+
+---
+
 ## 2026-10-06 - A parameter typed `object` accepts None
 
 **Type:** fix
