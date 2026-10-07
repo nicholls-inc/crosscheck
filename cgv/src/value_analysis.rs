@@ -3474,6 +3474,11 @@ mod tests {
             ("cb = lambda: h\n    cb()", Some(true)),
             ("def g():\n        return h\n    g()", Some(true)),
             ("if h:\n        pass", Some(true)),
+            // A write on one path only still ends the guard after the join.
+            ("if x:\n        clear(h)", Some(true)),
+            ("if x:\n        pass\n    else:\n        clear(h)", Some(true)),
+            ("if clear(h) is None:\n        pass", Some(true)),
+            ("if x:\n        pass", None),
             ("setattr(h, 'name', None)", Some(true)),
             ("await other", Some(true)),
             ("log(h.name)", None),

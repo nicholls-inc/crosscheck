@@ -181,6 +181,26 @@ def key_popped_in_conditional(d: dict, k: str) -> Rec:
     return Rec(n=0, s="missing")
 
 
+# Pattern 4: an earlier operand or test removes the key before a constructor
+# inside a later operand or branch reads it.
+def key_popped_before_nested_and(d: dict, k: str) -> object:
+    if k in d:
+        return d.pop(k) and Rec(n=1, s=d.get(k))
+    return None
+
+
+def key_popped_before_nested_conditional(d: dict, k: str) -> object:
+    if k in d:
+        return Rec(n=1, s=d.get(k)) if d.pop(k) else None
+    return None
+
+
+def key_popped_before_nested_conditional_else(d: dict, k: str) -> object:
+    if k in d:
+        return None if d.pop(k) else Rec(n=1, s=d.get(k))
+    return None
+
+
 # Pattern 4: a filter removes the key before the element is built.
 def key_popped_in_comprehension(d: dict, k: str, ks: list) -> list:
     if k in d:
