@@ -114,11 +114,94 @@ describe("dafnyEvidence against a real git repository", () => {
       JSON.stringify(expected, null, 2) + "\n"
     );
     const run = { image: "sha256:feed", readOnly: true, sandboxed: true };
+    const mounted = vi.mocked(runDafny).mock.calls[0][0];
     expect(vi.mocked(runDafny).mock.calls).toEqual([
-      [repo, ["verify", "/work/proofs/Abs.dfy", "--verify-included-files", "--log-format", LOG_FORMAT], run],
-      [repo, ["audit", "/work/proofs/Abs.dfy"], run],
-      [repo, ["--version"], run],
+      [mounted, ["verify", "/work/proofs/Abs.dfy", "--verify-included-files", "--log-format", LOG_FORMAT], run],
+      [mounted, ["audit", "/work/proofs/Abs.dfy"], run],
+      [mounted, ["--version"], run],
     ]);
+  });
+
+  describe("Dafny reads a copy of the blobs at commit (DE-14)", () => {
+    async function snapshot(dir: string): Promise<Record<string, string>> {
+      const seen: Record<string, string> = {};
+      const walk = async (rel: string) => {
+        const mode = ((await lstat(join(dir, rel))).mode & 0o777).toString(8);
+        seen[rel === "" ? "." : rel] = mode;
+        for (const entry of await readdir(join(dir, rel), { withFileTypes: true })) {
+          const path = rel === "" ? entry.name : `${rel}/${entry.name}`;
+          if (entry.isDirectory()) await walk(path);
+          else seen[path] = `${((await lstat(join(dir, path))).mode & 0o777).toString(8)} ${await readFile(join(dir, path), "utf-8")}`;
+        }
+      };
+      await walk("");
+      return seen;
+    }
+
+    it("mounts only the file and its includes, readable by others under any umask, and removes the copy", async () => {
+      await commitFiles({
+        "proofs/Abs.dfy": `include "lib/A.dfy"\n${SOURCE}`,
+        "proofs/lib/A.dfy": "lemma A() ensures true {}\n",
+        "proofs/Other.dfy": "lemma {:axiom} Other() ensures false\n",
+      });
+      let seen: Record<string, string> = {};
+      vi.mocked(runDafny).mockImplementation(async (dir, args) => {
+        if (args[0] === "verify") seen = await snapshot(dir);
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const umask = process.umask(0o077);
+      const result = await dafnyEvidence(input).finally(() => process.umask(umask));
+      expect(result.errors).toEqual([]);
+      expect(seen).toEqual({
+        ".": "755",
+        proofs: "755",
+        "proofs/Abs.dfy": `644 include "lib/A.dfy"\n${SOURCE}`,
+        "proofs/lib": "755",
+        "proofs/lib/A.dfy": "644 lemma A() ensures true {}\n",
+      });
+      const mounted = vi.mocked(runDafny).mock.calls[0][0];
+      expect(mounted.startsWith(join(tmpdir(), "dafny-"))).toBe(true);
+      expect(await lstat(mounted).catch(() => null)).toBeNull();
+    });
+
+    it("removes the copy when Dafny refuses", async () => {
+      stubDafny({ verify: { exitCode: 4, stdout: "error", stderr: "", timedOut: false } });
+      const result = await dafnyEvidence(input);
+      expect(result.success).toBe(false);
+      expect(await lstat(vi.mocked(runDafny).mock.calls[0][0]).catch(() => null)).toBeNull();
+    });
+
+    it("is not changed by an edit made and reverted while Dafny runs", async () => {
+      let read = "";
+      vi.mocked(runDafny).mockImplementation(async (dir, args) => {
+        if (args[0] === "verify") {
+          await writeFile(join(repo, "proofs", "Abs.dfy"), "lemma {:axiom} Evil() ensures false\n");
+          read = await readFile(join(dir, "proofs", "Abs.dfy"), "utf-8");
+          await writeFile(join(repo, "proofs", "Abs.dfy"), SOURCE);
+        }
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const result = await dafnyEvidence(input);
+      expect(result.errors).toEqual([]);
+      expect(read).toBe(SOURCE);
+    });
+
+    it("copies the blob's bytes, not a work tree that a .gitattributes conversion makes differ", async () => {
+      await commitFiles({
+        ".gitattributes": "*.dfy text eol=crlf\n",
+        "proofs/Abs.dfy": SOURCE.replace(/\n/g, "\r\n"),
+      });
+      expect(git(repo, "status", "--porcelain")).toBe("");
+      expect(await readFile(join(repo, "proofs", "Abs.dfy"), "utf-8")).toBe(SOURCE.replace(/\n/g, "\r\n"));
+      let read = "";
+      vi.mocked(runDafny).mockImplementation(async (dir, args) => {
+        if (args[0] === "verify") read = await readFile(join(dir, "proofs", "Abs.dfy"), "utf-8");
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const result = await dafnyEvidence(input);
+      expect(result.errors).toEqual([]);
+      expect(read).toBe(SOURCE);
+    });
   });
 
   it("writes the same bytes on a second run (DE-11)", async () => {
