@@ -88,19 +88,27 @@ impl Cx<'_> {
     }
 
     /// Whether the dotted `parts`, read in the function, reach what their
-    /// imports name: the head is a stable global, and (`mod.name` through
-    /// `import mod`) so is `name` in `mod`.
+    /// imports name: the head is a stable global, and so is every name read
+    /// off a module on the way (`errors.fail` after `from app import errors`:
+    /// `fail` in `app.errors`).
     fn path_is_stable(&self, parts: &[String]) -> bool {
         if !self.is_stable_global(&parts[0]) {
             return false;
         }
-        match (self.module.imports.get(&parts[0]), parts) {
-            (Some(Import::Module(path)), [_, attr, ..]) => self
+        for i in 1..parts.len() {
+            let Some(Symbol::Module(path)) = self.index.resolve_dotted(&self.module.name, &parts[..i])
+            else {
+                break;
+            };
+            let stable = self
                 .index
-                .find_module(path, &self.module.name)
-                .is_none_or(|m| chain_is_stable(self.index, m, attr, 1)),
-            _ => true,
+                .find_module(&path, &self.module.name)
+                .is_none_or(|m| chain_is_stable(self.index, m, &parts[i], 1));
+            if !stable {
+                return false;
+            }
         }
+        true
     }
 
     /// Whether the expression statement `expr` is a call that never returns.
@@ -203,7 +211,7 @@ fn never_returns(index: &ProjectIndex, g: &FunctionInfo) -> bool {
 
 /// Whether the global `name` of `module` is the value of its one import or
 /// definition, through every module its imports pass through: none binds the
-/// name again, imports it from two places, or reaches it by a star import.
+/// name again, imports it from two places, or may get it from a star import.
 /// (`from .impl import f` in a package that then does `f = wrap(f)` makes `f`
 /// unstable for a module that imports it from the package.)
 fn chain_is_stable(index: &ProjectIndex, module: &str, name: &str, depth: usize) -> bool {
@@ -221,9 +229,8 @@ fn chain_is_stable(index: &ProjectIndex, module: &str, name: &str, depth: usize)
             .find_module(from, module)
             .is_none_or(|t| chain_is_stable(index, t, n, depth + 1)),
         Some(Import::Module(_)) => true,
-        // A builtin or a submodule in the function's own module; in another
-        // module a name no import or definition names comes from a star import.
-        None => depth == 0 || m.star_imports.is_empty(),
+        // A builtin or a submodule, unless a star import may supply the name.
+        None => m.star_imports.is_empty(),
     }
 }
 
@@ -554,6 +561,45 @@ mod tests {
             let files = [("colors.py", enums), ("pkg.py", pkg), ("code.py", code.as_str())];
             assert_eq!(marked(&files, "f").1.len(), usize::from(exhaustive), "{body}");
         }
+    }
+
+    #[test]
+    fn test_exit_through_a_module_read_off_a_package_or_a_star_import() {
+        let imp = "from typing import NoReturn\n\ndef fail(m) -> NoReturn:\n    raise E(m)\n";
+        let code = "from app import errors\nimport app.errors\n\ndef f(x):\n    errors.fail(x)\n\ndef g(x):\n    app.errors.fail(x)\n";
+        let init = ("app/__init__.py", "");
+        let run = |errors: &str| {
+            let files = [init, ("app/impl.py", imp), ("app/errors.py", errors), ("code.py", code)];
+            (marked(&files, "f").0, marked(&files, "g").0)
+        };
+        let (f, g) = run("from .impl import fail\n");
+        assert_eq!((f, g), (vec!["errors.fail(x)".to_string()], vec!["app.errors.fail(x)".to_string()]));
+        // The leaf module binds the name again.
+        let (f, g) = run("from .impl import fail\nfail = wrap(fail)\n");
+        assert_eq!((f, g), (vec![], vec![]));
+        // A name the function's own module gets through a star import, from a
+        // module that binds it again.
+        let helpers = "from impl import fail\nfail = wrap(fail)\n";
+        let code = "from helpers import *\n\ndef f(x):\n    fail(x)\n";
+        let files = [("impl.py", imp), ("helpers.py", helpers), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_exit_through_an_alias_chain_and_a_cycle() {
+        let imp = "from typing import NoReturn\n\ndef abort(m) -> NoReturn:\n    raise E(m)\n";
+        let code = "from pkg import stop\n\ndef f(x):\n    stop(x)\n";
+        // The rebind is on the renamed name, two hops from the definition.
+        let files = [("impl.py", imp), ("mid.py", "from impl import abort as stop\n"), ("pkg.py", "from mid import stop\nstop = wrap(stop)\n"), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        let files = [("impl.py", imp), ("mid.py", "from impl import abort as stop\n"), ("pkg.py", "from mid import stop\n"), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, ["stop(x)"]);
+        // The rebind is on the original name, in the module the alias comes from.
+        let files = [("real.py", imp), ("impl.py", "from real import abort\nabort = wrap(abort)\n"), ("mid.py", "from impl import abort as stop\n"), ("pkg.py", "from mid import stop\n"), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        // A cycle of re-exports resolves to nothing and ends.
+        let files = [("a.py", "from b import stop\n"), ("b.py", "from a import stop\n"), ("code.py", "from a import stop\n\ndef f(x):\n    stop(x)\n")];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
     }
 
     #[test]
