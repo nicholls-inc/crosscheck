@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstat, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, posix, relative, resolve as resolvePath, sep } from "node:path";
 import { dockerImageId, getDockerImage, runDafny } from "../docker.js";
 
@@ -89,11 +89,11 @@ export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-export function rerunCommand(image: string, file: string): string {
-  const run = `docker run --rm --network=none -v "$PWD":/work ${shellQuote(image)}`;
-  const path = shellQuote(`/work/${file}`);
+export function rerunCommand(image: string, files: string[]): string {
+  const run = `docker run --rm --network=none -v "$PWD":/work:ro ${shellQuote(image)}`;
+  const paths = files.map((f) => shellQuote(`/work/${f}`));
   return (
-    `${run} verify ${path} && out=$(${run} audit ${path} 2>&1) && ` +
+    `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && ` +
     `case "$out" in *'${AUDIT_CLEAN}'*) true ;; *) false ;; esac`
   );
 }
@@ -110,6 +110,7 @@ export function claimId(file: string): string {
 export function buildRecord(facts: {
   commit: string;
   file: string;
+  includes: string[];
   statement: string;
   requirement: string | null;
   theorems: string[];
@@ -132,7 +133,7 @@ export function buildRecord(facts: {
           { component: "Z3 solver shipped with the Dafny release", version: `Dafny ${facts.dafnyVersion}` },
           { component: `Dafny Docker image ${facts.image}`, version: facts.imageId },
         ],
-        rerun: { command: rerunCommand(facts.image, facts.file), exit_code: 0 },
+        rerun: { command: rerunCommand(facts.image, [facts.file, ...facts.includes]), exit_code: 0 },
       },
     ],
   };
@@ -193,8 +194,7 @@ async function includedFiles(
 
 async function outputTarget(
   root: string,
-  outputPath: string,
-  covered: string[]
+  outputPath: string
 ): Promise<{ out: string; error: null } | { out: null; error: string }> {
   const fail = (why: string) => ({ out: null, error: `outputPath ${outputPath} ${why}` });
   const out = resolvePath(root, outputPath);
@@ -202,7 +202,7 @@ async function outputTarget(
   if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
     return fail(`is not inside the work tree ${root}`);
   }
-  if (rel.split(sep).includes(".git")) return fail("is inside .git");
+  if (rel.split(sep).some((s) => s.toLowerCase() === ".git")) return fail("is inside .git");
   let parent: string;
   try {
     parent = await realpath(dirname(out));
@@ -213,13 +213,18 @@ async function outputTarget(
   const existing = await lstat(out).catch(() => null);
   if (existing === null) return { out, error: null };
   if (existing.isSymbolicLink()) return fail("is a symbolic link");
-  for (const path of covered) {
-    const target = await stat(resolvePath(root, path));
-    if (target.ino === existing.ino && target.dev === existing.dev) {
-      return fail(`would overwrite ${path}, which the record covers`);
-    }
+  if (!(await isEvidenceRecord(out))) {
+    return fail("names an existing file that is not an evidence record");
   }
   return { out, error: null };
+}
+
+async function isEvidenceRecord(path: string): Promise<boolean> {
+  try {
+    return JSON.parse(await readFile(path, "utf-8"))?.format === "evidence-record/1";
+  } catch {
+    return false;
+  }
 }
 
 function refuse(errors: string[], record: EvidenceRecord | null = null): EvidenceOutput {
@@ -253,7 +258,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
 
   let out: string | null = null;
   if (input.outputPath !== undefined) {
-    const target = await outputTarget(root, input.outputPath, included.files);
+    const target = await outputTarget(root, input.outputPath);
     if (target.error !== null) return refuse([target.error]);
     out = target.out;
   }
@@ -262,15 +267,20 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   const imageId = await dockerImageId(image);
   if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
 
-  const path = `/work/${input.file}`;
-  const verify = await runDafny(root, ["verify", path, "--log-format", "csv;LogFileName=/dev/stdout"], imageId);
+  const run = { image: imageId, readOnly: true };
+  const paths = included.files.map((f) => `/work/${f}`);
+  const verify = await runDafny(
+    root,
+    ["verify", paths[0], "--verify-included-files", "--log-format", "csv;LogFileName=/dev/stdout"],
+    run
+  );
   if (verify.timedOut || verify.exitCode !== 0) {
     return refuse([
       `dafny verify exited ${verify.timedOut ? "on timeout" : verify.exitCode}`,
       (verify.stdout + "\n" + verify.stderr).trim(),
     ]);
   }
-  const audit = await runDafny(root, ["audit", path], imageId);
+  const audit = await runDafny(root, ["audit", ...paths], run);
   const auditOutput = audit.stdout + "\n" + audit.stderr;
   if (audit.timedOut || audit.exitCode !== 0 || !auditOutput.includes(AUDIT_CLEAN)) {
     return refuse([`dafny audit did not report 0 findings`, auditOutput.trim()]);
@@ -284,7 +294,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
     );
   }
 
-  const version = await runDafny(root, ["--version"], imageId);
+  const version = await runDafny(root, ["--version"], run);
   const dafnyVersion = version.stdout.trim();
   if (version.exitCode !== 0 || !/^\d+\.\d+\.\d+\S*$/.test(dafnyVersion)) {
     return refuse([`could not read the Dafny version: ${dafnyVersion}`]);
@@ -298,7 +308,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   if (dirtyAfter === null) return refuse([`git status failed in ${root}`]);
   if (dirtyAfter.length > 0) return refuse(dirtyAfter.map((l) => `work tree changed while Dafny ran: ${l}`));
 
-  const record = buildRecord({ ...input, commit, dafnyVersion, image, imageId });
+  const record = buildRecord({ ...input, includes: included.files.slice(1), commit, dafnyVersion, image, imageId });
   if (out === null) return { success: true, errors: [], record, writtenTo: null };
   try {
     await writeFile(out, JSON.stringify(record, null, 2) + "\n", "utf-8");

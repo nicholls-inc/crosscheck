@@ -94,9 +94,17 @@ describe("unverifiedTheorems (DE-5)", () => {
 
 describe("rerunCommand (DE-9)", () => {
   it("is the exact command for a plain path", () => {
-    expect(rerunCommand("crosscheck-dafny:latest", "proofs/Abs.dfy")).toBe(
-      `docker run --rm --network=none -v "$PWD":/work 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' && ` +
-        `out=$(docker run --rm --network=none -v "$PWD":/work 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
+    expect(rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"])).toBe(
+      `docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+        `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
+        `case "$out" in *'Dafny auditor completed with 0 findings'*) true ;; *) false ;; esac`
+    );
+  });
+
+  it("verifies the first file with its includes and audits every file", () => {
+    expect(rerunCommand("img", ["proofs/Abs.dfy", "proofs/Lib.dfy"])).toBe(
+      `docker run --rm --network=none -v "$PWD":/work:ro 'img' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+        `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'img' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
         `case "$out" in *'Dafny auditor completed with 0 findings'*) true ;; *) false ;; esac`
     );
   });
@@ -111,11 +119,11 @@ describe("rerunCommand (DE-9)", () => {
     try {
       writeFileSync(
         join(bin, "docker"),
-        `#!/bin/sh\nfor a; do last2=$prev; prev=$a; done\n` +
-          `case "$last2" in verify) exit ${verifyExit} ;; audit) echo '${auditLine}' >&2; exit ${auditExit} ;; esac\nexit 99\n`
+        `#!/bin/sh\nfor a; do case "$a" in verify|audit) mode=$a ;; esac; done\n` +
+          `case "$mode" in verify) exit ${verifyExit} ;; audit) echo '${auditLine}' >&2; exit ${auditExit} ;; esac\nexit 99\n`
       );
       chmodSync(join(bin, "docker"), 0o755);
-      const run = spawnSync("sh", ["-c", rerunCommand("img", "Abs.dfy")], {
+      const run = spawnSync("sh", ["-c", rerunCommand("img", ["Abs.dfy"])], {
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
       });
       expect(run.status).toBe(expected);
@@ -128,7 +136,7 @@ describe("rerunCommand (DE-9)", () => {
     const path = "it's a/proof.dfy";
     const out = execFileSync("sh", ["-c", `printf %s ${shellQuote(path)}`]).toString();
     expect(out).toBe(path);
-    expect(rerunCommand("img", path)).toContain(`'/work/it'\\''s a/proof.dfy'`);
+    expect(rerunCommand("img", [path])).toContain(`'/work/it'\\''s a/proof.dfy'`);
   });
 });
 
@@ -148,6 +156,7 @@ describe("buildRecord (DE-8, DE-10)", () => {
     const record = buildRecord({
       commit: "0123456789abcdef0123456789abcdef01234567",
       file: "proofs/Abs.dfy",
+      includes: ["proofs/Lib.dfy"],
       statement: "  Abs never returns a negative number. ",
       requirement: " docs/req.md#abs ",
       theorems: ["Arith.Abs", "AbsNonneg"],
@@ -171,7 +180,7 @@ describe("buildRecord (DE-8, DE-10)", () => {
             { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
           ],
           rerun: {
-            command: rerunCommand("crosscheck-dafny:latest", "proofs/Abs.dfy"),
+            command: rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy", "proofs/Lib.dfy"]),
             exit_code: 0,
           },
         },

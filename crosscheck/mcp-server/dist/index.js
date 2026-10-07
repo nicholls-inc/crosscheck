@@ -21010,7 +21010,7 @@ function runDocker(image, tempDir, args, opts) {
     `--memory=${memory}`,
     `--cpus=${cpus}`,
     "-v",
-    `${tempDir}:/work`,
+    opts.readOnly ? `${tempDir}:/work:ro` : `${tempDir}:/work`,
     image,
     ...args
   ];
@@ -21063,8 +21063,9 @@ function dockerImageId(image) {
     proc.on("error", () => resolve(null));
   });
 }
-async function runDafny(tempDir, args, image = getDockerImage()) {
+async function runDafny(tempDir, args, { image = getDockerImage(), readOnly = false } = {}) {
   return runDocker(image, tempDir, args, {
+    readOnly,
     memory: "512m",
     cpus: "1",
     timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -21353,7 +21354,7 @@ async function dafnyCleanup() {
 
 // src/tools/evidence.ts
 import { execFile } from "node:child_process";
-import { lstat, readFile as readFile2, realpath, stat as stat2, writeFile as writeFile3 } from "node:fs/promises";
+import { lstat, readFile as readFile2, realpath, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolvePath, sep } from "node:path";
 var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
@@ -21393,10 +21394,10 @@ function unverifiedTheorems(verifyStdout, theorems) {
 function shellQuote(s) {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
-function rerunCommand(image, file) {
-  const run = `docker run --rm --network=none -v "$PWD":/work ${shellQuote(image)}`;
-  const path = shellQuote(`/work/${file}`);
-  return `${run} verify ${path} && out=$(${run} audit ${path} 2>&1) && case "$out" in *'${AUDIT_CLEAN}'*) true ;; *) false ;; esac`;
+function rerunCommand(image, files) {
+  const run = `docker run --rm --network=none -v "$PWD":/work:ro ${shellQuote(image)}`;
+  const paths = files.map((f) => shellQuote(`/work/${f}`));
+  return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && case "$out" in *'${AUDIT_CLEAN}'*) true ;; *) false ;; esac`;
 }
 function claimId(file) {
   const slug = file.replace(/\.dfy$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -21418,7 +21419,7 @@ function buildRecord(facts) {
           { component: "Z3 solver shipped with the Dafny release", version: `Dafny ${facts.dafnyVersion}` },
           { component: `Dafny Docker image ${facts.image}`, version: facts.imageId }
         ],
-        rerun: { command: rerunCommand(facts.image, facts.file), exit_code: 0 }
+        rerun: { command: rerunCommand(facts.image, [facts.file, ...facts.includes]), exit_code: 0 }
       }
     ]
   };
@@ -21467,14 +21468,14 @@ async function includedFiles(root, file, source) {
   }
   return { files, errors };
 }
-async function outputTarget(root, outputPath, covered) {
+async function outputTarget(root, outputPath) {
   const fail = (why) => ({ out: null, error: `outputPath ${outputPath} ${why}` });
   const out = resolvePath(root, outputPath);
   const rel = relative(root, out);
   if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
     return fail(`is not inside the work tree ${root}`);
   }
-  if (rel.split(sep).includes(".git")) return fail("is inside .git");
+  if (rel.split(sep).some((s) => s.toLowerCase() === ".git")) return fail("is inside .git");
   let parent;
   try {
     parent = await realpath(dirname(out));
@@ -21485,13 +21486,17 @@ async function outputTarget(root, outputPath, covered) {
   const existing = await lstat(out).catch(() => null);
   if (existing === null) return { out, error: null };
   if (existing.isSymbolicLink()) return fail("is a symbolic link");
-  for (const path of covered) {
-    const target = await stat2(resolvePath(root, path));
-    if (target.ino === existing.ino && target.dev === existing.dev) {
-      return fail(`would overwrite ${path}, which the record covers`);
-    }
+  if (!await isEvidenceRecord(out)) {
+    return fail("names an existing file that is not an evidence record");
   }
   return { out, error: null };
+}
+async function isEvidenceRecord(path) {
+  try {
+    return JSON.parse(await readFile2(path, "utf-8"))?.format === "evidence-record/1";
+  } catch {
+    return false;
+  }
 }
 function refuse(errors, record2 = null) {
   return { success: false, errors, record: record2, writtenTo: null };
@@ -21519,22 +21524,27 @@ async function dafnyEvidence(input) {
   if (included.errors.length > 0) return refuse(included.errors);
   let out = null;
   if (input.outputPath !== void 0) {
-    const target = await outputTarget(root, input.outputPath, included.files);
+    const target = await outputTarget(root, input.outputPath);
     if (target.error !== null) return refuse([target.error]);
     out = target.out;
   }
   const image = getDockerImage();
   const imageId = await dockerImageId(image);
   if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
-  const path = `/work/${input.file}`;
-  const verify = await runDafny(root, ["verify", path, "--log-format", "csv;LogFileName=/dev/stdout"], imageId);
+  const run = { image: imageId, readOnly: true };
+  const paths = included.files.map((f) => `/work/${f}`);
+  const verify = await runDafny(
+    root,
+    ["verify", paths[0], "--verify-included-files", "--log-format", "csv;LogFileName=/dev/stdout"],
+    run
+  );
   if (verify.timedOut || verify.exitCode !== 0) {
     return refuse([
       `dafny verify exited ${verify.timedOut ? "on timeout" : verify.exitCode}`,
       (verify.stdout + "\n" + verify.stderr).trim()
     ]);
   }
-  const audit = await runDafny(root, ["audit", path], imageId);
+  const audit = await runDafny(root, ["audit", ...paths], run);
   const auditOutput = audit.stdout + "\n" + audit.stderr;
   if (audit.timedOut || audit.exitCode !== 0 || !auditOutput.includes(AUDIT_CLEAN)) {
     return refuse([`dafny audit did not report 0 findings`, auditOutput.trim()]);
@@ -21547,7 +21557,7 @@ async function dafnyEvidence(input) {
       )
     );
   }
-  const version2 = await runDafny(root, ["--version"], imageId);
+  const version2 = await runDafny(root, ["--version"], run);
   const dafnyVersion = version2.stdout.trim();
   if (version2.exitCode !== 0 || !/^\d+\.\d+\.\d+\S*$/.test(dafnyVersion)) {
     return refuse([`could not read the Dafny version: ${dafnyVersion}`]);
@@ -21559,7 +21569,7 @@ async function dafnyEvidence(input) {
   const dirtyAfter = await treeChanges(root);
   if (dirtyAfter === null) return refuse([`git status failed in ${root}`]);
   if (dirtyAfter.length > 0) return refuse(dirtyAfter.map((l) => `work tree changed while Dafny ran: ${l}`));
-  const record2 = buildRecord({ ...input, commit, dafnyVersion, image, imageId });
+  const record2 = buildRecord({ ...input, includes: included.files.slice(1), commit, dafnyVersion, image, imageId });
   if (out === null) return { success: true, errors: [], record: record2, writtenTo: null };
   try {
     await writeFile3(out, JSON.stringify(record2, null, 2) + "\n", "utf-8");
@@ -21712,14 +21722,14 @@ function createServer() {
   );
   server.tool(
     "dafny_evidence",
-    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree, and that the file and every file it includes are tracked regular files. Runs `dafny verify` and `dafny audit` on the file as committed, and refuses unless verification passes, the audit has 0 findings (an `{:axiom}` passes verify but not the audit), each named theorem appears in Dafny's verification log under its fully qualified name, and HEAD and the work tree did not change while Dafny ran. Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
+    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree, and that the file and every file it includes are tracked regular files. Runs `dafny verify` on the file and its includes and `dafny audit` on each of them, as committed and mounted read-only, and refuses unless verification passes, the audit has 0 findings (an `{:axiom}` passes verify but not the audit), each named theorem appears in Dafny's verification log under its fully qualified name, and HEAD and the work tree did not change while Dafny ran. Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
     {
       repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
       file: external_exports.string().describe("Path of the .dfy file relative to the work tree's top level, with / separators"),
       statement: external_exports.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
       requirement: external_exports.string().nullable().describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
       theorems: external_exports.array(external_exports.string()).describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
-      outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. Refused when it would overwrite a file the record covers")
+      outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record")
     },
     async (args) => {
       const result = await dafnyEvidence(args);

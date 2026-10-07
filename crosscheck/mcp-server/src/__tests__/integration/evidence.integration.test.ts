@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -93,7 +93,7 @@ describe("dafnyEvidence against a real git repository", () => {
             { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
             { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
           ],
-          rerun: { command: rerunCommand("crosscheck-dafny:latest", "proofs/Abs.dfy"), exit_code: 0 },
+          rerun: { command: rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"]), exit_code: 0 },
         },
       ],
     };
@@ -107,10 +107,11 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(await readFile(join(repo, "out", "record.json"), "utf-8")).toBe(
       JSON.stringify(expected, null, 2) + "\n"
     );
+    const run = { image: "sha256:feed", readOnly: true };
     expect(vi.mocked(runDafny).mock.calls).toEqual([
-      [repo, ["verify", "/work/proofs/Abs.dfy", "--log-format", LOG_FORMAT], "sha256:feed"],
-      [repo, ["audit", "/work/proofs/Abs.dfy"], "sha256:feed"],
-      [repo, ["--version"], "sha256:feed"],
+      [repo, ["verify", "/work/proofs/Abs.dfy", "--verify-included-files", "--log-format", LOG_FORMAT], run],
+      [repo, ["audit", "/work/proofs/Abs.dfy"], run],
+      [repo, ["--version"], run],
     ]);
   });
 
@@ -264,7 +265,7 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(vi.mocked(dockerImageId).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(runDafny).mock.invocationCallOrder[0]
     );
-    expect(vi.mocked(runDafny).mock.calls.map((c) => c[2])).toEqual(["sha256:feed", "sha256:feed", "sha256:feed"]);
+    expect(vi.mocked(runDafny).mock.calls.map((c) => c[2]?.image)).toEqual(["sha256:feed", "sha256:feed", "sha256:feed"]);
   });
 
   it("refuses a failed verify (DE-6)", async () => {
@@ -302,7 +303,9 @@ describe("dafnyEvidence against a real git repository", () => {
   });
 
   it("returns the record but fails when the write fails (DE-11)", async () => {
-    await mkdir(join(repo, "out", "taken.json"), { recursive: true });
+    await mkdir(join(repo, "out"));
+    await writeFile(join(repo, "out", "taken.json"), '{"format": "evidence-record/1"}\n');
+    await chmod(join(repo, "out", "taken.json"), 0o444);
     const result = await dafnyEvidence({ ...input, outputPath: "out/taken.json" });
     expect(result.success).toBe(false);
     expect(result.record?.commit).toBe(commit);
@@ -334,8 +337,9 @@ describe("dafnyEvidence against a real git repository", () => {
       await refusesBeforeDafny(".", `is not inside the work tree ${repo}`);
     });
 
-    it("refuses a path inside .git", async () => {
+    it("refuses a path inside .git, in any case", async () => {
       await refusesBeforeDafny(".git/hooks/pre-commit", "is inside .git");
+      await refusesBeforeDafny("sub/.Git/config", "is inside .git");
     });
 
     it("refuses a missing directory before running Dafny", async () => {
@@ -359,15 +363,17 @@ describe("dafnyEvidence against a real git repository", () => {
       await refusesBeforeDafny("out/r.json", "is a symbolic link");
     });
 
+    const NOT_A_RECORD = "names an existing file that is not an evidence record";
+
     it("refuses to overwrite the verified file, under any spelling", async () => {
-      await refusesBeforeDafny("proofs/Abs.dfy", "would overwrite proofs/Abs.dfy, which the record covers");
-      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", "would overwrite proofs/Abs.dfy, which the record covers");
+      await refusesBeforeDafny("proofs/Abs.dfy", NOT_A_RECORD);
+      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", NOT_A_RECORD);
     });
 
     it("refuses to overwrite a hard link to the verified file", async () => {
       await mkdir(join(repo, "out"));
       await link(join(repo, "proofs", "Abs.dfy"), join(repo, "out", "r.json"));
-      await refusesBeforeDafny("out/r.json", "would overwrite proofs/Abs.dfy, which the record covers");
+      await refusesBeforeDafny("out/r.json", NOT_A_RECORD);
     });
 
     it("refuses to overwrite a file the verified file includes", async () => {
@@ -375,14 +381,27 @@ describe("dafnyEvidence against a real git repository", () => {
         "proofs/Abs.dfy": `include "Lib.dfy"\n${SOURCE}`,
         "proofs/Lib.dfy": "lemma Lib() ensures true {}\n",
       });
-      await refusesBeforeDafny("proofs/Lib.dfy", "would overwrite proofs/Lib.dfy, which the record covers");
+      await refusesBeforeDafny("proofs/Lib.dfy", NOT_A_RECORD);
+    });
+
+    it("refuses to overwrite any other tracked or ignored file, or a directory", async () => {
+      await commitFiles({ "docs/SKILL.md": "# skill\n", "docs/other.json": '{"format": "x"}\n' });
+      await mkdir(join(repo, "out", "dir"), { recursive: true });
+      await writeFile(join(repo, "out", ".env"), "TOKEN=1\n");
+      await refusesBeforeDafny("docs/SKILL.md", NOT_A_RECORD);
+      await refusesBeforeDafny("docs/other.json", NOT_A_RECORD);
+      await refusesBeforeDafny("out/.env", NOT_A_RECORD);
+      await refusesBeforeDafny("out/dir", NOT_A_RECORD);
     });
 
     it("overwrites an earlier record inside the tree", async () => {
-      await commitFiles({ "evidence/abs.json": "{}\n" });
+      await commitFiles({ "evidence/abs.json": '{"format": "evidence-record/1", "commit": "old"}\n' });
       const result = await dafnyEvidence({ ...input, outputPath: "evidence/abs.json" });
       expect(result.writtenTo).toBe(join(repo, "evidence", "abs.json"));
-      expect(JSON.parse(await readFile(join(repo, "evidence", "abs.json"), "utf-8")).commit).toBe(git(repo, "rev-parse", "HEAD"));
+      expect(await readFile(join(repo, "evidence", "abs.json"), "utf-8")).toBe(
+        JSON.stringify(result.record, null, 2) + "\n"
+      );
+      expect(result.record?.commit).toBe(git(repo, "rev-parse", "HEAD"));
     });
   });
 
@@ -399,7 +418,24 @@ describe("dafnyEvidence against a real git repository", () => {
         "proofs/lib/A.dfy": `include "B.dfy"\n`,
         "proofs/lib/B.dfy": `include "../lib/A.dfy"\n`,
       });
-      expect((await dafnyEvidence(input)).errors).toEqual([]);
+      const result = await dafnyEvidence(input);
+      expect(result.errors).toEqual([]);
+      expect(vi.mocked(runDafny).mock.calls[1][1]).toEqual([
+        "audit",
+        "/work/proofs/Abs.dfy",
+        "/work/proofs/lib/A.dfy",
+        "/work/proofs/lib/B.dfy",
+      ]);
+      expect(result.record?.claims[0].rerun.command).toBe(
+        rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy", "proofs/lib/A.dfy", "proofs/lib/B.dfy"])
+      );
+    });
+
+    it("checks an include inside a comment as well", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `// include "Gone.dfy"\n${SOURCE}` });
+      await refusesBeforeDafny([
+        'include "Gone.dfy" in proofs/Abs.dfy is outside the tracked files: not committed: proofs/Gone.dfy',
+      ]);
     });
 
     it("refuses an include of an ignored file", async () => {

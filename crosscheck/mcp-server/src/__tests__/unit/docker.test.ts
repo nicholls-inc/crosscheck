@@ -45,6 +45,31 @@ describe("runDafny", () => {
     ]);
   });
 
+  it("runs a named image with the work tree mounted read-only when asked", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+
+    const promise = runDafny("/tmp/workdir", ["audit", "/work/a.dfy"], { image: "sha256:feed", readOnly: true });
+    mockProc.emit("close", 0);
+    await promise;
+
+    expect(vi.mocked(spawn).mock.lastCall).toEqual([
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--network=none",
+        "--memory=512m",
+        "--cpus=1",
+        "-v",
+        "/tmp/workdir:/work:ro",
+        "sha256:feed",
+        "audit",
+        "/work/a.dfy",
+      ],
+    ]);
+  });
+
   it("collects stdout and stderr", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);

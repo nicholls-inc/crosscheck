@@ -93,7 +93,7 @@ describe("dafny_evidence over MCP", () => {
               { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
               { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
             ],
-            rerun: { command: rerunCommand("crosscheck-dafny:latest", "Abs.dfy"), exit_code: 0 },
+            rerun: { command: rerunCommand("crosscheck-dafny:latest", ["Abs.dfy"]), exit_code: 0 },
           },
         ],
       },
@@ -101,16 +101,21 @@ describe("dafny_evidence over MCP", () => {
   });
 
   it("returns the tool's refusal as data", async () => {
-    const { body } = await call({
+    const { isError, body } = await call({
       repoPath: repo,
       file: "Abs.dfy",
       statement: "Squares are not negative.",
       requirement: null,
       theorems: ["M.AbsNonneg"],
     });
-    expect(body.success).toBe(false);
-    expect(body.errors).toEqual([
-      "theorem not verified in Abs.dfy: M.AbsNonneg; name it as Dafny's verification log does, qualified by every enclosing module and type",
-    ]);
+    expect(isError).toBeFalsy();
+    expect(body).toEqual({
+      success: false,
+      errors: [
+        "theorem not verified in Abs.dfy: M.AbsNonneg; name it as Dafny's verification log does, qualified by every enclosing module and type",
+      ],
+      record: null,
+      writtenTo: null,
+    });
   });
 });
