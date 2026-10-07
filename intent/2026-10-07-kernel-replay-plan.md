@@ -14,7 +14,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 4. Mutation-check the self-test: replace each `leanchecker` call in it with `true`, and remove `debug.skipKernelTC` from the bad module. Each mutant must make the step fail. Run the replay step on the tree from step 2 and see it fail.
 5. Run `actionlint .github/workflows/cgv-ci.yml` if available.
 6. Update `.claude/rules/protected-surfaces.md` (CGV section), `docs/assurance/DEVELOPMENT-FRAMEWORK.md` (stage 4, CGV bullet), `cgv/CLAUDE.md` (local command, CI list) and `cgv/README.md` (trust model row).
-7. Set TB-1.1 to `done` in `docs/TASKS.md` with this intent as its record, and add TB-1.5 for the tier gate's `cgv/**` evidence line. Add a root `JOURNAL.md` entry.
+7. Set TB-1.1 to `done` in `docs/TASKS.md` with this intent as its record, and add TB-1.5 for the tier gate's `cgv/**` evidence line and TB-1.6 for the self-test's prefix-mode gap. Add a root `JOURNAL.md` entry.
 
 ## Files
 
@@ -25,7 +25,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | yes (`docs/assurance/**`) | stage 4 names the replay |
 | `cgv/CLAUDE.md`, `cgv/README.md` | no | local command, CI list, trust model |
 | `intent/2026-09-29-deterministic-evidence-spec.md` | no | SM-6, CI-7 to CI-9 |
-| `docs/TASKS.md`, `JOURNAL.md` | no | TB-1.1 `done`, row TB-1.5, entry |
+| `docs/TASKS.md`, `JOURNAL.md` | no | TB-1.1 `done`, rows TB-1.5 and TB-1.6, entry |
 | `.assurance/protected-surface-amend/kernel-replay-2026-10-07.md` | no | new governance note |
 | `intent/2026-10-07-kernel-replay*.md` | no | stage artefacts |
 
