@@ -1,0 +1,29 @@
+# Intent: Split CG-1.3 into one row per cause of a missed nullability error
+
+Task: CG-1.3. Governing roadmap item: CG-1. Issue: #6.
+
+## Problem statement
+Row CG-1.3 asks for one pull request to close every extractor gap that issue #6 lists. In the replay of past bug fixes in `cgv/docs/evaluation/real-codebase-evaluation-2026-09.md`, 3 of the 5 in-scope bugs were reported only as warnings, ranked #2,397 and #3,094 among about 8,000. Issue #6 names three causes. They live in different code, and two of them carry a design question that the intent of the fix has to settle.
+
+- **Attribute reads two or more levels deep** (`obj.fk.field`, `payload.sub.field`). 2 of the 3 replay bugs. `attribute_facts` in `cgv/src/value_analysis.rs` resolves a field only through a name (`obj.f`, `self.f`), and `receiver_class` gives a class only for a name or a call. `cgv/src/model_extractor.rs` records no target for a `ForeignKey` or `OneToOneField`, so CGV cannot tell what class `obj.fk` holds. `attr_name` in `cgv/src/flow.rs` tracks only `name.field`, so `if obj.fk.field is None: return` narrows nothing. Resolving the read without that narrowing would turn every guarded read into a false error. A null relation raises `AttributeError` on `.field` rather than yielding None, and the fix has to say whether that is a finding.
+- **`d.get(k, default)`**. 1 of the 3 replay bugs: `dict.get(k, "")` returned a stored None into a non-Optional data class field. The `"get"` arms of the method match in `cgv/src/value_analysis.rs` make `.get(k)`, `.get(k, None)` and `.get(k, default=None)` nullable. A non-None default gives unknown nullability, except on a module-level dict of literals, where the join of its values and the default is exact. Making every such call nullable turns warnings into errors on each dict whose values CGV does not know, and `.get` has other receivers too: `Model.objects.get(...)` returns an instance, and `os.environ.get(k, "")` never returns None. Open PR #89 (CG-1.9) adds a `k in d` rule under which `d.get(k)` on a dict CGV knows has unknown nullability, and this fix has to agree with it.
+- **A guard in the caller.** The replay's production `IntegrityError` was reported on the exact line, but the fix added `if not x.field: return` to the calling task and left the write in the callee unguarded, so the error stayed. Narrowing is per function, and `cgv/README.md` does not say so. Open PR #89 (CG-1.9) adds caller guards: when the project shows every caller and each one narrows `arg.f`, a read of `p.f` in the callee has unknown nullability, a warning rather than an error. The maintainer decided on that PR that a caller guard lowers an error to a warning and never clears it, because a caller outside the project can still pass None. Issue #6's "consider carrying a precondition from a caller's guard to the callee when every caller guards" is that rule, so no further row is needed for it. What remains is the documentation and a fixture that pins the replay case, and its expected verdict depends on CG-1.9.
+
+One pull request with all three would mix a relation model and a narrowing change, a precision trade-off that needs a benchmark run before it is decided, and a documentation change that waits for another task. A reviewer could not tell which fixture covers which rule, and a fault in one would hold back the other two.
+
+## Proposed outcome
+`docs/TASKS.md` replaces row CG-1.3 with three rows, in the order of how many replay bugs each cause hid: CG-1.28 (chained attribute reads, 2), CG-1.29 (`d.get(k, default)`, 1) and CG-1.30 (per-function narrowing, documented and pinned, 1). Each row names the code that holds the gap and asks for a fixture in which the bug is an error, or for CG-1.30 the verdict that CG-1.9 gives. CG-1.30 depends on CG-1.9. No other row names CG-1.3 in `Depends on`, so no dependency changes.
+
+This pull request does nothing else, as the queue's rule for splitting a task requires. It sets no row to `done`. Issue #6 stays open until the last of the three rows is done.
+
+## Affected users and systems
+- The maintainer and the agents that pick up CG-1 work through `node scripts/ci/task-queue.mjs next`.
+- `docs/TASKS.md` and this intent. Neither is protected, so the change is Tier 1.
+
+## Constraints
+- Task IDs are never reused. CG-1.28 to CG-1.30 appear in no row on `origin/main` and in no open pull request's diff. The highest CG ID on `origin/main` is CG-1.27, and the open pull requests use none above CG-1.20.
+- The task queue check must pass: each new ID names roadmap item CG-1, each dependency exists, and every status is `todo`.
+- The evaluation also found that an `Optional` value coming through a `@property` or tuple unpacking gives a warning where mypy and pyright give an error. Issue #6 does not list it, and the split rule allows only rows that replace CG-1.3, so it is not added here. It needs its own row or issue.
+
+## Open questions
+None for the split. Each new row carries its own question for its own intent. For CG-1.28, whether a read through a relation that may be null is a finding, and how a chained name is narrowed. For CG-1.29, which receivers and value types count as a dict whose stored values may be None, measured on the benchmark corpus first.
