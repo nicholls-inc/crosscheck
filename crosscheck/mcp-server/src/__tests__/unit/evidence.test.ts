@@ -203,12 +203,16 @@ describe("buildRecord (DE-8, DE-10)", () => {
             { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
           ],
           rerun: {
-            command: rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy", "proofs/Lib.dfy"]),
+            command:
+              `docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'sha256:feed' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+              `out=$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'sha256:feed' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
+              `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`,
             exit_code: 0,
           },
         },
       ],
     });
+    expect(record.claims[0].rerun.command).not.toContain("crosscheck-dafny:latest");
     expect(Object.keys(record.claims[0])).toEqual([
       "id",
       "statement",

@@ -4,10 +4,16 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getDockerImage } from "../../docker.js";
+import { dockerImageId, getDockerImage } from "../../docker.js";
 import { dafnyEvidence, rerunCommand } from "../../tools/evidence.js";
 
 const repos: string[] = [];
+
+async function imageId(): Promise<string> {
+  const id = await dockerImageId(getDockerImage());
+  if (id === null) throw new Error(`could not read the ID of image ${getDockerImage()}`);
+  return id;
+}
 
 async function repoWith(source: string, extra: Record<string, string> = {}): Promise<string> {
   const repo = realpathSync(await mkdtemp(join(tmpdir(), "evidence-e2e-")));
@@ -41,6 +47,7 @@ describe.skipIf(!process.env.RUN_E2E)("dafny_evidence E2E", () => {
     });
     expect(result.errors).toEqual([]);
     expect(result.record!.claims[0].trusted_base[0].version).toMatch(/^4\.11\.0/);
+    expect(result.record!.claims[0].rerun.command).toBe(rerunCommand(await imageId(), ["Abs.dfy"]));
     const rerun = spawnSync("sh", ["-c", result.record!.claims[0].rerun.command], { cwd: repo });
     expect(rerun.status).toBe(0);
   }, 300_000);
@@ -72,14 +79,14 @@ describe.skipIf(!process.env.RUN_E2E)("dafny_evidence E2E", () => {
     const unproved = await repoWith(main, { "Lib.dfy": "lemma Bad() ensures false {}\n" });
     const r1 = await dafnyEvidence({ ...input, repoPath: unproved });
     expect(r1.errors[0]).toBe("dafny verify exited 4");
-    const rerun1 = spawnSync("sh", ["-c", rerunCommand(getDockerImage(), ["Abs.dfy", "Lib.dfy"])], { cwd: unproved });
+    const rerun1 = spawnSync("sh", ["-c", rerunCommand(await imageId(), ["Abs.dfy", "Lib.dfy"])], { cwd: unproved });
     expect(rerun1.status).toBe(4);
 
     const axiom = await repoWith(main, { "Lib.dfy": "lemma {:axiom} Bad() ensures false\n" });
     const r2 = await dafnyEvidence({ ...input, repoPath: axiom });
     expect(r2.errors[0]).toBe("dafny audit did not report 0 findings");
     expect(r2.errors[1]).toContain("Lib.dfy(1,15)");
-    const rerun2 = spawnSync("sh", ["-c", rerunCommand(getDockerImage(), ["Abs.dfy", "Lib.dfy"])], { cwd: axiom });
+    const rerun2 = spawnSync("sh", ["-c", rerunCommand(await imageId(), ["Abs.dfy", "Lib.dfy"])], { cwd: axiom });
     expect(rerun2.status).toBe(1);
 
     const proved = await repoWith('include "Lib.dfy"\nlemma T() ensures 2 == 2 { Ok(); }\n', {
@@ -102,7 +109,7 @@ describe.skipIf(!process.env.RUN_E2E)("dafny_evidence E2E", () => {
     });
     expect(result.success).toBe(false);
     expect(result.errors[0]).toBe("dafny audit did not report 0 findings");
-    const rerun = spawnSync("sh", ["-c", rerunCommand(getDockerImage(), ["Abs.dfy"])], { cwd: repo });
+    const rerun = spawnSync("sh", ["-c", rerunCommand(await imageId(), ["Abs.dfy"])], { cwd: repo });
     expect(rerun.status).toBe(1);
   }, 300_000);
 });

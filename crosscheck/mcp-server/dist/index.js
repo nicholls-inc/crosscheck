@@ -21409,8 +21409,8 @@ function unverifiedTheorems(verifyStdout, theorems) {
 function shellQuote(s) {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
-function rerunCommand(image, files) {
-  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(image)}`;
+function rerunCommand(imageId, files) {
+  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(imageId)}`;
   const paths = files.map((f) => shellQuote(`/work/${f}`));
   return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`;
 }
@@ -21437,7 +21437,7 @@ function buildRecord(facts) {
           { component: "Z3 solver shipped with the Dafny release", version: `Dafny ${facts.dafnyVersion}` },
           { component: `Dafny Docker image ${facts.image}`, version: facts.imageId }
         ],
-        rerun: { command: rerunCommand(facts.image, [facts.file, ...facts.includes]), exit_code: 0 }
+        rerun: { command: rerunCommand(facts.imageId, [facts.file, ...facts.includes]), exit_code: 0 }
       }
     ]
   };
@@ -21487,6 +21487,8 @@ async function includedFiles(root, file, source) {
       let reason = `resolves outside the work tree: ${target}`;
       if (!outside && !PLAIN_PATH.test(target)) {
         reason = "the path has characters outside A-Z a-z 0-9 _ . / -, which Dafny may decode before it opens the file";
+      } else if (!outside && !path.endsWith(".dfy")) {
+        reason = "the path does not end in .dfy";
       } else if (!outside) {
         try {
           reason = await untrackedReason(root, path);
@@ -21508,7 +21510,9 @@ async function outputTarget(root, outputPath) {
   if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
     return fail(`is not inside the work tree ${root}`);
   }
-  if (rel.split(sep).some((s) => s.toLowerCase() === ".git")) return fail("is inside .git");
+  if (!out.endsWith(".json")) return fail("does not end in .json");
+  const dotDir = rel.split(sep).slice(0, -1).find((s) => s.startsWith("."));
+  if (dotDir !== void 0) return fail(`passes through a directory whose name starts with ".": ${dotDir}`);
   let parent;
   try {
     parent = await realpath(dirname(out));
