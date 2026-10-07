@@ -61,7 +61,8 @@ function loadGlobs(rulesPath) {
 }
 
 // Simple glob matcher supporting ** (any depth, including zero segments)
-// and * (any run of characters within a single path segment).
+// and * (any run of characters within a single path segment). The s flag lets
+// ** match a newline in a path.
 function globToRegExp(glob) {
   let re = '';
   for (let i = 0; i < glob.length; i++) {
@@ -83,7 +84,7 @@ function globToRegExp(glob) {
       re += c;
     }
   }
-  return new RegExp('^' + re + '$');
+  return new RegExp('^' + re + '$', 's');
 }
 
 function matchesAnyGlob(relPath, globs) {

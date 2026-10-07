@@ -159,7 +159,7 @@ The plugin exposes seven MCP tools across two engines:
 | Tool | Engine | Description |
 |------|--------|-------------|
 | `dafny_verify` | Dafny | Verify Dafny source code |
-| `dafny_evidence` | Dafny | Emit an evidence record with one `proved` claim for a committed `.dfy` file, after `dafny verify` passes and `dafny audit` reports 0 findings ([spec](../intent/2026-10-06-dafny-evidence-record-spec.md)) |
+| `dafny_evidence` | Dafny | Emit an evidence record with one `proved` claim for a committed `.dfy` file, after `dafny verify` passes and `dafny audit` reports 0 findings ([spec](../intent/2026-10-06-dafny-evidence-record-spec.md)). `/generate-verified evidence: <path.dfy>` calls it ([spec](../intent/2026-10-06-generate-verified-evidence-spec.md)) |
 | `dafny_compile` | Dafny | Compile Dafny to Python or Go |
 | `dafny_cleanup` | Dafny + Lean | Remove stale Dafny/Lean temp directories |
 | `lean_check` | Lean | Parse + typecheck Lean 4 source via `lake build` (Mathlib pre-warmed; build gate for `/lean-spec`, `/lean-impl`, `/correspondence-review`, and `/drt-oracle`) |

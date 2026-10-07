@@ -275,9 +275,9 @@ After module-map sign-off, write
 }
 ```
 
-Compute `hash_value` over `hash_inputs` using the discipline at
-`crosscheck/skills/intent-check/references/attestation-schema.md`
-lines 76–92: sort input paths alphabetically, concatenate raw file
+Compute `hash_value` over `hash_inputs` using the discipline under
+"SHA-256 computation (exact)" in
+`crosscheck/skills/intent-check/references/attestation-schema.md`: sort input paths alphabetically, concatenate raw file
 bytes with no delimiter, single SHA-256, lowercase hex output.
 
 **Coordination mechanism, not tamper-resistance.** Documented here
@@ -292,7 +292,8 @@ absent. See `crosscheck/skills/draft-invariants/SKILL.md` §1c for the
 counterpart validation logic.
 
 The marker is **NOT a protected surface**. It is a session-scoped
-attestation, like `.assurance/intent-check-attestation.json`.
+record. Like `.assurance/intent-check-attestation.json`, it is not
+evidence and no gate requires it.
 
 ### Step 6 — Parallel `/draft-invariants` dispatch
 
@@ -599,7 +600,9 @@ After Step 11 closes:
   orchestrator closes:
   - `/crosscheck:invariant-coverage-scaffold` to wire test enforcement
   - `/crosscheck:spec-adversary` on coverage-thinnest modules
-  - `/crosscheck:intent-check` per PR touching protected surfaces
+  - `/crosscheck:intent-check`, optionally, on a PR touching protected
+    surfaces, as a search for likely mismatches. Its verdict is advisory,
+    and no gate or reviewer requires its attestation
   - `/crosscheck:assurance-status` for periodic drift checks
 
 ## What "ready for implementation" means
@@ -628,8 +631,9 @@ Every run must pass these gates before declaring complete:
       (Step 3); ≤ 50 terms; section citations present
 - [ ] Module map written and user sign-off received (Step 4)
 - [ ] Marker file written with content hash matching the discipline at
+      "SHA-256 computation (exact)" in
       `crosscheck/skills/intent-check/references/attestation-schema.md`
-      lines 76–92 (Step 5); marker is NOT framed as tamper-resistant
+      (Step 5); marker is NOT framed as tamper-resistant
 - [ ] Parallel `/draft-invariants` dispatch in a single assistant turn
       (Step 6); per-subagent quality gate validated; partial-failure
       recovery prompted user if any subagent hard-failed

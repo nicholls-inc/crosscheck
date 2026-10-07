@@ -42,7 +42,7 @@ HEADER_RE = re.compile(r"^## (I\d+[a-z]?):")
 # Matches a test-comment like ``# Invariant I1: <NAME>.``
 # Accepts both ``//`` and ``#`` to keep the gate portable across languages
 # even though Python is the only consumer today.
-COMMENT_RE = re.compile(r"^\s*(?://|#)\s*Invariant\s+([A-Z]+\d+[a-z]?):\s")
+COMMENT_RE = re.compile(r"^\s*(?://|#)\s*Invariant\s+(I\d+[a-z]?):\s")
 
 # Aspirational marker: ``<!-- aspirational -->`` on the same line as a
 # ``## I<N>: <Name>`` header means the invariant is declared but not yet

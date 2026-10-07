@@ -39,8 +39,8 @@ Orchestrator for specification-chain assurance and governance scaffolding. Named
 
 | Skill | What it does |
 |-------|-------------|
-| `/intent-check` | Layer 5 two-LLM round-trip informalization over (invariant prose, covering test, code diff); appends to FP-tracker CSV and emits a JSON attestation |
-| `/spec-adversary` | Layer 6 search, not proof — propose up to 3 candidate invariants the spec is missing, formatted for accept/reject/defer triage |
+| `/intent-check` | Layer 5 two-LLM round-trip informalization over (invariant prose, covering test, code diff); appends to FP-tracker CSV and writes an advisory JSON attestation that no gate reads |
+| `/spec-adversary` | Layer 6 best-effort search, not proof — propose up to 3 candidate invariants the spec is missing, formatted for accept/reject/defer triage |
 | `/audit-spec-coverage` | Layer 6 doc-wide — emit section→invariant and audit-finding-ID→invariant coverage matrices, cap output at 15 prioritised gaps with 4-path triage blocks |
 | `/audit-invariant-consistency` | Layer 5+6 hybrid — three passes (within-module, cross-module, invariant-vs-spec) emitting capped consistency findings with `Accept (amend spec)` as a first-class triage option |
 
@@ -68,7 +68,7 @@ Classify the user's request to determine which skill to invoke. The spec chain d
 | Bootstrap acceptance | "User-observable flows", "acceptance oracle", "scenarios for smoke" | `/acceptance-oracle-draft` |
 | Status dashboard | "How's the repo doing?", "assurance status", "weekly check-in" | `/assurance-status` |
 | Roadmap drift | "Are the docs accurate?", "ROADMAP check", Status field sanity | `/assurance-roadmap-check` |
-| Spec-intent alignment (Layer 5) | Protected-surface PR, "does the spec match the code", "run intent-check" | `/intent-check` |
+| Spec-intent alignment (Layer 5) | User asks for an advisory spec-intent search: "does the spec match the code", "run intent-check", optionally on a protected-surface PR. Never a required step | `/intent-check` |
 | Spec completeness (Layer 6) | "What are we missing?", "adversarial invariants", quarterly module review | `/spec-adversary` |
 | Spec coverage probe (Layer 6) | "spec coverage", "coverage matrix", "which spec sections lack invariants", "audit-finding coverage" | `/audit-spec-coverage` |
 | Invariant consistency audit (Layer 5+6) | "are these invariants consistent", "find contradictions", "consistency audit", "invariant contradictions" | `/audit-invariant-consistency` |
@@ -153,7 +153,7 @@ Every result must pass these quality gates before delivery:
 
 **For spec-chain verification output (`/intent-check`, `/spec-adversary`, `/audit-spec-coverage`, `/audit-invariant-consistency`):**
 - **Structural separation** — `/intent-check` uses two distinct model contexts (back-translator blind to original requirement, diff-checker compares)
-- **FP-tracker appended** — `/intent-check` writes a CSV row matching the FP-tracker schema documented in `../skills/intent-check/references/fp-tracker-schema.md` (`date,invariant_touched,phase_verdict,human_verdict`) and a JSON attestation with `protected_files / content_hash / verdict / checked_at / pipeline_output`
+- **FP-tracker appended** — `/intent-check` writes a CSV row matching the FP-tracker schema documented in `../skills/intent-check/references/fp-tracker-schema.md` (`date,invariant_touched,phase_verdict,human_verdict`) and a JSON attestation with `protected_files / content_hash / verdict / checked_at / pipeline_output`; the report calls the verdict advisory and does not present the attestation as required for a commit, a merge or an amendment
 - **Signal-to-noise** — `/spec-adversary` proposes ≤3 candidate invariants; `/audit-spec-coverage` and `/audit-invariant-consistency` cap at ≤15 prioritised findings each. Avoid spraying low-value suggestions
 - **Paired evidence** — `/audit-spec-coverage` cites spec line ranges + invariant IDs; `/audit-invariant-consistency` cites paired file:line evidence (invariant ↔ invariant, or invariant ↔ spec) for every finding
 - **4-path triage** — `/audit-spec-coverage` and `/audit-invariant-consistency` emit a 4-path triage block per finding (`Accept (fix invariant)` / `Accept (amend spec via /protected-surface-amend)` / `Reject` / `Defer`), with the spec-amend path first-class — not buried
@@ -162,7 +162,7 @@ Every result must pass these quality gates before delivery:
 **For governance output (`/protected-surface-amend`):**
 - **Amendment block complete** — rationale, authority, linked roadmap item, diff plan all present
 - **Partition-aware** — amendment cites which class (Harness/workflow vs Module invariants/tests) the touched file belongs to
-- **Authority cited** — authority line names a ROADMAP item, prior attestation, or human decision, not "agent judgement"
+- **Authority cited** — authority line names a ROADMAP item or a human decision, not "agent judgement" and not an LLM verdict such as an `/intent-check` attestation
 
 **For adequacy output (`/rationale`):**
 - **Claim tree soundness** — tree structure is valid: if all leaves hold, the root holds (structural check; does not catch missing branches — see `../docs/specs/rationale-2026-05-11.md` §7–§8)
@@ -187,7 +187,7 @@ If any gate fails, re-execute the skill with explicit instructions to address th
 - Protected surfaces partition into two classes — Class A: Harness/workflow definitions (agent/pipeline config, prompts, workflow YAMLs); Class B: Module invariant specifications & tests (`docs/invariants/*.md`, property-test files). Every amendment must cite which class
 - Amendments precede edits — `/protected-surface-amend` produces the amendment block *before* the protected file is changed, not after
 - Dual-track enforcement is non-negotiable — every deterministic check must have both a pre-commit hook and a CI job; do not accept "just CI" or "just pre-commit" as sufficient
-- Attestation over trust — pre-commit hooks are fast attestation checks, verifying that slow LLM pipelines actually ran; they must not invoke LLMs themselves
+- Deterministic hooks only — pre-commit hooks run fast deterministic checks; they must not invoke LLMs, and they must not require an LLM verdict, such as an `/intent-check` attestation, to pass
 - ROADMAP status vocabulary is fixed — `Not started / In progress / Blocked / Done / Deferred` (with `Reason:` line on Deferred); `/assurance-roadmap-check` enforces this
 
 ### General
