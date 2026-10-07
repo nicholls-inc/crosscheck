@@ -21,7 +21,7 @@ const CHECKER_TESTS = 'scripts/check-evidence-record.test.mjs';
 
 // The step's `run:` script, read by indentation so no YAML parser is needed.
 function stepScript() {
-  const lines = readFileSync(join(REPO_ROOT, WORKFLOW), 'utf8').split('\n');
+  const lines = readFileSync(join(REPO_ROOT, WORKFLOW), 'utf8').split(/\r?\n/);
   const start = lines.findIndex((l) => l.trim() === `- name: ${STEP}`);
   assert.notEqual(start, -1, `${WORKFLOW} has a step named "${STEP}"`);
   const stepIndent = lines[start].search(/\S/);
@@ -85,14 +85,20 @@ test('EC-1: the step fails when checkRecord accepts everything', () => {
 });
 
 test('EC-1: no step or job condition, swallowed failure, path filter or expression can skip or hide the check', () => {
-  const lines = readFileSync(join(REPO_ROOT, WORKFLOW), 'utf8')
+  // Normalise formatting that does not change meaning: CRLF, comments, trailing
+  // whitespace and blank lines.
+  const text = readFileSync(join(REPO_ROOT, WORKFLOW), 'utf8')
     .split('\n')
-    .filter((l) => !l.trim().startsWith('#'));
-  const text = lines.join('\n');
-  assert.doesNotMatch(text, /^\s*(-\s+)?if:/m, 'no `if:` on the job or any step');
+    .map((l) => l.replace(/\r$/, '').replace(/(^|\s)#.*$/, '').trimEnd())
+    .filter((l) => l !== '')
+    .join('\n');
+  assert.doesNotMatch(text, /(^|[\s{,])["']?if["']?\s*:/m, 'no `if:` on the job or any step');
   assert.doesNotMatch(text, /continue-on-error/, 'no `continue-on-error`');
-  assert.doesNotMatch(text, /^\s*paths(-ignore)?:/m, 'no path filter');
+  assert.doesNotMatch(text, /^\s*(paths|paths-ignore|branches|branches-ignore|tags|tags-ignore):/m, 'no filter');
   assert.doesNotMatch(text, /\$\{\{/, 'no expression in the workflow');
-  assert.match(text, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened\]$/m);
-  assert.match(text, /^permissions:\n {2}contents: read\n\n/m, 'contents: read is the only permission');
+  // The whole `on:` block: one trigger, with nothing under it but `types`.
+  assert.match(text, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened\]\n(?! )/m);
+  // One `permissions:` key in the file, so no job can grant more.
+  assert.equal(text.match(/\bpermissions\s*:/g)?.length, 1, 'exactly one permissions key');
+  assert.match(text, /^permissions:\n {2}contents: read(\n(?! )|$)/m, 'contents: read is the only permission');
 });
