@@ -17,11 +17,11 @@ theorem uses : 1 = 2 := (bad).elim
 
 ## Proposed outcome
 - CGV CI replays the built environment through the kernel and fails on any declaration that does not re-check. It uses `leanchecker`, which the pinned toolchain (`leanprover/lean4:v4.28.0`) ships in its `bin/`, so no dependency is added.
-- The replay covers two sets. `leanchecker --fresh ContractGraph.Main` replays every declaration in the import closure of `ContractGraph.Main` into an empty environment: the Lean library, `leansqlite`, `plausible` and every `ContractGraph` module that `Main` imports. Every protected theorem lives in that closure today. `leanchecker ContractGraph` replays the declarations of every module whose name starts with `ContractGraph`, so a module that `Main` does not import is still checked.
+- The replay covers two sets. `leanchecker --fresh ContractGraph.Main` replays every declaration in the import closure of `ContractGraph.Main` into an empty environment: the Lean library, `leansqlite` and every `ContractGraph` module that `Main` imports. Every protected theorem lives in that closure today. `leanchecker ContractGraph` replays the declarations of every module whose name starts with `ContractGraph`, so a module that `Main` does not import is still checked.
 - A self-test step in the same workflow compiles a module with the lines above and a second module that imports it, and fails unless both replay modes reject them. A toolchain bump that changes what `leanchecker` catches then fails CI instead of passing silently.
 - `.claude/rules/protected-surfaces.md`, `cgv/CLAUDE.md`, `cgv/README.md` and `docs/assurance/DEVELOPMENT-FRAMEWORK.md` say the kernel replay runs, and the rules stop calling it not yet reached. The generator's header already says that its own axiom check does not reach such a declaration, which stays true, so the generator and the manifest do not change.
 
-Measured on this branch on a local macOS arm64 machine: the plain replay takes 3.5 s and the fresh replay 48 to 57 s. The self-test's fresh replay takes 45 s, because its module imports `Lean`. Recent CGV CI runs took 73 to 184 s, so the job grows by about two minutes.
+Measured on this branch on a local macOS arm64 machine: the plain replay takes 3.5 s and the fresh replay 48 to 57 s. The self-test's fresh replay takes 45 s, because its module imports `Lean`. Recent CGV CI runs took 73 to 184 s, so the job grows by about 100 s on this machine. A GitHub x86 runner may be slower.
 
 ## Affected users and systems
 - Anyone who changes `cgv/`. A declaration that the kernel rejects now fails CGV CI.
@@ -38,6 +38,6 @@ Measured on this branch on a local macOS arm64 machine: the plain replay takes 3
 None. The task row and the issue state the outcome, and the measured times answer the issue's open question.
 
 Three limits stay, and the spec flags each:
-- `leanchecker` skips unsafe and `partial` constants (`replay'` in the toolchain's `src/lean/LeanChecker/Replay.lean`). A safe declaration that uses one is replayed only after its dependencies, so the kernel sees an unknown constant and the replay fails. That is inferred from the source, not tested here.
-- `leanchecker` checks with the same kernel that built the files. Its own docstring says it is "not an external verifier, simply a tool to detect environment hacking". A second, independently written checker stays not yet reached, as TB-1 already says.
+- `leanchecker` skips constants whose kernel safety is `unsafe` or `partial` (`replay'` in the toolchain's `src/lean/LeanChecker/Replay.lean`). An ordinary `partial def` is not one of them, since it elaborates to a safe constant. A safe theorem that uses a skipped constant fails the replay with `(kernel) unknown constant`, which a local run with a `safety := .partial` definition added under `skipKernelTC` showed.
+- `leanchecker` checks with the same kernel that built the files. Its own docstring says it is "not an external verifier, simply a tool to detect environment hacking". A second, independently written checker stays not yet reached. The property that blocks it is an export of the proofs that a second checker reads, and the open question is which checker to use (roadmap item TB-1).
 - `implemented_by` and `extern` let compiled code differ from the checked definition. The replay does not see that. TB-1.2 (#48) covers it.

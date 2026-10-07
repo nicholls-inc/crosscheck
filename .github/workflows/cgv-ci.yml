@@ -1,7 +1,7 @@
 name: CGV CI
 
 # Deterministic evidence for the contract graph verifier (requirements CI-1 to
-# CI-6 in intent/2026-09-29-deterministic-evidence-spec.md). No LLM, no secrets.
+# CI-8 in intent/2026-09-29-deterministic-evidence-spec.md). No LLM, no secrets.
 
 on:
   pull_request:

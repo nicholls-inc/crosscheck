@@ -87,7 +87,7 @@ Evidence at this stage comes from deterministic CI jobs:
   reachable from `constraintImplies`, `IsDataPath` or `stepwiseSound`, changes
   without `cgv/prover/protected-statements.txt` changing too. It also fails when
   a protected theorem or definition depends on `sorry` or on a non-standard
-  axiom. A kernel replay (`leanchecker`) then fails when any declaration of the
+  axiom. A kernel replay (`leanchecker`) then fails when a declaration of the
   built environment does not re-check, such as one added with the kernel check
   switched off.
 - **The tier gate:** `tier-gate.yml` runs the gate's own tests.

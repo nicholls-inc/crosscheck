@@ -33,7 +33,7 @@ This plan is not the root `plan.md`, which belongs to an earlier change. The pul
 
 ## Risks
 
-- **CI time.** The two fresh replays add about 100 s to a job that took 73 to 184 s. Both are single-threaded.
+- **CI time.** The two fresh replays add about 100 s (measured on macOS arm64; a GitHub x86 runner may be slower) to a job that took 73 to 184 s. Both are single-threaded.
 - **The elan proxy.** The self-test calls the toolchain's binaries through `$(lean --print-prefix)/bin`, not through elan proxies, so an elan release without a `leanchecker` proxy does not break it. `lake env leanchecker` resolves the same way.
 - **A toolchain bump** may change `leanchecker`'s flags or output. The self-test then fails, which is the intended signal.
 - **A false failure from the Lean library.** The fresh replay re-checks the whole Lean library. On Lean 4.28.0 it passes (measured locally). A later toolchain whose library fails replay would block CGV CI until the bump is reconsidered.

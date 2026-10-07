@@ -53,12 +53,13 @@ The manifest does not catch changes outside what the listed definitions reach. E
 - **CI-5.** Regenerates the statement manifest and fails on any difference from the committed file, printing the diff, or when the generator fails (SM-2, SM-6).
 - **CI-6.** Calls no LLM and uses no secret.
 - **CI-7.** Added by `intent/2026-10-07-kernel-replay.md`. After CI-3, in `cgv/prover`, replays the built environment through the Lean kernel with the `leanchecker` of the pinned toolchain, and fails if any declaration does not re-check:
-  - `lake env leanchecker --fresh ContractGraph.Main` replays every declaration in the import closure of `ContractGraph.Main` into an empty environment, which covers the Lean library, the `lake` dependencies, and every `ContractGraph` module that `Main` imports;
+  - `lake env leanchecker --fresh ContractGraph.Main` replays every declaration in the import closure of `ContractGraph.Main` into an empty environment, which covers the Lean library, the `lake` dependencies that `Main` imports, and every `ContractGraph` module that `Main` imports;
   - `lake env leanchecker ContractGraph` replays the declarations of every module whose name starts with `ContractGraph` into the environment of its imports.
 - **CI-8.** Added by `intent/2026-10-07-kernel-replay.md`. Before CI-7, a self-test compiles, with the pinned toolchain and outside the Lake package, a module that adds `theorem bad : False := True.intro` under `debug.skipKernelTC` and a second module that imports it. The step fails unless `leanchecker` rejects the first module and `leanchecker --fresh` rejects the second.
 - **CI-9.** Limits of CI-7, flagged and not resolved here:
-  - `leanchecker` skips unsafe and `partial` constants. A safe declaration that uses one is replayed after its dependencies, so the kernel sees an unknown constant and fails. This is inferred from `replay'` in the toolchain's `src/lean/LeanChecker/Replay.lean`, not tested.
-  - The replay uses the kernel that built the files, so it catches a declaration that skipped the kernel, not a kernel bug. A second, independently written checker is not yet reached (roadmap item TB-1).
+  - `leanchecker` skips constants whose kernel safety is `unsafe` or `partial` (`replay'` in the toolchain's `src/lean/LeanChecker/Replay.lean`). A safe theorem that uses one fails the replay with `(kernel) unknown constant`, shown by a local run with a `safety := .partial` definition added under `skipKernelTC`. An ordinary `partial def` elaborates to a safe constant and is replayed.
+  - The replay uses the kernel that built the files, so it catches a declaration that skipped the kernel, not a kernel bug.
+  - The `ContractGraphTest` library is not replayed. No protected theorem lives in it, and `ContractGraph` does not import it. A second, independently written checker is not yet reached. The property that blocks it is an export of the proofs that a second checker reads, and the open question is which checker to use (roadmap item TB-1).
   - `implemented_by` and `extern` let compiled code differ from the checked definition, and the replay does not see that. TB-1.2 (#48) covers it.
 
 ## Workflows removed

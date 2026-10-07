@@ -10,7 +10,7 @@
 
 ### Change Description
 
-1. `.github/workflows/cgv-ci.yml`: two steps are added after the manifest step. A self-test (CI-8) compiles, outside the Lake package, a module that adds `theorem bad : False := True.intro` under `debug.skipKernelTC` and a module that imports it, and fails unless `leanchecker` rejects the first and `leanchecker --fresh` rejects the second. The replay step (CI-7) runs `lake env leanchecker --fresh ContractGraph.Main` and `lake env leanchecker ContractGraph` in `cgv/prover`.
+1. `.github/workflows/cgv-ci.yml`: the header cites CI-1 to CI-8, and two steps are added after the manifest step. A self-test (CI-8) compiles, outside the Lake package, a module that adds `theorem bad : False := True.intro` under `debug.skipKernelTC` and a module that imports it, and fails unless `leanchecker` rejects the first and `leanchecker --fresh` rejects the second. The replay step (CI-7) runs `lake env leanchecker --fresh ContractGraph.Main` and `lake env leanchecker ContractGraph` in `cgv/prover`.
 2. `.claude/rules/protected-surfaces.md`: in the CGV section, the paragraph that calls a declaration the kernel never checked "not yet reached" is replaced with a description of the replay, and the limits that remain.
 3. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: stage 4's CGV bullet names the kernel replay.
 
@@ -53,4 +53,4 @@ Task TB-1.1, issue #47. The generator's axiom check (SM-6) uses `collectAxioms`,
 - [ ] Diff plan enumerates every affected file and section.
 - [ ] No invariant is being weakened.
 - [ ] This amendment block appears in the PR body.
-- [ ] REQUIRES HUMAN VERIFICATION: the extra CGV CI time (about 100 s) is acceptable.
+- [ ] REQUIRES HUMAN VERIFICATION: the extra CGV CI time is acceptable. It was about 100 s on macOS arm64, and a GitHub x86 runner may be slower; this PR's own CGV CI run shows the real figure.
