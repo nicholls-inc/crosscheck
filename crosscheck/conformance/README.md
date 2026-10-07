@@ -94,8 +94,10 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
 
   The file must be UTF-8 and hold one JSON value with nothing after it but
   whitespace. An empty file, a truncated one, a byte-order mark and data after
-  the value each fail with a message that names the byte, written by the
-  checker rather than by `encoding/json`, so a Go upgrade cannot change it. A
+  the value each fail with a message written by the checker rather than by
+  `encoding/json`, so a Go upgrade cannot change it. The byte-order mark and
+  the data after the value name the byte; the empty and truncated messages do
+  not. A
   `check.type` that is not a string fails as `must be a string`. A required
   text field of only white space and format characters, such as a zero-width
   space, is blank. No string may hold U+FFFD or an unpaired surrogate escape,
