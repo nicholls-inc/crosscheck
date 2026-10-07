@@ -31,6 +31,7 @@ The grep `probabilistic \(Layer 5|layer is probabilistic|probabilistic check|Exp
 - No skill, agent or code changes. The skill text that still overstates strengths belongs to VA-1.5 and VA-1.11.
 - The "Probabilistic complements" bullet in the framing section describes property-based testing and DRT, which test on sampled inputs. It is not a Layer 5 claim, so it stays.
 - The implementation-chain summary says Layers 1 to 3 are "deterministically verifiable", while Layers 2 and 3 are not yet reached. That is outside Layers 4 to 6, so a new row, VA-1.13, owns it.
+- Review of this PR raised VA-1.14: the placement of `/acceptance-oracle-draft`, its "exhaustive assurance" wording, and the fact that a person's confirmation that a spec did not weaken is a one-time check in the run where the spec changed. It is a new row, not part of this change.
 
 ## Open questions
 None. The strengths come from rule 7 of the vision, from what each skill's `SKILL.md` says it runs, and from the wording VA-1.4 settled in the hierarchy guide.
