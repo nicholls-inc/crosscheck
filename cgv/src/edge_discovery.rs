@@ -19,10 +19,10 @@
 //! Names are resolved through `resolve`; a call or class that does not
 //! resolve to something extracted gives no edge.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, BoolOp, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
 use serde::Deserialize;
 
@@ -32,7 +32,7 @@ use crate::flow::{self, FlowVisitor, FunctionFlow, Narrowed};
 use crate::function_extractor::{self, FunctionInfo, ParamKind};
 use crate::resolve::{ClassInfo, ProjectIndex};
 use crate::source::LineIndex;
-use crate::value_analysis::{facts_rows, Alt, Callee, Ctx, Scope, SplatValue, ValueFacts};
+use crate::value_analysis::{facts_rows, Alt, CallerGuards, Callee, Ctx, Scope, SplatValue, ValueFacts};
 
 /// A call expression: the key of its call-site node.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -123,7 +123,8 @@ pub fn discover_project_edges(project: &Project) -> Vec<DiscoveredEdge> {
 /// Discover every edge and call-site node of the project.
 pub fn discover(project: &Project) -> Discovered {
     let forwards = kw_forwards(&project.index, &project.summaries);
-    let dict_forwarders: std::collections::HashSet<String> = forwards
+    let guards = caller_guards(project);
+    let dict_forwarders: HashSet<String> = forwards
         .keys()
         .filter(|k| k.ends_with(')'))
         .cloned()
@@ -137,7 +138,8 @@ pub fn discover(project: &Project) -> Discovered {
     for func in &project.index.functions {
         let flow = FunctionFlow::of_info(func);
         let scope = Scope::new(&project.index, &project.summaries, Some(func), &flow)
-            .with_dict_forwarders(&dict_forwarders);
+            .with_dict_forwarders(&dict_forwarders)
+            .with_caller_guards(&guards);
         let doc = project
             .docstrings
             .get(&func.qualified_name)
@@ -159,7 +161,7 @@ pub fn discover(project: &Project) -> Discovered {
             observations: Vec::new(),
             forwarder_edges: Vec::new(),
         };
-        let end = flow::walk_block(&func.body, &flow.entry, &mut walker);
+        let end = flow::walk_block(&func.body, &flow.entry, &flow.exits, &mut walker);
         if flow.falls_through {
             walker.observations.push((None, end));
             // Falling off the end returns None, against a non-Optional
@@ -331,6 +333,350 @@ fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
     targets
 }
 
+/// The caller guards of every function whose callers the project shows
+/// (see `CallerGuards`). A function qualifies when it has a resolved call,
+/// every call by its name resolves to it, its name is used nowhere but as
+/// a call (nor imported under another name, nor named by a string in
+/// `getattr`), it has no decorator, it is not async or a generator, it is
+/// not a dunder method, and a method's class has only project classes and
+/// `object` as bases, transitively. No function qualifies when the project
+/// looks a name up from a computed string (`getattr(o, name)`), and none in
+/// a module that calls `globals()` / `locals()` / `vars()` or imports into
+/// one that does: such a lookup can reach it by a call the project does not
+/// show.
+pub fn caller_guards(project: &Project) -> CallerGuards {
+    let index = &project.index;
+    let mut names = NameUses::default();
+    for m in &project.modules {
+        names.file = m.relative_path.clone();
+        for s in &m.stmts {
+            names.visit_stmt(s);
+        }
+    }
+    let mut guards = CallerGuards::new();
+    let mut resolved = HashMap::new();
+    let mut callers: HashMap<String, HashSet<String>> = HashMap::new();
+    for func in &index.functions {
+        let flow = FunctionFlow::of_info(func);
+        let scope = Scope::new(index, &project.summaries, Some(func), &flow);
+        let mut collector = GuardCollector {
+            scope: &scope,
+            file: &func.source_file,
+            caller: &func.qualified_name,
+            guards: &mut guards,
+            resolved: &mut resolved,
+            callers: &mut callers,
+        };
+        flow::walk_block(&func.body, &flow.entry, &flow.exits, &mut collector);
+    }
+    let entered = entered_functions(&callers);
+    guards.retain(|q, _| {
+        if !entered.contains(q) {
+            return false;
+        }
+        let Some(f) = index.function(q) else { return false };
+        let short = f.name.rsplit('.').next().unwrap_or_default();
+        let sites = &resolved[q];
+        let all_calls_seen = names
+            .calls
+            .get(short)
+            .is_none_or(|calls| calls.is_subset(sites));
+        let dunder = short.starts_with("__") && short.ends_with("__");
+        let bases_known = match &f.class_name {
+            Some(c) => project_bases_only(index, &crate::resolve::qualify(&f.module, c), &mut HashSet::new()),
+            None => true,
+        };
+        let looked_up = names.dynamic
+            || names.lookup_files.contains(&f.source_file)
+            || names
+                .lookup_files
+                .iter()
+                .any(|file| names.imported.get(file).is_some_and(|i| i.contains(short) || i.contains("*")));
+        all_calls_seen
+            && !looked_up
+            && !names.escaping.contains(short)
+            && f.decorators.is_empty()
+            // The body of an async function or a generator runs after the
+            // call, when the caller may have written the field the guard
+            // narrowed.
+            && !f.is_async
+            && !f.is_generator
+            && !dunder
+            && bases_known
+    });
+    guards
+}
+
+/// The functions entered by a call chain that starts at a function nothing
+/// calls: a function called only by itself, or only from a cycle of project
+/// functions that nothing outside calls, has no caller the project shows, so
+/// the guards at its recursive calls prove nothing about its entry.
+fn entered_functions(callers: &HashMap<String, HashSet<String>>) -> HashSet<String> {
+    let mut entered: HashSet<String> = HashSet::new();
+    loop {
+        let before = entered.len();
+        for (callee, from) in callers {
+            if entered.contains(callee) {
+                continue;
+            }
+            let grounded = from
+                .iter()
+                .any(|c| c != callee && (entered.contains(c) || !callers.contains_key(c)));
+            if grounded {
+                entered.insert(callee.clone());
+            }
+        }
+        if entered.len() == before {
+            return entered;
+        }
+    }
+}
+
+/// Whether every base of class `class_q`, transitively, is a project class or `object`.
+fn project_bases_only(index: &ProjectIndex, class_q: &str, seen: &mut HashSet<String>) -> bool {
+    if !seen.insert(class_q.to_string()) {
+        return true;
+    }
+    let Some(class) = index.class(class_q) else { return false };
+    class.bases.iter().all(|b| {
+        matches!(b, Expr::Name(n) if n.id.as_str() == "object")
+            || matches!(index.resolve_expr(&class.module, b), Some(crate::resolve::Symbol::Class(q))
+                if project_bases_only(index, &q, seen))
+    })
+}
+
+/// How names are used across the project's modules.
+#[derive(Default)]
+struct NameUses {
+    file: String,
+    /// Names read other than as the called expression of a call (`f`, `obj.f`),
+    /// and names imported under another name.
+    escaping: HashSet<String>,
+    /// Calls by the called name (`f(...)`, `obj.f(...)`): `(file, offset)`.
+    calls: HashMap<String, HashSet<(String, u32)>>,
+    /// A name is looked up from a computed string (`getattr(o, name)`,
+    /// `vars(o)`, `operator.attrgetter(name)`): it may be any function.
+    dynamic: bool,
+    /// Files that look names up in their own namespace (`globals()`,
+    /// `locals()`, `vars()`).
+    lookup_files: HashSet<String>,
+    /// Per file, the names it imports with `from m import ...` (`*` included).
+    imported: HashMap<String, HashSet<String>>,
+}
+
+impl NameUses {
+    /// A lookup of attribute names by string: the literal names escape,
+    /// and a computed one could be any name.
+    fn lookup(&mut self, names: &[Expr]) {
+        for n in names {
+            match n {
+                Expr::StringLiteral(s) => self.escaping.extend(s.value.to_str().split('.').map(str::to_string)),
+                _ => self.dynamic = true,
+            }
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for NameUses {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::ImportFrom(i) = stmt {
+            for a in i.names.iter().filter(|a| a.asname.is_some()) {
+                self.escaping.insert(a.name.to_string());
+            }
+            let imported = self.imported.entry(self.file.clone()).or_default();
+            imported.extend(i.names.iter().map(|a| a.name.to_string()));
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Call(c) => {
+                let args = &c.arguments.args;
+                let callee = match c.func.as_ref() {
+                    Expr::Name(n) => Some(n.id.as_str()),
+                    Expr::Attribute(a) => Some(a.attr.as_str()),
+                    _ => None,
+                };
+                match (callee, &args[..]) {
+                    (Some("getattr"), [_, name, ..]) => self.lookup(std::slice::from_ref(name)),
+                    (Some("attrgetter"), names) => self.lookup(names),
+                    (Some("methodcaller"), [name, ..]) => self.lookup(std::slice::from_ref(name)),
+                    (Some("globals" | "locals" | "vars"), []) => {
+                        self.lookup_files.insert(self.file.clone());
+                    }
+                    (Some("vars"), [_, ..]) => self.dynamic = true,
+                    _ => {}
+                }
+                let called = match c.func.as_ref() {
+                    Expr::Name(n) => Some(n.id.as_str()),
+                    Expr::Attribute(a) => {
+                        self.visit_expr(&a.value);
+                        Some(a.attr.as_str())
+                    }
+                    other => {
+                        self.visit_expr(other);
+                        None
+                    }
+                };
+                if let Some(name) = called {
+                    let site = (self.file.clone(), c.range().start().to_u32());
+                    self.calls.entry(name.to_string()).or_default().insert(site);
+                }
+                visitor::walk_arguments(self, &c.arguments);
+            }
+            Expr::Name(n) if matches!(n.ctx, ast::ExprContext::Load) => {
+                self.escaping.insert(n.id.to_string());
+            }
+            Expr::Attribute(a) if matches!(a.ctx, ast::ExprContext::Load) => {
+                self.escaping.insert(a.attr.to_string());
+                visitor::walk_expr(self, expr);
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
+/// Collects, per resolved call of a project function, the fields of each
+/// argument the call narrows (see `CallerGuards`).
+struct GuardCollector<'s, 'a> {
+    scope: &'s Scope<'a>,
+    file: &'s str,
+    /// The function being scanned.
+    caller: &'s str,
+    guards: &'s mut CallerGuards,
+    /// The calls resolved to each function: `(file, offset)`.
+    resolved: &'s mut HashMap<String, HashSet<(String, u32)>>,
+    /// The functions whose bodies call each function.
+    callers: &'s mut HashMap<String, HashSet<String>>,
+}
+
+impl<'e> FlowVisitor<'e> for GuardCollector<'_, '_> {
+    fn simple(&mut self, stmt: &'e Stmt, narrowed: &Narrowed) {
+        struct Top<'c, 's, 'a>(&'c mut GuardCollector<'s, 'a>, Ctx);
+        impl<'e> Visitor<'e> for Top<'_, '_, '_> {
+            fn visit_expr(&mut self, expr: &'e Expr) {
+                let ctx = self.1.clone();
+                self.0.scan(expr, &ctx);
+            }
+        }
+        Top(self, Ctx::new(narrowed)).visit_stmt(stmt);
+    }
+
+    fn header(&mut self, expr: &'e Expr, narrowed: &Narrowed) {
+        self.scan(expr, &Ctx::new(narrowed));
+    }
+}
+
+impl GuardCollector<'_, '_> {
+    /// Every call in `expr`, outside lambdas and comprehensions (whose
+    /// names are not the function's).
+    fn scan(&mut self, expr: &Expr, ctx: &Ctx) {
+        match expr {
+            Expr::Call(call) => {
+                self.record(call, ctx);
+                self.scan(&call.func, ctx);
+                for arg in call.arguments.args.iter() {
+                    self.scan(arg, ctx);
+                }
+                for kw in call.arguments.keywords.iter() {
+                    self.scan(&kw.value, ctx);
+                }
+            }
+            Expr::If(i) => {
+                self.scan(&i.test, ctx);
+                self.scan(&i.body, &ctx.branch(&i.test, true));
+                self.scan(&i.orelse, &ctx.branch(&i.test, false));
+            }
+            Expr::BoolOp(b) => {
+                let mut c = ctx.clone();
+                for v in &b.values {
+                    self.scan(v, &c);
+                    c = c.after_operand(v, b.op);
+                }
+            }
+            Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::Generator(_) | Expr::DictComp(_) => {}
+            _ => {
+                let mut children = Children(Vec::new());
+                visitor::walk_expr(&mut children, expr);
+                for child in children.0 {
+                    self.scan(child, ctx);
+                }
+            }
+        }
+    }
+
+    fn record(&mut self, call: &ast::ExprCall, ctx: &Ctx) {
+        for callee in self.scope.callees(&call.func, ctx) {
+            let Callee::Function { qualified, implicit } = callee else { continue };
+            let Some(f) = self.scope.index.function(&qualified) else { continue };
+            let site = (self.file.to_string(), call.range().start().to_u32());
+            self.resolved.entry(qualified.clone()).or_default().insert(site);
+            self.callers.entry(qualified.clone()).or_default().insert(self.caller.to_string());
+            let here = call_guards(f, implicit, call, ctx);
+            match self.guards.entry(qualified) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(here);
+                }
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    for (param, fields) in e.get_mut() {
+                        fields.retain(|f| here.get(param).is_some_and(|h| h.contains(f)));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// For one call of `f`, each parameter's narrowed argument fields: the
+/// fields `a.f` narrowed here for an argument that is a name `a`.
+fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ctx) -> HashMap<String, HashSet<String>> {
+    let mut out: HashMap<String, HashSet<String>> =
+        f.params.iter().map(|p| (p.name.clone(), HashSet::new())).collect();
+    let splatted = call.arguments.args.iter().any(|a| matches!(a, Expr::Starred(_)))
+        || call.arguments.keywords.iter().any(|k| k.arg.is_none());
+    if splatted {
+        return out;
+    }
+    let narrowed_fields = |arg: &Expr| -> HashSet<String> {
+        let Expr::Name(n) = arg else { return HashSet::new() };
+        let prefix = format!("{}.", n.id);
+        ctx.narrowed
+            .names()
+            .filter_map(|x| x.strip_prefix(&prefix))
+            .filter(|field| !field.contains(['.', '[']))
+            .map(str::to_string)
+            .collect()
+    };
+    let mut bind = |param: &str, arg: &Expr| {
+        if let Some(fields) = out.get_mut(param) {
+            *fields = narrowed_fields(arg);
+        }
+    };
+    if implicit == 1 {
+        if let (Some(p), Expr::Attribute(a)) = (f.params.first(), call.func.as_ref()) {
+            bind(&p.name, &a.value);
+        }
+    }
+    let params = f.params.get(implicit..).unwrap_or_default();
+    let positional = params
+        .iter()
+        .take_while(|p| matches!(p.kind, ParamKind::PositionalOnly | ParamKind::Normal));
+    for (p, arg) in positional.zip(call.arguments.args.iter()) {
+        bind(&p.name, arg);
+    }
+    for kw in call.arguments.keywords.iter() {
+        let Some(name) = &kw.arg else { continue };
+        if params
+            .iter()
+            .any(|p| p.name == name.as_str() && matches!(p.kind, ParamKind::Normal | ParamKind::KeywordOnly))
+        {
+            bind(name.as_str(), &kw.value);
+        }
+    }
+    out
+}
+
 #[derive(Clone)]
 enum Target<'a> {
     Field(&'a ClassInfo, &'a str),
@@ -453,7 +799,7 @@ impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
             Stmt::Assert(a) => {
                 self.scan(&a.test, &ctx);
                 if let Some(msg) = &a.msg {
-                    self.scan(msg, &ctx.narrow(flow::negative(&a.test)));
+                    self.scan(msg, &ctx.branch(&a.test, false));
                 }
             }
             Stmt::Delete(d) => {
@@ -539,17 +885,14 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             Expr::If(i) => {
                 self.scan(&i.test, ctx);
-                self.scan(&i.body, &ctx.narrow(flow::positive(&i.test)));
-                self.scan(&i.orelse, &ctx.narrow(flow::negative(&i.test)));
+                self.scan(&i.body, &ctx.branch(&i.test, true));
+                self.scan(&i.orelse, &ctx.branch(&i.test, false));
             }
             Expr::BoolOp(b) => {
                 let mut c = ctx.clone();
                 for v in &b.values {
                     self.scan(v, &c);
-                    c = match b.op {
-                        BoolOp::And => c.narrow(flow::positive(v)),
-                        BoolOp::Or => c.narrow(flow::negative(v)),
-                    };
+                    c = c.after_operand(v, b.op);
                 }
             }
             Expr::Lambda(l) => {
@@ -804,8 +1147,10 @@ impl<'a, 's> EdgeWalker<'a, 's> {
     }
 
     /// Writes that are not constructor calls: `dataclasses.replace(obj, f=v)`,
-    /// `obj.model_copy(update={...})`, `Cls.model_validate({...})`,
-    /// `setattr(obj, "f", v)`. Returns whether `call` was one.
+    /// `obj.model_copy(update={...})`, `setattr(obj, "f", v)`, and pydantic's
+    /// validating entry points (`Cls.model_validate({...})`), which write only
+    /// the fields whose contract validation does not enforce. Returns whether
+    /// `call` was one.
     fn special_writes(&mut self, call: &'a ast::ExprCall, ctx: &Ctx, is_return: bool) -> bool {
         let args = &call.arguments.args;
         let site = call.range().start().to_u32();
@@ -873,11 +1218,27 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                         }
                         true
                     }
-                    // Cls.model_validate({...}) (v1 `Cls.parse_obj({...})`)
-                    "model_validate" | "parse_obj" if args.len() == 1 => {
+                    // Validation enforces most fields' contracts, so their entries are
+                    // not writes; `validate_checked` fields it does not, so theirs are.
+                    "model_validate" | "model_validate_json" | "model_validate_strings" | "parse_obj"
+                    | "parse_raw" => {
                         let Some(class) = self.named_class(&attr.value, ctx) else { return false };
-                        // Validation of input data: only the known entries are writes.
-                        self.splat_writes(class, &args[0], ctx, is_return, site, false);
+                        if class.kind
+                            != crate::resolve::ClassKind::Data(crate::dataclass_extractor::DataClassKind::Pydantic)
+                        {
+                            return false;
+                        }
+                        if let Some(input) = args.first() {
+                            let splat = self.scope.splat(input, ctx);
+                            for (key, value) in &splat.entries {
+                                if !class.validate_checked.contains(key) {
+                                    continue;
+                                }
+                                if let Some(field) = class.fields.iter().find(|f| *f == key) {
+                                    self.emit_splat_value(Target::Field(class, field), value, is_return, site);
+                                }
+                            }
+                        }
                         true
                     }
                     _ => false,
@@ -1296,7 +1657,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                 }
             }
         }
-        let mut rows = facts_rows(&facts, 0, file, line, VerificationLevel::Extracted);
+        let mut rows = facts_rows(self.scope.index, &facts, 0, file, line, VerificationLevel::Extracted);
         if is_return && matches!(target, Target::Field(..)) {
             self.add_docstring_rows(&mut rows);
         }
@@ -1341,7 +1702,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             .map(Vec::as_slice)
             .unwrap_or(&[]);
         let mut rows: Vec<ContractRecord> =
-            function_extractor::postcondition_rows(func, &summary, doc, 0)
+            function_extractor::postcondition_rows(&self.project.index, func, &summary, doc, 0)
                 .into_iter()
                 .filter(|r| r.constraint_type != ConstraintType::Nullability)
                 .collect();
@@ -2035,6 +2396,95 @@ mod tests {
                 && e.site.as_ref().is_some_and(|s| s.1 == 26)).all(|e| e.override_rows.as_ref().is_some_and(|r| r.is_empty())),
             "{s:#?}"
         );
+    }
+
+    /// `model_validate` and its siblings are a validation boundary for the
+    /// fields whose contract validation enforces; the other fields' entries
+    /// are writes. A constructor call writes every field.
+    #[test]
+    fn test_pydantic_validate_is_boundary() {
+        let d = discovered(&[
+            (
+                "records.py",
+                "from pydantic import BaseModel, Field, SkipValidation, PlainValidator, WrapValidator, BeforeValidator\n\
+                 class Inv(BaseModel):\n    \
+                 total: Decimal = Field(decimal_places=2)\n    \
+                 digits: Decimal = Field(max_digits=4)\n    \
+                 flag: bool\n    \
+                 skipped: SkipValidation[str]\n    \
+                 plain: Annotated[str, PlainValidator(f)]\n    \
+                 wrapped: Annotated[str, WrapValidator(f)]\n    \
+                 before: Annotated[str, BeforeValidator(f)]\n    \
+                 legacy: str = None\n",
+            ),
+            (
+                "code.py",
+                "from records import Inv\n\
+                 def four(x):\n    return x\n\
+                 def v(x):\n    return Inv.model_validate({'total': four(x), 'digits': four(x), 'flag': four(x), 'skipped': four(x), 'plain': four(x), 'wrapped': four(x), 'before': four(x), 'legacy': four(x)})\n\
+                 def j(raw):\n    return Inv.model_validate_json(raw)\n\
+                 def p(x):\n    return Inv.parse_obj({'flag': four(x)})\n\
+                 def k(x):\n    return Inv(total=four(x), flag=four(x))\n\
+                 def s(x):\n    return Inv.model_validate_strings({'skipped': four(x)})\n\
+                 def w(x):\n    return Inv.model_validate_json({'plain': four(x)})\n\
+                 def r(x):\n    return Inv.parse_raw({'wrapped': four(x)})\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        for want in [
+            "code.four@5 -writes_to-> records.Inv.total",
+            "code.four@5 -writes_to-> records.Inv.digits",
+            "code.four@5 -writes_to-> records.Inv.skipped",
+            "code.four@5 -writes_to-> records.Inv.plain",
+            "code.four@5 -writes_to-> records.Inv.wrapped",
+            "code.four@5 -writes_to-> records.Inv.legacy",
+            "code.four@11 -writes_to-> records.Inv.total",
+            "code.four@11 -writes_to-> records.Inv.flag",
+            "code.four@13 -writes_to-> records.Inv.skipped",
+            "code.four@15 -writes_to-> records.Inv.plain",
+            "code.four@17 -writes_to-> records.Inv.wrapped",
+        ] {
+            assert!(s.contains(&want.to_string()), "missing {want} in {s:#?}");
+        }
+        for unwanted in ["code.four@5 -writes_to-> records.Inv.flag", "code.four@5 -writes_to-> records.Inv.before"] {
+            assert!(!s.contains(&unwanted.to_string()), "unexpected {unwanted} in {s:#?}");
+        }
+        for line in [7, 9] {
+            assert!(!s.iter().any(|e| e.contains(&format!("@{line} "))), "line {line}: {s:#?}");
+        }
+    }
+
+    /// A field whose annotation names something CGV does not know pydantic
+    /// validates (a renamed import of a marker, an alias, a project type, an
+    /// `AfterValidator`) keeps its `model_validate` entry as a write.
+    #[test]
+    fn test_pydantic_validate_unknown_annotation_keeps_write() {
+        let d = discovered(&[
+            (
+                "records.py",
+                "from pydantic import BaseModel, SkipValidation as SV, PlainValidator as PV, AfterValidator\n\
+                 Skip = SkipValidation[str]\n\
+                 class Inv(BaseModel):\n    \
+                 renamed: SV[str]\n    \
+                 aliased: Skip\n    \
+                 renamed_meta: Annotated[str, PV(f)]\n    \
+                 after: Annotated[str, AfterValidator(f)]\n    \
+                 name: str\n",
+            ),
+            (
+                "code.py",
+                "from records import Inv\n\
+                 def four(x):\n    return x\n\
+                 def v(x):\n    return Inv.model_validate({'renamed': four(x), 'aliased': four(x), 'renamed_meta': four(x), 'after': four(x), 'name': four(x)})\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        for field in ["renamed", "aliased", "renamed_meta", "after"] {
+            let want = format!("code.four@5 -writes_to-> records.Inv.{field}");
+            assert!(s.contains(&want), "missing {want} in {s:#?}");
+        }
+        let unwanted = "code.four@5 -writes_to-> records.Inv.name".to_string();
+        assert!(!s.contains(&unwanted), "unexpected {unwanted} in {s:#?}");
     }
 
     /// A dataclass with its own `__init__` binds that method's parameters,

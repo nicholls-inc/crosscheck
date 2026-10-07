@@ -1,9 +1,9 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
-use crate::dataclass_extractor::{annotation_facts, VALUE_TYPES};
+use crate::dataclass_extractor::{annotation_facts, last_segment, VALUE_TYPES};
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
 use crate::docstring_parser::DocstringContract;
-use crate::resolve::qualify;
+use crate::resolve::{qualify, Shadow};
 use crate::value_analysis::{facts_rows, ValueFacts};
 
 /// How a parameter binds arguments.
@@ -74,10 +74,15 @@ pub struct FunctionInfo {
     /// a type variable).
     pub return_nullable: Option<bool>,
     /// Decorators as dotted names (`background_task`, `app.task`; a call
-    /// `@d(...)` gives `d`).
+    /// `@d(...)` gives `d`; any other expression gives an empty name).
     pub decorators: Vec<Vec<String>>,
     /// The body yields: calling the function returns a generator.
     pub is_generator: bool,
+    /// An `async def`: calling it returns a coroutine.
+    pub is_async: bool,
+    /// The statements of the body that never complete (`resolve::function_exits`,
+    /// filled once the project index is complete).
+    pub exits: crate::flow::Exits,
     /// Byte offset of the return annotation (a line after `Project::build`).
     pub return_line: u32,
 }
@@ -313,6 +318,8 @@ pub fn module_function(stmts: &[Stmt], source_file: &str, module: &str) -> Optio
         decorators: Vec::new(),
         return_line: 0,
         is_generator: false,
+        is_async: false,
+        exits: Default::default(),
     })
 }
 
@@ -427,15 +434,17 @@ fn extract_function_info(
         decorators: func_def
             .decorator_list
             .iter()
-            .filter_map(|d| {
+            .map(|d| {
                 let target = match &d.expression {
                     Expr::Call(c) => c.func.as_ref(),
                     other => other,
                 };
-                crate::resolve::dotted_parts(target)
+                crate::resolve::dotted_parts(target).unwrap_or_default()
             })
             .collect(),
         is_generator: crate::flow::is_generator_body(&func_def.body),
+        is_async: func_def.is_async,
+        exits: Default::default(),
         return_line: func_def
             .returns
             .as_deref()
@@ -503,10 +512,7 @@ pub fn apply_aliases(func: &mut FunctionInfo, aliases: &std::collections::HashMa
     for p in &mut func.params {
         let Some(Expr::Name(n)) = &p.annotation else { continue };
         let Some(alias) = aliases.get(n.id.as_str()) else { continue };
-        let (type_name, nullable) = match annotation_facts(alias) {
-            Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
-            None => (None, None),
-        };
+        let (type_name, nullable) = param_annotation_facts(alias);
         p.type_name = type_name;
         // A `= None` default keeps the parameter nullable.
         p.nullable = if p.nullable == Some(true) { Some(true) } else { nullable };
@@ -536,9 +542,79 @@ pub fn apply_external_types(func: &mut FunctionInfo, external: &std::collections
     }
 }
 
+/// Resolve the type names that `func`'s annotations give against the project
+/// (`shadow`, see `resolve::ProjectIndex::annotation_shadow`): a project
+/// class that shadows a value type is named by its qualified name, and
+/// anything else that shadows one gives no type.
+pub fn apply_shadows(func: &mut FunctionInfo, shadow: &dyn Fn(&Expr) -> Option<Shadow>) {
+    let resolve = |t: &mut Option<String>, annotation: &Expr| {
+        if t.is_none() {
+            return;
+        }
+        match shadow(annotation) {
+            Some(Shadow::Class(q)) => *t = Some(q),
+            Some(Shadow::Unknown) => *t = None,
+            None => {}
+        }
+    };
+    for p in &mut func.params {
+        if let Some(a) = &p.annotation {
+            resolve(&mut p.type_name, a);
+        }
+    }
+    let Some(ret) = &func.return_annotation else { return };
+    resolve(&mut func.return_type, ret);
+    if let Expr::Subscript(sub) = ret {
+        if let Expr::Tuple(t) = sub.slice.as_ref() {
+            if let Some(first) = t.elts.first() {
+                // The elements are uniform by their spelling, which is
+                // "unknown" for every union and quoted element: the answer for the first one
+                // holds for the tuple only when every element gets it.
+                let answer = shadow(first);
+                if t.elts.iter().all(|e| shadow(e) == answer) {
+                    resolve(&mut func.tuple_element_type, first);
+                } else {
+                    func.tuple_element_type = None;
+                }
+            }
+        }
+    }
+}
+
+/// The value type and nullability a parameter annotation gives. `object`
+/// includes `None`, so a parameter typed `object`, or a union with an
+/// `object` member, accepts it.
+fn param_annotation_facts(annotation: &Expr) -> (Option<String>, Option<bool>) {
+    match annotation_facts(annotation) {
+        Some((t, n)) => {
+            let n = if t.as_deref() == Some("object") || union_has_object(annotation) { Some(true) } else { n };
+            (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n)
+        }
+        None => (None, None),
+    }
+}
+
+/// `Union[object, X]` and `object | X`, also quoted or inside `Annotated`.
+fn union_has_object(annotation: &Expr) -> bool {
+    let is_object = |m: &Expr| {
+        annotation_facts(m).is_some_and(|(t, _)| t.as_deref() == Some("object")) || union_has_object(m)
+    };
+    match annotation {
+        Expr::BinOp(b) if matches!(b.op, ast::Operator::BitOr) => is_object(&b.left) || is_object(&b.right),
+        Expr::Subscript(sub) => match (last_segment(&sub.value).as_deref(), sub.slice.as_ref()) {
+            (Some("Union"), Expr::Tuple(t)) => t.elts.iter().any(is_object),
+            (Some("Annotated"), Expr::Tuple(t)) => t.elts.first().is_some_and(union_has_object),
+            _ => false,
+        },
+        Expr::StringLiteral(s) => ruff_python_parser::parse_expression(s.value.to_str().trim())
+            .is_ok_and(|parsed| union_has_object(parsed.expr())),
+        _ => false,
+    }
+}
+
 fn param_info(p: &ast::Parameter, kind: ParamKind) -> ParamInfo {
-    let (type_name, nullable) = match p.annotation.as_deref().and_then(annotation_facts) {
-        Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
+    let (type_name, nullable) = match p.annotation.as_deref() {
+        Some(a) => param_annotation_facts(a),
         None => (None, None),
     };
     ParamInfo {
@@ -707,6 +783,7 @@ pub fn docstring_postcondition_rows(
 /// Docstring `ensures:` clauses (ASSUMED) take precedence over extracted
 /// facts (`summary`, from the return annotation and body) of the same kind.
 pub fn postcondition_rows(
+    index: &crate::resolve::ProjectIndex,
     func: &FunctionInfo,
     summary: &ValueFacts,
     doc: &[DocstringContract],
@@ -715,6 +792,7 @@ pub fn postcondition_rows(
     let mut rows = docstring_postcondition_rows(func, doc, node_id);
     let documented: Vec<ConstraintType> = rows.iter().map(|r| r.constraint_type.clone()).collect();
     for row in facts_rows(
+        index,
         summary,
         node_id,
         &func.source_file,
@@ -786,6 +864,32 @@ mod tests {
     }
 
     #[test]
+    fn test_shadows_do_not_reach_a_mixed_tuple() {
+        fn head(e: &Expr) -> Option<&str> {
+            match e {
+                Expr::Name(n) => Some(n.id.as_str()),
+                Expr::BinOp(b) => head(&b.left),
+                _ => None,
+            }
+        }
+        // `float` is a project class `units.float`; the other names are not shadowed.
+        let shadow = |e: &Expr| (head(e) == Some("float")).then(|| Shadow::Class("units.float".into()));
+        let mut fs = funcs(
+            "def a() -> float: pass\n\
+             def b() -> tuple[float | None, str | None]: pass\n\
+             def c() -> tuple[float, float]: pass\n",
+        );
+        for f in &mut fs {
+            apply_shadows(f, &shadow);
+        }
+        let got: Vec<(Option<&str>, Option<&str>)> =
+            fs.iter().map(|f| (f.return_type.as_deref(), f.tuple_element_type.as_deref())).collect();
+        assert_eq!(got[0].0, Some("units.float"));
+        assert_eq!(got[2].1, Some("units.float"));
+        assert_eq!(got[1].1, None);
+    }
+
+    #[test]
     fn test_names_and_params() {
         let fs = funcs(
             "def f(a: Decimal, b: Optional[str], c=None, *args, d: int, **kw): pass\n\
@@ -827,6 +931,52 @@ mod tests {
         assert_eq!(
             (fs[3].method_kind, fs[3].self_name()),
             (MethodKind::ClassMethod, Some("cls"))
+        );
+    }
+
+    #[test]
+    fn test_object_param_accepts_none() {
+        let mut fs = funcs(
+            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None, v: Union[object, int], w: object | int, x: int | str | object, y: typing.Union[int, object], z: \"object | int\", aa: Annotated[object | int, 1], ab: int | str, ac: Union[int, str], ad: Annotated[int, 1], ae: \"int\", af: object | int | str, ag: Union[Union[object, int], str], ah: \" object\", ai: \" object | int \"): pass\n",
+        );
+        let aliases: std::collections::HashMap<String, Expr> = [("Payload", "object"), ("Name", "str")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), ruff_python_parser::parse_expression(v).unwrap().into_expr()))
+            .collect();
+        apply_aliases(&mut fs[0], &aliases);
+        let facts: Vec<(&str, Option<&str>, Option<bool>)> = fs[0]
+            .params
+            .iter()
+            .map(|p| (p.name.as_str(), p.type_name.as_deref(), p.nullable))
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                ("a", None, Some(true)),
+                ("b", None, Some(true)),
+                ("c", None, None),
+                ("d", None, None),
+                ("e", None, Some(true)),
+                ("g", Some("str"), Some(false)),
+                ("h", None, Some(true)),
+                ("s", None, Some(true)),
+                ("t", None, Some(true)),
+                ("u", None, Some(true)),
+                ("v", None, Some(true)),
+                ("w", None, Some(true)),
+                ("x", None, Some(true)),
+                ("y", None, Some(true)),
+                ("z", None, Some(true)),
+                ("aa", None, Some(true)),
+                ("ab", None, Some(false)),
+                ("ac", None, Some(false)),
+                ("ad", Some("int"), Some(false)),
+                ("ae", Some("int"), Some(false)),
+                ("af", None, Some(true)),
+                ("ag", None, Some(true)),
+                ("ah", None, Some(true)),
+                ("ai", None, Some(true)),
+            ]
         );
     }
 

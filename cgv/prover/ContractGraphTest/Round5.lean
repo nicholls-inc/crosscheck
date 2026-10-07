@@ -12,11 +12,13 @@ import ContractGraph.Translation
 import ContractGraph.Search
 import ContractGraph.StateSearch
 import ContractGraph.Main
+import ContractGraphTest.Translation
 import ContractGraphTest.StateSearch
 
 namespace ContractGraphTest.Round5
 
 open ContractGraph
+open ContractGraphTest.Translation (graphOf acceptedGraph)
 open ContractGraphTest.Round3 (contains errors warnings firstSuggestion)
 open ContractGraphTest.StateSearchTest (sameFindings sameErrorPaths)
 
@@ -40,8 +42,8 @@ open ContractGraphTest.StateSearchTest (sameFindings sameErrorPaths)
 
 /-- `make` writes into `R.x`, both `range` rows given by `(min, max)` bound
     rows (built by the caller). -/
-def rangeGraph (post pre : ContractRow) : ContractGraph :=
-  buildGraph
+def rangeRows (post pre : ContractRow) : Except String ContractGraph :=
+  translateRows
     [(1, "make", "function"), (2, "R.x", "model")]
     [{ post with
          nodeId := 1, constraintType := "range", role := some "postcondition"
@@ -49,11 +51,26 @@ def rangeGraph (post pre : ContractRow) : ContractGraph :=
      { pre with
          nodeId := 2, constraintType := "range", role := some "precondition"
          sourceFile := "models.py", sourceLine := 7 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]
+
+def rangeGraph (post pre : ContractRow)
+    (accepted : (rangeRows post pre).isOk := by native_decide) : ContractGraph :=
+  acceptedGraph _ accepted
 
 def dec (hi : String) : ContractRow := { nodeId := 0, constraintType := "", maxDecimal := some hi }
 def micros (hi : Int) : ContractRow := { nodeId := 0, constraintType := "", maxMicros := some hi }
 def real (hi : Float) : ContractRow := { nodeId := 0, constraintType := "", maxReal := some hi }
+
+-- A graph with parameters rejects its rows at each call: `1e-3` is malformed.
+/--
+error: could not synthesize default value for parameter 'accepted' using tactics
+---
+error: Tactic `native_decide` evaluated that the proposition
+  (rangeRows (dec "1e-3") (dec "1")).isOk = true
+is false
+-/
+#guard_msgs in
+example : ContractGraph := rangeGraph (dec "1e-3") (dec "1")
 
 def rangeErrors (g : ContractGraph) : List (String × String) :=
   (errors (runChecker g)).map fun r => (r.sourceGuarantee, r.targetRequirement)
@@ -95,7 +112,7 @@ def rangeErrors (g : ContractGraph) : List (String × String) :=
 /-- `src` (≤ 2.5) → `f` with `max(input_range, 3)` → `R.x` (≤ 2.9999999):
     the dependent literal 3 is scaled with the graph (10^7). -/
 def depRangeGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "src", "function"), (2, "f", "function"), (3, "R.x", "model")]
     [{ nodeId := 1, constraintType := "range", maxDecimal := some "2.5",
        role := some "postcondition", sourceLine := 1 },
@@ -103,8 +120,8 @@ def depRangeGraph : ContractGraph :=
        role := some "postcondition", sourceLine := 2 },
      { nodeId := 3, constraintType := "range", maxDecimal := some "2.9999999",
        role := some "precondition", sourceLine := 3 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo },
-     { id := 2, sourceId := 2, targetId := 3, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "flows_to" },
+     { id := 2, sourceId := 2, targetId := 3, relationship := "writes_to" }]
 
 #guard ((depRangeGraph.nodes[1]!).postconditions.map (·.depExpr))
   == [some (DepExpr.max (.input "input_range") (.lit 30000000))]
@@ -115,8 +132,8 @@ def depRangeGraph : ContractGraph :=
 
 /-- `caller` (3dp) → call site `cs` (`max(input_precision, 2)`) → `M.v` (2dp).
     `cs → M.v` alone is a suffix of `caller → cs → M.v`. -/
-def callSiteGraph (callSite : Bool) (callerEdge : Bool := true) : ContractGraph :=
-  buildGraph
+def callSiteRows (callSite : Bool) (callerEdge : Bool := true) : Except String ContractGraph :=
+  translateRows
     [(1, "caller", "function"),
      { id := 2, name := "cs", kind := "function", isCallSite := callSite },
      (3, "M.v", "model")]
@@ -126,9 +143,13 @@ def callSiteGraph (callSite : Bool) (callerEdge : Bool := true) : ContractGraph 
        role := some "postcondition", sourceLine := 2 },
      { nodeId := 3, constraintType := "precision", decimalPlaces := some 2,
        role := some "precondition", sourceLine := 3 }]
-    ((if callerEdge then [{ id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo }]
+    ((if callerEdge then [{ id := 1, sourceId := 1, targetId := 2, relationship := "flows_to" }]
       else []) ++
-     [{ id := 2, sourceId := 2, targetId := 3, relationship := .writesTo }])
+     [{ id := 2, sourceId := 2, targetId := 3, relationship := "writes_to" }])
+
+def callSiteGraph (callSite : Bool) (callerEdge : Bool := true)
+    (accepted : (callSiteRows callSite callerEdge).isOk := by native_decide) : ContractGraph :=
+  acceptedGraph _ accepted
 
 -- Not a call site: the suffix warns that its bound could not be resolved.
 #guard (warnings (runChecker (callSiteGraph false))).map (·.path) == [["cs", "M.v"]]
@@ -148,7 +169,7 @@ def callSiteGraph (callSite : Bool) (callerEdge : Bool := true) : ContractGraph 
 /-- The call site's own static bound (4dp) into `M.v` (2dp): an error on the
     suffix path; it is kept (from the call site, the shortest path). -/
 def callSiteErrorGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "caller", "function"), { id := 2, name := "cs", kind := "function", isCallSite := true },
      (3, "M.v", "model")]
     [{ nodeId := 2, constraintType := "precision", decimalPlaces := some 4,
@@ -157,8 +178,8 @@ def callSiteErrorGraph : ContractGraph :=
        role := some "precondition", sourceLine := 3 },
      { nodeId := 3, constraintType := "nullability", nullable := some 0,
        role := some "precondition", sourceLine := 3 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo },
-     { id := 2, sourceId := 2, targetId := 3, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "flows_to" },
+     { id := 2, sourceId := 2, targetId := 3, relationship := "writes_to" }]
 
 #guard (errors (runChecker callSiteErrorGraph)).map (·.path) == [["cs", "M.v"]]
 -- The missing-nullability warning on the hop cs → M.v is reported, because

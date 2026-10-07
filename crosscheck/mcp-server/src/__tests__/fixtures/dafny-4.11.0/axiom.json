@@ -1,0 +1,38 @@
+{
+  "program": {
+    "name": "axiom",
+    "file": "Abs.dfy",
+    "sources": {
+      "Abs.dfy": "lemma {:axiom} Bad(x: int) ensures x > 0\n"
+    },
+    "theorems": [
+      "Bad"
+    ]
+  },
+  "imageId": "sha256:ccd363af0c7fdba1a7766568daf1ded858f93708eac6bb7f01b7d1ee725d8f1c",
+  "runs": [
+    {
+      "args": [
+        "verify",
+        "/work/Abs.dfy",
+        "--verify-included-files",
+        "--log-format",
+        "csv;LogFileName=/dev/stdout"
+      ],
+      "exitCode": 0,
+      "stdout": "\nDafny program verifier finished with 0 verified, 0 errors\nTestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed\nResults File: /dev/stdout\n",
+      "stderr": "",
+      "timedOut": false
+    },
+    {
+      "args": [
+        "audit",
+        "/work/Abs.dfy"
+      ],
+      "exitCode": 0,
+      "stdout": "Abs.dfy(1,15): Warning: Bad: Declaration has explicit `{:axiom}` attribute. Possible mitigation: Provide a proof or test.\nDafny auditor completed with 1 findings\n\nDafny program verifier did not attempt verification\n",
+      "stderr": "",
+      "timedOut": false
+    }
+  ]
+}

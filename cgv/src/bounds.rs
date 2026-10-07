@@ -281,6 +281,39 @@ pub fn literal_bound(expr: &ruff_python_ast::Expr) -> Option<Dec> {
     }
 }
 
+/// The largest magnitude a value with at most `max_digits` digits, at most
+/// `decimal_places` of them fractional, can have: `max_digits` nines with the
+/// last `decimal_places` after the point (`999.99` for 5 and 2). Without
+/// `decimal_places` the value may have no fractional digit and still be
+/// accepted, so the limit is `max_digits` whole nines. `None` for a
+/// `max_digits` below 1 or above 38 (beyond `i128`), and for a
+/// `decimal_places` below 0, above `max_digits` or above 30 (`MAX_SCALE`).
+pub fn digits_limit(max_digits: i64, decimal_places: Option<i64>) -> Option<Dec> {
+    let places = decimal_places.unwrap_or(0);
+    if max_digits < 1 || places < 0 || places > max_digits {
+        return None;
+    }
+    let nines = pow10(u32::try_from(max_digits).ok()?)? - 1;
+    Dec::from_scaled(nines, u32::try_from(places).ok()?)
+}
+
+/// Narrow `min` and `max` to the magnitudes that `max_digits` and
+/// `decimal_places` allow (Django's `DecimalValidator` and pydantic reject
+/// more whole digits than `max_digits - decimal_places`). Unchanged when
+/// `max_digits` is unknown or `digits_limit` gives no limit.
+pub fn narrow_to_digits(
+    max_digits: Option<i64>,
+    decimal_places: Option<i64>,
+    min: &mut Option<Dec>,
+    max: &mut Option<Dec>,
+) {
+    let Some(limit) = max_digits.and_then(|m| digits_limit(m, decimal_places)) else {
+        return;
+    };
+    *min = Some(min.map_or(-limit, |m| m.max(-limit)));
+    *max = Some(max.map_or(limit, |m| m.min(limit)));
+}
+
 /// The three column values of one bound of a contract row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Columns {
@@ -321,6 +354,40 @@ mod tests {
 
     fn d(text: &str) -> Dec {
         parse_decimal(text).unwrap()
+    }
+
+    #[test]
+    fn test_digits_limit() {
+        assert_eq!(digits_limit(5, Some(2)), Some(d("999.99")));
+        assert_eq!(digits_limit(5, Some(0)), Some(d("99999")));
+        assert_eq!(digits_limit(5, None), Some(d("99999")));
+        assert_eq!(digits_limit(3, Some(3)), Some(d("0.999")));
+        assert_eq!(digits_limit(1, Some(1)), Some(d("0.9")));
+        assert_eq!(digits_limit(30, Some(30)).map(|l| l.to_string()), Some(format!("0.{}", "9".repeat(30))));
+        assert_eq!(digits_limit(2, Some(3)), None);
+        assert_eq!(digits_limit(0, None), None);
+        assert_eq!(digits_limit(5, Some(-1)), None);
+        assert_eq!(digits_limit(38, None).map(|l| l.to_string()), Some("9".repeat(38)));
+        assert_eq!(
+            digits_limit(38, Some(30)).map(|l| l.to_string()),
+            Some(format!("{}.{}", "9".repeat(8), "9".repeat(30)))
+        );
+        assert_eq!(digits_limit(39, None), None);
+        assert_eq!(digits_limit(31, Some(31)), None);
+    }
+
+    #[test]
+    fn test_narrow_to_digits() {
+        let narrowed = |m, places, lo: Option<&str>, hi: Option<&str>| {
+            let (mut lo, mut hi) = (lo.map(d), hi.map(d));
+            narrow_to_digits(m, places, &mut lo, &mut hi);
+            (lo, hi)
+        };
+        assert_eq!(narrowed(Some(5), Some(2), None, None), (Some(d("-999.99")), Some(d("999.99"))));
+        assert_eq!(narrowed(Some(5), Some(2), Some("0"), Some("5000")), (Some(d("0")), Some(d("999.99"))));
+        assert_eq!(narrowed(Some(5), Some(2), Some("-5000"), Some("10")), (Some(d("-999.99")), Some(d("10"))));
+        assert_eq!(narrowed(None, Some(2), Some("1"), None), (Some(d("1")), None));
+        assert_eq!(narrowed(Some(2), Some(3), None, Some("7")), (None, Some(d("7"))));
     }
 
     #[test]

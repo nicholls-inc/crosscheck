@@ -50,6 +50,10 @@ The check runs only after the pull request is merged. It reports on the merge an
 
 The ruleset on the default branch requires no status checks, so GitHub does not stop a merge while this check is red. "Blocked" is the maintainer's rule rather than a setting: the maintainer does not merge a pull request whose tier gate is red. When the gate passes, it also lists which CI job holds the deterministic evidence for each changed file. A file that no job checks, prose included, is listed as "not yet reached", with the property that blocks a check and the open question. The list is in `docs/assurance/TIER-LAYER-MAP.md`.
 
+## Before you commit
+
+`npm install` at the repository root installs a pre-commit hook, `.husky/pre-commit`. When a commit stages a protected file, the hook checks the one rule of this gate that needs no PR body: every protected file the branch changes must be named in a governance note the branch changes. On a failure it prints the missing names and the command that fixes them, such as `/crosscheck:protected-surface-amend` followed by `git add` of the note. Run `node scripts/ci/pre-commit.mjs` to recheck. The hook reads `origin/main` as last fetched, so run `git fetch origin` if it disagrees with CI. The tier declaration, the citations and the CGV section are in the PR body, so only CI checks them.
+
 ## How long this takes
 
 For Tier 1 and Tier 2, usually a few minutes — citing or writing a short intent or spec document. For Tier 3, expect tens of minutes, because a genuine plan and, for protected files, a governance-note block from `/protected-surface-amend` both take real drafting time.
