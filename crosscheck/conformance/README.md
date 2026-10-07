@@ -19,8 +19,10 @@ Build a standalone binary:
     go build -o conformance ./crosscheck/conformance
     ./conformance crosscheck
 
-Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim, or a
-`present_artifact` ledger check that disagrees with the filesystem).
+Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim or
+claim with an unknown status, or a `present_artifact` ledger check that
+disagrees with the filesystem, or a `claims.json` that cannot be read or
+parsed).
 
 > Run commands assume the repo-root Go workspace (`go.work`), which lets the
 > nested module resolve when invoked from the repo root. From inside this
@@ -62,7 +64,30 @@ Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim, or a
   `tracked_in` link to its tracking issue (the ADD epic
   [#217](https://github.com/nicholls-inc/claude-code-marketplace/issues/217) and
   its children); a known-gap with no link also fails CI, so a "known" gap can
-  never be tracked nowhere.
+  never be tracked nowhere. `status` must be exactly one of `unreviewed`,
+  `known-gap`, `reviewed-disclosed` or `reviewed-accurate`. Any other value,
+  including an empty or missing one, fails CI, so a typo such as
+  `reviewed-disclsed` cannot pass as a reviewed claim.
+
+  A missing `claims.json` is an empty ledger. A `claims.json` that cannot be
+  read, or is not valid JSON for the ledger types, fails CI, so a syntax error
+  cannot pass as a ledger with no claims. A `claims.json` or `conformance`
+  directory that is a symlink to a missing target cannot be read, so it fails
+  CI too. JSON that parses but has the wrong shape fails CI as well. The top
+  level, each claim and each `check` must be objects, `narrative_claims` must be
+  present and not `null`, and every key must be one the ledger names
+  (`version`, `description` and `narrative_claims` at the top; `id`, `source`,
+  `claim`, `reality`, `status`, `check` and `tracked_in` in a claim; `type`,
+  `path` and `expect_present` in a `check`), matched exactly, including case.
+  So a misspelt `tracked-in` or `expect-present` fails instead of being
+  dropped. Not yet reached: which keys a claim must carry, the value of
+  `version`, the value of `check.type` (an unknown type runs no auto-check),
+  and duplicate keys. A duplicated scalar key keeps its last value, and a
+  duplicated `check` object is merged, while the key check reads only the last
+  copy, so an unknown key in an earlier copy is dropped unreported. The
+  property that blocks them is a list of required fields and allowed values and
+  a decoder that sees every key, and the open question is which of them the
+  real ledger can meet today (PB-1.40).
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
@@ -96,4 +121,5 @@ jobs:
 
 Add a claim to `claims.json` whenever the docs assert something about the plugin
 that the filesystem doesn't already prove. New claims start `status:"unreviewed"`
-(fails CI) until a human triages them to `reviewed-*` or `known-gap`.
+(fails CI) until a human triages them to `reviewed-disclosed`,
+`reviewed-accurate` or `known-gap`.

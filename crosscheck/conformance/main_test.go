@@ -379,6 +379,162 @@ func TestKnownGapNeedsTracking(t *testing.T) {
 	}
 }
 
+func TestLedgerStatusAllowlist(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    string
+		wantError string
+	}{
+		{"typo", `"status":"reviewed-disclsed",`, `[ledger] claim C has unknown status "reviewed-disclsed"`},
+		{"empty", `"status":"",`, `[ledger] claim C has unknown status ""`},
+		{"missing", ``, `[ledger] claim C has unknown status ""`},
+		{"padded", `"status":" reviewed-accurate",`, `[ledger] claim C has unknown status " reviewed-accurate"`},
+		{"unreviewed", `"status":"unreviewed",`, ""},
+		{"known_gap", `"status":"known-gap",`, ""},
+		{"reviewed_disclosed", `"status":"reviewed-disclosed",`, ""},
+		{"reviewed_accurate", `"status":"reviewed-accurate",`, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files := baseTree()
+			files["conformance/claims.json"] = `{"version":1,"narrative_claims":[{"id":"C","claim":"c","reality":"r",` +
+				tc.status + `"tracked_in":"#25","check":{"type":"manual"}}]}`
+			r := analyze(writeTree(t, files))
+			if tc.wantError != "" {
+				if !hasMatch(r.errors, tc.wantError) {
+					t.Errorf("want error %q, got: %v", tc.wantError, r.errors)
+				}
+				return
+			}
+			if hasMatch(r.errors, "unknown status") {
+				t.Errorf("status %s must be accepted, got: %v", tc.status, r.errors)
+			}
+		})
+	}
+}
+
+func TestLedgerLoad(t *testing.T) {
+	const readErr = "[ledger] cannot read conformance/claims.json: "
+	const parseErr = "[ledger] cannot parse conformance/claims.json: "
+	writeLedger := func(content string) func(t *testing.T, path string) {
+		return func(t *testing.T, path string) {
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	symlink := func(target string) func(t *testing.T, path string) {
+		return func(t *testing.T, path string) {
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	tests := []struct {
+		name       string
+		setup      func(t *testing.T, path string)
+		wantPrefix string
+		wantClaims int
+	}{
+		{"missing", func(*testing.T, string) {}, "", 0},
+		{"no_conformance_dir", func(t *testing.T, path string) {
+			if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+				t.Fatal(err)
+			}
+		}, "", 0},
+		{"directory", func(t *testing.T, path string) {
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, readErr, 0},
+		{"no_permission", func(t *testing.T, path string) {
+			if os.Geteuid() == 0 {
+				t.Skip("root reads a mode-000 file")
+			}
+			writeLedger(`{"version":1,"narrative_claims":[]}`)(t, path)
+			if err := os.Chmod(path, 0o000); err != nil {
+				t.Fatal(err)
+			}
+		}, readErr, 0},
+		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr, 0},
+		{"empty", writeLedger(``), parseErr, 0},
+		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr, 0},
+		// The first claim decodes, the second has a type error: json.Unmarshal
+		// returns the decoded claim and the error, and the ledger must still be empty.
+		{"partial_decode", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},{"id":5}]}`), parseErr, 0},
+		{"dangling_symlink", symlink("missing.json"), readErr, 0},
+		{"dangling_symlink_chain", func(t *testing.T, path string) {
+			symlink("missing.json")(t, filepath.Join(filepath.Dir(path), "hop.json"))
+			symlink("hop.json")(t, path)
+		}, readErr, 0},
+		{"dangling_conformance_dir", func(t *testing.T, path string) {
+			dir := filepath.Dir(path)
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+			symlink("missing-dir")(t, dir)
+		}, readErr, 0},
+		{"conformance_dir_symlink_no_ledger", func(t *testing.T, path string) {
+			dir := filepath.Dir(path)
+			if err := os.Rename(dir, dir+"-real"); err != nil {
+				t.Fatal(err)
+			}
+			symlink(filepath.Base(dir)+"-real")(t, dir)
+		}, "", 0},
+		{"symlink_to_ledger", func(t *testing.T, path string) {
+			writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"}]}`)(t, filepath.Join(filepath.Dir(path), "real.json"))
+			symlink("real.json")(t, path)
+		}, "", 1},
+		{"top_null", writeLedger(`null`), parseErr + "the ledger is null", 0},
+		{"top_array", writeLedger(`[]`), parseErr, 0},
+		{"top_empty_object", writeLedger(`{}`), parseErr + "narrative_claims is missing", 0},
+		{"claims_missing", writeLedger(`{"version":1}`), parseErr + "narrative_claims is missing", 0},
+		{"claims_null", writeLedger(`{"version":1,"narrative_claims":null}`), parseErr + "narrative_claims is null", 0},
+		{"claim_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},null]}`), parseErr + "narrative_claims[1] is null", 0},
+		{"check_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":null}]}`), parseErr + "narrative_claims[0].check is null", 0},
+		{"check_not_object", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":"manual"}]}`), parseErr, 0},
+		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"k5":1,"k9":1,"k3":1,"k8":1,"k1":1,"k7":1,"k2":1,"k6":1,"k4":1}`), parseErr + `the ledger has unknown key "k1"`, 0},
+		{"unknown_claim_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"known-gap","tracked-in":"#1"}]}`), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
+		{"unknown_check_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":{"type":"present_artifact","path":"README.md","expect-present":false}}]}`), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
+		{"key_case_mismatch", writeLedger(`{"Narrative_Claims":[]}`), parseErr + `the ledger has unknown key "Narrative_Claims"`, 0},
+		{"every_schema_key", writeLedger(`{"version":1,"description":"d","narrative_claims":[` +
+			`{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","tracked_in":"",` +
+			`"check":{"type":"present_artifact","path":"README.md","expect_present":true}}]}`), "", 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files := baseTree()
+			delete(files, "conformance/claims.json")
+			root := writeTree(t, files)
+			if err := os.MkdirAll(filepath.Join(root, "conformance"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			tc.setup(t, filepath.Join(root, "conformance", "claims.json"))
+
+			r := analyze(root)
+			out := report(r)
+			if tc.wantPrefix == "" {
+				if len(r.errors) != 0 || !strings.Contains(out, "RESULT: PASS") {
+					t.Errorf("want a pass with no errors, got: %v", r.errors)
+				}
+				if len(r.ledger) != tc.wantClaims {
+					t.Errorf("ledger claims = %d, want %d", len(r.ledger), tc.wantClaims)
+				}
+				return
+			}
+			if len(r.errors) != 1 || !strings.HasPrefix(r.errors[0], tc.wantPrefix) {
+				t.Errorf("want one error starting %q, got: %v", tc.wantPrefix, r.errors)
+			}
+			if len(r.ledger) != 0 {
+				t.Errorf("a ledger that failed to load must be empty, got %d claims", len(r.ledger))
+			}
+			if !strings.Contains(out, "RESULT: FAIL") {
+				t.Errorf("want RESULT: FAIL, got:\n%s", out)
+			}
+		})
+	}
+}
+
 func TestReportPassFail(t *testing.T) {
 	pass := report(result{})
 	if !strings.Contains(pass, "RESULT: PASS") {

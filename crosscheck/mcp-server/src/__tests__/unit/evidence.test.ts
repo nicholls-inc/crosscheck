@@ -7,6 +7,7 @@ import {
   auditClean,
   buildRecord,
   claimId,
+  requirementPath,
   rerunCommand,
   shellQuote,
   unverifiedTheorems,
@@ -39,6 +40,16 @@ describe("validateEvidenceInput (DE-1)", () => {
     ["wrong extension", { file: "proofs/Abs.lean" }],
     ["blank statement", { statement: " \n" }],
     ["blank requirement", { requirement: "  " }],
+    ["absolute requirement", { requirement: "/etc/passwd" }],
+    ["requirement outside the tree", { requirement: "../other/req.md" }],
+    ["requirement with a dot segment", { requirement: "docs/./req.md" }],
+    ["requirement with an empty segment", { requirement: "docs//req.md" }],
+    ["requirement naming a directory", { requirement: "docs/" }],
+    ["requirement with a backslash", { requirement: "docs\\req.md" }],
+    ["requirement with only an anchor", { requirement: "#abs" }],
+    ["requirement with an empty anchor", { requirement: "docs/req.md#" }],
+    ["theorem named twice", { theorems: ["AbsNonneg", "AbsNonneg"] }],
+    ["theorem named three times", { theorems: ["AbsNonneg", "M.L", "AbsNonneg", "AbsNonneg"] }],
     ["no theorems", { theorems: [] }],
     ["bad theorem name", { theorems: ["Abs Nonneg"] }],
     ["trailing dot", { theorems: ["M."] }],
@@ -50,6 +61,29 @@ describe("validateEvidenceInput (DE-1)", () => {
     expect(
       validateEvidenceInput({ ...good, repoPath: "x", statement: "", theorems: [] })
     ).toHaveLength(3);
+  });
+
+  it("names each refused requirement and repeated theorem", () => {
+    expect(validateEvidenceInput({ ...good, requirement: "../req.md", theorems: ["A", "B", "A", "B", "C"] })).toEqual([
+      'requirement must be a relative path with no "." or ".." segment, optionally followed by #<anchor>: ../req.md',
+      "theorem named more than once: A",
+      "theorem named more than once: B",
+    ]);
+  });
+
+  it.each([["docs/req.md"], [" docs/req.md#abs "], ["req.md#a#b"], ["docs/req v2.md#Section 1"], ["docs/req.md#a/../b"]])(
+    "accepts the requirement %j",
+    (requirement) => {
+      expect(validateEvidenceInput({ ...good, requirement })).toEqual([]);
+    }
+  );
+
+  it.each([
+    ["docs/req.md", "docs/req.md"],
+    [" docs/req.md#abs ", "docs/req.md"],
+    ["req.md#a#b", "req.md"],
+  ])("reads the path of the requirement %j", (requirement, path) => {
+    expect(requirementPath(requirement)).toBe(path);
   });
 
   it("accepts primes, question marks and qualifiers in names", () => {

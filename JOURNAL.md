@@ -4,6 +4,83 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - Baseline mode reports only the findings that a change introduces
+
+**Type:** feature
+**Touches:** cgv/src/baseline.rs, cgv/src/report.rs, cgv/src/main.rs, cgv/src/lib.rs, cgv/tests/e2e_baseline.rs, cgv/README.md, docs/TASKS.md
+**Why:** A whole-project run on a real codebase reports about 240 errors, and a real bug ranked between #140 and #180. Nobody triages that on a pull request (#7).
+**Links:** [intent](intent/2026-10-07-cgv-baseline-mode.md), [spec](intent/2026-10-07-cgv-baseline-mode-spec.md)
+
+`--write-baseline PATH` writes a run's findings, and `--baseline PATH` prints only the findings that are not in the baseline, counts the rest, and lists the baseline findings that are gone. The key of a finding is its class, source, target, hop, bounds, site file and the normalised text of the site's line, with no line number, so an edit above a finding does not make it new. The comparison counts each key, and when a key's count rises every finding with that key is printed as new. Baseline mode exits 1 when any error is unmatched, so it can only hide a finding that has an equal key in the baseline. A finding swapped for an equal one is not yet reached, and the spec names the open question. Exit 0 in baseline mode does not carry `runChecker_sound_all`, so `--baseline` refuses `--evidence-record`. It also refuses a `--write-baseline` that names the same file, which would overwrite the baseline with the run's new errors. Without either flag the output is unchanged. On the 10 cases of the public bench corpus, a baseline from `fix/` compared with `pre/` exits 1 on exactly the 5 cases whose `pre/` has an error that `fix/` lacks.
+
+## 2026-10-07 - Proving CGV's extraction is split into sixteen rows
+
+**Type:** docs
+**Touches:** intent/2026-10-07-prove-extraction.md, intent/2026-10-07-prove-extraction-plan.md, docs/TASKS.md
+**Why:** #16 names three unproved links between Python source and the graph that `runChecker_sound_all` is about, and four approaches to them, but the queue had one row for all of it.
+**Links:** [intent](intent/2026-10-07-prove-extraction.md), [plan](intent/2026-10-07-prove-extraction-plan.md)
+
+TB-1.11 to TB-1.26 follow the issue's recommendation. Link 3 is proved per constraint kind against `BehaviorModel.lean`, then end to end. Link 2 is made strict and pure, then proved, and its IO shell is tested. Link 1 is tested against values observed in generated programs, and certificate checking is piloted on one pattern to measure its cost. Reading the code found that `param_max_digits` is written by the extractor and dropped by `Translation.lean`, so a write with too many integer digits into a `DecimalField` exits 0 (measured on a two-file fixture with binaries built from earlier task branches, not yet re-measured on `main`), and that `buildGraph` drops an edge whose endpoint names no node, which the README's trust table contradicts by saying malformed rows exit 2. TB-1.12 corrects that row. TB-1.13 and TB-1.12 cover them. A proof of link 1 and a proof of completeness stay not yet reached, and the intent names the blocking property and the open question for each.
+
+---
+
+## 2026-10-07 - The text report counts a missing guarantee as coverage instead of printing it
+
+**Type:** feature
+**Touches:** cgv/src/report.rs, cgv/src/main.rs, cgv/tests/e2e_text_format.rs, cgv/tests/e2e_cli.rs, cgv/README.md, docs/TASKS.md
+**Why:** On a private Django codebase, 7,595 of 8,374 warnings said only that a source had no nullability guarantee. Readers took them for findings, and the errors were lost among them (#9).
+**Links:** [intent](intent/2026-10-07-cgv-unverified-coverage.md), [spec](intent/2026-10-07-cgv-unverified-coverage-spec.md)
+
+`--format text` sorts each checker result into one of four classes: incomplete, error, unverified and warning. A warning whose `source_guarantee` reads `<kind> (unspecified)` is unverified. By default the report prints no block for it, and counts it in a new `COVERAGE BY MODULE` section and in the `RESULT:` line, so a run that exits 0 with unverified requirements still says so. The section names the blocking property and the open question. `--warnings` prints the blocks, labelled `UNVERIFIED`. The edge counts come from the contract database the checker read, and on every fixture they sum to `edges_checked`. JSON and the exit code are unchanged. The class rests on the checker's wording, and a warning the report cannot classify is printed, not hidden. CG-1.31 moves the class into the checker's JSON and counts checked hop states for each module.
+
+---
+
+## 2026-10-07 - The imported Crosscheck backlog has one decision per issue
+
+**Type:** docs
+**Touches:** intent/2026-10-07-backlog-review.md, intent/2026-10-07-backlog-review-decisions.md, docs/TASKS.md
+**Why:** AD-1 asks for one decision, Refine or Drop, on each of the 23 issues (#19 to #41) that came with Crosscheck. They were written before the vision, and none had a row in the queue.
+**Links:** [intent](intent/2026-10-07-backlog-review.md), [decisions](intent/2026-10-07-backlog-review-decisions.md)
+
+Twenty-one issues are refined and two are dropped. #37 is already done on `main`, and #34 is done apart from two residues that move to AD-1.11, and the decisions file cites the lines that do them. The refined issues give 19 new rows: PB-1.18 to PB-1.21 for Crosscheck's own deterministic CI checks, VA-1.9 to VA-1.11 for agents and skills that present an unchecked or LLM verdict as evidence, and AD-1.2 to AD-1.13 for work that serves a design rule and no other current item. Two refinements change what an issue asked for, because the original conflicts with rule 1 of the vision. #22 no longer makes an LLM judge the pass condition of the acceptance oracles. #32 no longer lets an LLM's tag close a finding. The GitHub issues are rewritten and closed from the decisions file after review, not in this pull request.
+
+---
+
+## 2026-10-06 - A call that never returns, and a match over every enum member, end the flow
+
+**Type:** fix
+**Touches:** cgv/README.md, cgv/src/exits.rs, cgv/src/flow.rs, cgv/src/resolve.rs, cgv/src/extractor.rs, cgv/src/function_extractor.rs, cgv/src/edge_discovery.rs, cgv/src/value_analysis.rs, cgv/test_fixtures/no_return_exits/, cgv/bench/baseline.json, docs/TASKS.md
+**Why:** CGV treated a body that ends in `assert_never(x)`, `sys.exit(1)` or a `match` over every member of an enum as falling through to `return None`, a false non-null error against a non-Optional return. It was 2 of the 20 triaged non-null errors in the real-codebase evaluation, and the `no-return` false positive in the labelled benchmark.
+**Links:** [intent](intent/2026-10-06-no-return-exits.md)
+
+`flow.rs` cannot resolve a name, so the decision is made once per function after the project index is complete. `exits::function_exits` returns an `Exits`, two sets of statement offsets kept on `FunctionInfo`, and `always_exits`, `terminates` and `walk` read it. A call counts when it reaches `sys.exit`, `os._exit`, `os.abort`, `typing.assert_never` or `typing_extensions.assert_never` through a non-project import, the builtins `exit` or `quit`, or a project function annotated `NoReturn` or `Never` with no wrapping decorator, awaited exactly when it is `async`. A match counts when its subject is an unrebound parameter annotated with a project enum whose member list is certain, and unguarded `E.NAME` patterns name every member. A name the function binds, a module global the module rebinds, and a name reached through an import chain in which a module rebinds it, or imports it from two places, and a name that a module with a star import neither imports nor defines, never count (a star import after an explicit import is CG-1.22). Anything unrecognised is assumed to complete, which can only add errors. Instance method calls, attribute or local subjects, and enums or `NoReturn` functions from outside the project are not yet reached, and the intent names the blocking property and the open question for each.
+
+---
+
+## 2026-10-06 - CGV narrows None in four more patterns
+
+**Type:** fix
+**Touches:** cgv/src/flow.rs, cgv/src/value_analysis.rs, cgv/src/edge_discovery.rs, cgv/test_fixtures/cg_narrowing/, cgv/test_fixtures/cg_narrowing_getattr/, cgv/test_fixtures/cg_narrowing_globals/, cgv/bench/baseline.json, cgv/README.md, intent/2026-10-06-narrowing-patterns.md, docs/TASKS.md
+**Why:** 4 of the 20 triaged non-null errors on the evaluated codebase came from patterns the walk did not narrow (issue #5, CG-1.9).
+**Links:** [intent](intent/2026-10-06-narrowing-patterns.md), [fixture](cgv/test_fixtures/cg_narrowing/expected.json)
+
+After a `try`, the walk now joins the paths that fall through, so `try: v = int(v)` with a handler that returns keeps `v` non-None. `x in {"a", "b"}` narrows `x` when every element is a non-None literal. `k in d` is a fact kept among the narrowed names as `d[k]`. Under it, `d.get(k)` has the facts of `d[k]`, so a warning rather than an error. The fact is dropped when `d` or `k` is rebound, after any call other than `.get`, a `del`, a walrus or a suspension (`await`, `yield`, `async for`, `async with`, an async comprehension), and on entry to a loop, a `try` handler, a `finally`, a `match` statement or a definition (decorator, default or class body) that has one. A read of `p.f` through a parameter has unknown nullability when every call of the function narrows `arg.f` and the project shows every caller: at least one call from outside the function and outside any cycle of calls that nothing else enters. A pre-pass in `edge_discovery::caller_guards` decides that, and it excludes an async function and a generator, whose body runs after the call, when the caller may have written the field. A `while` test is read after the loop's own effects, since it runs again after every iteration.
+
+The maintainer then settled the review's open questions with one rule: exit 0 promises consistency, so a narrowing that can hide a real nullability bug is a soundness hole, and soundness wins over precision where it is affordable. So a computed `getattr` switches caller guards off everywhere, and `globals()` or `locals()` in the module that calls it. A guard ends at the first call that can reach the parameter. `d.get(k)` narrows only when `d` is known to be a dict, only `d`'s own `.get` keeps the fact, and the fact also dies between operands of `and` / `or`, across a conditional expression's test and across a comprehension. The new near misses in `cg_narrowing/bugs.py` and the fixtures `cg_narrowing_getattr/` and `cg_narrowing_globals/` each fail when their fix is reverted. The pattern 2 and pattern 4 rules lower an error to a warning, never to silence, because a caller outside the project or a stored `None` can still reach the read. On the bench, `labelled-app` precision rose from 0.2857 to 0.3333. The fixed false positive now shows as a stale label, and the baseline is refreshed.
+
+---
+
+## 2026-10-06 - pydantic `model_validate` is a validation boundary
+
+**Type:** fix
+**Touches:** cgv/src/edge_discovery.rs, cgv/src/dataclass_extractor.rs, cgv/src/resolve.rs, cgv/src/extractor.rs, cgv/test_fixtures/pydantic_validate_boundary/, cgv/README.md, cgv/docs/design/dataflow-v2.md, docs/TASKS.md
+**Why:** CGV checked each entry of the dict given to `Model.model_validate` against the field, as if it were a typed constructor argument. `model_validate` takes `Any`, coerces in lax mode and rejects invalid input on purpose, so the errors were false. It was 4 of the triaged false positives in the real-codebase evaluation.
+**Links:** [intent](intent/2026-10-06-pydantic-validate-boundary.md)
+
+At `model_validate`, `model_validate_json`, `model_validate_strings`, `parse_obj` and `parse_raw` on a pydantic class, an entry is no longer a write when validation enforces the field's contract. The first draft dropped every entry. Review and a pydantic 2.13.5 run showed that this left reads of some fields resting on a contract nothing checked: `decimal_places` and `max_digits` count digits after trailing zeros are dropped, and `SkipValidation`, `PlainValidator` and `WrapValidator` can store None in a `str` field. Those fields, and a `None` default that pydantic v1 reads as Optional, keep their writes. A later review found that matching those markers by literal name lets a renamed import or an alias drop the write, so the rule is now an allowlist: a field counts as validated only when every name in its annotation, every union member and every `Annotated` metadata item is on a list of types and constraints that pydantic validates, and anything else keeps the write. A project name that shadows a listed name is still read as the listed type (CG-1.43), and container arguments and aliased validator decorators are not inspected (CG-1.44). So `r5_write_patterns` keeps its `model_validate` precision error. A typed constructor call and `model_copy(update=...)` stay writes. `BehaviorModel.lean` needs no rule for lax coercion, but its `pydanticDecimalAccepts` is false for trailing zeros (CG-1.17), and `Annotated` validators do not clear requirements as the decorator forms do (CG-1.18). `model_construct` records no write (CG-1.16).
+
+---
+
 ## 2026-10-06 - A parameter typed `object` accepts None
 
 **Type:** fix

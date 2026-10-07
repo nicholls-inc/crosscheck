@@ -188,6 +188,79 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(runDafny).not.toHaveBeenCalled();
   });
 
+  it("records a requirement that names a tracked file (DE-4)", async () => {
+    await mkdir(join(repo, "docs"));
+    await writeFile(join(repo, "docs", "req.md"), "# Abs\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "-q", "-m", "req");
+    const result = await dafnyEvidence({ ...input, requirement: " docs/req.md#abs " });
+    expect(result.errors).toEqual([]);
+    expect(result.record?.claims[0].requirement).toBe("docs/req.md#abs");
+  });
+
+  it.each([
+    ["a missing file", async () => undefined, "docs/none.md#abs", "requirement: not committed: docs/none.md"],
+    ["free text", async () => undefined, "see the ticket", "requirement: not committed: see the ticket"],
+    [
+      "an ignored file",
+      async (r: string) => {
+        await mkdir(join(r, "out"));
+        await writeFile(join(r, "out", "req.md"), "");
+      },
+      "out/req.md",
+      "requirement: not committed: out/req.md",
+    ],
+    [
+      "a tracked symbolic link",
+      async (r: string) => {
+        await symlink("proofs/Abs.dfy", join(r, "req.md"));
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "link");
+      },
+      "req.md",
+      "requirement: req.md is a symbolic link; pass the file it points to",
+    ],
+    [
+      "a file reached through a linked directory",
+      async (r: string) => {
+        await symlink("proofs", join(r, "linked"));
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "link");
+      },
+      "linked/Abs.dfy",
+      "requirement: not committed: linked/Abs.dfy",
+    ],
+    [
+      "a tracked directory",
+      async () => undefined,
+      "proofs",
+      "requirement: proofs is not a regular file",
+    ],
+    [
+      "a glob that matches a tracked file",
+      async (r: string) => {
+        await mkdir(join(r, "docs"));
+        await writeFile(join(r, "docs", "req.md"), "# Abs\n");
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "req");
+      },
+      "docs/*.md",
+      "requirement: not committed: docs/*.md",
+    ],
+    [
+      "pathspec magic that matches a tracked file",
+      async () => undefined,
+      ":(top)proofs/Abs.dfy",
+      "requirement: not committed: :(top)proofs/Abs.dfy",
+    ],
+  ])("refuses a requirement that names %s before any Dafny run (DE-4)", async (_label, setup, requirement, error) => {
+    await setup(repo);
+    const result = await dafnyEvidence({ ...input, requirement });
+    expect(result).toEqual({ success: false, errors: [error], record: null, writtenTo: null });
+    expect(runDafny).not.toHaveBeenCalled();
+    expect(dockerImageId).not.toHaveBeenCalled();
+  });
+
   it("still sees an untracked file when status.showUntrackedFiles is no (DE-3)", async () => {
     git(repo, "config", "status.showUntrackedFiles", "no");
     await writeFile(join(repo, "proofs", "Extra.dfy"), "");
