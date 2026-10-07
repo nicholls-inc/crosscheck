@@ -6,6 +6,7 @@ pub mod defaults;
 pub mod docstring_parser;
 pub mod edge_discovery;
 pub mod evidence;
+pub mod exits;
 pub mod extractor;
 pub mod flow;
 pub mod function_extractor;

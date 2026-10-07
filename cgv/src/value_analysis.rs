@@ -2681,7 +2681,7 @@ mod tests {
             fn header(&mut self, _: &'a Expr, _: &Narrowed) {}
         }
         let mut last = Last(None);
-        flow::walk_block(&f.body, &flow.entry, &mut last);
+        flow::walk_block(&f.body, &flow.entry, &flow.exits, &mut last);
         let (expr, n) = last.0.expect("an expression statement");
         scope.facts(expr, &Ctx::new(&n))
     }
@@ -3309,7 +3309,7 @@ mod tests {
                 fn header(&mut self, _: &'a Expr, _: &Narrowed) {}
             }
             let mut last = Last(None);
-            flow::walk_block(&f.body, &flow.entry, &mut last);
+            flow::walk_block(&f.body, &flow.entry, &flow.exits, &mut last);
             let (expr, n) = last.0.unwrap();
             let out: Vec<Option<i64>> = scope
                 .alternatives(expr, &Ctx::new(&n))

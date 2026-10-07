@@ -159,7 +159,7 @@ pub fn discover(project: &Project) -> Discovered {
             observations: Vec::new(),
             forwarder_edges: Vec::new(),
         };
-        let end = flow::walk_block(&func.body, &flow.entry, &mut walker);
+        let end = flow::walk_block(&func.body, &flow.entry, &flow.exits, &mut walker);
         if flow.falls_through {
             walker.observations.push((None, end));
             // Falling off the end returns None, against a non-Optional
