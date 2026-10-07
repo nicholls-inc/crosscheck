@@ -108,6 +108,12 @@ jobs:
           lake env leanchecker --fresh ContractGraph.Main
           lake env leanchecker ContractGraph
 
+      # SM-8 in intent/2026-10-07-compiled-code-attributes-spec.md: fails if the
+      # generator stops rejecting implemented_by or extern on reached constants.
+      - name: The manifest generator rejects implemented_by and extern on what the theorems reach
+        working-directory: cgv/prover
+        run: scripts/compiled-code-selftest.sh
+
       # SM-10 in intent/2026-10-07-manifest-reach-spec.md: fails if the
       # generator stops checking the rules table, or the manifest stops
       # recording what the protected statements reach.
