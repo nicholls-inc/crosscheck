@@ -367,6 +367,11 @@ mod tests {
         assert_eq!(digits_limit(2, Some(3)), None);
         assert_eq!(digits_limit(0, None), None);
         assert_eq!(digits_limit(5, Some(-1)), None);
+        assert_eq!(digits_limit(38, None).map(|l| l.to_string()), Some("9".repeat(38)));
+        assert_eq!(
+            digits_limit(38, Some(30)).map(|l| l.to_string()),
+            Some(format!("{}.{}", "9".repeat(8), "9".repeat(30)))
+        );
         assert_eq!(digits_limit(39, None), None);
         assert_eq!(digits_limit(31, Some(31)), None);
     }

@@ -1214,9 +1214,14 @@ mod tests {
              narrower: Annotated[Decimal, Field(max_digits=9, decimal_places=2)] = Field(max_digits=5)\n",
         );
         let f = |name| field(&cs, "M", name);
-        assert_eq!((f("wider").max_digits, f("wider").max_value), (None, None));
-        assert_eq!((f("unplaced").decimal_places, f("unplaced").max_value), (None, mu(99_999_000_000)));
-        assert_eq!(f("narrower").max_value, mu(999_990_000));
+        assert_eq!((f("wider").max_digits, f("wider").min_value, f("wider").max_value), (None, None, None));
+        assert_eq!(f("wider").decimal_places, Some(2));
+        assert_eq!(
+            (f("unplaced").decimal_places, f("unplaced").min_value, f("unplaced").max_value),
+            (None, mu(-99_999_000_000), mu(99_999_000_000))
+        );
+        assert_eq!((f("narrower").min_value, f("narrower").max_value), (mu(-999_990_000), mu(999_990_000)));
+        assert_eq!(f("narrower").decimal_places, Some(2));
     }
 
     #[test]
