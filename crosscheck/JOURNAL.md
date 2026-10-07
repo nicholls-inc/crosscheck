@@ -4,14 +4,14 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
-## 2026-10-06 — `dafny_evidence` reruns by image ID, and narrows its output and include paths
+## 2026-10-07 — `dafny_evidence` reruns by image ID, and narrows its output and include paths
 
 **Type:** feature
 **Touches:** mcp-server/src/tools/evidence.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
 **Why:** The rerun command named the image tag, so a rebuilt or retagged image ran under the same command. The output path could land in a dot directory that a hook or tool reads as configuration, and an include could be any file Dafny reads as source.
 **Links:** [intent](../intent/2026-10-06-dafny-evidence-paths-and-image-id.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
 
-The rerun command now names the image by the ID the trusted base records. A probe showed that `docker run` with an ID no local image has exits 125 without a pull, that `docker save` and `docker load` keep the ID, and that a second build of the same Dockerfile does not. So the command runs the recorded image or fails, and an auditor on another machine loads the author's saved image first. A rerun with no help from the author waits on a published image with a pinned base, and the spec's concern says so. This reverses the earlier argument for the tag, which held that a command failing on another machine was worse than one running a different image there. `outputPath` must end in `.json` and pass through no directory whose name starts with `.`, which replaces the `.git` rule. An include must end in `.dfy`, because Dafny 4.11.0 reads `include "Lib.txt"` as source.
+The rerun command now names the image by the ID the trusted base records. A probe showed that `docker run` with an ID no local image has exits 125 without a pull, that `docker save` and `docker load` keep the ID, and that a second build of the same Dockerfile does not. So the command runs the recorded image or fails, and an auditor on another machine loads the author's saved image first. A rerun with no help from the author waits on a published image with a pinned base, and the spec's concern says so. This reverses the earlier argument for the tag, which held that a command failing on another machine was worse than one running a different image there. `outputPath` must end in `.json` and have no part, directory or file name, that starts with `.`, which replaces the `.git` rule. An include must end in `.dfy`, because Dafny 4.11.0 reads `include "Lib.txt"` as source.
 
 ---
 

@@ -24,7 +24,7 @@ Docker 29.4.0 on an arm64 host, overlay2 storage, against `crosscheck-dafny:late
 So a rerun that names the ID runs exactly the recorded image or exits 125 before Dafny starts. `docker save` and `docker load` carry the ID to another machine. A rebuild, even of an unchanged Dockerfile, does not.
 
 ## Proposed outcome
-- `dafny_evidence` refuses an `outputPath` that does not end in `.json`, and one that passes through a directory whose name starts with `.`, before any Dafny run and again before the write. The second rule replaces the `.git` rule, which it covers.
+- `dafny_evidence` refuses an `outputPath` that does not end in `.json`, and one with any part, directory or file name, that starts with `.`, before any Dafny run and again before the write. The second rule replaces the `.git` rule, which it covers.
 - `dafny_evidence` refuses an include whose path does not end in `.dfy`.
 - The rerun command names the image by the ID that the trusted base records. An auditor on another machine runs that command after `docker load` of the image that the record's author saved. An auditor who builds the image instead gets exit 125, and must edit the command to name their own image, which is then a different trusted base, and they know it.
 - The spec's concern on the rerun image says what an auditor runs, and that a rerun with no help from the author is not yet reached.

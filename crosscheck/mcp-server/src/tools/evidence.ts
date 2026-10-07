@@ -242,8 +242,8 @@ async function outputTarget(
     return fail(`is not inside the work tree ${root}`);
   }
   if (!out.endsWith(".json")) return fail("does not end in .json");
-  const dotDir = rel.split(sep).slice(0, -1).find((s) => s.startsWith("."));
-  if (dotDir !== undefined) return fail(`passes through a directory whose name starts with ".": ${dotDir}`);
+  const dotPart = rel.split(sep).find((s) => s.startsWith("."));
+  if (dotPart !== undefined) return fail(`has a part whose name starts with ".": ${dotPart}`);
   let parent: string;
   try {
     parent = await realpath(dirname(out));

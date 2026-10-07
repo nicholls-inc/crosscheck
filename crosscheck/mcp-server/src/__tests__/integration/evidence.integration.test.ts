@@ -507,12 +507,14 @@ describe("dafnyEvidence against a real git repository", () => {
       await refusesBeforeDafny("out/record.JSON", "does not end in .json");
     });
 
-    it("refuses a path through a directory whose name starts with a dot, .git in any case included", async () => {
-      const DOT_DIR = 'passes through a directory whose name starts with ".": ';
+    it("refuses a path with a part whose name starts with a dot, directory or file, .git in any case included", async () => {
+      const DOT_DIR = 'has a part whose name starts with ".": ';
       await refusesBeforeDafny(".github/workflows/x.json", `${DOT_DIR}.github`);
       await refusesBeforeDafny("sub/.cache/x.json", `${DOT_DIR}.cache`);
       await refusesBeforeDafny(".git/x.json", `${DOT_DIR}.git`);
       await refusesBeforeDafny("sub/.Git/config.json", `${DOT_DIR}.Git`);
+      await refusesBeforeDafny(".mcp.json", `${DOT_DIR}.mcp.json`);
+      await refusesBeforeDafny("sub/.rec.json", `${DOT_DIR}.rec.json`);
     });
 
     it("refuses a missing directory before running Dafny", async () => {
@@ -538,7 +540,7 @@ describe("dafnyEvidence against a real git repository", () => {
 
     const NOT_A_RECORD = "names an existing file that is not an evidence record";
 
-    it("refuses to overwrite the verified file, under any spelling", async () => {
+    it("refuses the verified file by its extension, under any spelling", async () => {
       await refusesBeforeDafny("proofs/Abs.dfy", "does not end in .json");
       await refusesBeforeDafny("proofs/../proofs/Abs.dfy", "does not end in .json");
     });
@@ -560,10 +562,10 @@ describe("dafnyEvidence against a real git repository", () => {
     it("refuses to overwrite any other tracked or ignored file, or a directory", async () => {
       await commitFiles({ "docs/SKILL.md": "# skill\n", "docs/other.json": '{"format": "x"}\n' });
       await mkdir(join(repo, "out", "dir.json"), { recursive: true });
-      await writeFile(join(repo, "out", ".env.json"), '{"token": 1}\n');
+      await writeFile(join(repo, "out", "env.json"), '{"token": 1}\n');
       await refusesBeforeDafny("docs/SKILL.md", "does not end in .json");
       await refusesBeforeDafny("docs/other.json", NOT_A_RECORD);
-      await refusesBeforeDafny("out/.env.json", NOT_A_RECORD);
+      await refusesBeforeDafny("out/env.json", NOT_A_RECORD);
       await refusesBeforeDafny("out/dir.json", NOT_A_RECORD);
     });
 
