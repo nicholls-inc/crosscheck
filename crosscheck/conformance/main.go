@@ -55,7 +55,7 @@
 // and the tracker; the open question is which of them can be checked without a
 // network call. Two ids that differ only by an invisible or look-alike
 // character are distinct; what blocks it is a rule for which characters an id
-// may hold (PB-1.43 queues zero-width characters).
+// may hold (PB-1.43 queues zero-width characters, PB-1.45 look-alikes).
 package main
 
 import (

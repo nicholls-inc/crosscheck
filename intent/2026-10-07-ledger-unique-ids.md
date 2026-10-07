@@ -29,4 +29,4 @@ White space inside an `id` is not trimmed, so `C 1` and `C1` stay distinct. They
 ## Open questions
 None. The task row asks for the comparison to be decided. It is settled above.
 
-Not yet reached: two `id`s that differ only by a character a reader cannot see, such as a zero-width space (`C1` and `C1​`), or by a look-alike letter from another script (Latin `C1` and Cyrillic `С1`), are still distinct. The property that blocks it is a definition of which characters an `id` may hold, and the open question is whether that is an allowlist of characters or a Unicode confusables check. PB-1.43 already queues zero-width characters in `id`.
+Not yet reached: two `id`s that differ only by a character a reader cannot see, such as a zero-width space (`C1` and `C1\u200b`), or by a look-alike letter from another script (Latin `C1` and Cyrillic `С1`), are still distinct. The property that blocks it is a definition of which characters an `id` may hold, and the open question is whether that is an allowlist of characters or a Unicode confusables check. PB-1.43 already queues zero-width characters in `id`, and this change queues look-alike letters as PB-1.45.

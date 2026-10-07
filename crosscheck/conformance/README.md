@@ -100,7 +100,7 @@ parsed).
   invisible or look-alike character are distinct. What blocks it is a rule for
   which characters an `id` may hold, and the open question is whether that is
   an allowlist or a Unicode confusables check. PB-1.43 queues zero-width
-  characters in `id`.
+  characters in `id`, and PB-1.45 look-alike letters.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
