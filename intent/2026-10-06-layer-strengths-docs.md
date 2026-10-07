@@ -27,7 +27,7 @@ The grep `Probabilistic \(~96%\)|prove the specification is the right` finds not
 
 ## Constraints
 - No skill, agent or code changes. VA-1.1 (open PR #72) owns the `intent-check` wording in skills and agents, and rewrites step 4 of the onboarding flow in `crosscheck/docs/assurance-hierarchy.md`. This change leaves that step alone so the two pull requests do not conflict.
-- `crosscheck/docs/research/assurance-hierarchy.md` holds the same Layer 5 claim. VA-1.7 owns the Layer 5 claim there, and VA-1.6 owns the file's other "out of scope", "not addressed" and "best-effort" phrasing.
+- `crosscheck/docs/research/assurance-hierarchy.md` holds the same Layer 5 claim. VA-1.7 owns the Layer 5 claim there, and VA-1.6 already reworded the file's other "out of scope", "not addressed" and "best-effort" phrasing.
 
 ## Open questions
 None. The strengths come from the vision's rule 7 and from what each skill's `SKILL.md` says it runs.

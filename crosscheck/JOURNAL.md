@@ -77,7 +77,7 @@ The research doc's Scope section, its Layer 1, 2, 3 and 6 text, and its "What th
 ## 2026-10-06 — Layers 4 to 6 say what they prove, test or only search
 
 **Type:** docs
-**Touches:** README.md, docs/assurance-hierarchy.md, ../docs/TASKS.md
+**Touches:** README.md, docs/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-06-layer-strengths-docs.md
 **Why:** Rule 1 of `docs/VISION.md` makes `/intent-check` a search tool, and rule 7 asks every claim to name its strength. The hierarchy guide said Layers 4 to 6 "prove the specification is the right specification" and gave Layer 5 the confidence "Probabilistic (~96%)". The README called `/intent-check` "round-trip intent verification".
 **Links:** [intent](../intent/2026-10-06-layer-strengths-docs.md)
 
