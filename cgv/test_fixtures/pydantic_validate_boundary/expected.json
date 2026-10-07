@@ -1,0 +1,59 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "construct_flag -> Reading.enabled",
+      "source_guarantee": "type = str",
+      "target_requirement": "type = bool",
+      "target": "Reading.enabled"
+    },
+    {
+      "path": "maybe_label -> Reading.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Reading.label"
+    },
+    {
+      "path": "four -> Reading.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Reading.total"
+    },
+    {
+      "path": "maybe_note -> Reading.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Reading.label"
+    },
+    {
+      "path": "four_more -> Reading.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Reading.total"
+    },
+    {
+      "path": "maybe_label -> Skipped.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Skipped.label"
+    },
+    {
+      "path": "maybe_label -> Plain.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Plain.label"
+    },
+    {
+      "path": "maybe_label -> Wrapped.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Wrapped.label"
+    },
+    {
+      "path": "maybe_label -> Legacy.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Legacy.label"
+    }
+  ]
+}

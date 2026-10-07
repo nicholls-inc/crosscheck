@@ -1,0 +1,35 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "parsed -> Reading.value",
+      "source_guarantee": "type = units.float",
+      "target_requirement": "type = float",
+      "target": "Reading.value"
+    },
+    {
+      "path": "counted -> Reading.count",
+      "source_guarantee": "type = bad.int",
+      "target_requirement": "type = int",
+      "target": "Reading.count"
+    },
+    {
+      "path": "counted -> Reading.value",
+      "source_guarantee": "type = bad.int",
+      "target_requirement": "type = float",
+      "target": "Reading.value"
+    },
+    {
+      "path": "measured -> Box.value",
+      "source_guarantee": "type = float",
+      "target_requirement": "type = units.float",
+      "target": "Box.value"
+    },
+    {
+      "path": "measured -> Gauge.level",
+      "source_guarantee": "type = float",
+      "target_requirement": "type = units.float",
+      "target": "Gauge.level"
+    }
+  ]
+}
