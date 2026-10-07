@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmod, link, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+vi.mock("node:fs/promises", async (original) => {
+  const real = await original<typeof import("node:fs/promises")>();
+  return { ...real, rename: vi.fn(real.rename) };
+});
 
 vi.mock("../../docker.js", () => ({
   getDockerImage: vi.fn(() => "crosscheck-dafny:latest"),
@@ -350,22 +355,75 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(runDafny).not.toHaveBeenCalled();
   });
 
-  it("refuses when git cannot list the hidden-change flags (DE-3)", async () => {
+  // A `git` on PATH that fails the given subcommand, always or only once `marker` exists.
+  async function withFailingGit(subcommand: string, marker: string | null, body: () => Promise<void>) {
     const bin = realpathSync(await mkdtemp(join(tmpdir(), "fake-git-")));
     const realGit = execFileSync("sh", ["-c", "command -v git"]).toString().trim();
+    const guard = marker === null ? "" : `[ -e '${marker}' ] && `;
     await writeFile(
       join(bin, "git"),
-      `#!/bin/sh\ncase " $* " in *" ls-files -v "*) exit 1 ;; esac\nexec ${realGit} "$@"\n`
+      `#!/bin/sh\ncase " $* " in *" ${subcommand} "*) ${guard}exit 1 ;; esac\nexec ${realGit} "$@"\n`
     );
     await chmod(join(bin, "git"), 0o755);
     const path = process.env.PATH;
     process.env.PATH = `${bin}:${path}`;
     try {
-      expect((await dafnyEvidence(input)).errors).toEqual([`git could not read the work tree state in ${repo}`]);
+      await body();
     } finally {
       process.env.PATH = path;
       await rm(bin, { recursive: true, force: true });
     }
+  }
+
+  it.each([["ls-files -v"], ["status --porcelain --untracked-files=all"]])(
+    "refuses when git cannot run `%s` (DE-3)",
+    async (subcommand) => {
+      await withFailingGit(subcommand, null, async () => {
+        expect((await dafnyEvidence(input)).errors).toEqual([`git could not read the work tree state in ${repo}`]);
+      });
+      expect(runDafny).not.toHaveBeenCalled();
+    }
+  );
+
+  it("refuses when git cannot read the work tree state after the runs (DE-13)", async () => {
+    const marker = join(repo, "..", `after-${process.pid}-${Date.now()}`);
+    await withFailingGit("status --porcelain --untracked-files=all", marker, async () => {
+      vi.mocked(runDafny).mockImplementation(async (_dir, args) => {
+        if (args[0] === "audit") await writeFile(marker, "");
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      try {
+        expect((await dafnyEvidence(input)).errors).toEqual([`git could not read the work tree state in ${repo}`]);
+      } finally {
+        await rm(marker, { force: true });
+      }
+    });
+  });
+
+  it("refuses to write through a file planted at the temporary name, and writes nothing else (DE-11)", async () => {
+    await mkdir(join(repo, "out"));
+    await writeFile(join(repo, "out", "Target.txt"), "keep");
+    const temp = join(repo, "out", `r.json.${process.pid}.tmp`);
+    await symlink(join(repo, "out", "Target.txt"), temp);
+    const result = await dafnyEvidence({ ...input, outputPath: "out/r.json" });
+    expect(result.success).toBe(false);
+    expect(result.errors[0]).toMatch(/^could not write .*r\.json: EEXIST/);
+    expect(await readFile(join(repo, "out", "Target.txt"), "utf-8")).toBe("keep");
+  });
+
+  it("leaves only the record in the output directory after a write (DE-11)", async () => {
+    await mkdir(join(repo, "out"));
+    expect((await dafnyEvidence({ ...input, outputPath: "out/r.json" })).success).toBe(true);
+    expect(await readdir(join(repo, "out"))).toEqual(["r.json"]);
+  });
+
+  it("removes its temporary file when the rename fails (DE-11)", async () => {
+    await mkdir(join(repo, "out"));
+    vi.mocked(rename).mockRejectedValueOnce(new Error("EBUSY: rename refused"));
+    const result = await dafnyEvidence({ ...input, outputPath: "out/r.json" });
+    expect(result.success).toBe(false);
+    expect(result.errors[0]).toMatch(/^could not write .*r\.json: EBUSY: rename refused$/);
+    expect(await readdir(join(repo, "out"))).toEqual([]);
   });
 
   it("refuses when a flag hides a change made while Dafny runs (DE-13)", async () => {
@@ -564,6 +622,24 @@ describe("dafnyEvidence against a real git repository", () => {
       await commitFiles({ "proofs/Abs.dfy": `include "lib"\n${SOURCE}`, "proofs/lib/A.dfy": "" });
       await refusesBeforeDafny([
         'include "lib" in proofs/Abs.dfy is outside the tracked files: proofs/lib is not a regular file',
+      ]);
+    });
+
+    it.each([
+      ["a verbatim string", 'include @"Lib.dfy"'],
+      ["a block comment before the string", 'include /* c */ "Lib.dfy"'],
+      ["a line comment before the string", 'include // c\n"Lib.dfy"'],
+    ])("refuses an include written with %s, which Dafny reads but the scan cannot resolve", async (_name, line) => {
+      await commitFiles({ "proofs/Abs.dfy": `${line}\n${SOURCE}`, "proofs/Lib.dfy": "" });
+      await refusesBeforeDafny([
+        "include in proofs/Abs.dfy is not followed by a plain \"<path>\" string, so it cannot be checked",
+      ]);
+    });
+
+    it("refuses a backslash in an include path with the outside-the-tree reason", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `include "..\\Lib.dfy"\n${SOURCE}` });
+      await refusesBeforeDafny([
+        'include "..\\Lib.dfy" in proofs/Abs.dfy is outside the tracked files: resolves outside the work tree: ..\\Lib.dfy',
       ]);
     });
 

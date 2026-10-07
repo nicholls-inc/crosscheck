@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 
 vi.mock("node:child_process");
 
-import { runDafny } from "../../docker.js";
+import { dockerImageId, runDafny } from "../../docker.js";
 
 function createMockProcess() {
   const proc = new EventEmitter() as any;
@@ -156,4 +156,42 @@ describe("runDafny", () => {
     vi.useRealTimers();
   });
 
+});
+
+describe("dockerImageId", () => {
+  function start() {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    return { mockProc, result: dockerImageId("img:tag") };
+  }
+
+  it("inspects the image and returns the trimmed ID", async () => {
+    const { mockProc, result } = start();
+    mockProc.stdout.emit("data", Buffer.from("sha256:abc\n"));
+    mockProc.emit("close", 0);
+    expect(await result).toBe("sha256:abc");
+    expect(vi.mocked(spawn).mock.lastCall![0]).toBe("docker");
+    expect(vi.mocked(spawn).mock.lastCall![1]).toEqual(["image", "inspect", "--format", "{{.Id}}", "img:tag"]);
+  });
+
+  it("returns null when docker exits non-zero", async () => {
+    const { mockProc, result } = start();
+    mockProc.stdout.emit("data", Buffer.from("sha256:abc\n"));
+    mockProc.emit("close", 1);
+    expect(await result).toBeNull();
+  });
+
+  it("returns null when the output is empty", async () => {
+    const { mockProc, result } = start();
+    mockProc.stdout.emit("data", Buffer.from("\n"));
+    mockProc.emit("close", 0);
+    expect(await result).toBeNull();
+  });
+
+  it("returns null when docker cannot start", async () => {
+    const { mockProc, result } = start();
+    mockProc.stdout.emit("data", Buffer.from("sha256:abc\n"));
+    mockProc.emit("error", new Error("ENOENT"));
+    expect(await result).toBeNull();
+  });
 });

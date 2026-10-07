@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstat, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { lstat, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, posix, relative, resolve as resolvePath, sep } from "node:path";
 import { dockerImageId, getDockerImage, runDafny } from "../docker.js";
 
@@ -139,9 +139,12 @@ export function buildRecord(facts: {
   };
 }
 
+// `git ls-files -v` prints a line per tracked file, so the 1 MiB default would refuse a large repository.
+const GIT_MAX_BUFFER = 512 * 1024 * 1024;
+
 function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
   return new Promise((done) => {
-    execFile("git", ["--literal-pathspecs", "-C", cwd, ...args], (err, stdout) => {
+    execFile("git", ["--literal-pathspecs", "-C", cwd, ...args], { maxBuffer: GIT_MAX_BUFFER }, (err, stdout) => {
       done({ ok: err === null, stdout: String(stdout) });
     });
   });
@@ -166,7 +169,10 @@ async function untrackedReason(root: string, path: string): Promise<string | nul
   return null;
 }
 
-const INCLUDE = /\binclude\s+"([^"]*)"/g;
+// Every `include` keyword is matched, with or without the plain string the scan can resolve. Dafny
+// also reads `include @"x.dfy"` and `include /* c */ "x.dfy"`, so an `include` followed by anything
+// else is refused rather than skipped.
+const INCLUDE = /\binclude\b(?:\s+"([^"]*)")?/g;
 
 async function includedFiles(
   root: string,
@@ -179,6 +185,10 @@ async function includedFiles(
   while (queue.length > 0) {
     const [from, text] = queue.shift()!;
     for (const [, target] of text.matchAll(INCLUDE)) {
+      if (target === undefined) {
+        errors.push(`include in ${from} is not followed by a plain "<path>" string, so it cannot be checked`);
+        continue;
+      }
       const path = posix.normalize(posix.join(posix.dirname(from), target));
       const outside = isAbsolute(target) || target.includes("\\") || path === ".." || path.startsWith("../");
       if (!outside && files.includes(path)) continue;
@@ -321,8 +331,14 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   const temp = `${out}.${process.pid}.tmp`;
   try {
     await writeFile(temp, JSON.stringify(record, null, 2) + "\n", { encoding: "utf-8", flag: "wx" });
+  } catch (err) {
+    return refuse([`could not write ${out}: ${(err as Error).message}`], record);
+  }
+  try {
     await rename(temp, out);
   } catch (err) {
+    // The temp file is ours here, because "wx" created it, and a leftover would dirty the tree.
+    await unlink(temp).catch(() => undefined);
     return refuse([`could not write ${out}: ${(err as Error).message}`], record);
   }
   return { success: true, errors: [], record, writtenTo: out };

@@ -21354,7 +21354,7 @@ async function dafnyCleanup() {
 
 // src/tools/evidence.ts
 import { execFile } from "node:child_process";
-import { lstat, readFile as readFile2, realpath, rename, writeFile as writeFile3 } from "node:fs/promises";
+import { lstat, readFile as readFile2, realpath, rename, unlink, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolvePath, sep } from "node:path";
 var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
@@ -21424,9 +21424,10 @@ function buildRecord(facts) {
     ]
   };
 }
+var GIT_MAX_BUFFER = 512 * 1024 * 1024;
 function git(cwd, args) {
   return new Promise((done) => {
-    execFile("git", ["--literal-pathspecs", "-C", cwd, ...args], (err, stdout) => {
+    execFile("git", ["--literal-pathspecs", "-C", cwd, ...args], { maxBuffer: GIT_MAX_BUFFER }, (err, stdout) => {
       done({ ok: err === null, stdout: String(stdout) });
     });
   });
@@ -21445,7 +21446,7 @@ async function untrackedReason(root, path) {
   if (!stats.isFile()) return `${path} is not a regular file`;
   return null;
 }
-var INCLUDE = /\binclude\s+"([^"]*)"/g;
+var INCLUDE = /\binclude\b(?:\s+"([^"]*)")?/g;
 async function includedFiles(root, file, source) {
   const files = [file];
   const errors = [];
@@ -21453,6 +21454,10 @@ async function includedFiles(root, file, source) {
   while (queue.length > 0) {
     const [from, text] = queue.shift();
     for (const [, target] of text.matchAll(INCLUDE)) {
+      if (target === void 0) {
+        errors.push(`include in ${from} is not followed by a plain "<path>" string, so it cannot be checked`);
+        continue;
+      }
       const path = posix.normalize(posix.join(posix.dirname(from), target));
       const outside = isAbsolute(target) || target.includes("\\") || path === ".." || path.startsWith("../");
       if (!outside && files.includes(path)) continue;
@@ -21579,8 +21584,13 @@ async function dafnyEvidence(input) {
   const temp = `${out}.${process.pid}.tmp`;
   try {
     await writeFile3(temp, JSON.stringify(record2, null, 2) + "\n", { encoding: "utf-8", flag: "wx" });
+  } catch (err) {
+    return refuse([`could not write ${out}: ${err.message}`], record2);
+  }
+  try {
     await rename(temp, out);
   } catch (err) {
+    await unlink(temp).catch(() => void 0);
     return refuse([`could not write ${out}: ${err.message}`], record2);
   }
   return { success: true, errors: [], record: record2, writtenTo: out };
