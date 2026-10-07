@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — `dafny_evidence` checks that `requirement` names a tracked file, and refuses a theorem named twice
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/index.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The evidence record format defines `requirement` as a repository path with an optional anchor, but DE-1 accepted any non-blank string, so a record could name a requirement no reader can open at `commit`. `theorems` accepted a name twice, so `basis.theorems` could repeat it.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-inputs.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+The task offered a choice: check the path, or describe the field as free text. The format already calls it a path, so the tool now checks it. DE-1 refuses a requirement whose path part, the trimmed text before the first `#`, has an empty, `.` or `..` segment or a `\`, which covers an absolute path, and one that ends in an empty anchor. DE-4 runs the same tracked-file checks on that path as on `file`, before any Dafny run, so with DE-3 it names a tracked regular file at `commit`. The anchor is not checked, because the format fixes no anchor syntax, and the spec flags that as not yet reached. DE-1 also refuses each theorem name that appears more than once.
+
+---
+
 ## 2026-10-07 — `npm test` replays real Dafny output through `dafny_evidence`
 
 **Type:** test

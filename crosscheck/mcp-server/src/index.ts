@@ -39,10 +39,10 @@ export function createServer(): McpServer {
       requirement: z
         .string()
         .nullable()
-        .describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
+        .describe("Path of the tracked file that holds the requirement the claim traces to, relative to the work tree's top level with / separators, optionally followed by #anchor; or null when the claim traces to no requirement. The anchor is not checked"),
       theorems: z
         .array(z.string())
-        .describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
+        .describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, each once, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
       outputPath: z
         .string()
         .optional()
