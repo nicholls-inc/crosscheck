@@ -60,6 +60,16 @@
       "path": "render -> Rec.s",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_before_finally -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_class -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
     }
   ],
   "warnings": [

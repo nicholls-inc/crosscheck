@@ -312,7 +312,9 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     remove_all(&mut a, bound_names(std::slice::from_ref(stmt)));
                     // A handler (and `finally`) can run after any prefix of the
                     // body, so a call there may already have removed a key.
-                    if !only_get_calls_in_stmts(&t.body) {
+                    // A handler or `else` that mutates and then exits never
+                    // reaches the join, but a `finally` still runs after it.
+                    if !only_get_calls_in_stmt(stmt) {
                         a.forget_members();
                     }
                     a
@@ -353,9 +355,20 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 }
             }
             Stmt::FunctionDef(f) => {
+                // Decorators and defaults run at the definition (the body does not).
+                let mut v = OnlyGetCalls(true);
+                f.decorator_list.iter().for_each(|d| v.visit_decorator(d));
+                v.visit_parameters(&f.parameters);
+                if !v.0 {
+                    n.forget_members();
+                }
                 n.remove(f.name.as_str());
             }
             Stmt::ClassDef(c) => {
+                // The class body, its bases and decorators run at the definition.
+                if !only_get_calls_in_stmt(stmt) {
+                    n.forget_members();
+                }
                 n.remove(c.name.as_str());
             }
             _ => {
@@ -583,9 +596,6 @@ impl<'a> Visitor<'a> for OnlyGetCalls {
     }
 }
 
-fn only_get_calls_in_stmts(stmts: &[Stmt]) -> bool {
-    stmts.iter().all(only_get_calls_in_stmt)
-}
 
 fn only_get_calls(expr: &Expr) -> bool {
     let mut v = OnlyGetCalls(true);
@@ -1562,6 +1572,11 @@ mod tests {
             "match mode:\n            case 1:\n                d.pop(k)\n        use()",
             "match mode:\n            case 1 if g():\n                pass\n        use()",
             "try:\n            d.pop(k)\n            h()\n        except E:\n            use()",
+            "try:\n            x = 1\n        except E:\n            d.pop(k)\n            raise\n        finally:\n            use()",
+            "try:\n            x = 1\n        except E:\n            return 0\n        else:\n            d.pop(k)\n            return 1\n        finally:\n            use()",
+            "class C:\n            x = d.pop(k)\n        use()",
+            "@d.pop(k)\n        def g():\n            pass\n        use()",
+            "def g(x=d.pop(k)):\n            pass\n        use()",
             "assert g()\n        use()",
             "with g():\n            use()",
             "match g():\n            case 1:\n                pass\n        use()",

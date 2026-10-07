@@ -113,3 +113,25 @@ def render(h: Holder, depth: int) -> Rec:
         if h.name:
             render(h, depth - 1)
     return Rec(n=4, s=h.name)
+
+
+# Pattern 4: a handler removes the key and exits, and `finally` still runs.
+def key_popped_before_finally(d: dict, k: str) -> Rec:
+    if k in d:
+        try:
+            x = 1
+        except ValueError:
+            d.pop(k)
+            raise
+        finally:
+            return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: a class body removes the key when it is defined.
+def key_popped_in_class(d: dict, k: str) -> Rec:
+    if k in d:
+        class Gone:
+            x = d.pop(k)
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
