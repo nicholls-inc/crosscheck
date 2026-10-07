@@ -3,7 +3,7 @@
 Task: ER-1.3. Governing roadmap item: ER-1.
 
 ## Problem statement
-`intent/2026-10-06-evidence-record-spec.md` defines version 1 of the evidence record. No Crosscheck pipeline writes one. ER-1's acceptance asks for one Crosscheck pipeline to emit a record in the format, and the spec leaves ER-1.3 to choose which.
+`intent/2026-10-06-evidence-record-spec.md` defines version 1 of the evidence record. No Crosscheck pipeline writes one. ER-1's acceptance asks for one Crosscheck pipeline to emit a record in the format, and the spec leaves ER-1.3 to choose which. This task adds the MCP tool that builds a record for a Dafny run. The pipeline half of that acceptance is not yet reached: no skill calls the tool, because the Dafny skills are Class A protected surfaces that this task does not edit. The open question is when `/generate-verified` commits the `.dfy` file, since the tool refuses a dirty work tree (DE-3). ER-1.6 owns it (#80).
 
 Today a passing `dafny_verify` returns `{ success: true, errors, warnings, rawOutput, difficulty }`. That result does not name the commit it describes, the theorems behind it, the trusted base, or a command that reruns it. It also verifies a source string passed in by the caller, so nothing ties the result to a file at a commit.
 
