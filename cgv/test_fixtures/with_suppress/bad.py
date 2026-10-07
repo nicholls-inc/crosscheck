@@ -35,3 +35,9 @@ def dereferenced(x: Optional[str]) -> str:
     with suppress(AttributeError):
         x.upper()
     return x
+
+
+def later_item(x: Optional[str]) -> str:
+    with suppress(AttributeError), x.open():
+        pass
+    return x

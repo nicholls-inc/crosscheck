@@ -341,12 +341,21 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 walk(&w.orelse, &n, exits, v, counts);
             }
             Stmt::With(w) => {
-                for item in &w.items {
+                // The state that carries past the `with`: what the first item
+                // narrowed holds, since nothing manages its expression. A later
+                // item's expression runs inside the earlier managers
+                // (`with suppress(AttributeError), x.open(): ...`), so what it
+                // narrowed does not survive, like what the body narrowed.
+                let mut after = n.clone();
+                for (i, item) in w.items.iter().enumerate() {
                     v.header(&item.context_expr, &n);
                     n.extend(dereferenced(&item.context_expr));
                     n.apply(&effects(&item.context_expr));
                     if let Some(target) = &item.optional_vars {
                         remove_all(&mut n, bound_names_in_expr(target));
+                    }
+                    if i == 0 {
+                        after = n.clone();
                     }
                 }
                 if w.is_async {
@@ -358,6 +367,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 // control continues after any prefix of it. So what the body
                 // narrowed does not carry past it, and its effects may have run.
                 walk(&w.body, &n, exits, v, counts);
+                n = after;
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 n.apply(&effects_of_stmt(stmt));
             }
@@ -1684,6 +1694,18 @@ mod tests {
         // But not when the body rebinds the name.
         let src = "def f(x):\n    assert x is not None\n    with m:\n        x = g()\n    use()\n";
         assert_eq!(narrowing_at_uses(src), vec![none.clone()]);
+    }
+
+    #[test]
+    fn test_later_with_item_narrowing_does_not_survive_it() {
+        let x = vec!["x".to_string()];
+        let none = Vec::<String>::new();
+        // The second item runs inside `suppress`, which may swallow its error.
+        let src = "def f(x):\n    with m, x.open():\n        pass\n    use()\n";
+        assert_eq!(narrowing_at_uses(src), vec![none.clone()]);
+        // The first item runs outside every manager, so its narrowing holds.
+        let src = "def f(x):\n    with x.open(), m:\n        pass\n    use()\n";
+        assert_eq!(narrowing_at_uses(src), vec![x]);
     }
 
     #[test]

@@ -30,6 +30,12 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "dereferenced.<return>"
+    },
+    {
+      "path": "later_item -> later_item.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "later_item.<return>"
     }
   ]
 }
