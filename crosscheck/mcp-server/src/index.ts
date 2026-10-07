@@ -4,6 +4,7 @@ import { z } from "zod";
 import { dafnyVerify } from "./tools/verify.js";
 import { dafnyCompile } from "./tools/compile.js";
 import { dafnyCleanup } from "./tools/cleanup.js";
+import { dafnyEvidence } from "./tools/evidence.js";
 import { leanCheck } from "./tools/leanCheck.js";
 import { leanRun } from "./tools/leanRun.js";
 import { leanTest } from "./tools/leanTest.js";
@@ -22,6 +23,33 @@ export function createServer(): McpServer {
     },
     async ({ source }) => {
       const result = await dafnyVerify({ source });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "dafny_evidence",
+    "Emit an evidence record (evidence-record/1) with one `proved` claim for a committed Dafny file. Requires a clean git work tree, and that the file and every file it includes are tracked regular files. Runs `dafny verify` on the file and its includes and `dafny audit` on the file and its includes in one run, as committed and mounted read-only, and refuses unless verification passes, the audit has 0 findings (an `{:axiom}` passes verify but not the audit), each named theorem appears in Dafny's verification log under its fully qualified name, and HEAD and the work tree did not change while Dafny ran. Returns { success, errors, record, writtenTo }. The record names the commit, the trusted base (Dafny version, its bundled Z3, the image ID) and a rerun command.",
+    {
+      repoPath: z.string().describe("Absolute path inside the git work tree"),
+      file: z.string().describe("Path of the .dfy file relative to the work tree's top level, with / separators"),
+      statement: z.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
+      requirement: z
+        .string()
+        .nullable()
+        .describe("Path of the tracked file that holds the requirement the claim traces to, relative to the work tree's top level with / separators, optionally followed by #anchor; or null when the claim traces to no requirement. The anchor is not checked"),
+      theorems: z
+        .array(z.string())
+        .describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, each once, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
+      outputPath: z
+        .string()
+        .optional()
+        .describe("Where to write the record, inside the work tree, ending in .json, with no directory or file name that starts with a dot; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record"),
+    },
+    async (args) => {
+      const result = await dafnyEvidence(args);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };

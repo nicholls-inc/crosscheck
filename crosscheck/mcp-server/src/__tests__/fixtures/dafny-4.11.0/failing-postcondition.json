@@ -1,0 +1,28 @@
+{
+  "program": {
+    "name": "failing-postcondition",
+    "file": "Abs.dfy",
+    "sources": {
+      "Abs.dfy": "lemma Neg(x: int) ensures x < 0 {}\n"
+    },
+    "theorems": [
+      "Neg"
+    ]
+  },
+  "imageId": "sha256:ccd363af0c7fdba1a7766568daf1ded858f93708eac6bb7f01b7d1ee725d8f1c",
+  "runs": [
+    {
+      "args": [
+        "verify",
+        "/work/Abs.dfy",
+        "--verify-included-files",
+        "--log-format",
+        "csv;LogFileName=/dev/stdout"
+      ],
+      "exitCode": 4,
+      "stdout": "Abs.dfy(1,32): Error: a postcondition could not be proved on this return path\n  |\n1 | lemma Neg(x: int) ensures x < 0 {}\n  |                                 ^\n\nAbs.dfy(1,28): Related location: this is the postcondition that could not be proved\n  |\n1 | lemma Neg(x: int) ensures x < 0 {}\n  |                             ^\n\n\nDafny program verifier finished with 0 verified, 1 error\nTestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed\nNeg (correctness),Failed,00:00:00.2287083,2819,0\nResults File: /dev/stdout\n",
+      "stderr": "",
+      "timedOut": false
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-description = "Crash from dereferencing a possibly-None .first() result; no write to a constrained target, so out of scope."
+description = "Crash from dereferencing a possibly-None .first() result; no write to a constrained target, so not yet reached by the design. The open question is stated in cgv/README.md, \"When to use it\"."
 kind = "non-null"
 in_scope = false
 source = "synthetic"
