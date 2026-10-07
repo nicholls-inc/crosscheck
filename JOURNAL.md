@@ -13,6 +13,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 `--write-baseline PATH` writes a run's findings, and `--baseline PATH` prints only the findings that are not in the baseline, counts the rest, and lists the baseline findings that are gone. The key of a finding is its class, source, target, hop, bounds, site file and the normalised text of the site's line, with no line number, so an edit above a finding does not make it new. The comparison counts each key, and when a key's count rises every finding with that key is printed as new. Baseline mode exits 1 when any error is unmatched, so it can only hide a finding that has an equal key in the baseline. A finding swapped for an equal one is not yet reached, and the spec names the open question. Exit 0 in baseline mode does not carry `runChecker_sound_all`, so `--baseline` refuses `--evidence-record`. Without either flag the output is unchanged. On the 10 cases of the public bench corpus, a baseline from `fix/` compared with `pre/` exits 1 on exactly the 5 cases whose `pre/` has an error that `fix/` lacks.
 
+## 2026-10-07 - Proving CGV's extraction is split into sixteen rows
+
+**Type:** docs
+**Touches:** intent/2026-10-07-prove-extraction.md, intent/2026-10-07-prove-extraction-plan.md, docs/TASKS.md
+**Why:** #16 names three unproved links between Python source and the graph that `runChecker_sound_all` is about, and four approaches to them, but the queue had one row for all of it.
+**Links:** [intent](intent/2026-10-07-prove-extraction.md), [plan](intent/2026-10-07-prove-extraction-plan.md)
+
+TB-1.11 to TB-1.26 follow the issue's recommendation. Link 3 is proved per constraint kind against `BehaviorModel.lean`, then end to end. Link 2 is made strict and pure, then proved, and its IO shell is tested. Link 1 is tested against values observed in generated programs, and certificate checking is piloted on one pattern to measure its cost. Reading the code found that `param_max_digits` is written by the extractor and dropped by `Translation.lean`, so a write with too many integer digits into a `DecimalField` exits 0 (measured on a two-file fixture with binaries built from earlier task branches, not yet re-measured on `main`), and that `buildGraph` drops an edge whose endpoint names no node, which the README's trust table contradicts by saying malformed rows exit 2. TB-1.12 corrects that row. TB-1.13 and TB-1.12 cover them. A proof of link 1 and a proof of completeness stay not yet reached, and the intent names the blocking property and the open question for each.
+
 ---
 
 ## 2026-10-07 - The text report counts a missing guarantee as coverage instead of printing it
