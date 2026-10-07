@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmod, link, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -356,13 +356,18 @@ describe("dafnyEvidence against a real git repository", () => {
   });
 
   // A `git` on PATH that fails the given subcommand, always or only once `marker` exists.
-  async function withFailingGit(subcommand: string, marker: string | null, body: () => Promise<void>) {
+  async function withFailingGit(
+    subcommand: string,
+    marker: string | null,
+    body: () => Promise<void>,
+    action = "exit 1"
+  ) {
     const bin = realpathSync(await mkdtemp(join(tmpdir(), "fake-git-")));
     const realGit = execFileSync("sh", ["-c", "command -v git"]).toString().trim();
     const guard = marker === null ? "" : `[ -e '${marker}' ] && `;
     await writeFile(
       join(bin, "git"),
-      `#!/bin/sh\ncase " $* " in *" ${subcommand} "*) ${guard}exit 1 ;; esac\nexec ${realGit} "$@"\n`
+      `#!/bin/sh\ncase " $* " in *" ${subcommand} "*) ${guard}${action} ;; esac\nexec ${realGit} "$@"\n`
     );
     await chmod(join(bin, "git"), 0o755);
     const path = process.env.PATH;
@@ -394,6 +399,7 @@ describe("dafnyEvidence against a real git repository", () => {
       });
       try {
         expect((await dafnyEvidence(input)).errors).toEqual([`git could not read the work tree state in ${repo}`]);
+        expect(vi.mocked(runDafny).mock.calls.map((c) => c[1][0])).toEqual(["verify", "audit", "--version"]);
       } finally {
         await rm(marker, { force: true });
       }
@@ -409,6 +415,18 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(result.success).toBe(false);
     expect(result.errors[0]).toMatch(/^could not write .*r\.json: EEXIST/);
     expect(await readFile(join(repo, "out", "Target.txt"), "utf-8")).toBe("keep");
+    expect((await lstat(temp)).isSymbolicLink()).toBe(true);
+  });
+
+  it("reads `git ls-files -v` output past the 1 MiB default buffer (DE-3)", async () => {
+    await withFailingGit(
+      "ls-files -v",
+      null,
+      async () => {
+        expect((await dafnyEvidence(input)).errors).toEqual([]);
+      },
+      "yes 'H proofs/Abs.dfy' | head -c 2000000; exit 0"
+    );
   });
 
   it("leaves only the record in the output directory after a write (DE-11)", async () => {
