@@ -1,0 +1,28 @@
+{
+  "program": {
+    "name": "assume",
+    "file": "Abs.dfy",
+    "sources": {
+      "Abs.dfy": "lemma Pos(x: int) ensures x > 0 { assume x > 0; }\n"
+    },
+    "theorems": [
+      "Pos"
+    ]
+  },
+  "imageId": "sha256:ccd363af0c7fdba1a7766568daf1ded858f93708eac6bb7f01b7d1ee725d8f1c",
+  "runs": [
+    {
+      "args": [
+        "verify",
+        "/work/Abs.dfy",
+        "--verify-included-files",
+        "--log-format",
+        "csv;LogFileName=/dev/stdout"
+      ],
+      "exitCode": 2,
+      "stdout": "Abs.dfy(1,34): Warning: assume statement has no {:axiom} annotation\n  |\n1 | lemma Pos(x: int) ensures x > 0 { assume x > 0; }\n  |                                   ^^^^^^\n\n\nDafny program verifier finished with 1 verified, 0 errors\nTestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed\nPos (correctness),Passed,00:00:00.2090841,2556,0\nResults File: /dev/stdout\nCompilation failed because warnings were found and --allow-warnings is false\n",
+      "stderr": "",
+      "timedOut": false
+    }
+  ]
+}

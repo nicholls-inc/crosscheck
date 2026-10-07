@@ -1,6 +1,6 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
-use crate::dataclass_extractor::{annotation_facts, VALUE_TYPES};
+use crate::dataclass_extractor::{annotation_facts, last_segment, VALUE_TYPES};
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
 use crate::docstring_parser::DocstringContract;
 use crate::resolve::qualify;
@@ -74,10 +74,15 @@ pub struct FunctionInfo {
     /// a type variable).
     pub return_nullable: Option<bool>,
     /// Decorators as dotted names (`background_task`, `app.task`; a call
-    /// `@d(...)` gives `d`).
+    /// `@d(...)` gives `d`; any other expression gives an empty name).
     pub decorators: Vec<Vec<String>>,
     /// The body yields: calling the function returns a generator.
     pub is_generator: bool,
+    /// An `async def`: calling it returns a coroutine.
+    pub is_async: bool,
+    /// The statements of the body that never complete (`resolve::function_exits`,
+    /// filled once the project index is complete).
+    pub exits: crate::flow::Exits,
     /// Byte offset of the return annotation (a line after `Project::build`).
     pub return_line: u32,
 }
@@ -313,6 +318,8 @@ pub fn module_function(stmts: &[Stmt], source_file: &str, module: &str) -> Optio
         decorators: Vec::new(),
         return_line: 0,
         is_generator: false,
+        is_async: false,
+        exits: Default::default(),
     })
 }
 
@@ -427,15 +434,17 @@ fn extract_function_info(
         decorators: func_def
             .decorator_list
             .iter()
-            .filter_map(|d| {
+            .map(|d| {
                 let target = match &d.expression {
                     Expr::Call(c) => c.func.as_ref(),
                     other => other,
                 };
-                crate::resolve::dotted_parts(target)
+                crate::resolve::dotted_parts(target).unwrap_or_default()
             })
             .collect(),
         is_generator: crate::flow::is_generator_body(&func_def.body),
+        is_async: func_def.is_async,
+        exits: Default::default(),
         return_line: func_def
             .returns
             .as_deref()
@@ -503,10 +512,7 @@ pub fn apply_aliases(func: &mut FunctionInfo, aliases: &std::collections::HashMa
     for p in &mut func.params {
         let Some(Expr::Name(n)) = &p.annotation else { continue };
         let Some(alias) = aliases.get(n.id.as_str()) else { continue };
-        let (type_name, nullable) = match annotation_facts(alias) {
-            Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
-            None => (None, None),
-        };
+        let (type_name, nullable) = param_annotation_facts(alias);
         p.type_name = type_name;
         // A `= None` default keeps the parameter nullable.
         p.nullable = if p.nullable == Some(true) { Some(true) } else { nullable };
@@ -536,9 +542,40 @@ pub fn apply_external_types(func: &mut FunctionInfo, external: &std::collections
     }
 }
 
+/// The value type and nullability a parameter annotation gives. `object`
+/// includes `None`, so a parameter typed `object`, or a union with an
+/// `object` member, accepts it.
+fn param_annotation_facts(annotation: &Expr) -> (Option<String>, Option<bool>) {
+    match annotation_facts(annotation) {
+        Some((t, n)) => {
+            let n = if t.as_deref() == Some("object") || union_has_object(annotation) { Some(true) } else { n };
+            (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n)
+        }
+        None => (None, None),
+    }
+}
+
+/// `Union[object, X]` and `object | X`, also quoted or inside `Annotated`.
+fn union_has_object(annotation: &Expr) -> bool {
+    let is_object = |m: &Expr| {
+        annotation_facts(m).is_some_and(|(t, _)| t.as_deref() == Some("object")) || union_has_object(m)
+    };
+    match annotation {
+        Expr::BinOp(b) if matches!(b.op, ast::Operator::BitOr) => is_object(&b.left) || is_object(&b.right),
+        Expr::Subscript(sub) => match (last_segment(&sub.value).as_deref(), sub.slice.as_ref()) {
+            (Some("Union"), Expr::Tuple(t)) => t.elts.iter().any(is_object),
+            (Some("Annotated"), Expr::Tuple(t)) => t.elts.first().is_some_and(union_has_object),
+            _ => false,
+        },
+        Expr::StringLiteral(s) => ruff_python_parser::parse_expression(s.value.to_str().trim())
+            .is_ok_and(|parsed| union_has_object(parsed.expr())),
+        _ => false,
+    }
+}
+
 fn param_info(p: &ast::Parameter, kind: ParamKind) -> ParamInfo {
-    let (type_name, nullable) = match p.annotation.as_deref().and_then(annotation_facts) {
-        Some((t, n)) => (t.filter(|t| VALUE_TYPES.contains(&t.as_str())), n),
+    let (type_name, nullable) = match p.annotation.as_deref() {
+        Some(a) => param_annotation_facts(a),
         None => (None, None),
     };
     ParamInfo {
@@ -827,6 +864,52 @@ mod tests {
         assert_eq!(
             (fs[3].method_kind, fs[3].self_name()),
             (MethodKind::ClassMethod, Some("cls"))
+        );
+    }
+
+    #[test]
+    fn test_object_param_accepts_none() {
+        let mut fs = funcs(
+            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None, v: Union[object, int], w: object | int, x: int | str | object, y: typing.Union[int, object], z: \"object | int\", aa: Annotated[object | int, 1], ab: int | str, ac: Union[int, str], ad: Annotated[int, 1], ae: \"int\", af: object | int | str, ag: Union[Union[object, int], str], ah: \" object\", ai: \" object | int \"): pass\n",
+        );
+        let aliases: std::collections::HashMap<String, Expr> = [("Payload", "object"), ("Name", "str")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), ruff_python_parser::parse_expression(v).unwrap().into_expr()))
+            .collect();
+        apply_aliases(&mut fs[0], &aliases);
+        let facts: Vec<(&str, Option<&str>, Option<bool>)> = fs[0]
+            .params
+            .iter()
+            .map(|p| (p.name.as_str(), p.type_name.as_deref(), p.nullable))
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                ("a", None, Some(true)),
+                ("b", None, Some(true)),
+                ("c", None, None),
+                ("d", None, None),
+                ("e", None, Some(true)),
+                ("g", Some("str"), Some(false)),
+                ("h", None, Some(true)),
+                ("s", None, Some(true)),
+                ("t", None, Some(true)),
+                ("u", None, Some(true)),
+                ("v", None, Some(true)),
+                ("w", None, Some(true)),
+                ("x", None, Some(true)),
+                ("y", None, Some(true)),
+                ("z", None, Some(true)),
+                ("aa", None, Some(true)),
+                ("ab", None, Some(false)),
+                ("ac", None, Some(false)),
+                ("ad", Some("int"), Some(false)),
+                ("ae", Some("int"), Some(false)),
+                ("af", None, Some(true)),
+                ("ag", None, Some(true)),
+                ("ah", None, Some(true)),
+                ("ai", None, Some(true)),
+            ]
         );
     }
 
