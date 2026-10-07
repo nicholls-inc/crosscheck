@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 
 HEADER_RE = re.compile(r"^## (I\d+[a-z]?):")             # "## I1: Name"
-COMMENT_RE = re.compile(r"^\s*(?://|#)\s*Invariant\s+([A-Z]+\d+[a-z]?):\s")
+COMMENT_RE = re.compile(r"^\s*(?://|#)\s*Invariant\s+(I\d+[a-z]?):\s")
 ASPIRATIONAL_RE = re.compile(r"<!--\s*aspirational\s*-->")
 
 TEST_GLOBS: list[str] = ["<test-glob>"]  # e.g. ["tests/**/*_invariants_test.py"]

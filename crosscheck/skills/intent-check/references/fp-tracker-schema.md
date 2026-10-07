@@ -81,7 +81,7 @@ Never mutate existing rows. If the user wants to correct an earlier `human_verdi
 
 ## Kill-criterion computation (default 30% over 14 days, configurable)
 
-The kill criterion says: if the rolling false-positive rate over the last `CROSSCHECK_FP_WINDOW_DAYS` days of entries exceeds `CROSSCHECK_FP_TRIPPED_THRESHOLD`, Layer 5 is not earning its cost and the pipeline must not keep gating commits. Defaults are 14 days and `0.30`. Both are configurable per the parent SKILL's "## Configuration" section.
+The kill criterion says: if the rolling false-positive rate over the last `CROSSCHECK_FP_WINDOW_DAYS` days of entries exceeds `CROSSCHECK_FP_TRIPPED_THRESHOLD`, Layer 5 is not earning its cost and the pipeline stops running until the prompt or model is revised or the tracker is reclassified. Defaults are 14 days and `0.30`. Both are configurable per the parent SKILL's "## Configuration" section.
 
 **Pseudocode** (defaults shown; substitute env-var values when configured):
 

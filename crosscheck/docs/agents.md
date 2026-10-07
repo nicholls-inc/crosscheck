@@ -42,7 +42,7 @@ Use byfuglien to prove code matches a spec. Use hellebuyck to interrogate whethe
 **Hand-off contracts** (closing-recommendation only — never auto-chains):
 
 - byfuglien for verification-chain follow-on: `/lightweight-verify` for IO/concurrency-heavy modules (the dominant case); `/spec-iterate` → `/generate-verified` → `/extract-code` for Dafny-suitable; Lean pipeline for tractable-input modules
-- hellebuyck for ongoing governance: `/invariant-coverage-scaffold` (gated on `/assurance-init`), `/spec-adversary` on coverage-thinnest modules, `/intent-check` per protected-surface PR
+- hellebuyck for ongoing governance: `/invariant-coverage-scaffold` (gated on `/assurance-init`), `/spec-adversary` on coverage-thinnest modules, `/intent-check` as an optional advisory search
 
 **When to invoke.** "Drive the ADD fast path on this spec." "Bulk-draft invariants from `<spec-path>`." "Spec to invariants." Discoverability note: the trigger surface is workflow-shaped and disjoint from `awesome-copilot/agents/project-scaffold.md`'s generic project-scaffolding triggers.
 

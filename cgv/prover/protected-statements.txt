@@ -234,7 +234,7 @@ def ContractGraph.checkStaticBounds :
 
 def ContractGraph.checkTypeConsistency :
   String → String → ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
-  value hash 4145259940
+  value hash 1193714715
 
 def ContractGraph.checkedEdges :
   List ContractGraph.Edge → List ContractGraph.Edge
@@ -271,7 +271,7 @@ def ContractGraph.composedGuaranteeImplies :
 
 def ContractGraph.constraintImplies :
   ContractGraph.Constraint → ContractGraph.Constraint → Prop
-  value hash 1577221521
+  value hash 564077362
 
 def ContractGraph.continuationFrom :
   ContractGraph.StateSetup → Nat → Nat → List ContractGraph.Edge
@@ -623,6 +623,10 @@ def ContractGraph.tagHop :
 def ContractGraph.tagLocation :
   ContractGraph.Edge → ContractGraph.CheckResult → ContractGraph.CheckResult
   value hash 2462866168
+
+def ContractGraph.typeAccepts :
+  String → String → Bool
+  value hash 3849918113
 
 def ContractGraph.unresolvedDepWarning :
   (constraint : ContractGraph.Constraint) →

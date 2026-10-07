@@ -97,4 +97,38 @@ def maxValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
 def minValueAcceptsMicros (limitMicros : Int) (valueMicros : Int) : Prop :=
   valueMicros ≥ limitMicros
 
+/-! ## Numeric tower
+
+PEP 484: where an argument is annotated `float`, an argument of type `int`
+is acceptable. This is the PEP text for every annotation, so it covers
+parameters and dataclass, attrs, `NamedTuple` and `TypedDict` fields; no
+checker (mypy, pyright) or attrs validator was run for it. pydantic 2.11.10
+accepts an `int` for a `float` field in strict mode too (`ConfigDict(strict=True)`,
+`StrictFloat`, `Field(strict=True)`), storing `float(v)`. Lax pydantic numeric
+fields and Django `FloatField` writes carry no type requirement.
+
+Not stated here:
+- `bool` into `float`. PEP 484 checkers accept it (`bool` subclasses `int`),
+  but strict pydantic rejects it.
+- `int` or `float` into `complex`. PEP 484 accepts both, but strict pydantic
+  rejects both, and no `complex` requirement is extracted.
+- The magnitude of the value. An `int` is exact and unbounded, but `float(v)`
+  loses precision above 2^53 and raises `OverflowError` above about 1.8e308.
+  PEP 484 checkers accept the pair regardless, and no extractor path is known
+  that carries such a bound into a `float` requirement.
+
+Premise: the names `int` and `float` denote the builtins. The extractor takes
+an annotation's type name from its last dotted segment without resolving it
+(`walk_annotation` and `last_segment` in `dataclass_extractor.rs`), so a project
+that defines or imports its own `float` or `int` is read as the builtin. Name
+resolution against the project index is not yet reached; the blocking property
+is that the extractor reads annotations syntactically, and the open question is
+whether it should emit a type name only when the name resolves to the builtin,
+as `is_external` does for calls. -/
+
+/-- An annotation naming `targetType` accepts a value of `valueType`: the same
+    type, or an `int` where `float` is annotated. -/
+def annotationAcceptsNumeric (valueType targetType : String) : Prop :=
+  valueType = targetType ∨ (valueType = "int" ∧ targetType = "float")
+
 end ContractGraph.BehaviorModel
