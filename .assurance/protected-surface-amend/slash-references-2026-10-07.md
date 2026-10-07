@@ -16,11 +16,13 @@
 4. `.github/workflows/skill-references.yml` (new): runs the checker on every pull request and every push to `main`.
 5. `docs/assurance/DEVELOPMENT-FRAMEWORK.md`: stage 5 lists the new workflow.
 6. `crosscheck/skills/journal-context/SKILL.md`: line 30 names the unbuilt `journal-lint` skill without a slash, so the text no longer reads as an instruction to run it. No behaviour changes.
-7. `crosscheck/skills/journal-context/docs/invariants/journal-context.md` (Class B): the two mentions of the unbuilt `journal-lint` lose their slash, in the rationale of I7 and in the carve-outs. No invariant, covering test or carve-out changes meaning. A new `Governance` section records this amendment, as step 3 of the amendment pattern requires.
+7. `crosscheck/skills/journal-context/docs/invariants/journal-context.md` (Class B): the two mentions of the unbuilt `journal-lint` lose their slash, in the rationale of I7 and in the carve-outs. No invariant, covering test or carve-out changes meaning. A new `Governance` section records this amendment for step 3 of the amendment pattern. It names the class, the roadmap item, the authority and this note, and links to this block rather than repeating it.
 
 ### Rationale
 
 Issue #36, decided in `intent/2026-10-07-backlog-review-decisions.md` ("#36 → PB-1.18"). No check resolved a slash-reference outside five conformance doc files and agent bodies. `crosscheck/skills/journal-context/SKILL.md:30` names `/journal-lint`, which does not exist, and `crosscheck/docs/skills.md` said "all 29 skills" while `crosscheck/skills/` has 30. Intent: `intent/2026-10-07-slash-references.md`. Spec: `intent/2026-10-07-slash-references-spec.md`. Plan: `intent/2026-10-07-slash-references-plan.md`.
+
+Decided by the maintainer on the pull request: the three dated records `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md` keep their text, because rewriting a record falsifies it, and the checker skips them (`NOT_CHECKED_FILES`, spec SR-2). A test pins each of the three and sibling paths. This is settled, and is not part of the open marker below.
 
 ### Governing Roadmap Item
 
@@ -53,7 +55,6 @@ Issue #36, decided in `intent/2026-10-07-backlog-review-decisions.md` ("#36 → 
 - The pre-commit hook now fails a commit that stages a `crosscheck/` Markdown file with a reference that does not resolve, or that leaves the catalogue stale.
 - One Class B invariant doc changes in wording only (diff plan row 9). No invariant is weakened, and its covering tests do not change. No eval changes. No attestation or intent-check baseline exists for these files.
 - REQUIRES HUMAN VERIFICATION: the checker skips `crosscheck/docs/add/.retrospective/`, `crosscheck/.assurance/`, `crosscheck/docs/research/`, `crosscheck/docs/reports/` and `crosscheck/docs/examples/workflows/`, where the decision for #36 named all of `crosscheck/**/*.md`. The spec's "Files not checked" concern gives the reason. Confirm this line, or name the files to rewrite instead.
-- Decided by the maintainer on the pull request: the three dated records `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md` keep their text, because rewriting a record falsifies it, and the checker skips them (`NOT_CHECKED_FILES`, spec SR-2). A test pins each of the three and a sibling path.
 
 ### Review Checklist
 

@@ -14,7 +14,7 @@ This spec adds SR-1 to SR-10. The PC requirements (`intent/2026-10-06-pre-commit
 ## Requirements
 
 - **SR-1. Inputs.** The checker reads the index, never the working tree, so the hook and CI read the same thing. An untracked file is not read.
-- **SR-2. Checked files.** Every path in the index that starts `crosscheck/` and ends `.md`, except a path under one of these prefixes:
+- **SR-2. Checked files.** Every path in the index that starts `crosscheck/` and ends `.md`, except a path under one of these prefixes, or one of the three dated records named below the list:
   - `crosscheck/docs/add/.retrospective/`, archived records of designs that name skills as they were planned;
   - `crosscheck/.assurance/`, dated run snapshots;
   - `crosscheck/docs/research/` and `crosscheck/docs/reports/`, research notes that propose skills;

@@ -88,6 +88,6 @@ The delimiter is fixed shape because downstream consumers — agents loading con
 
 ## Governance
 
-This doc is a Class B protected surface (`.claude/rules/protected-surfaces.md`). Each amendment is listed here.
+This doc is a Class B protected surface (`.claude/rules/protected-surfaces.md`). Each amendment is listed here with its class, governing roadmap item and authority. The full `## Protected-Surface Amendment` block, with its diff plan, test and coverage impact and review checklist, is in the governance note each entry names, and in that pull request's body. This section links to it and does not repeat it.
 
-- **2026-10-07, PB-1.18.** The two mentions of the unbuilt `journal-lint` skill lose their slash, so the slash-reference check does not read them as an instruction to run it. Wording only: no invariant, covering test or carve-out changes meaning. Governance note: `.assurance/protected-surface-amend/slash-references-2026-10-07.md`. Authority: harry-nicholls, the maintainer; the merge is the approval.
+- **2026-10-07, PB-1.18.** The two mentions of the unbuilt `journal-lint` skill lose their slash, so the slash-reference check does not read them as an instruction to run it. Wording only: no invariant, covering test or carve-out changes meaning. Class B. Governing roadmap item: PB-1 in `docs/assurance/ROADMAP.md`. Governance note: `.assurance/protected-surface-amend/slash-references-2026-10-07.md`. Authority: harry-nicholls, the maintainer; the merge is the approval.
