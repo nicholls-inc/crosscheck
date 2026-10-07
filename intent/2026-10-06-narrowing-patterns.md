@@ -3,7 +3,7 @@
 Task: CG-1.9. Governing roadmap item: CG-1. Issue: #5.
 
 ## Problem statement
-On the codebase that `cgv/docs/evaluation/real-codebase-evaluation-2026-09.md` measured, 4 of the 20 triaged non-null errors were false, and each came from a pattern that `cgv/src/flow.rs` does not narrow. Each pattern has safe forms in `cgv/test_fixtures/cg_narrowing/ok.py` (eleven in all: three for `try`, two for caller guards, three for literals, three for key membership) that `main` reports as non-null errors and that this change must leave without one.
+On the codebase that `cgv/docs/evaluation/real-codebase-evaluation-2026-09.md` measured, 4 of the 20 triaged non-null errors were false, and each came from a pattern that `cgv/src/flow.rs` does not narrow. Each pattern has safe forms in `cgv/test_fixtures/cg_narrowing/ok.py` (twelve in all: three each for `try`, caller guards, literals and key membership, not counting the two callees `label_of` and `label_then_clear`) that this change must leave without a non-null error.
 
 1. **Reassignment after an early return, inside `try`.** `if not v: return` then `try: v = int(v)` / `except ValueError: return`. After a `try`, the walk forgets every name the `try` binds, even when the handler exits. A read of `v` then joins every assignment in the function, `v = None` included.
 2. **A caller's guard on an attribute.** `if h.name: label_of(h)`, where `label_of` writes `h.name` into a `str` field. A field read gives the field's declared contract (`Optional[str]`), whatever the callers check.
