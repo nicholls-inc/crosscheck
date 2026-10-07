@@ -185,6 +185,17 @@ A parameter whose annotation names `object` now has the nullability of `Optional
 
 ---
 
+## 2026-10-06 - CGV accepts an int where a float is required
+
+**Type:** feature
+**Touches:** cgv/prover/ContractGraph/Checker.lean, cgv/prover/ContractGraph/BehaviorModel.lean, cgv/prover/protected-statements.txt, cgv/prover/ContractGraphTest/NumericTower.lean, cgv/test_fixtures/numeric_tower/, cgv/bench/baseline.json, cgv/README.md, cgv/CLAUDE.md, docs/TASKS.md
+**Why:** An `int` passed where `float` is annotated was 35 of the 53 triaged false positives on the measured codebase (#5). PEP 484 accepts it.
+**Links:** [intent](intent/2026-10-06-cgv-numeric-tower.md), [plan](intent/2026-10-06-cgv-numeric-tower-plan.md)
+
+`typeAccepts` in `Checker.lean` accepts equal type names, or `int` where `float` is required, and both `checkTypeConsistency` and `constraintImplies` use it. No proof changed. The extractor could not do this alone: a `type` constraint holds one name and the check is equality, so the extractor could only drop `float` requirements (losing `Decimal` and `str` into `float`), rewrite `int` guarantees (breaking `int` into `int`), or drop them per edge (missing multi-hop paths). `bool` into `float` stays an error, because strict pydantic rejects it while PEP 484 accepts it (#86). `complex` still carries no type requirement, since strict pydantic rejects `int` and `float` there. The bench's labelled run went from 4 false positives to 3.
+
+---
+
 ## 2026-10-06 - A checker reads an evidence record and says which rules it breaks
 
 **Type:** feature
