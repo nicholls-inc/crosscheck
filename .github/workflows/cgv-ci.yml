@@ -5,10 +5,10 @@ name: CGV CI
 
 on:
   pull_request:
-    paths: ["cgv/**", ".github/workflows/cgv-ci.yml"]
+    paths: ["cgv/**", ".github/workflows/cgv-ci.yml", ".claude/rules/protected-surfaces.md"]
   push:
     branches: [main]
-    paths: ["cgv/**", ".github/workflows/cgv-ci.yml"]
+    paths: ["cgv/**", ".github/workflows/cgv-ci.yml", ".claude/rules/protected-surfaces.md"]
 
 permissions:
   contents: read
@@ -107,3 +107,10 @@ jobs:
         run: |
           lake env leanchecker --fresh ContractGraph.Main
           lake env leanchecker ContractGraph
+
+      # SM-10 in intent/2026-10-07-manifest-reach-spec.md: fails if the
+      # generator stops checking the rules table, or the manifest stops
+      # recording what the protected statements reach.
+      - name: The manifest generator checks the rules table and hashes what the statements reach
+        working-directory: cgv/prover
+        run: scripts/manifest-selftest.sh
