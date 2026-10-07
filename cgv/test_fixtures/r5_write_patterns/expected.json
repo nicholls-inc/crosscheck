@@ -26,12 +26,6 @@
       "target": "Inv.total"
     },
     {
-      "path": "four -> Inv.total",
-      "source_guarantee": "precision ≤ 4",
-      "target_requirement": "precision ≤ 2",
-      "target": "Inv.total"
-    },
-    {
       "path": "maybe -> Row.name",
       "source_guarantee": "nullable",
       "target_requirement": "non-null",

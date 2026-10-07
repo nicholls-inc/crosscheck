@@ -804,8 +804,9 @@ impl<'a, 's> EdgeWalker<'a, 's> {
     }
 
     /// Writes that are not constructor calls: `dataclasses.replace(obj, f=v)`,
-    /// `obj.model_copy(update={...})`, `Cls.model_validate({...})`,
-    /// `setattr(obj, "f", v)`. Returns whether `call` was one.
+    /// `obj.model_copy(update={...})`, `setattr(obj, "f", v)`. Also claims
+    /// pydantic's validating entry points (`Cls.model_validate(...)`), which
+    /// write nothing. Returns whether `call` was one.
     fn special_writes(&mut self, call: &'a ast::ExprCall, ctx: &Ctx, is_return: bool) -> bool {
         let args = &call.arguments.args;
         let site = call.range().start().to_u32();
@@ -873,12 +874,13 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                         }
                         true
                     }
-                    // Cls.model_validate({...}) (v1 `Cls.parse_obj({...})`)
-                    "model_validate" | "parse_obj" if args.len() == 1 => {
+                    // Validation boundary: the input is `Any`, and validation coerces or
+                    // raises, so no entry is a typed write.
+                    "model_validate" | "model_validate_json" | "model_validate_strings" | "parse_obj"
+                    | "parse_raw" => {
                         let Some(class) = self.named_class(&attr.value, ctx) else { return false };
-                        // Validation of input data: only the known entries are writes.
-                        self.splat_writes(class, &args[0], ctx, is_return, site, false);
-                        true
+                        class.kind
+                            == crate::resolve::ClassKind::Data(crate::dataclass_extractor::DataClassKind::Pydantic)
                     }
                     _ => false,
                 }
@@ -2020,7 +2022,6 @@ mod tests {
             "code.four@14 -writes_to-> code.Inv2.total",
             "code.afour@16 -writes_to-> models.M.v",
             "code.four@18 -writes_to-> records.Inv.wide",
-            "code.four@20 -writes_to-> records.Inv.total",
             "code.four@22 -writes_to-> records.Inv.wide",
             "code.four@24 -writes_to-> models.M.v",
             "code.four@26 -writes_to-> records.Inv.wide",
@@ -2028,6 +2029,7 @@ mod tests {
         ] {
             assert!(s.contains(&want.to_string()), "missing {want} in {s:#?}");
         }
+        assert!(!s.iter().any(|e| e.contains("@20 ")), "{s:#?}");
         // `{'total': ..., **other}`: `other` may replace total (a write
         // without guarantees).
         assert!(
@@ -2035,6 +2037,32 @@ mod tests {
                 && e.site.as_ref().is_some_and(|s| s.1 == 26)).all(|e| e.override_rows.as_ref().is_some_and(|r| r.is_empty())),
             "{s:#?}"
         );
+    }
+
+    /// `model_validate` and its siblings take raw data, so they are a
+    /// validation boundary and write nothing; a constructor call still does.
+    #[test]
+    fn test_pydantic_validate_is_boundary() {
+        let d = discovered(&[
+            (
+                "records.py",
+                "from pydantic import BaseModel, Field\nclass Inv(BaseModel):\n    total: Decimal = Field(decimal_places=2)\n    flag: bool\n",
+            ),
+            (
+                "code.py",
+                "from records import Inv\n\
+                 def four(x):\n    return x\n\
+                 def v(x):\n    return Inv.model_validate({'total': four(x), 'flag': four(x)})\n\
+                 def j(raw):\n    return Inv.model_validate_json(raw)\n\
+                 def p(x):\n    return Inv.parse_obj({'total': four(x)})\n\
+                 def k(x):\n    return Inv(total=four(x))\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        assert!(s.contains(&"code.four@11 -writes_to-> records.Inv.total".to_string()), "{s:#?}");
+        for line in [5, 7, 9] {
+            assert!(!s.iter().any(|e| e.contains(&format!("@{line} "))), "line {line}: {s:#?}");
+        }
     }
 
     /// A dataclass with its own `__init__` binds that method's parameters,
