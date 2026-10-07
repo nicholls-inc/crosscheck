@@ -40,6 +40,13 @@ pub struct Exits {
 }
 
 impl Exits {
+    /// Whether a statement of `stmt` is marked, so that a context manager
+    /// around it may suppress the exception the marked call raises.
+    fn marks_within(&self, stmt: &Stmt) -> bool {
+        let r = stmt.range();
+        self.calls.iter().chain(&self.matches).any(|&at| r.contains(at.into()))
+    }
+
     fn is_exit_call(&self, stmt: &Stmt) -> bool {
         matches!(stmt, Stmt::Expr(_)) && self.calls.contains(&stmt.start().to_u32())
     }
@@ -279,9 +286,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     }
                 }
                 // The body runs once, in order (a context manager that
-                // suppresses an exception is not modelled).
+                // suppresses an exception is not modelled). A marked exit in
+                // the body may be suppressed, and then control leaves the body
+                // early, so what the body narrowed does not carry past it.
                 let end = walk(&w.body, &n, exits, v, counts);
-                if always_exits(&w.body, &Exits::default()) {
+                if always_exits(&w.body, &Exits::default()) || exits.marks_within(stmt) {
                     remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 } else {
                     n = end;
@@ -1301,13 +1310,17 @@ mod tests {
         // `with suppress(SystemExit): sys.exit(1)` completes normally.
         let src = "def f(x):\n    with m:\n        stop(1)\n";
         assert!(falls_through(&body(src), &exits_at(src, &["stop(1)"], &[])));
-        let src = "def f(x):\n    if x is None:\n        with m:\n            stop(1)\n    use()\n";
+        // The exit nested in an `if`: `x` is None after the suppressed exit.
+        let src = "def f(x):\n    with m:\n        if x is None:\n            stop(1)\n    use()\n";
         let exits = exits_at(src, &["stop(1)"], &[]);
         assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
-        // The narrowing the body did before the call still holds after it.
-        let src = "def f(x):\n    with m:\n        if x is None:\n            return\n        stop(1)\n    use()\n";
-        let exits = exits_at(src, &["stop(1)"], &[]);
-        assert_eq!(narrowing_with_exits(src, &exits), vec![vec!["x".to_string()]]);
+        // The same for a marked match.
+        let src = "def f(x, c):\n    with m:\n        if x is None:\n            match c:\n                case E.A:\n                    return 1\n    use()\n";
+        let exits = exits_at(src, &[], &["match c:"]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
+        // Without a marked statement in the body, its narrowing carries on.
+        let src = "def f(x):\n    with m:\n        if x is None:\n            return\n    use()\n";
+        assert_eq!(narrowing_with_exits(src, &Exits::default()), vec![vec!["x".to_string()]]);
     }
 
     #[test]
