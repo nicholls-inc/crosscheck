@@ -564,7 +564,10 @@ fn collect_imports(stmts: &[Stmt], info: &mut ModuleInfo) {
                             (head.clone(), head)
                         }
                     };
-                    if !info.defs.contains_key(&local) {
+                    if info.defs.contains_key(&local) {
+                        // The definition wins, but the name may be the import.
+                        info.rebound.insert(local);
+                    } else {
                         insert_import(info, local, Import::Module(target));
                     }
                 }
@@ -582,7 +585,9 @@ fn collect_imports(stmts: &[Stmt], info: &mut ModuleInfo) {
                         continue;
                     }
                     let local = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
-                    if !info.defs.contains_key(&local) {
+                    if info.defs.contains_key(&local) {
+                        info.rebound.insert(local);
+                    } else {
                         let imp = Import::Symbol {
                             module: module.clone(),
                             name: alias.name.to_string(),
@@ -847,8 +852,8 @@ impl ClassInfo {
 }
 
 /// The member names of an enum class body, in order, when every
-/// class-level statement is `NAME = value` with one name target, a `def`, a
-/// docstring or `pass`, and the body neither defines `__eq__` nor binds
+/// class-level statement is `NAME = value` with one name target, a `def` (not
+/// decorated `@member`), a docstring or `pass`, and the body neither defines `__eq__` nor binds
 /// `_ignore_`; `None` otherwise. Dunder and sunder names (as `enum` defines
 /// them) are not members.
 fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
@@ -859,7 +864,13 @@ fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
                 [Expr::Name(n)] => n.id.as_str(),
                 _ => return None,
             },
-            Stmt::FunctionDef(f) if f.name.as_str() != "__eq__" => continue,
+            // `@enum.member` makes a method a member.
+            Stmt::FunctionDef(f) if f.name.as_str() != "__eq__" => {
+                if f.decorator_list.iter().any(is_member_decorator) {
+                    return None;
+                }
+                continue;
+            }
             Stmt::Pass(_) => continue,
             Stmt::Expr(e) if matches!(e.value.as_ref(), Expr::StringLiteral(_)) => continue,
             _ => return None,
@@ -876,6 +887,15 @@ fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
         }
     }
     Some(out)
+}
+
+/// A decorator whose last name is `member`, bare or called.
+fn is_member_decorator(d: &ruff_python_ast::Decorator) -> bool {
+    let expr = match &d.expression {
+        Expr::Call(c) => c.func.as_ref(),
+        e => e,
+    };
+    dotted_parts(expr).is_some_and(|p| p.last().is_some_and(|n| n == "member"))
 }
 
 /// A string or integer literal as a choice value (`"a"` -> `a`, `3` -> `3`).

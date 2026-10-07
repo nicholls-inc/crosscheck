@@ -166,7 +166,8 @@ impl Cx<'_> {
 
 /// Whether a call of `g` never returns: its return annotation is `NoReturn`
 /// or `Never`, no decorator wraps it, it is no overload stub and no
-/// generator, and (a module-level function) its module does not rebind its name.
+/// generator, and its module does not rebind its name (a method: its class's name)
+/// and no module rebinds a re-export of it.
 fn never_returns(index: &ProjectIndex, g: &FunctionInfo) -> bool {
     g.wrapping_decorators().next().is_none()
         // A plain name (`cache`, `wraps`) that a project function defines
@@ -174,14 +175,30 @@ fn never_returns(index: &ProjectIndex, g: &FunctionInfo) -> bool {
         && g.decorators.iter().all(|d| index.resolve_dotted(&g.module, d).is_none())
         && !g.is_overload
         && !g.is_generator
-        && (g.class_name.is_some()
-            || index
-                .modules
-                .get(&g.module)
-                .is_some_and(|m| !m.rebound.contains(&g.name)))
+        && index.modules.get(&g.module).is_some_and(|m| {
+            // A method belongs to a class its module may define twice (the
+            // index keeps the later definition); a function's own name may be
+            // bound again.
+            !m.rebound.contains(g.class_name.as_deref().unwrap_or(&g.name))
+        })
+        && (g.class_name.is_some() || !is_rebound_when_reexported(index, &g.name))
         && g.return_annotation
             .as_ref()
             .is_some_and(|a| is_no_return_annotation(index, &g.module, a))
+}
+
+/// Whether some module imports a function named `name` and binds that
+/// imported name again (`from .impl import abort` then `abort = wrap(abort)`),
+/// so a call of the name through that module's re-export may not be the
+/// function. Name-based, so it also fires for an unrelated function of the
+/// same name: it can only keep a call from counting as an exit.
+fn is_rebound_when_reexported(index: &ProjectIndex, name: &str) -> bool {
+    index.modules.values().any(|m| {
+        m.imports.iter().any(|(local, imp)| {
+            m.rebound.contains(local)
+                && matches!(imp, Import::Symbol { name: n, .. } if n == name)
+        })
+    })
 }
 
 /// `NoReturn` / `Never` from `typing` or `typing_extensions`, imported by
@@ -300,6 +317,7 @@ impl<'a> Visitor<'a> for ExitFinder<'_> {
 #[cfg(test)]
 mod tests {
     use crate::extractor::Project;
+    use crate::flow::FunctionFlow;
 
     /// The first line of each statement of `code.<func>` that `function_exits`
     /// marks: `(calls, matches)`, in source order.
@@ -432,6 +450,85 @@ mod tests {
         let once = "from enum import Enum\n\nclass E(Enum):\n    A = 1\n    B = 2\n";
         let files = [("enums.py", once), ("code.py", code)];
         assert_eq!(marked(&files, "f").1, ["match e:"]);
+    }
+
+    #[test]
+    fn test_function_flow_reads_the_function_exits() {
+        // The wiring from `function_exits` to `FunctionFlow::of_info`: the
+        // marked call ends the flow and narrows `x`.
+        let src = "import sys\n\ndef f(x):\n    if x is None:\n        sys.exit(1)\n    return x\n\ndef g(x):\n    sys.exit(1)\n";
+        let p = Project::from_sources(vec![("code.py".to_string(), src.to_string())]);
+        let flow = |name: &str| FunctionFlow::of_info(p.index.function(name).expect("function"));
+        assert!(flow("code.f").returns[0].1.contains("x"));
+        assert!(!flow("code.g").falls_through);
+        let src = "def f(x):\n    if x is None:\n        stop(1)\n    return x\n\ndef g(x):\n    stop(1)\n";
+        let p = Project::from_sources(vec![("code.py".to_string(), src.to_string())]);
+        let flow = |name: &str| FunctionFlow::of_info(p.index.function(name).expect("function"));
+        assert!(!flow("code.f").returns[0].1.contains("x"));
+        assert!(flow("code.g").falls_through);
+    }
+
+    #[test]
+    fn test_no_return_function_that_a_module_re_exports_and_rebinds() {
+        let head = "from typing import NoReturn\n\n";
+        let imp = format!("{head}def abort(m) -> NoReturn:\n    raise E(m)\n");
+        let code = "from pkg import abort\n\ndef f(x):\n    abort(x)\n";
+        let rebound = ("pkg.py", "from impl import abort\nabort = swallow(abort)\n");
+        let files = [("impl.py", imp.as_str()), rebound, ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        let plain = ("pkg.py", "from impl import abort\n");
+        let files = [("impl.py", imp.as_str()), plain, ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, ["abort(x)"]);
+    }
+
+    #[test]
+    fn test_no_return_method_of_a_class_defined_twice() {
+        let helpers = "import sys\nfrom typing import NoReturn\n\nif sys.version_info >= (3, 11):\n    class K:\n        @staticmethod\n        def s(m):\n            return None\nelse:\n    class K:\n        @staticmethod\n        def s(m) -> NoReturn:\n            raise E(m)\n";
+        let code = "from helpers import K\n\ndef f(x):\n    K.s(x)\n";
+        let files = [("helpers.py", helpers), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        let once = "from typing import NoReturn\n\nclass K:\n    @staticmethod\n    def s(m) -> NoReturn:\n        raise E(m)\n";
+        let files = [("helpers.py", once), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, ["K.s(x)"]);
+    }
+
+    #[test]
+    fn test_name_that_a_module_both_imports_and_defines() {
+        // `try: from extlib import X / except ImportError: <define X>`: the
+        // imported object may be the one in use.
+        let fallback = "try:\n    from extlib import fail, Color\nexcept ImportError:\n    from enum import Enum\n    from typing import NoReturn\n\n    def fail(m) -> NoReturn:\n        raise E(m)\n\n    class Color(Enum):\n        RED = 1\n        GREEN = 2\n";
+        let code = "from compat import fail, Color\n\ndef f(x):\n    fail(x)\n\ndef g(c: Color):\n    match c:\n        case Color.RED | Color.GREEN:\n            return 1\n";
+        let files = [("compat.py", fallback), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        assert_eq!(marked(&files, "g").1, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_enum_with_a_member_method() {
+        // `@enum.member` makes a method a member, so the list is not certain.
+        let enums = |deco: &str| format!("from enum import Enum, member\n\nclass E(Enum):\n    A = 1\n    {deco}\n    def B(self):\n        return 2\n");
+        let code = "from enums import E\n\ndef f(e: E):\n    match e:\n        case E.A:\n            return 1\n";
+        for deco in ["@member", "@enum.member", "@member()"] {
+            let e = enums(deco);
+            let files = [("enums.py", e.as_str()), ("code.py", code)];
+            assert_eq!(marked(&files, "f").1, Vec::<String>::new(), "{deco}");
+        }
+        let e = enums("@staticmethod");
+        let files = [("enums.py", e.as_str()), ("code.py", code)];
+        assert_eq!(marked(&files, "f").1, ["match e:"]);
+    }
+
+    #[test]
+    fn test_no_return_stub_and_project_typing_module() {
+        // An `@overload` stub says nothing about the call.
+        let src = "from typing import NoReturn, overload\n\n@overload\ndef a(m) -> NoReturn: ...\n\ndef f(x):\n    a(x)\n";
+        assert_eq!(calls(src, "f"), Vec::<String>::new());
+        let plain = src.replace("@overload\n", "").replace(", overload", "");
+        assert_eq!(calls(&plain, "f"), ["a(x)"]);
+        // A project module named `typing` is not the standard library.
+        let code = "from typing import NoReturn\n\ndef a(m) -> NoReturn:\n    raise E(m)\n\ndef f(x):\n    a(x)\n";
+        let files = [("typing.py", "NoReturn = int\n"), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
     }
 
     const COLOR: &str = "from enum import Enum, Flag, IntFlag, auto\nfrom typing import Optional\n\nclass Color(Enum):\n    \"\"\"Colors.\"\"\"\n    RED = 1\n    GREEN = auto()\n    BLUE = 3\n    _hidden_ = 4\n    def label(self):\n        return self.name\n\nclass Perm(Flag):\n    R = 1\n    W = 2\n\n";
