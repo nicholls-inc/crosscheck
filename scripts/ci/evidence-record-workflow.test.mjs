@@ -85,20 +85,28 @@ test('EC-1: the step fails when checkRecord accepts everything', () => {
 });
 
 test('EC-1: no step or job condition, swallowed failure, path filter or expression can skip or hide the check', () => {
-  // Normalise formatting that does not change meaning: CRLF, comments, trailing
-  // whitespace and blank lines.
+  // Ignore CRLF, trailing whitespace, blank lines and whole-line comments. A
+  // `#` after content is not stripped: a regex cannot tell a comment from a `#`
+  // inside a flow mapping or a quoted string, and a strip would hide a key after
+  // it. The committed file has none, so one fails the test.
   const text = readFileSync(join(REPO_ROOT, WORKFLOW), 'utf8')
     .split('\n')
-    .map((l) => l.replace(/\r$/, '').replace(/(^|\s)#.*$/, '').trimEnd())
-    .filter((l) => l !== '')
+    .map((l) => l.replace(/\r$/, '').trimEnd())
+    .filter((l) => l !== '' && !l.trim().startsWith('#'))
     .join('\n');
-  assert.doesNotMatch(text, /(^|[\s{,])["']?if["']?\s*:/m, 'no `if:` on the job or any step');
+  assert.doesNotMatch(text, /\s#/, 'no inline comment: put it on its own line');
+  // Keys are matched where a YAML key can start (line start, after `- `, or in a
+  // flow mapping), so step names and `run:` scripts that mention them are fine.
+  const KEY_START = String.raw`(^\s*(-\s+)?|[{,]\s*)`;
+  const key = (names) => new RegExp(`${KEY_START}["']?(${names})["']?\\s*:(\\s|$)`, 'm');
+  assert.doesNotMatch(text, key('if'), 'no `if:` on the job or any step');
   assert.doesNotMatch(text, /continue-on-error/, 'no `continue-on-error`');
-  assert.doesNotMatch(text, /^\s*(paths|paths-ignore|branches|branches-ignore|tags|tags-ignore):/m, 'no filter');
+  assert.doesNotMatch(text, key('paths|paths-ignore|branches|branches-ignore|tags|tags-ignore'), 'no filter');
   assert.doesNotMatch(text, /\$\{\{/, 'no expression in the workflow');
   // The whole `on:` block: one trigger, with nothing under it but `types`.
-  assert.match(text, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened\]\n(?! )/m);
-  // One `permissions:` key in the file, so no job can grant more.
-  assert.equal(text.match(/\bpermissions\s*:/g)?.length, 1, 'exactly one permissions key');
-  assert.match(text, /^permissions:\n {2}contents: read(\n(?! )|$)/m, 'contents: read is the only permission');
+  assert.match(text, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened\]\n(?=\S)/m);
+  // One `permissions:` key in the file, so no job can grant more, and the
+  // top-level block holds `contents: read` and nothing else.
+  assert.equal(text.match(new RegExp(key('permissions'), 'gm'))?.length, 1, 'exactly one permissions key');
+  assert.match(text, /^permissions:\n {2}contents: read\n(?=\S)/m, 'contents: read is the only permission');
 });
