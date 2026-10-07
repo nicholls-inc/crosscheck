@@ -36,6 +36,6 @@ Crosscheck's skills and agents tell the reader, often another agent, to run a sk
 - **Catalogue shape.** The generated catalogue drops the hand-written categories, trigger phrases and owners. Bringing them back needs a new frontmatter key in every `SKILL.md`, or a second source file that can drift. Nothing has decided between those or neither.
 - **Overlap with conformance.** AUTO 2 and AUTO 5 still resolve references their own way. PB-1.19 aligns AUTO 5 with this grammar and allowlist, and PB-1.22 maps the allowlist and the catalogue to this workflow in the tier gate.
 - **What makes the check binding.** `--no-verify` skips the hook, and the default branch requires no status checks, so a red run informs the merge but cannot block it.
-- **Hardening.** The review found gaps that make no claim of this change false: references in Markdown emphasis, YAML forms the description parser does not read, paths with control characters in the output, and tests that survive mutation. PB-1.29 to PB-1.36 in `docs/TASKS.md` track them.
+- **Hardening.** The review found gaps that make no claim of this change false: references in Markdown emphasis, YAML forms the description parser does not read, paths with control characters in the output, and tests that survive mutation. PB-1.29 and PB-1.31 to PB-1.37 in `docs/TASKS.md` track them.
 
 Settled on the pull request: the three dated records `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md` keep their text, and SR-2 skips them.
