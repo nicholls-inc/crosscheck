@@ -288,32 +288,50 @@ A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` 
 
 ## Output
 
-`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead; `--no-warnings` then hides WARNING blocks from the body (they're still counted in the final `RESULT:` line). Both formats exit with the checker's semantic exit code.
+`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead. Both formats exit with the checker's semantic exit code.
+
+The text report prints each error and each warning as a block. A missing guarantee, where a hop's source has no guarantee of the constraint kind that its target requires, is not a finding, so by default the report does not print it. It counts it as an unverified requirement in the `COVERAGE BY MODULE` section, which gives, for each top-level module, the edges checked and the unverified requirements by kind, and in the `RESULT:` line. `--warnings` also prints each unverified requirement as an `UNVERIFIED` block ("no nullability guarantee for the value `f` passes to `T`"). `--no-warnings` hides the warning blocks as well. Every hidden block is still counted. An incomplete run (exit 2) has no coverage section. The JSON output keeps every warning unchanged. The rules are UC-1 to UC-10 in `intent/2026-10-07-cgv-unverified-coverage-spec.md`.
 
 ```
 $ ./target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
     --lean-checker ./prover/.lake/build/bin/contract-graph-checker --format text
-CONTRACTS CHECKED: 12
-EDGES CHECKED: 3
-STATES CHECKED: 2
+CONTRACTS CHECKED: 18
+EDGES CHECKED: 7
+STATES CHECKED: 8
 
-ERROR  utils.py:27 → models.py:5
+ERROR  utils.py:6 → models.py:5
        compute_offpeak guarantees precision ≤ 4
        EnergyRecord.energy requires precision ≤ 3
        Path: compute_offpeak → split_energy → EnergyRecord.energy
        Failing hop: split_energy → EnergyRecord.energy
+       At: utils.py:27
        Path verification level: ASSUMED
        Note: invisible to pairwise checking.
        Suggestion: Source guarantees ≤ 4, target requires ≤ 3. Either tighten the source or widen the target.
 
-WARNING  utils.py:27 → utils.py:27
+WARNING  utils.py:16 → models.py:5
        split_energy guarantees precision (dependent)
-       EnergyRecord.energy requires precision (dependent)
+       EnergyRecord.energy requires precision ≤ 3
        Path: split_energy → EnergyRecord.energy
+       At: utils.py:27
        Path verification level: EXTRACTED
        Suggestion: Dependent expression on split_energy could not be resolved. Check that upstream postconditions provide the required input bindings.
 
-RESULT: 1 error, 1 warning. Exit code 1.
+COVERAGE BY MODULE
+  utils: 7 edges checked, 0 requirements unverified
+
+RESULT: 1 error, 1 warning, 0 unverified. Exit code 1.
+```
+
+On `test_fixtures/r6_alternatives/` the coverage section reads:
+
+```
+COVERAGE BY MODULE
+  bug: 12 edges checked, 2 requirements unverified (precision 1, range_min 1)
+  ok: 12 edges checked, 0 requirements unverified
+An unverified requirement is not yet reached: the value's source has no guarantee of the kind the target requires, so the requirement passes vacuously. Open question: which guarantee the extractor could infer for such a value, or which annotation it should ask for. Pass --warnings to list them.
+
+RESULT: 3 errors, 0 warnings, 2 unverified. Exit code 1.
 ```
 
 ### Evidence record
@@ -340,4 +358,4 @@ The checked path and the `--overrides` file must sit in a git work tree with no 
 - **Writes outside the project's code are not yet reached.** This covers writes that Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a DRF serializer's `save()`), raw SQL, and fixtures. The property that blocks them is that the write happens in framework code or in the database, which the extractor does not read. The open question is how small a model of each framework's write paths can be and still be trusted.
 - **Only paths that end at a model node.** A data path runs from a function node to a model node. A `flows_to` edge into a callee that never reaches a model node is not yet reached. The blocking property is that the theorem's notion of a data path (`IsDataPath`) requires the path to end at a model node, so it says nothing about a hop that has no route to one. The open question is how a callee's contract should be modelled when the callee has no model node.
 - **Relative to the translated constraints, not to Django or pydantic.** Translation from the database to Lean is not proved, and `BehaviorModel.lean` is trusted, not proved. No theorem links the checked constraints to it. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is an annotation that Python does not enforce, so the claim holds for a type-correct program. A program that is not type-correct is not yet reached: the blocking property is that CGV does not read the type checker's verdict, and the open question is whether it should require one.
-- **A missing guarantee is a warning, not an error.** When a hop's target has a requirement that could reject a value and the source has no guarantee of that kind, CGV warns and still exits 0. The theorem's "stepwise sound" (`stepwiseSound`) is vacuously true for such a hop: it compares only guarantees and requirements of the same kind, so it proves nothing about the requirement that has no guarantee. That is why `runChecker_sound_all` can hold for runs that exit 0 with warnings. That every such case produces a warning is the checker's behaviour and is not proved. A warning names a requirement that CGV could not show, so read a run that exits 0 with warnings as having unknown paths, not consistent ones. `RESULT:` in the text report counts the warnings.
+- **A missing guarantee is a warning, not an error.** When a hop's target has a requirement that could reject a value and the source has no guarantee of that kind, CGV warns and still exits 0. The theorem's "stepwise sound" (`stepwiseSound`) is vacuously true for such a hop: it compares only guarantees and requirements of the same kind, so it proves nothing about the requirement that has no guarantee. That is why `runChecker_sound_all` can hold for runs that exit 0 with warnings. That every such case produces a warning is the checker's behaviour and is not proved. A warning names a requirement that CGV could not show, so read a run that exits 0 with warnings as having unknown paths, not consistent ones. The text report does not print these warnings by default, but counts them as unverified requirements in its coverage section and its `RESULT:` line (see [Output](#output)).
