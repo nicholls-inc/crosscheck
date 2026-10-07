@@ -10,9 +10,11 @@ To stop that, any change touching a protected surface must be accompanied by a *
 
 You are the PR reviewer. The governance-note block has already been drafted automatically from the staged diff, commit history, and the repository's roadmap. Your job is not to write it — it is to **verify it**.
 
+A command decides some checklist items, such as whether the block is in the PR body, whether the diff plan matches `git diff --name-only`, whether the roadmap item exists and whether the authoriser is a bot. The drafting tool ticks those and writes the command's output under each, so you only check that the output is there. The rest need your judgment. You can also tell an agent to tick them for you: it ticks them and comments `Ticked by <agent> on the instruction of <handle>.` on the PR.
+
 Two things need your attention:
 
-1. **`REQUIRES HUMAN VERIFICATION:` markers.** These appear wherever the drafting tool could not establish a fact with confidence — commonly the rationale (is this change anchored to a real trigger, such as an issue or incident, rather than vague "cleanup"?) or the authoriser (is a named human accountable, not a bot or an agent?). Every marker must be resolved — confirmed correct or corrected — before merge.
+1. **`REQUIRES HUMAN VERIFICATION:` markers.** These appear wherever a command could not establish the fact, so a judgment is needed — commonly the rationale (is this change anchored to a real trigger, such as an issue or incident, rather than vague "cleanup"?) or the authoriser (is a named human accountable, not a bot or an agent?). Every marker must be resolved — confirmed correct or corrected — before merge.
 2. **The Review Checklist** at the end of the block. It is a list of tick-boxes covering things like: does a governing roadmap item genuinely cover this change, is every affected invariant still backed by a test, and is no invariant being weakened just to make a test pass. Every box must be checked truthfully, not rubber-stamped.
 
 ## What each decision means

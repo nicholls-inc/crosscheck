@@ -22,7 +22,9 @@ Given a planned change to a file classified as a *protected surface* by the repo
 
 This skill is the "brakes" on protected surfaces: it makes the cost of modifying a load-bearing contract legible, deliberate, and reviewable, rather than letting a quiet diff weaken an invariant or rewrite a workflow prompt.
 
-**The human's governance moment is the PR review, not the skill invocation.** The skill drafts every field from the staged diff, the commit messages, and the repo's roadmap directory. Fields that genuinely require human judgement (rationale-anchor, authoriser, roadmap-item disambiguation) are drafted with the best available evidence and emitted into the PR description with explicit `REQUIRES HUMAN VERIFICATION:` markers where the draft is uncertain. The reviewer red-pens those at merge time.
+**The human's governance moment is the PR review, not the skill invocation.** The skill drafts every field from the staged diff, the commit messages, and the repo's roadmap directory. Fields that genuinely require human judgement (rationale-anchor, roadmap-item disambiguation, an authoriser the skill cannot name) are drafted with the best available evidence and emitted into the PR description with explicit `REQUIRES HUMAN VERIFICATION:` markers where the draft is uncertain. The reviewer red-pens those at merge time.
+
+**A fact a command decides is not a question for the reviewer.** The skill runs the command, ticks the checklist item, and writes the command and its output under the item. The five mechanical items are listed in Step 7. If the skill cannot run a command, it leaves the item unticked with a `REQUIRES HUMAN VERIFICATION:` marker that says why. When the maintainer later tells an agent to tick a box, the agent ticks it and comments `Ticked by <agent> on the instruction of <handle>.` on the pull request; see "Mechanical items, and ticks on a human's instruction" in `.claude/rules/protected-surfaces.md`.
 
 **Primary caller: an implementer agent** finishing a protected-surface edit. The agent invokes this skill after staging the edit; the skill writes the amendment artifact and the agent paste it into the PR description.
 
@@ -179,16 +181,23 @@ Before the block itself, derive the repo URL by parsing `git remote get-url orig
 
 ### Review Checklist
 
+Mechanical items. Tick each one only after running its command, and write the command and its output under the item. If a command cannot run, leave the item unticked and add `REQUIRES HUMAN VERIFICATION:` and the reason.
+
+- [ ] Authoriser is a named human, not a bot and not an agent. Command: the handle matches none of `*-bot`, `*[bot]*`, `claude-*` or an agent name.
+- [ ] Governing roadmap item exists. Command: `grep -n "<item ID>" docs/assurance/ROADMAP.md` finds it.
+- [ ] Diff plan names every changed protected file. Command: `git diff --name-only <base>...HEAD`, filtered by the protected globs, equals the diff plan's file list.
+- [ ] This amendment block appears in the PR body **and** on the relevant invariant doc / governance section. Command: the PR body contains the `## Protected-Surface Amendment` heading.
+- [ ] All `REQUIRES HUMAN VERIFICATION:` markers above have been resolved. Command: the count of unresolved markers is zero.
+
+Judgment items. A human decides these, or an agent ticks them on the maintainer's explicit instruction.
+
 - [ ] Rationale is anchored to a concrete trigger (not "cleanup" or "robustness").
-- [ ] Authoriser is a named human (not a bot, not an agent).
-- [ ] Governing roadmap item exists and actually covers this change.
-- [ ] Diff plan enumerates every affected file, line range, and invariant ID / stage.
+- [ ] Governing roadmap item actually covers this change.
+- [ ] Diff plan covers every affected line range and invariant ID / stage.
 - [ ] Every added Class B invariant has a covering property test in this PR (or `<!-- aspirational -->` + linked issue).
 - [ ] Every removed Class B invariant has its covering test removed or re-pointed in this PR.
 - [ ] No invariant is being weakened purely to make a failing test pass.
 - [ ] Class A edits: downstream eval or prompt-tuning follow-ups are queued.
-- [ ] This amendment block appears in the PR body **and** on the relevant invariant doc / governance section.
-- [ ] All `REQUIRES HUMAN VERIFICATION:` markers above have been resolved.
 ```
 
 ### Step 8: Output destination
