@@ -472,8 +472,8 @@ func TestLedgerLoad(t *testing.T) {
 		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr + "the ledger ends before its top-level value is complete", 0},
 		{"empty", writeLedger(``), parseErr + "the ledger is empty", 0},
 		{"whitespace_only", writeLedger(" \t\r\n"), parseErr + "the ledger is empty", 0},
-		{"not_json", writeLedger(`{"version":1,,"narrative_claims":[]}`), parseErr + "the ledger is not valid JSON: syntax error after byte 13", 0},
-		{"byte_order_mark", writeLedger("\xef\xbb\xbf" + `{"version":1,"narrative_claims":[]}`), parseErr + "the ledger is not valid JSON: syntax error after byte 1", 0},
+		{"not_json", writeLedger(`{"version":1,,"narrative_claims":[]}`), parseErr + "the ledger is not valid JSON at byte 13", 0},
+		{"byte_order_mark", writeLedger("\xef\xbb\xbf" + `{"version":1,"narrative_claims":[]}`), parseErr + "the ledger is not valid JSON at byte 0", 0},
 		{"invalid_utf8", ledger(`{"id":"C1","source":"` + "\xff\xfe" + `","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "the ledger is not valid UTF-8 at byte 54", 0},
 		{"trailing_whitespace", writeLedger(`{"version":1,"narrative_claims":[]}` + "\n\t\r "), "", 0},
 		{"trailing_form_feed", writeLedger(`{"version":1,"narrative_claims":[]}` + "\n\f"), parseErr + "the ledger has data after its top-level value at byte 36", 0},
@@ -517,7 +517,7 @@ func TestLedgerLoad(t *testing.T) {
 		{"check_not_object", ledger(claimWith(base + `,"check":"manual"`)), parseErr + "narrative_claims[0].check is not an object", 0},
 		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"k5":1,"k9":1,"k3":1,"k8":1,"k1":1,"k7":1,"k2":1,"k6":1,"k4":1}`), parseErr + `the ledger has unknown key "k1"`, 0},
 		{"unknown_claim_key", ledger(claimWith(base + `,"tracked-in":"#1","check":{"type":"manual"}`)), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
-		{"unknown_check_key", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","expect-present":false}`)), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
+		{"unknown_check_key", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","expect-present":false}`)), parseErr + `narrative_claims[0].check has unknown key "expect-present" for type "present_artifact"`, 0},
 		{"key_case_mismatch", writeLedger(`{"Narrative_Claims":[]}`), parseErr + `the ledger has unknown key "Narrative_Claims"`, 0},
 		{"every_schema_key", writeLedger(`{"version":1,"description":"d","narrative_claims":[` +
 			`{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","tracked_in":"",` +
@@ -534,7 +534,7 @@ func TestLedgerLoad(t *testing.T) {
 		{"version_null", writeLedger(`{"version":null,"narrative_claims":[]}`), parseErr + "version is null", 0},
 		{"version_exponent", writeLedger(`{"version":1e0,"narrative_claims":[]}`), parseErr + "version must be 1, got 1e0", 0},
 		{"version_negative", writeLedger(`{"version":-1,"narrative_claims":[]}`), parseErr + "version must be 1, got -1", 0},
-		{"version_leading_zero", writeLedger(`{"version":01,"narrative_claims":[]}`), parseErr + "the ledger is not valid JSON: syntax error after byte 13", 0},
+		{"version_leading_zero", writeLedger(`{"version":01,"narrative_claims":[]}`), parseErr + "the ledger is not valid JSON at byte 12", 0},
 		{"description_not_string", writeLedger(`{"version":1,"description":1,"narrative_claims":[]}`), parseErr + "description must be a string", 0},
 		{"description_null", writeLedger(`{"version":1,"description":null,"narrative_claims":[]}`), parseErr + "description is null", 0},
 		{"claim_empty_object", ledger(`{}`), parseErr + "narrative_claims[0].check is missing", 0},
@@ -617,6 +617,9 @@ func TestLedgerLoad(t *testing.T) {
 			}
 			if len(r.errors) != 1 || !strings.HasPrefix(r.errors[0], tc.wantPrefix) {
 				t.Errorf("want one error starting %q, got: %v", tc.wantPrefix, r.errors)
+			}
+			if strings.HasPrefix(tc.wantPrefix, parseErr) && len(r.errors) == 1 && r.errors[0] != tc.wantPrefix {
+				t.Errorf("a parse error is the checker's own text, want exactly %q, got %q", tc.wantPrefix, r.errors[0])
 			}
 			if len(r.ledger) != 0 {
 				t.Errorf("a ledger that failed to load must be empty, got %d claims", len(r.ledger))

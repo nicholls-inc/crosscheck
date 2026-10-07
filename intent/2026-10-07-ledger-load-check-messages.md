@@ -18,7 +18,7 @@ The checker writes every load fault in its own words, and each decision below ha
   - `the ledger is not valid UTF-8 at byte <n>`, with `<n>` the offset of the first bad byte.
   - `the ledger is empty`, for an empty file or one of only whitespace.
   - `the ledger ends before its top-level value is complete`, for a file cut short.
-  - `the ledger is not valid JSON: syntax error after byte <n>`, with `<n>` the offset `encoding/json` reports. A byte-order mark is in this case, because RFC 8259 forbids one in JSON text.
+  - `the ledger is not valid JSON at byte <n>`, with `<n>` the offset of the byte where `encoding/json` stopped. A byte-order mark is in this case, because RFC 8259 forbids one in JSON text.
   - `the ledger has data after its top-level value at byte <n>`, with `<n>` the offset of the first byte that is not whitespace.
 - **`narrative_claims` that is not an array** is `narrative_claims must be an array`, in the same form as every other kind fault.
 - **`check.type` that is not a string** (`5`, `[]`, `{}`, `true`) is `narrative_claims[<i>].check.type must be a string`. A `null` type is `... is null`, as for every other key. A string that names no type, `""` included, keeps `... is "<t>", want one of manual|present_artifact`.
@@ -36,7 +36,7 @@ The checker writes every load fault in its own words, and each decision below ha
 - No protected surface changes. `crosscheck/conformance/` is not in `.claude/rules/protected-surfaces.md`.
 - The LL-2 and LL-3 prefixes stay. PB-1.40's schema messages keep their wording, except the `check.type` message for a non-string or `null` type, which this task changes on purpose.
 - No new rule number. LL-9 gains a file-level bullet, so this change takes no number an open pull request might also take.
-- Byte offsets are data the checker reports, not wording. The syntax-error offset is the one `encoding/json` computes, and a test pins it, so a Go upgrade that moves it fails a test rather than changing a message silently.
+- Byte offsets are data the checker reports, not wording. The syntax-error offset comes from `encoding/json`, and a test pins it, so a Go upgrade that moves it fails a test rather than changing a message silently.
 
 ## Open questions
 None. The task row asks which gaps change the reported fault and whether the checker should own its messages. Both are settled above. Owning the text is the only choice that keeps the messages stable across Go upgrades and lets every fault name a ledger path.

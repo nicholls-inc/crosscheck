@@ -92,12 +92,24 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
   key that appears twice in one object fails, so no copy of a key can hide from
   the check. No value may be `null`.
 
+  The file must be UTF-8 and hold one JSON value with nothing after it but
+  whitespace. An empty file, a truncated one, a byte-order mark and data after
+  the value each fail with a message that names the byte, written by the
+  checker rather than by `encoding/json`, so a Go upgrade cannot change it. A
+  `check.type` that is not a string fails as `must be a string`. A required
+  text field of only white space and format characters, such as a zero-width
+  space, is blank. No string may hold U+FFFD or an unpaired surrogate escape,
+  which `encoding/json` would turn into U+FFFD without saying so.
+
   Not yet reached: what the text fields say. Two claims may share an `id`,
   `source` need not name a real file, `tracked_in` need not name a real issue,
   and `check.path` may point outside the plugin root. The property that blocks
   them is a check of each field against the tree and the tracker, and the open
   question is which of them can be checked without a network call. Unique claim
-  IDs are queued as PB-1.42.
+  IDs are queued as PB-1.42. Text that no reader sees but that is neither white space
+  nor a format character, such as U+3164 HANGUL FILLER, is not blank. The
+  property that blocks it is a definition of visible text, and the open
+  question is whether Unicode's Default_Ignorable_Code_Point property is it.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
