@@ -804,8 +804,10 @@ impl<'a, 's> EdgeWalker<'a, 's> {
     }
 
     /// Writes that are not constructor calls: `dataclasses.replace(obj, f=v)`,
-    /// `obj.model_copy(update={...})`, `Cls.model_validate({...})`,
-    /// `setattr(obj, "f", v)`. Returns whether `call` was one.
+    /// `obj.model_copy(update={...})`, `setattr(obj, "f", v)`, and pydantic's
+    /// validating entry points (`Cls.model_validate({...})`), which write only
+    /// the fields whose contract validation does not enforce. Returns whether
+    /// `call` was one.
     fn special_writes(&mut self, call: &'a ast::ExprCall, ctx: &Ctx, is_return: bool) -> bool {
         let args = &call.arguments.args;
         let site = call.range().start().to_u32();
@@ -873,11 +875,27 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                         }
                         true
                     }
-                    // Cls.model_validate({...}) (v1 `Cls.parse_obj({...})`)
-                    "model_validate" | "parse_obj" if args.len() == 1 => {
+                    // Validation enforces most fields' contracts, so their entries are
+                    // not writes; `validate_checked` fields it does not, so theirs are.
+                    "model_validate" | "model_validate_json" | "model_validate_strings" | "parse_obj"
+                    | "parse_raw" => {
                         let Some(class) = self.named_class(&attr.value, ctx) else { return false };
-                        // Validation of input data: only the known entries are writes.
-                        self.splat_writes(class, &args[0], ctx, is_return, site, false);
+                        if class.kind
+                            != crate::resolve::ClassKind::Data(crate::dataclass_extractor::DataClassKind::Pydantic)
+                        {
+                            return false;
+                        }
+                        if let Some(input) = args.first() {
+                            let splat = self.scope.splat(input, ctx);
+                            for (key, value) in &splat.entries {
+                                if !class.validate_checked.contains(key) {
+                                    continue;
+                                }
+                                if let Some(field) = class.fields.iter().find(|f| *f == key) {
+                                    self.emit_splat_value(Target::Field(class, field), value, is_return, site);
+                                }
+                            }
+                        }
                         true
                     }
                     _ => false,
@@ -2035,6 +2053,95 @@ mod tests {
                 && e.site.as_ref().is_some_and(|s| s.1 == 26)).all(|e| e.override_rows.as_ref().is_some_and(|r| r.is_empty())),
             "{s:#?}"
         );
+    }
+
+    /// `model_validate` and its siblings are a validation boundary for the
+    /// fields whose contract validation enforces; the other fields' entries
+    /// are writes. A constructor call writes every field.
+    #[test]
+    fn test_pydantic_validate_is_boundary() {
+        let d = discovered(&[
+            (
+                "records.py",
+                "from pydantic import BaseModel, Field, SkipValidation, PlainValidator, WrapValidator, BeforeValidator\n\
+                 class Inv(BaseModel):\n    \
+                 total: Decimal = Field(decimal_places=2)\n    \
+                 digits: Decimal = Field(max_digits=4)\n    \
+                 flag: bool\n    \
+                 skipped: SkipValidation[str]\n    \
+                 plain: Annotated[str, PlainValidator(f)]\n    \
+                 wrapped: Annotated[str, WrapValidator(f)]\n    \
+                 before: Annotated[str, BeforeValidator(f)]\n    \
+                 legacy: str = None\n",
+            ),
+            (
+                "code.py",
+                "from records import Inv\n\
+                 def four(x):\n    return x\n\
+                 def v(x):\n    return Inv.model_validate({'total': four(x), 'digits': four(x), 'flag': four(x), 'skipped': four(x), 'plain': four(x), 'wrapped': four(x), 'before': four(x), 'legacy': four(x)})\n\
+                 def j(raw):\n    return Inv.model_validate_json(raw)\n\
+                 def p(x):\n    return Inv.parse_obj({'flag': four(x)})\n\
+                 def k(x):\n    return Inv(total=four(x), flag=four(x))\n\
+                 def s(x):\n    return Inv.model_validate_strings({'skipped': four(x)})\n\
+                 def w(x):\n    return Inv.model_validate_json({'plain': four(x)})\n\
+                 def r(x):\n    return Inv.parse_raw({'wrapped': four(x)})\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        for want in [
+            "code.four@5 -writes_to-> records.Inv.total",
+            "code.four@5 -writes_to-> records.Inv.digits",
+            "code.four@5 -writes_to-> records.Inv.skipped",
+            "code.four@5 -writes_to-> records.Inv.plain",
+            "code.four@5 -writes_to-> records.Inv.wrapped",
+            "code.four@5 -writes_to-> records.Inv.legacy",
+            "code.four@11 -writes_to-> records.Inv.total",
+            "code.four@11 -writes_to-> records.Inv.flag",
+            "code.four@13 -writes_to-> records.Inv.skipped",
+            "code.four@15 -writes_to-> records.Inv.plain",
+            "code.four@17 -writes_to-> records.Inv.wrapped",
+        ] {
+            assert!(s.contains(&want.to_string()), "missing {want} in {s:#?}");
+        }
+        for unwanted in ["code.four@5 -writes_to-> records.Inv.flag", "code.four@5 -writes_to-> records.Inv.before"] {
+            assert!(!s.contains(&unwanted.to_string()), "unexpected {unwanted} in {s:#?}");
+        }
+        for line in [7, 9] {
+            assert!(!s.iter().any(|e| e.contains(&format!("@{line} "))), "line {line}: {s:#?}");
+        }
+    }
+
+    /// A field whose annotation names something CGV does not know pydantic
+    /// validates (a renamed import of a marker, an alias, a project type, an
+    /// `AfterValidator`) keeps its `model_validate` entry as a write.
+    #[test]
+    fn test_pydantic_validate_unknown_annotation_keeps_write() {
+        let d = discovered(&[
+            (
+                "records.py",
+                "from pydantic import BaseModel, SkipValidation as SV, PlainValidator as PV, AfterValidator\n\
+                 Skip = SkipValidation[str]\n\
+                 class Inv(BaseModel):\n    \
+                 renamed: SV[str]\n    \
+                 aliased: Skip\n    \
+                 renamed_meta: Annotated[str, PV(f)]\n    \
+                 after: Annotated[str, AfterValidator(f)]\n    \
+                 name: str\n",
+            ),
+            (
+                "code.py",
+                "from records import Inv\n\
+                 def four(x):\n    return x\n\
+                 def v(x):\n    return Inv.model_validate({'renamed': four(x), 'aliased': four(x), 'renamed_meta': four(x), 'after': four(x), 'name': four(x)})\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        for field in ["renamed", "aliased", "renamed_meta", "after"] {
+            let want = format!("code.four@5 -writes_to-> records.Inv.{field}");
+            assert!(s.contains(&want), "missing {want} in {s:#?}");
+        }
+        let unwanted = "code.four@5 -writes_to-> records.Inv.name".to_string();
+        assert!(!s.contains(&unwanted), "unexpected {unwanted} in {s:#?}");
     }
 
     /// A dataclass with its own `__init__` binds that method's parameters,
