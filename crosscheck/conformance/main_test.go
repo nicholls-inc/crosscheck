@@ -474,6 +474,13 @@ func TestLedgerLoad(t *testing.T) {
 			}
 			symlink("missing-dir")(t, dir)
 		}, readErr, 0},
+		{"conformance_dir_symlink_no_ledger", func(t *testing.T, path string) {
+			dir := filepath.Dir(path)
+			if err := os.Rename(dir, dir+"-real"); err != nil {
+				t.Fatal(err)
+			}
+			symlink(filepath.Base(dir)+"-real")(t, dir)
+		}, "", 0},
 		{"symlink_to_ledger", func(t *testing.T, path string) {
 			writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"}]}`)(t, filepath.Join(filepath.Dir(path), "real.json"))
 			symlink("real.json")(t, path)

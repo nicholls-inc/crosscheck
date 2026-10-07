@@ -29,7 +29,8 @@
 // such as 'reviewed-disclsed' cannot pass as a reviewed claim.
 //
 // A missing claims.json is an empty ledger. A claims.json that cannot be read,
-// or does not parse as the ledger shape, is an ERROR.
+// including a symlink to a missing target, or does not parse as the ledger
+// shape, is an ERROR.
 package main
 
 import (
@@ -476,10 +477,18 @@ func readMCPSource(root string) string {
 
 // loadLedger reads conformance/claims.json. A missing file is an empty ledger;
 // a file that cannot be read or parsed is an error, so a broken ledger fails
-// the run instead of passing with zero claims.
+// the run instead of passing with zero claims. A symlink to a missing target,
+// at claims.json or at conformance, cannot be read.
 func loadLedger(root string) ([]claim, error) {
-	data, err := os.ReadFile(filepath.Join(root, "conformance", "claims.json"))
+	dir := filepath.Join(root, "conformance")
+	path := filepath.Join(dir, "claims.json")
+	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
+		for _, p := range []string{path, dir} {
+			if danglingSymlink(p) {
+				return nil, fmt.Errorf("cannot read conformance/claims.json: %s is a symbolic link to a missing target: %w", p, err)
+			}
+		}
 		return nil, nil
 	}
 	if err != nil {
@@ -490,6 +499,16 @@ func loadLedger(root string) ([]claim, error) {
 		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
 	return lf.NarrativeClaims, nil
+}
+
+// danglingSymlink reports whether path exists as a directory entry but not
+// once its symbolic links are followed.
+func danglingSymlink(path string) bool {
+	if _, err := os.Lstat(path); err != nil {
+		return false
+	}
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // report renders the human-readable oracle report from a result.
