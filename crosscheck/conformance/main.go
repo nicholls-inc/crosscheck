@@ -35,7 +35,8 @@
 // every key must be one the schema names, matched exactly. A claims.json or a
 // conformance directory that is a symlink to a missing target is an ERROR, and so
 // is a plugin root that does not resolve, because it is missing or a symlink on
-// its path dangles.
+// its path dangles. A plugin root is a directory whose .claude-plugin/plugin.json
+// names crosscheck, and any other directory is an ERROR.
 package main
 
 import (
@@ -299,6 +300,9 @@ func missingKeys(fm map[string]string) []string {
 // root and returns the assembled result.
 func analyze(root string) result {
 	var r result
+	if err := checkPluginRoot(root); err != nil {
+		r.errors = append(r.errors, "[root] "+err.Error())
+	}
 	r.skills = discoverSkills(root)
 	r.agents = discoverAgents(root)
 	docText, present := scanDocs(root)
@@ -458,6 +462,29 @@ func analyze(root string) result {
 	}
 
 	return r
+}
+
+// checkPluginRoot reports a root directory whose .claude-plugin/plugin.json
+// cannot be read, does not decode, or does not name crosscheck. A root that is
+// not a directory to os.Stat passes here, because the ledger read reports it.
+func checkPluginRoot(root string) error {
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".claude-plugin", "plugin.json"))
+	if err != nil {
+		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: %w", root, err)
+	}
+	var manifest struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: .claude-plugin/plugin.json: %w", root, err)
+	}
+	if manifest.Name != "crosscheck" {
+		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: .claude-plugin/plugin.json names %q, want \"crosscheck\"", root, manifest.Name)
+	}
+	return nil
 }
 
 // readMCPSource concatenates every .ts and .js file under mcp-server/, or ""

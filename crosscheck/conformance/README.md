@@ -22,7 +22,7 @@ Build a standalone binary:
 Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim or
 claim with an unknown status, or a `present_artifact` ledger check that
 disagrees with the filesystem, or a `claims.json` that cannot be read or
-parsed).
+parsed, or a plugin root that is not a Crosscheck plugin tree).
 
 > Run commands assume the repo-root Go workspace (`go.work`), which lets the
 > nested module resolve when invoked from the repo root. From inside this
@@ -74,7 +74,9 @@ parsed).
   cannot pass as a ledger with no claims. A `claims.json` or `conformance`
   directory that is a symlink to a missing target cannot be read, so it fails
   CI too. So does a plugin root that does not resolve, because the path is
-  wrong or a symlink on it dangles: a run that scans nothing cannot pass. JSON
+  wrong or a symlink on it dangles: a run that scans nothing cannot pass. A
+  plugin root is a directory whose `.claude-plugin/plugin.json` names
+  `crosscheck`, so any other directory, such as the repository root, fails CI. JSON
   that parses but has the wrong shape fails CI as well. The top
   level, each claim and each `check` must be objects, `narrative_claims` must be
   present and not `null`, and every key must be one the ledger names
