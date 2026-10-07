@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - CGV narrows None in four more patterns
+
+**Type:** fix
+**Touches:** cgv/src/flow.rs, cgv/src/value_analysis.rs, cgv/src/edge_discovery.rs, cgv/test_fixtures/cg_narrowing/, cgv/bench/baseline.json, cgv/README.md, intent/2026-10-06-narrowing-patterns.md, docs/TASKS.md
+**Why:** 4 of the 20 triaged non-null errors on the evaluated codebase came from patterns the walk did not narrow (issue #5, CG-1.9).
+**Links:** [intent](intent/2026-10-06-narrowing-patterns.md), [fixture](cgv/test_fixtures/cg_narrowing/expected.json)
+
+After a `try`, the walk now joins the paths that fall through, so `try: v = int(v)` with a handler that returns keeps `v` non-None. `x in {"a", "b"}` narrows `x` when every element is a non-None literal. `k in d` is a fact kept among the narrowed names as `d[k]`. Under it, `d.get(k)` has the facts of `d[k]`, so a warning rather than an error. The fact is dropped when `d` or `k` is rebound, after any call other than `.get`, and on entry to a loop that calls. A read of `p.f` through a parameter has unknown nullability when every call of the function narrows `arg.f` and the project shows every caller. A pre-pass in `edge_discovery::caller_guards` decides that. The pattern 2 and pattern 4 rules lower an error to a warning, never to silence, because a caller outside the project or a stored `None` can still reach the read. On the bench, `labelled-app` precision rose from 0.2857 to 0.3333. The fixed false positive now shows as a stale label, and the baseline is refreshed.
+
+---
+
 ## 2026-10-06 - A checker reads an evidence record and says which rules it breaks
 
 **Type:** feature
