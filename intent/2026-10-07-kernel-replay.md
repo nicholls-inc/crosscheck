@@ -1,4 +1,4 @@
-# Intent: CGV CI replays every declaration through the Lean kernel
+# Intent: CGV CI replays the built environment through the Lean kernel
 
 Task: TB-1.1. Governing roadmap item: TB-1. Issue: #47.
 

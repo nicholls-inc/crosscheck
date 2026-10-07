@@ -1,4 +1,4 @@
-# Plan: CGV CI replays every declaration through the Lean kernel
+# Plan: CGV CI replays the built environment through the Lean kernel
 
 Intent: `intent/2026-10-07-kernel-replay.md`
 Spec: `intent/2026-09-29-deterministic-evidence-spec.md` (SM-6 revised, CI-7 to CI-9 added)

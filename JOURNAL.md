@@ -15,7 +15,7 @@ Twenty-one issues are refined and two are dropped. #37 is already done on `main`
 
 ---
 
-## 2026-10-07 - CGV CI replays every safe declaration through the Lean kernel
+## 2026-10-07 - CGV CI replays the built environment through the Lean kernel
 
 **Type:** feature
 **Touches:** .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md

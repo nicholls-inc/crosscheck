@@ -35,9 +35,9 @@ Task TB-1.1, issue #47. The generator's axiom check (SM-6) uses `collectAxioms`,
 
 | # | File | Section | Action |
 |---|------|---------|--------|
-| 1 | `.github/workflows/cgv-ci.yml` | new steps after the manifest step | added |
-| 2 | `.claude/rules/protected-surfaces.md` | CGV proof surfaces, the paragraph after "A proof must still be a proof" | replaced |
-| 3 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | stage 4, CGV bullet | reworded to name the replay |
+| 1 | `.github/workflows/cgv-ci.yml` | new steps after the manifest step; the replay step is named for the built environment and points at CI-9 for its limits | added |
+| 2 | `.claude/rules/protected-surfaces.md` | CGV proof surfaces, the paragraph after "A proof must still be a proof": the replay, and the limits that remain (CI-9) | replaced |
+| 3 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | stage 4, CGV bullet | reworded to name the replay and point at CI-9's four limits |
 
 ### Test / Coverage Impact
 

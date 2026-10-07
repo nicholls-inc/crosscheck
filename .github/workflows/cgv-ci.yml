@@ -102,7 +102,7 @@ jobs:
       # CI-7: replays the built environment through the kernel. The fresh replay
       # covers ContractGraph.Main's import closure, which holds every protected
       # theorem; the second command covers every ContractGraph.* module.
-      - name: Every safe declaration re-checks in the Lean kernel
+      - name: The built ContractGraph environment re-checks in the Lean kernel (limits in CI-9)
         working-directory: cgv/prover
         run: |
           lake env leanchecker --fresh ContractGraph.Main

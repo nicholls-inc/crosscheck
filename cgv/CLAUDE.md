@@ -49,7 +49,7 @@ python3 -m unittest discover -s scripts/tests
 cd prover && lake build ContractGraph ContractGraph.Main \
   && lake env lean --run scripts/ProtectedStatements.lean | diff -u protected-statements.txt -
 
-# Kernel replay: re-check every safe declaration with the pinned toolchain's kernel
+# Kernel replay: re-check the built environment with the pinned toolchain's kernel (limits: CI-9)
 cd prover && lake env leanchecker --fresh ContractGraph.Main && lake env leanchecker ContractGraph
 ```
 
