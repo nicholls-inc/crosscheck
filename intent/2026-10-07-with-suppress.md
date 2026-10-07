@@ -10,7 +10,7 @@ The cause is in `cgv/src/flow.rs`:
 - `terminates` (behind `falls_through`) counts a `with` whose body ends in `raise` as an end of the flow. So `with suppress(ValueError): raise ValueError(k)` at the end of a function hides its implicit `return None`.
 - The `With` arm of `walk` keeps what the body narrowed, unless the body holds a call that never returns or an enum-exhaustive `match` (CG-1.11). So `with suppress(AssertionError): assert x is not None`, `with suppress(ValueError): if x is None: raise ValueError(...)` and `with suppress(AttributeError): x.upper()` all leave `x` non-None after the `with`, and a later `return x` passes.
 
-Before this change, the binary built from `origin/main` (4f0c1e0) exits 0 on `cgv/test_fixtures/with_suppress/bad.py`, which returns None in each of five functions annotated `-> str`. Its only finding is a warning.
+Before this change, the binary built from `origin/main` (4f0c1e0) exits 0 on `cgv/test_fixtures/with_suppress/bad.py`, which returns None in each of its six functions annotated `-> str`. Its only finding is a warning.
 
 ## Proposed outcome
 Any context manager may suppress any exception raised in its body. The extractor cannot tell which managers do, so it assumes every one may.
@@ -20,7 +20,7 @@ Any context manager may suppress any exception raised in its body. The extractor
 
 The data shape is a two-value enum, `Raised`, passed through `terminates`: an exception either propagates or may be suppressed. `Exits::marks_within` has no caller left and is deleted.
 
-`cgv/test_fixtures/with_suppress/` pins the behaviour, and its `expected.json` is the spec. `bad.py` holds six functions that return None, each now an error: a `raise` under `suppress`, a `raise` under `pytest.raises`, the three narrowing forms above, and a later `with` item that dereferences the name. `ok.py` holds three that must stay clean: a `with lock:` body that returns on every path, a guard before a `with` that survives it, and a `raise` after a `with`.
+`cgv/test_fixtures/with_suppress/` pins the behaviour, and its `expected.json` is the spec. `bad.py` holds six functions that return None, each now an error: a `raise` under `suppress`, a `raise` under `pytest.raises`, the three narrowing forms above, and a later `with` item that dereferences the name. `ok.py` holds four that must stay clean: a `with lock:` body that returns on every path, a guard before a `with` that survives it, and a `raise` after a `with`, and a first `with` item that dereferences the name, whose narrowing survives.
 
 ## Benchmark corpus
 The row asks to measure the corpus first, since the change alters verdicts on code with no `NoReturn` call. The public corpus (`cgv/bench/corpus/`) holds no `with` statement. `scripts/bench.py run --out` gives the same result before and after the change, and the same as `cgv/bench/baseline.json` apart from `tool_commit`, so the baseline is not regenerated. No fixture under `cgv/test_fixtures/` held a `with` before this change either, and all 102 fixtures pass after it. The change to verdicts on a real codebase is not measured here, since the codebase of the real-codebase evaluation is private.
