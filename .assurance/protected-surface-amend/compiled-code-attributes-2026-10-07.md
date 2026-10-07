@@ -36,7 +36,7 @@ Task TB-1.2, issue #48. The `runChecker_*` theorems are proved about the definit
 
 ### Test / Coverage Impact
 
-- `cgv/prover/scripts/compiled-code-selftest.sh` injects `@[implemented_by]` on a constant reached only through `runChecker`'s value, and `@[extern]` on a constant a theorem statement names, and expects the generator to fail on each. It injects `@[implemented_by]` on an unreached constant and expects success.
+- `cgv/prover/scripts/compiled-code-selftest.sh` (SM-8) puts `@[implemented_by]` on a constant reached only through `runChecker`'s value, `@[extern]` on a constant a theorem statement names, and `@[implemented_by]` on definitions reached only through a `partial def`'s `_unsafe_rec` helper and through an `opaque` value. It expects the generator to fail on each and name the constant. It puts `@[implemented_by]` on an unreached constant and expects success. Each arm of the walk was removed in turn, and a case failed each time.
 - The committed manifest `cgv/prover/protected-statements.txt` is unchanged, and CI's manifest step checks that.
 - No theorem statement, no definition, and no invariant changes. Exit 0 promises the same for the definitions. For the binary it now promises what the theorem says for every reached project constant.
 

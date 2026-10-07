@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - The manifest generator rejects `implemented_by` and `extern` on what the theorems reach
+
+**Type:** feature
+**Touches:** cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/scripts/compiled-code-selftest.sh, .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, cgv/CLAUDE.md, cgv/README.md, docs/TASKS.md
+**Why:** The soundness theorems are about the definitions, and the checker binary runs their compiled code. Either attribute replaces that code without an axiom, so neither the manifest nor the axiom check saw it (issue #48).
+**Links:** [intent](intent/2026-10-07-compiled-code-attributes.md), [spec](intent/2026-10-07-compiled-code-attributes-spec.md), [plan](intent/2026-10-07-compiled-code-attributes-plan.md)
+
+The generator walks from the constants in each protected theorem's statement and from the three protected definitions, through types, values, opaque values, constructors and `_unsafe_rec` helpers, and fails if a reached constant of a `ContractGraph` module carries either attribute. It scopes by module, not namespace, because private helpers live under `_private`. A `partial def` is an opaque constant to the kernel, and the compiler runs its `_unsafe_rec` helper, so the walk follows that helper. The manifest is unchanged. A self-test in CGV CI edits `Main.lean` five ways and checks the generator's verdict on each. Library code (103 constants with either attribute are reachable through Lean core and `leansqlite`) and `@[csimp]` lemmas (TB-1.7) are not yet reached.
+
+---
+
 ## 2026-10-07 - The imported Crosscheck backlog has one decision per issue
 
 **Type:** docs

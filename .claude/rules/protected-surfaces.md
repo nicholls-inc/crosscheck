@@ -113,6 +113,14 @@ A proof must still be a proof. `lake build` accepts `sorry` with a warning, so
 the generator also fails when a protected theorem or definition depends on any
 axiom other than `propext`, `Classical.choice` and `Quot.sound`. A `sorry`, or
 a new axiom that closes a proof, fails CGV CI.
+The theorems are about the definitions, and the checker binary runs their
+compiled code. `@[implemented_by]` and `@[extern]` replace that code without
+an axiom, so the generator also fails if either sits on a constant of a
+`ContractGraph` module that a protected theorem's statement or a protected
+definition reaches. `cgv/prover/scripts/compiled-code-selftest.sh`, run by CGV
+CI, fails if the generator stops rejecting them. The compiled code of the Lean
+and `leansqlite` libraries, and `@[csimp]` lemmas, are not yet reached: see
+`intent/2026-10-07-compiled-code-attributes-spec.md`.
 A declaration the kernel never checked is not yet reached: `set_option
 debug.skipKernelTC true` with `addDecl` adds a theorem that reports no axioms.
 The property that blocks it is a kernel replay of the built environment, and

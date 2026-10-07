@@ -64,3 +64,9 @@ jobs:
             echo "::error::A protected CGV statement changed. If intended, regenerate cgv/prover/protected-statements.txt (see its header), which makes this a Tier 3 change needing a governance note and a 'Protected-surface change' section in the PR body."
             exit 1
           fi
+
+      # SM-8 in intent/2026-10-07-compiled-code-attributes-spec.md: fails if the
+      # generator stops rejecting implemented_by or extern on reached constants.
+      - name: The manifest generator rejects implemented_by and extern on what the theorems reach
+        working-directory: cgv/prover
+        run: scripts/compiled-code-selftest.sh
