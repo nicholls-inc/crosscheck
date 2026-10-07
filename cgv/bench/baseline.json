@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool_commit": "9c1d0dda89bacdcb4e934d82fb149f782970a956",
+  "tool_commit": "1d286ea49c7a5a1e7442db2a7e601c51ff9e06a3",
   "corpora": [
     "public"
   ],
@@ -328,16 +328,15 @@
     {
       "id": "labelled-app",
       "corpus": "public",
-      "errors": 5,
-      "labelled": 5,
+      "errors": 4,
+      "labelled": 4,
       "true_bug": 2,
       "benign": 1,
-      "false_positive": 2,
-      "precision": 0.4,
+      "false_positive": 1,
+      "precision": 0.5,
       "unlabelled": 0,
-      "stale_labels": 2,
+      "stale_labels": 3,
       "false_positive_causes": {
-        "narrowing": 1,
         "numeric-tower": 1
       }
     }

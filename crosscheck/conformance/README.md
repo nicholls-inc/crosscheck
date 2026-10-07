@@ -74,12 +74,22 @@ parsed).
   cannot pass as a ledger with no claims. A `claims.json` or `conformance`
   directory that is a symlink to a missing target cannot be read, so it fails
   CI too. So does a plugin root that does not resolve, because the path is
-  wrong or a symlink on it dangles: a run that scans nothing cannot pass. Not
-  yet reached: JSON that decodes but has the wrong shape, such as a
-  top-level `null`, a missing `narrative_claims` or unknown keys, still loads
-  as an empty or partial ledger, because `json.Unmarshal` accepts any JSON that
-  fits the struct (PB-1.25). The open question is which schema the ledger
-  should be held to.
+  wrong or a symlink on it dangles: a run that scans nothing cannot pass. JSON
+  that parses but has the wrong shape fails CI as well. The top
+  level, each claim and each `check` must be objects, `narrative_claims` must be
+  present and not `null`, and every key must be one the ledger names
+  (`version`, `description` and `narrative_claims` at the top; `id`, `source`,
+  `claim`, `reality`, `status`, `check` and `tracked_in` in a claim; `type`,
+  `path` and `expect_present` in a `check`), matched exactly, including case.
+  So a misspelt `tracked-in` or `expect-present` fails instead of being
+  dropped. Not yet reached: which keys a claim must carry, the value of
+  `version`, the value of `check.type` (an unknown type runs no auto-check),
+  and duplicate keys. A duplicated scalar key keeps its last value, and a
+  duplicated `check` object is merged, while the key check reads only the last
+  copy, so an unknown key in an earlier copy is dropped unreported. The
+  property that blocks them is a list of required fields and allowed values and
+  a decoder that sees every key, and the open question is which of them the
+  real ledger can meet today (PB-1.40).
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 

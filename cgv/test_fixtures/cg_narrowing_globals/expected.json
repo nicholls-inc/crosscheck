@@ -1,0 +1,16 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "label_of -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "title_of -> Rec.s",
+      "contains": "'title_of' has no nullability postcondition"
+    }
+  ]
+}

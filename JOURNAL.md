@@ -57,6 +57,19 @@ Twenty-one issues are refined and two are dropped. #37 is already done on `main`
 
 ---
 
+## 2026-10-06 - CGV narrows None in four more patterns
+
+**Type:** fix
+**Touches:** cgv/src/flow.rs, cgv/src/value_analysis.rs, cgv/src/edge_discovery.rs, cgv/test_fixtures/cg_narrowing/, cgv/test_fixtures/cg_narrowing_getattr/, cgv/test_fixtures/cg_narrowing_globals/, cgv/bench/baseline.json, cgv/README.md, intent/2026-10-06-narrowing-patterns.md, docs/TASKS.md
+**Why:** 4 of the 20 triaged non-null errors on the evaluated codebase came from patterns the walk did not narrow (issue #5, CG-1.9).
+**Links:** [intent](intent/2026-10-06-narrowing-patterns.md), [fixture](cgv/test_fixtures/cg_narrowing/expected.json)
+
+After a `try`, the walk now joins the paths that fall through, so `try: v = int(v)` with a handler that returns keeps `v` non-None. `x in {"a", "b"}` narrows `x` when every element is a non-None literal. `k in d` is a fact kept among the narrowed names as `d[k]`. Under it, `d.get(k)` has the facts of `d[k]`, so a warning rather than an error. The fact is dropped when `d` or `k` is rebound, after any call other than `.get`, a `del`, a walrus or a suspension (`await`, `yield`, `async for`, `async with`, an async comprehension), and on entry to a loop, a `try` handler, a `finally`, a `match` statement or a definition (decorator, default or class body) that has one. A read of `p.f` through a parameter has unknown nullability when every call of the function narrows `arg.f` and the project shows every caller: at least one call from outside the function and outside any cycle of calls that nothing else enters. A pre-pass in `edge_discovery::caller_guards` decides that, and it excludes an async function and a generator, whose body runs after the call, when the caller may have written the field. A `while` test is read after the loop's own effects, since it runs again after every iteration.
+
+The maintainer then settled the review's open questions with one rule: exit 0 promises consistency, so a narrowing that can hide a real nullability bug is a soundness hole, and soundness wins over precision where it is affordable. So a computed `getattr` switches caller guards off everywhere, and `globals()` or `locals()` in the module that calls it. A guard ends at the first call that can reach the parameter. `d.get(k)` narrows only when `d` is known to be a dict, only `d`'s own `.get` keeps the fact, and the fact also dies between operands of `and` / `or`, across a conditional expression's test and across a comprehension. The new near misses in `cg_narrowing/bugs.py` and the fixtures `cg_narrowing_getattr/` and `cg_narrowing_globals/` each fail when their fix is reverted. The pattern 2 and pattern 4 rules lower an error to a warning, never to silence, because a caller outside the project or a stored `None` can still reach the read. On the bench, `labelled-app` precision rose from 0.2857 to 0.3333. The fixed false positive now shows as a stale label, and the baseline is refreshed.
+
+---
+
 ## 2026-10-06 - pydantic `model_validate` is a validation boundary
 
 **Type:** fix
