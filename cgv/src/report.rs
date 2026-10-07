@@ -9,6 +9,8 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
+use crate::baseline::{Diff, Status};
+
 #[derive(Debug, Deserialize)]
 pub struct CheckerOutput {
     #[serde(default)]
@@ -84,6 +86,17 @@ enum Class<'a> {
 }
 
 impl CheckResult {
+    /// The UC-1 class as a baseline key names it, or `None` for an
+    /// incomplete run (BL-3).
+    pub fn class_name(&self) -> Option<&'static str> {
+        match self.class() {
+            Class::Incomplete => None,
+            Class::Error => Some("error"),
+            Class::Warning => Some("warning"),
+            Class::Unverified { .. } => Some("unverified"),
+        }
+    }
+
     fn class(&self) -> Class<'_> {
         if self.status == "incomplete" {
             return Class::Incomplete;
@@ -185,6 +198,17 @@ pub fn render_text(
     display: WarningDisplay,
     edges: &BTreeMap<String, usize>,
 ) -> String {
+    render_text_with(output, display, edges, None)
+}
+
+/// `render_text`, and with `baseline` (the comparison and the exit code of
+/// BL-8) the body shows only incomplete and new results (BL-10).
+pub fn render_text_with(
+    output: &CheckerOutput,
+    display: WarningDisplay,
+    edges: &BTreeMap<String, usize>,
+    baseline: Option<(&Diff, i32)>,
+) -> String {
     let mut out = String::new();
 
     out.push_str(&format!(
@@ -200,13 +224,21 @@ pub fn render_text(
         output.summary.paths_checked
     ));
 
-    let of = |want: fn(&Class) -> bool| -> Vec<&CheckResult> {
-        output.results.iter().filter(|r| want(&r.class())).collect()
+    let shown = |i: usize| baseline.is_none_or(|(diff, _)| diff.status[i] != Status::Existing);
+    let of = |want: fn(&Class) -> bool, new_only: bool| -> Vec<&CheckResult> {
+        output
+            .results
+            .iter()
+            .enumerate()
+            .filter(|(i, r)| want(&r.class()) && (!new_only || shown(*i)))
+            .map(|(_, r)| r)
+            .collect()
     };
-    let incomplete = of(|c| *c == Class::Incomplete);
-    let errors = of(|c| *c == Class::Error);
-    let warnings = of(|c| *c == Class::Warning);
-    let unverified = of(|c| matches!(c, Class::Unverified { .. }));
+    let incomplete = of(|c| *c == Class::Incomplete, false);
+    let errors = of(|c| *c == Class::Error, true);
+    let warnings = of(|c| *c == Class::Warning, true);
+    let unverified = of(|c| matches!(c, Class::Unverified { .. }), true);
+    let all_unverified = of(|c| matches!(c, Class::Unverified { .. }), false);
 
     for result in &incomplete {
         out.push_str(&format!("\nINCOMPLETE  {}\n", result.suggestion));
@@ -219,17 +251,48 @@ pub fn render_text(
     }
 
     if !output.is_incomplete() {
-        out.push_str(&render_coverage(&unverified, edges, display));
+        out.push_str(&render_coverage(&all_unverified, edges, display));
     }
 
     out.push('\n');
-    out.push_str(&format!(
-        "RESULT: {}, {}, {} unverified. Exit code {}.\n",
-        plural(errors.len(), "error", "errors"),
-        plural(warnings.len(), "warning", "warnings"),
-        unverified.len(),
-        output.exit_code
-    ));
+    match baseline {
+        None => out.push_str(&format!(
+            "RESULT: {}, {}, {} unverified. Exit code {}.\n",
+            plural(errors.len(), "error", "errors"),
+            plural(warnings.len(), "warning", "warnings"),
+            unverified.len(),
+            output.exit_code
+        )),
+        Some((diff, exit_code)) => {
+            out.push_str(&format!(
+                "BASELINE: {}, {}, {} unverified in the baseline, not shown.\n",
+                plural(diff.existing.errors, "error", "errors"),
+                plural(diff.existing.warnings, "warning", "warnings"),
+                diff.existing.unverified,
+            ));
+            if !diff.fixed.is_empty() {
+                out.push_str(&format!(
+                    "FIXED: {} in the baseline not reported by this run:\n",
+                    plural(diff.fixed.len(), "finding", "findings")
+                ));
+                for key in &diff.fixed {
+                    let hop_source = key.hop.first().unwrap_or(&key.source);
+                    let hop_target = key.hop.last().unwrap_or(&key.target);
+                    out.push_str(&format!("  {} {hop_source} \u{2192} {hop_target}", key.class));
+                    if let Some(text) = &key.site_text {
+                        out.push_str(&format!(" at {}: {text}", key.site_file));
+                    }
+                    out.push('\n');
+                }
+            }
+            out.push_str(&format!(
+                "RESULT: {}, {}, {} new unverified. Exit code {exit_code}.\n",
+                plural(errors.len(), "new error", "new errors"),
+                plural(warnings.len(), "new warning", "new warnings"),
+                unverified.len(),
+            ));
+        }
+    }
 
     out
 }
