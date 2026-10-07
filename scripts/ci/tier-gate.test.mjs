@@ -462,6 +462,7 @@ test('TG-8: a pass whose changed files hit every class reports one line per clas
     'crosscheck/mcp-server/src/a.ts',
     'crosscheck/conformance/main.go',
     '.claude/hooks/protected-surface-guard.mjs',
+    'scripts/check-evidence-record.mjs',
     'evals/a.json',
     'docs/assurance/ROADMAP.md',
     '.github/workflows/ci.yml',
@@ -476,6 +477,7 @@ test('TG-8: a pass whose changed files hit every class reports one line per clas
     '- CI workflow (npm test, including the property tests): 1 file(s), e.g. crosscheck/mcp-server/src/a.ts',
     '- CI workflow, conformance job (go vet, go test, go run . ..): 1 file(s), e.g. crosscheck/conformance/main.go',
     '- Tier Gate workflow (node --test scripts/ci/*.test.mjs): 1 file(s), e.g. .claude/hooks/protected-surface-guard.mjs',
+    '- Evidence Record workflow (node --test scripts/check-evidence-record.test.mjs): 1 file(s), e.g. scripts/check-evidence-record.mjs',
     '- not yet reached: 1 file(s), e.g. evals/a.json. Blocking property: no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for an eval under evals/ and a candidate invariant that name the incident. Open question: what runs an eval as a regression test, and which workflow runs it before the merge.',
     '- not yet reached: 1 file(s), e.g. docs/assurance/ROADMAP.md. Blocking property: their behaviour is prompt text that an agent interprets. Open question: what a replayable behavioural eval of a prompt artefact looks like.',
     "- not yet reached: 1 file(s), e.g. .github/workflows/ci.yml. Blocking property: a workflow runs only on GitHub's runners, on GitHub's events. Open question: how to replay a workflow against recorded events before it merges.",
@@ -493,6 +495,19 @@ test('TG-8: a change to .husky/pre-commit is reported against the Tier Gate work
   assert.equal(r.pass, true);
   assert.deepEqual(reportRows(r), [
     '- Tier Gate workflow (node --test scripts/ci/*.test.mjs): 1 file(s), e.g. .husky/pre-commit',
+  ]);
+});
+
+test('TG-8: the evidence record checker and its tests are reported against the Evidence Record workflow', () => {
+  const changed = ['scripts/check-evidence-record.mjs', 'scripts/check-evidence-record.test.mjs', 'scripts/other.mjs'];
+  const r = run(repo({ 'intent/old.md': 'x', ...Object.fromEntries(changed.map((f) => [f, 'x'])) }), {
+    body: 'Tier: 1\nIntent: intent/old.md',
+    changed,
+  });
+  assert.equal(r.pass, true);
+  assert.deepEqual(reportRows(r), [
+    '- Evidence Record workflow (node --test scripts/check-evidence-record.test.mjs): 2 file(s), e.g. scripts/check-evidence-record.mjs',
+    '- not yet reached: 1 file(s), e.g. scripts/other.mjs. Blocking property: no CI workflow runs a check on this path. Open question: which deterministic check this code needs, and which workflow runs it.',
   ]);
 });
 

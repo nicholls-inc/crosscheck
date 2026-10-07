@@ -69,6 +69,11 @@ export const EVIDENCE_CLASSES = [
     workflow: 'Tier Gate workflow (node --test scripts/ci/*.test.mjs)',
   },
   {
+    re: /^scripts\/check-evidence-record(\.test)?\.mjs$/,
+    kind: 'checked',
+    workflow: 'Evidence Record workflow (node --test scripts/check-evidence-record.test.mjs)',
+  },
+  {
     re: /^evals\//,
     kind: 'notYetReached',
     property: 'no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for an eval under evals/ and a candidate invariant that name the incident',
