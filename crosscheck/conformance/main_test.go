@@ -435,6 +435,10 @@ func TestLedgerLoad(t *testing.T) {
 		return `{` + keys + `}`
 	}
 	const base = `"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate"`
+	// withID builds a valid claim whose id is the raw JSON string body id.
+	withID := func(id string) string {
+		return `{"id":"` + id + `","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`
+	}
 	symlink := func(target string) func(t *testing.T, path string) {
 		return func(t *testing.T, path string) {
 			if err := os.Symlink(target, path); err != nil {
@@ -563,6 +567,16 @@ func TestLedgerLoad(t *testing.T) {
 		{"dup_check_key", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","path":"nope.md"}`)), parseErr + `narrative_claims[0].check has duplicate key "path"`, 0},
 		{"dup_key_escaped", ledger(`{"id":"C1","\u0069d":"C2","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + `narrative_claims[0] has duplicate key "id"`, 0},
 		{"dup_second_claim", ledger(okClaim, claimWith(base+`,"id":"C2","check":{"type":"manual"}`)), parseErr + `narrative_claims[1] has duplicate key "id"`, 0},
+		{"dup_id_exact", ledger(okClaim, okClaim), parseErr + `narrative_claims[1].id "C1" repeats narrative_claims[0].id "C1"`, 0},
+		{"dup_id_case", ledger(withID("CLAIM-A"), withID("claim-a")), parseErr + `narrative_claims[1].id "claim-a" repeats narrative_claims[0].id "CLAIM-A"`, 0},
+		{"dup_id_space", ledger(withID("C1"), withID(` C1\t`)), parseErr + `narrative_claims[1].id " C1\t" repeats narrative_claims[0].id "C1"`, 0},
+		{"dup_id_case_and_space", ledger(withID("c1 "), withID("C1")), parseErr + `narrative_claims[1].id "C1" repeats narrative_claims[0].id "c1 "`, 0},
+		{"dup_id_escaped", ledger(withID("C1"), withID(`C1`)), parseErr + `narrative_claims[1].id "C1" repeats narrative_claims[0].id "C1"`, 0},
+		{"dup_id_not_adjacent", ledger(withID("C1"), withID("C2"), withID("c1")), parseErr + `narrative_claims[2].id "c1" repeats narrative_claims[0].id "C1"`, 0},
+		{"dup_id_after_check_fault", ledger(okClaim, `{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual","path":"x"}}`), parseErr + `narrative_claims[1].check has unknown key "path" for type "manual"`, 0},
+		{"ids_distinct", ledger(withID("C1"), withID("C2"), withID("C3")), "", 3},
+		{"ids_inner_space", ledger(withID("C1"), withID("C 1")), "", 2},
+		{"ids_prefix", ledger(withID("C1"), withID("C1-B")), "", 2},
 	}
 	wrapsNotExist := map[string]bool{
 		"dangling_symlink":         true,
