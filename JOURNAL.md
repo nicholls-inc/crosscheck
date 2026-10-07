@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - CGV CI replays every declaration through the Lean kernel
+
+**Type:** feature
+**Touches:** .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** The generator's axiom check uses `collectAxioms`, which does not re-check a proof. A theorem of `False` added under `debug.skipKernelTC` with `addDecl` kept `lake build` green, left the manifest unchanged and passed the axiom check (#47).
+**Links:** [intent](intent/2026-10-07-kernel-replay.md), [plan](intent/2026-10-07-kernel-replay-plan.md)
+
+The pinned toolchain ships `leanchecker`, so no dependency was added. `leanchecker --fresh ContractGraph.Main` replays the whole import closure of `ContractGraph.Main` (the Lean library, `leansqlite`, `plausible` and the `ContractGraph` modules) into an empty environment, and `leanchecker ContractGraph` replays every `ContractGraph.*` module. Locally the first took 48 to 57 s and the second 3.5 s. A self-test step compiles a bad module and a module that imports it outside the Lake package, and fails unless both modes reject them with the kernel's type mismatch, so a toolchain whose `leanchecker` changes cannot pass silently. The self-test sets `PATH` to the pinned toolchain's `bin`: run from a scratch directory, `leanchecker` otherwise asked elan's default toolchain for its sysroot and failed on an incompatible `Init.olean`. The replay skips unsafe and `partial` constants and uses the kernel that built the files, so a second, independent checker stays not yet reached. The tier gate's evidence line for `cgv/**` does not name the replay yet (TB-1.5).
+
+---
+
 ## 2026-10-06 - A call that never returns, and a match over every enum member, end the flow
 
 **Type:** fix

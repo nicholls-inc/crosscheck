@@ -81,8 +81,9 @@ This file is the ordered queue of work on this repository. The order of the rows
 | CG-1.4 | todo | Hide missing-guarantee warnings by default, and report them as coverage for each module | | #9 | |
 | CG-1.5 | todo | Baseline mode: report only the findings that a change introduces | | #7 | |
 | CG-1.6 | todo | Give each error a checkable witness: a concrete value or a generated failing test | | #8 | |
-| TB-1.1 | todo | CGV CI: replay the Lean kernel, so that a declaration that skipped the kernel cannot pass the axiom check | | #47 | |
+| TB-1.1 | done | CGV CI: replay the Lean kernel, so that a declaration that skipped the kernel cannot pass the axiom check | | #47 | `intent/2026-10-07-kernel-replay.md` |
 | TB-1.2 | todo | CGV: reject `implemented_by` and `extern` on constants that the soundness theorems reach | | #48 | |
 | TB-1.3 | todo | CGV manifest: hash the definitions that protected statements mention, and check the name lists against the rules table | | #51 | |
 | TB-1.4 | todo | Write the intent and the plan for proving extraction, and split the work into rows | | #16 | |
+| TB-1.5 | todo | Name the kernel replay in the tier gate's evidence line for `cgv/**` in `scripts/ci/tier-gate.mjs`, its tests, and the matching row of `docs/assurance/TIER-LAYER-MAP.md`. They say "statement manifest and axiom check", and TB-1.1 added a kernel replay to CGV CI | TB-1.1 | #47 | |
 | AD-1.1 | todo | Review issues #19 to #41 against `docs/VISION.md` and record one decision for each. Refine: rewrite the issue against the vision, name the rule or item it serves, and add a row under that item. Drop: close the issue with the reason. Start no work on any of them in this task | | #27 | |
