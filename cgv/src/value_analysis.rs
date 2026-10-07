@@ -3303,6 +3303,11 @@ mod tests {
         assert_eq!(facts_of(&[("code.py", &kwonly)], "code.label_of").nullable, Some(true));
         let third = kwonly.replace("label_of(g, h)", "label_of(g, g, h)");
         assert_eq!(facts_of(&[("code.py", &third)], "code.label_of").nullable, Some(true));
+        let bare = format!(
+            "{records}def label_of(x, *, h: H):\n    h.name\n\
+             def c(g, h: H):\n    if h.name:\n        label_of(g, h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &bare)], "code.label_of").nullable, Some(true));
         let kwonly_ok = kwonly.replace("label_of(g, h)", "label_of(g, h=h)");
         assert_eq!(facts_of(&[("code.py", &kwonly_ok)], "code.label_of").nullable, None);
         let posonly = format!(

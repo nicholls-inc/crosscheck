@@ -135,3 +135,11 @@ def key_popped_in_class(d: dict, k: str) -> Rec:
             x = d.pop(k)
         return Rec(n=1, s=d.get(k))
     return Rec(n=0, s="missing")
+
+
+# Pattern 4: another task may remove the key while this one is suspended.
+async def key_popped_across_await(d: dict, k: str, other) -> Rec:
+    if k in d:
+        await other
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")

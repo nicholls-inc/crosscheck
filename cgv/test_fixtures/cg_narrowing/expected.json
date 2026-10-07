@@ -70,6 +70,11 @@
       "path": "key_popped_in_class -> Rec.s",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_across_await -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
     }
   ],
   "warnings": [

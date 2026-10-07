@@ -297,6 +297,10 @@ fn walk<'a, V: FlowVisitor<'a>>(
                         remove_all(&mut n, bound_names_in_expr(target));
                     }
                 }
+                if w.is_async {
+                    // `__aenter__` suspends before the body runs.
+                    n.forget_members();
+                }
                 // The body runs once, in order (a context manager that
                 // suppresses an exception is not modelled).
                 let end = walk(&w.body, &n, v, counts);
@@ -359,6 +363,9 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 let mut v = OnlyGetCalls(true);
                 f.decorator_list.iter().for_each(|d| v.visit_decorator(d));
                 v.visit_parameters(&f.parameters);
+                if let Some(r) = &f.returns {
+                    v.visit_expr(r);
+                }
                 if !v.0 {
                     n.forget_members();
                 }
@@ -572,13 +579,17 @@ pub fn member_key_of(key: &Expr, container: &Expr) -> Option<String> {
 
 /// Whether `node` leaves `member_key` facts alone: every call in it is a
 /// `.get(...)` method call (one that cannot remove a key from a dict), and
-/// it has no `del` and no walrus (which can rebind the key).
+/// it has no `del`, no walrus (which can rebind the key) and no suspension
+/// (`await`, `yield`, `async for`, `async with`).
 struct OnlyGetCalls(bool);
 
 impl<'a> Visitor<'a> for OnlyGetCalls {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if matches!(stmt, Stmt::Delete(_)) {
-            self.0 = false;
+        match stmt {
+            Stmt::Delete(_) => self.0 = false,
+            Stmt::For(f) if f.is_async => self.0 = false,
+            Stmt::With(w) if w.is_async => self.0 = false,
+            _ => {}
         }
         visitor::walk_stmt(self, stmt);
     }
@@ -589,7 +600,8 @@ impl<'a> Visitor<'a> for OnlyGetCalls {
                 self.0 &=
                     matches!(c.func.as_ref(), Expr::Attribute(a) if a.attr.as_str() == "get");
             }
-            Expr::Named(_) => self.0 = false,
+            // A suspension hands control to code that may mutate the dict.
+            Expr::Named(_) | Expr::Await(_) | Expr::Yield(_) | Expr::YieldFrom(_) => self.0 = false,
             _ => {}
         }
         visitor::walk_expr(self, expr);
@@ -1400,7 +1412,17 @@ mod tests {
             fn simple(&mut self, stmt: &'a Stmt, n: &Narrowed) {
                 if let Stmt::Expr(e) = stmt {
                     if let Expr::Call(c) = e.value.as_ref() {
-                        if matches!(c.func.as_ref(), Expr::Name(f) if f.id.as_str() == "use") {
+                        // `use()` observes the state; `probe.get()` does too and, being
+                        // a `.get` call, leaves member facts alone.
+                        let observed = match c.func.as_ref() {
+                            Expr::Name(f) => f.id.as_str() == "use",
+                            Expr::Attribute(a) => {
+                                a.attr.as_str() == "get"
+                                    && matches!(a.value.as_ref(), Expr::Name(v) if v.id.as_str() == "probe")
+                            }
+                            _ => false,
+                        };
+                        if observed {
                             let mut names: Vec<String> = n.names().cloned().collect();
                             names.sort();
                             self.0.push(names);
@@ -1572,12 +1594,19 @@ mod tests {
             "if (k := j):\n            pass\n        use()",
             "match mode:\n            case 1:\n                d.pop(k)\n        use()",
             "match mode:\n            case 1 if g():\n                pass\n        use()",
-            "try:\n            d.pop(k)\n            h()\n        except E:\n            use()",
-            "try:\n            x = 1\n        except E:\n            d.pop(k)\n            raise\n        finally:\n            use()",
-            "try:\n            x = 1\n        except E:\n            return 0\n        else:\n            d.pop(k)\n            return 1\n        finally:\n            use()",
+            "try:\n            d.pop(k)\n            h()\n        except E:\n            probe.get()",
+            "try:\n            x = 1\n        except E:\n            d.pop(k)\n            raise\n        finally:\n            probe.get()",
+            "try:\n            x = 1\n        except E:\n            return 0\n        else:\n            d.pop(k)\n            return 1\n        finally:\n            probe.get()",
             "class C:\n            x = d.pop(k)\n        use()",
             "@d.pop(k)\n        def g():\n            pass\n        use()",
             "def g(x=d.pop(k)):\n            pass\n        use()",
+            "def g() -> d.pop(k):\n            pass\n        use()",
+            "await fut\n        use()",
+            "yield 1\n        use()",
+            "async with cm:\n            use()",
+            "async for x in it:\n            probe.get()",
+            "try:\n            async with cm:\n                pass\n        except E:\n            probe.get()",
+            "try:\n            async for x in it:\n                pass\n        except E:\n            probe.get()",
             "assert g()\n        use()",
             "with g():\n            use()",
             "match g():\n            case 1:\n                pass\n        use()",
