@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - pydantic `model_validate` is a validation boundary
+
+**Type:** fix
+**Touches:** cgv/src/edge_discovery.rs, cgv/test_fixtures/pydantic_validate_boundary/, cgv/test_fixtures/r5_write_patterns/, cgv/README.md, docs/TASKS.md
+**Why:** CGV checked each entry of the dict given to `Model.model_validate` against the field, as if it were a typed constructor argument. `model_validate` takes `Any`, coerces in lax mode and rejects invalid input on purpose, so the errors were false. It was 4 of the triaged false positives in the real-codebase evaluation.
+**Links:** [intent](intent/2026-10-06-pydantic-validate-boundary.md)
+
+`model_validate`, `model_validate_json`, `model_validate_strings`, `parse_obj` and `parse_raw` on a pydantic class now emit no write edges. A typed constructor call and `model_copy(update=...)`, which does not validate, stay writes. `BehaviorModel.lean` needs no rule for lax coercion: it already says pydantic fields are enforced by validation at construction, and that is all this relies on. The round 5 fixture `r5_write_patterns` expected an error for a 4 decimal place value given to `model_validate`, and that case is now SAFE. Reporting a validation call whose input must fail is not yet reached. `model_construct` skips validation and records no write, a false negative that CG-1.16 covers.
+
+---
+
 ## 2026-10-06 - A parameter typed `object` accepts None
 
 **Type:** fix
