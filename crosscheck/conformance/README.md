@@ -67,13 +67,19 @@ parsed).
   never be tracked nowhere. `status` must be exactly one of `unreviewed`,
   `known-gap`, `reviewed-disclosed` or `reviewed-accurate`. Any other value,
   including an empty or missing one, fails CI, so a typo such as
-  `reviewed-disclsed` cannot pass as a reviewed claim. A missing `claims.json` is an
-  empty ledger. A `claims.json` that cannot be read, or does not parse as the
-  ledger shape, fails CI, so a syntax error cannot pass as a ledger with no
-  claims. Not yet reached: a `claims.json` that is a symlink to a missing
-  target still loads as an empty ledger, because `os.ReadFile` reports it as
-  missing and the oracle does not look at the link itself; PB-1.24 queues the
-  fix.
+  `reviewed-disclsed` cannot pass as a reviewed claim.
+
+  A missing `claims.json` is an empty ledger. A `claims.json` that cannot be
+  read, or is not valid JSON for the ledger types, fails CI, so a syntax error
+  cannot pass as a ledger with no claims. Not yet reached: a `claims.json` that
+  is a symlink to a missing target still loads as an empty ledger, because
+  `os.ReadFile` reports it as missing and the oracle does not look at the link
+  itself (PB-1.24), and JSON that decodes but has the wrong shape, such as a
+  top-level `null`, a missing `narrative_claims` or unknown keys, still loads
+  as an empty or partial ledger, because `json.Unmarshal` accepts any JSON that
+  fits the struct (PB-1.25). The open questions are whether a dangling link is
+  a missing or an unreadable ledger, and which schema the ledger should be held
+  to.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
