@@ -1,0 +1,305 @@
+#!/usr/bin/env node
+// skill-references.mjs checks that every slash-reference in Crosscheck's
+// Markdown names a skill, an agent, or an allowlisted skill of another plugin,
+// and that crosscheck/docs/skills.md is the catalogue generated from the skills.
+//
+// Requirement IDs (SR-*) refer to intent/2026-10-07-slash-references-spec.md.
+// Run it from the repository root.
+//
+//   node scripts/ci/skill-references.mjs           checks the index
+//   node scripts/ci/skill-references.mjs --write   writes crosscheck/docs/skills.md
+//                                                  in the working tree, then checks
+//
+// It reads the index, never the working tree (SR-1). `--write` checks the
+// index with the catalogue it just wrote in place of the staged one, so it
+// reports what the check will say once you `git add crosscheck/docs/skills.md`.
+//
+// No dependencies. Node ESM. Exit codes (SR-7): 0 pass, 1 findings, 2 could not read.
+
+import { execFileSync, execSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const GATE_DOC = 'skill-references.md';
+const ALLOWLIST = 'crosscheck/slash-allowlist.txt';
+const CATALOGUE = 'crosscheck/docs/skills.md';
+const WRITE_COMMAND = 'node scripts/ci/skill-references.mjs --write';
+const SKILL_PATH = /^crosscheck\/skills\/([^/]+)\/SKILL\.md$/;
+const AGENT_PATH = /^crosscheck\/agents\/([^/]+)\.md$/;
+
+// SR-2. Records of planned or historical names, and GitHub comment commands.
+export const NOT_CHECKED = [
+  'crosscheck/docs/add/.retrospective/',
+  'crosscheck/.assurance/',
+  'crosscheck/docs/research/',
+  'crosscheck/docs/reports/',
+  'crosscheck/docs/examples/workflows/',
+];
+
+// SR-3.
+const NAME = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
+const REFERENCE = new RegExp(`(?<![\\w/.\\-~:<*\\\\$})\\]@%+=])/(?:(${NAME}):)?(${NAME})(?![\\w/\\-*<>:\\\\]|\\.\\w)`, 'g');
+const ALLOWLIST_LINE = new RegExp(`^(${NAME}):(${NAME})$`);
+
+export class CannotRead extends Error {
+  constructor(message, fix = []) {
+    super(message);
+    this.fix = fix;
+  }
+}
+
+export const isChecked = (path) =>
+  path.startsWith('crosscheck/') && path.endsWith('.md') && !NOT_CHECKED.some((prefix) => path.startsWith(prefix));
+
+// SR-3. `plugin` is null for a reference with no prefix.
+export function findReferences(text) {
+  const references = [];
+  text.split('\n').forEach((line, i) => {
+    for (const m of line.matchAll(REFERENCE)) {
+      references.push({ line: i + 1, plugin: m[1] ?? null, name: m[2], text: m[0] });
+    }
+  });
+  return references;
+}
+
+// SR-5.
+export function parseAllowlist(text) {
+  const entries = new Set();
+  const problems = [];
+  text.split('\n').forEach((raw, i) => {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) return;
+    const where = `${ALLOWLIST}:${i + 1}`;
+    const m = line.match(ALLOWLIST_LINE);
+    if (!m) {
+      problems.push(`${where}: "${line}" is not of the form <plugin>:<name>`);
+    } else if (m[1] === 'crosscheck') {
+      problems.push(`${where}: ${line} is a crosscheck entry, which would let a name with no skill or agent pass; delete the line`);
+    } else {
+      entries.add(line);
+    }
+  });
+  return { entries, problems };
+}
+
+// SR-6. The frontmatter `description`, folded to one line, or null when there is none.
+export function parseDescription(skillMdText) {
+  const lines = skillMdText.split(/\r?\n/);
+  if (lines[0] !== '---') return null;
+  const end = lines.indexOf('---', 1);
+  if (end === -1) return null;
+  const frontmatter = lines.slice(1, end);
+  const start = frontmatter.findIndex((l) => /^description:/.test(l));
+  if (start === -1) return null;
+  const value = frontmatter[start].slice('description:'.length).trim();
+  if (/^[>|][+-]?$/.test(value)) {
+    const body = [];
+    for (const l of frontmatter.slice(start + 1)) {
+      if (l.trim() !== '' && !/^\s/.test(l)) break;
+      body.push(l.trim());
+    }
+    const folded = body.filter((l) => l !== '').join(' ');
+    return folded === '' ? null : folded;
+  }
+  const quoted = value.match(/^'(.*)'$/) || value.match(/^"(.*)"$/);
+  const scalar = quoted ? quoted[1] : value;
+  return scalar === '' ? null : scalar;
+}
+
+// SR-6. `skillsWithText` maps each skill name to the text of its SKILL.md.
+export function renderCatalogue(skillsWithText) {
+  const names = [...skillsWithText.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const rows = names.map((name) => {
+    const description = (parseDescription(skillsWithText.get(name)) ?? '').replace(/\|/g, '\\|');
+    return `| [\`/${name}\`](../skills/${name}/SKILL.md) | ${description} |`;
+  });
+  return [
+    '# Crosscheck Skill Catalogue',
+    '',
+    `Index of all ${names.length} skill${names.length === 1 ? '' : 's'} in the crosscheck plugin: one row per directory under \`crosscheck/skills/\`, with the \`description\` from that skill's frontmatter.`,
+    '',
+    `This file is generated by \`${WRITE_COMMAND}\`. Do not edit it by hand: CI fails when it differs from the generated text.`,
+    '',
+    'See [`../README.md`](../README.md) for the plugin overview, and [`./agents.md`](./agents.md) for the orchestrator agent pages.',
+    '',
+    '| Skill | Description |',
+    '| --- | --- |',
+    ...rows,
+    '',
+  ].join('\n');
+}
+
+const skillsWithText = (snapshot) =>
+  new Map([...snapshot.skills].map((name) => [name, snapshot.files.get(`crosscheck/skills/${name}/SKILL.md`) ?? '']));
+
+// SR-4.
+function resolves(ref, snapshot, allowlist) {
+  if (ref.plugin === null || ref.plugin === 'crosscheck') return snapshot.skills.has(ref.name) || snapshot.agents.has(ref.name);
+  return allowlist.has(`${ref.plugin}:${ref.name}`);
+}
+
+// SR-2 to SR-7. `snapshot` is { files: Map<path, text>, skills: Set, agents: Set }.
+export function checkSnapshot(snapshot, allowlistText) {
+  const { entries, problems } = parseAllowlist(allowlistText);
+  const paths = [...snapshot.files.keys()].filter(isChecked).sort();
+  for (const path of paths) {
+    for (const ref of findReferences(snapshot.files.get(path))) {
+      if (resolves(ref, snapshot, entries)) continue;
+      const why =
+        ref.plugin === null || ref.plugin === 'crosscheck'
+          ? 'names no skill in crosscheck/skills/ and no agent in crosscheck/agents/'
+          : `is not in ${ALLOWLIST}`;
+      problems.push(`${path}:${ref.line}: ${ref.text} ${why}`);
+    }
+  }
+  const skills = skillsWithText(snapshot);
+  for (const [name, text] of [...skills].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    if (parseDescription(text) === null) problems.push(`crosscheck/skills/${name}/SKILL.md: has no frontmatter description`);
+  }
+  if (snapshot.files.get(CATALOGUE) !== renderCatalogue(skills)) {
+    problems.push(`${CATALOGUE}: differs from the catalogue generated from crosscheck/skills/; run ${WRITE_COMMAND}`);
+  }
+  return problems;
+}
+
+function git(args, input) {
+  try {
+    return execFileSync('git', args, { input, maxBuffer: 1 << 30, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (err) {
+    throw new CannotRead(`git ${args.join(' ')}: ${String(err.stderr || err.message).trim()}`);
+  }
+}
+
+// SR-1. Blobs are requested by object name, not `:path`, because
+// `git cat-file --batch` reads one request per line and a path may hold a newline.
+export function readIndex() {
+  const records = git(['ls-files', '-z', '--cached', '--stage', '--', 'crosscheck'])
+    .toString('utf8')
+    .split('\0')
+    .filter((r) => r.length > 0)
+    .map((r) => {
+      const [meta, path] = [r.slice(0, r.indexOf('\t')), r.slice(r.indexOf('\t') + 1)];
+      const [mode, object, stage] = meta.split(' ');
+      return { mode, object, stage, path };
+    })
+    .filter((r) => r.stage === '0');
+  const skills = new Set();
+  const agents = new Set();
+  for (const { path } of records) {
+    const skill = path.match(SKILL_PATH);
+    if (skill) skills.add(skill[1]);
+    const agent = path.match(AGENT_PATH);
+    if (agent) agents.add(agent[1]);
+  }
+  const wanted = records.filter(
+    (r) => (r.mode === '100644' || r.mode === '100755') && (isChecked(r.path) || r.path === ALLOWLIST || SKILL_PATH.test(r.path)),
+  );
+  const files = new Map();
+  if (wanted.length === 0) return { files, skills, agents };
+  const out = git(['cat-file', '--batch'], wanted.map((r) => r.object).join('\n') + '\n');
+  let at = 0;
+  for (const { path } of wanted) {
+    const eol = out.indexOf(0x0a, at);
+    const header = out.subarray(at, eol).toString('utf8').split(' ');
+    if (header[1] !== 'blob') throw new CannotRead(`git cat-file --batch: no blob for ${path} (${header.join(' ')})`);
+    const size = Number(header[2]);
+    files.set(path, out.subarray(eol + 1, eol + 1 + size).toString('utf8'));
+    at = eol + 1 + size + 1;
+  }
+  return { files, skills, agents };
+}
+
+function allowlistText(snapshot) {
+  const text = snapshot.files.get(ALLOWLIST);
+  if (text === undefined) {
+    throw new CannotRead(`${ALLOWLIST} is not in the index`, [
+      `Fix: git restore --source=HEAD --staged --worktree ${ALLOWLIST}, or create it with comments only and git add ${ALLOWLIST}`,
+    ]);
+  }
+  return text;
+}
+
+function fixLines(problems) {
+  const fix = [];
+  if (problems.some((p) => !p.startsWith(`${CATALOGUE}:`))) {
+    fix.push(
+      'Fix: edit each line above so every /name names a skill in crosscheck/skills/ or an agent in crosscheck/agents/ (write a planned name without its slash, a placeholder as /<skill>), add another plugin\'s skill to crosscheck/slash-allowlist.txt as <plugin>:<name>, then git add the files',
+    );
+  }
+  if (problems.some((p) => p.startsWith(`${CATALOGUE}:`))) fix.push(`Fix: ${WRITE_COMMAND}, then git add ${CATALOGUE}`);
+  return fix;
+}
+
+// SR-8. For scripts/ci/pre-commit.mjs. Throws CannotRead when the index cannot be read.
+export function checkIndex() {
+  const snapshot = readIndex();
+  const problems = checkSnapshot(snapshot, allowlistText(snapshot));
+  return { problems, fix: fixLines(problems) };
+}
+
+function ownerRepoFromRemote(url) {
+  let m = url.match(/git@github\.com:([^/]+)\/(.+?)(\.git)?$/);
+  if (m) return `${m[1]}/${m[2]}`;
+  m = url.match(/https:\/\/github\.com\/([^/]+)\/([^/]+?)(\.git)?\/?$/);
+  if (m) return `${m[1]}/${m[2]}`;
+  return '';
+}
+
+function gateDocLink() {
+  let url = '';
+  try {
+    url = execSync('git remote get-url origin', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    url = '';
+  }
+  const ownerRepo = ownerRepoFromRemote(url);
+  if (!ownerRepo) return `docs/gates/${GATE_DOC}`;
+  return `https://github.com/${ownerRepo}/blob/main/docs/gates/${GATE_DOC}`;
+}
+
+// SR-7.
+function failureLines(problems) {
+  return [
+    '**Action needed: fix the slash-references**',
+    'You are being asked to correct a slash-reference in Crosscheck\'s Markdown, the allowlist, or the generated skill catalogue, because a /name there runs no skill or agent that exists, or the catalogue is out of date.',
+    'Approving means every /name a reader or agent follows in crosscheck/ runs something that exists and crosscheck/docs/skills.md lists every skill; declining leaves this check red.',
+    `Full explanation: ${gateDocLink()}.`,
+    '',
+    ...problems,
+  ];
+}
+
+function run(args) {
+  if (args.length > 1 || (args.length === 1 && args[0] !== '--write')) {
+    console.error('usage: skill-references.mjs [--write]');
+    return 2;
+  }
+  const snapshot = readIndex();
+  if (args[0] === '--write') {
+    const text = renderCatalogue(skillsWithText(snapshot));
+    mkdirSync(dirname(CATALOGUE), { recursive: true });
+    writeFileSync(CATALOGUE, text);
+    snapshot.files.set(CATALOGUE, text);
+    console.log(`skill-references: wrote ${CATALOGUE}; git add it so the index holds it`);
+  }
+  const problems = checkSnapshot(snapshot, allowlistText(snapshot));
+  if (problems.length > 0) {
+    for (const line of failureLines(problems)) console.log(line);
+    return 1;
+  }
+  const checked = [...snapshot.files.keys()].filter(isChecked);
+  const references = checked.reduce((n, path) => n + findReferences(snapshot.files.get(path)).length, 0);
+  console.log(`skill-references: PASS - ${references} reference(s) in ${checked.length} file(s) checked, ${snapshot.skills.size} skill(s) catalogued.`);
+  return 0;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    process.exitCode = run(process.argv.slice(2));
+  } catch (err) {
+    if (!(err instanceof CannotRead)) throw err;
+    console.error([err.message, ...err.fix].join('\n'));
+    process.exitCode = 2;
+  }
+}
