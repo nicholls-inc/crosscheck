@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "store -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    }
+  ]
+}
