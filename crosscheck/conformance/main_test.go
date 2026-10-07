@@ -466,12 +466,14 @@ func TestLedgerLoad(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, readErr, 0},
-		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr, 0},
-		{"empty", writeLedger(``), parseErr, 0},
-		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr, 0},
-		// The first claim decodes, the second has a type error: json.Unmarshal
-		// returns the decoded claim and the error, and the ledger must still be empty.
-		{"partial_decode", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},{"id":5}]}`), parseErr, 0},
+		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr + "the ledger: unexpected EOF", 0},
+		{"empty", writeLedger(``), parseErr + "the ledger: EOF", 0},
+		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr + "narrative_claims: json: cannot unmarshal object", 0},
+		// A ledger that breaks the schema is rejected before json.Unmarshal runs,
+		// so a first claim that would decode cannot leak out ahead of a second
+		// claim with a type error: the schema error names the fault and the
+		// ledger stays empty.
+		{"partial_decode", writeLedger(`{"version":1,"narrative_claims":[{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}},{"id":5,"source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}]}`), parseErr + "narrative_claims[1].id must be a non-blank string", 0},
 		{"dangling_symlink", symlink("missing.json"), readErr, 0},
 		{"dangling_symlink_chain", func(t *testing.T, path string) {
 			symlink("missing.json")(t, filepath.Join(filepath.Dir(path), "hop.json"))
@@ -551,7 +553,7 @@ func TestLedgerLoad(t *testing.T) {
 		{"status_not_string", ledger(`{"id":"C1","source":"s","claim":"c","reality":"r","status":1,"check":{"type":"manual"}}`), parseErr + "narrative_claims[0].status must be a string", 0},
 		{"tracked_in_not_string", ledger(claimWith(base + `,"tracked_in":17,"check":{"type":"manual"}`)), parseErr + "narrative_claims[0].tracked_in must be a string", 0},
 		{"expect_present_not_bool", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","expect_present":"false"}`)), parseErr + "narrative_claims[0].check.expect_present must be true or false", 0},
-		{"trailing_data", writeLedger(`{"version":1,"narrative_claims":[]} {}`), parseErr, 0},
+		{"trailing_data", writeLedger(`{"version":1,"narrative_claims":[]} {}`), parseErr + "invalid character '{' after top-level value", 0},
 		{"dup_top_scalar", writeLedger(`{"version":2,"version":1,"narrative_claims":[]}`), parseErr + `the ledger has duplicate key "version"`, 0},
 		{"dup_claims_array", writeLedger(`{"version":1,"narrative_claims":[` + okClaim + `,` + okClaim + `],"narrative_claims":[{"id":"C2"}]}`), parseErr + `the ledger has duplicate key "narrative_claims"`, 0},
 		{"dup_claim_key", ledger(claimWith(base + `,"status":"unreviewed","check":{"type":"manual"}`)), parseErr + `narrative_claims[0] has duplicate key "status"`, 0},
