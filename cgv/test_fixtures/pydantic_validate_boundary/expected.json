@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "construct_flag -> Reading.enabled",
+      "source_guarantee": "type = str",
+      "target_requirement": "type = bool",
+      "target": "Reading.enabled"
+    },
+    {
+      "path": "maybe_label -> Reading.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Reading.label"
+    },
+    {
+      "path": "four -> Reading.total",
+      "source_guarantee": "precision ≤ 4",
+      "target_requirement": "precision ≤ 2",
+      "target": "Reading.total"
+    },
+    {
+      "path": "maybe_label -> Reading.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Reading.label"
+    }
+  ]
+}
