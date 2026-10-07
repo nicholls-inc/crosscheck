@@ -60,9 +60,15 @@ enum Commands {
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
 
-        /// Text format only: omit WARNING blocks from the body (still counted in the RESULT line)
-        #[arg(long)]
+        /// Text format only: omit WARNING and UNVERIFIED blocks from the body (still counted in the RESULT line)
+        #[arg(long, conflicts_with = "warnings")]
         no_warnings: bool,
+
+        /// Text format only: also list each UNVERIFIED requirement (a hop whose
+        /// source has no guarantee of the kind its target requires). By default
+        /// they are only counted, in the coverage section and the RESULT line
+        #[arg(long)]
+        warnings: bool,
 
         /// Search budget passed to the checker (`--max-states N`, total hop
         /// states); past it the checker reports an incomplete run (exit 2).
@@ -125,6 +131,7 @@ fn run(cli: Cli) -> Result<i32> {
             output_db,
             format,
             no_warnings,
+            warnings,
             max_states,
             max_states_per_edge,
             exclude,
@@ -202,7 +209,15 @@ fn run(cli: Cli) -> Result<i32> {
                     let stdout_str = String::from_utf8_lossy(&output.stdout);
                     match report::parse(&stdout_str) {
                         Ok(checker_output) => {
-                            print!("{}", report::render_text(&checker_output, no_warnings));
+                            let display = match (no_warnings, warnings) {
+                                (true, _) => report::WarningDisplay::Hide,
+                                (_, true) => report::WarningDisplay::All,
+                                _ => report::WarningDisplay::Default,
+                            };
+                            let edges = report::edges_by_module(&db_path).map_err(|e| {
+                                anyhow::anyhow!("cannot count the edges of {}: {e}", db_path.display())
+                            })?;
+                            print!("{}", report::render_text(&checker_output, display, &edges));
                             checker_output.exit_code
                         }
                         Err(e) => {
