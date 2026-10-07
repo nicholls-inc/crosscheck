@@ -24,7 +24,6 @@ use ruff_python_ast::visitor;
 use ruff_python_ast::{self as ast, BoolOp, Expr, Number, Operator, UnaryOp};
 
 use crate::bounds::{self, Dec};
-use crate::dataclass_extractor::VALUE_TYPES;
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
 use crate::flow::{self, Def, FunctionFlow, Narrowed};
 use crate::function_extractor::{strip_optional, FunctionInfo, MethodKind, ParamInfo, ParamKind};
@@ -244,6 +243,24 @@ impl Ctx {
         c
     }
 
+    /// Where the operand after `v` of a boolean operator `op` is evaluated:
+    /// `v` was truthy (`and`) or falsy (`or`), and its effects took place.
+    pub fn after_operand(&self, v: &Expr, op: BoolOp) -> Ctx {
+        let mut c = match op {
+            BoolOp::And => self.narrow(flow::positive(v)),
+            BoolOp::Or => self.narrow(flow::negative(v)),
+        };
+        c.narrowed.apply(&flow::effects(v));
+        c
+    }
+
+    /// Where a branch of `body if test else orelse` is evaluated.
+    pub fn branch(&self, test: &Expr, taken: bool) -> Ctx {
+        let mut c = self.clone();
+        c.narrowed.apply(&flow::effects(test));
+        c.narrow(if taken { flow::positive(test) } else { flow::negative(test) })
+    }
+
     pub fn shadow(&self, names: impl IntoIterator<Item = String>) -> Ctx {
         let mut c = self.clone();
         for n in names {
@@ -346,6 +363,11 @@ const STR_METHODS: [&str; 16] = [
     "swapcase",
 ];
 
+/// Per function whose callers the project shows (see
+/// `edge_discovery::caller_guards`), per parameter, the fields `p.f` that
+/// every call narrows on its argument (`if h.name: label_of(h)`).
+pub type CallerGuards = HashMap<String, HashMap<String, HashSet<String>>>;
+
 /// The analysis context of one function (or of a bare body, with `func` None).
 pub struct Scope<'a> {
     pub index: &'a ProjectIndex,
@@ -370,6 +392,7 @@ pub struct Scope<'a> {
     /// Dict forwarder parameters (`edge_discovery::dict_param_key`), whose
     /// argument dicts are only splatted by the callee.
     pub dict_forwarders: Option<&'a HashSet<String>>,
+    caller_guards: Option<&'a CallerGuards>,
 }
 
 /// Recursion bound of the value analysis: deeper values are unknown.
@@ -410,12 +433,19 @@ impl<'a> Scope<'a> {
             depth: Cell::new(0),
             injected: func.is_some_and(|f| injecting_decorator(index, f)),
             dict_forwarders: None,
+            caller_guards: None,
         }
     }
 
     /// The same scope, knowing the project's dict forwarder parameters.
     pub fn with_dict_forwarders(mut self, forwarders: &'a HashSet<String>) -> Self {
         self.dict_forwarders = Some(forwarders);
+        self
+    }
+
+    /// The same scope, knowing the project's caller guards.
+    pub fn with_caller_guards(mut self, guards: &'a CallerGuards) -> Self {
+        self.caller_guards = Some(guards);
         self
     }
 
@@ -527,8 +557,8 @@ impl<'a> Scope<'a> {
             Expr::UnaryOp(u) => self.unary_facts(u, ctx),
             Expr::BoolOp(b) => self.boolop_facts(b, ctx),
             Expr::If(i) => ValueFacts::join(
-                self.facts(&i.body, &ctx.narrow(flow::positive(&i.test))),
-                self.facts(&i.orelse, &ctx.narrow(flow::negative(&i.test))),
+                self.facts(&i.body, &ctx.branch(&i.test, true)),
+                self.facts(&i.orelse, &ctx.branch(&i.test, false)),
             ),
             Expr::Subscript(s) => self.subscript_facts(s, ctx),
             Expr::Named(n) => self.facts(&n.value, ctx),
@@ -642,7 +672,26 @@ impl<'a> Scope<'a> {
     /// function does not assign it, the field's declared nullability.
     fn field_read_facts(&self, obj: &str, class: &ClassInfo, field: &str, ctx: &Ctx) -> ValueFacts {
         let name = format!("{obj}.{field}");
-        let declared = || declared_field_facts(class, field);
+        // Every caller narrows the argument's field: unknown, not nullable,
+        // since a caller the project does not show may still pass None.
+        let guarded = self.func.is_some_and(|f| {
+            f.params.iter().any(|p| p.name == obj)
+                && !self.flow.assignments.contains_key(obj)
+                && !self.flow.opaque.contains(obj)
+                // No call can have written the field since the entry.
+                && ctx.narrowed.untouched(obj)
+                && self
+                    .caller_guards
+                    .and_then(|g| g.get(&f.qualified_name)?.get(obj))
+                    .is_some_and(|fields| fields.contains(field))
+        });
+        let declared = || {
+            let mut facts = declared_field_facts(class, field);
+            if guarded && facts.nullable == Some(true) {
+                facts.nullable = None;
+            }
+            facts
+        };
         let facts = if self.flow.opaque.contains(&name) {
             ValueFacts::default()
         } else if let Some(assigns) = self.flow.attr_assignments.get(&name) {
@@ -924,10 +973,7 @@ impl<'a> Scope<'a> {
                 BoolOp::Or if i < last => parts.push(f.non_none_part()),
                 _ => parts.push(f),
             }
-            c = match b.op {
-                BoolOp::And => c.narrow(flow::positive(v)),
-                BoolOp::Or => c.narrow(flow::negative(v)),
-            };
+            c = c.after_operand(v, b.op);
         }
         ValueFacts::join_all(parts).unwrap_or_default()
     }
@@ -1196,6 +1242,14 @@ impl<'a> Scope<'a> {
                 .iter()
                 .any(|k| k.arg.as_deref() == Some(name) && matches!(k.value, Expr::NoneLiteral(_)))
         };
+        // `k in d` holds here and `d` is a dict: `d.get(k)` is `d[k]`, never
+        // the default. Another object's `.get` may do anything.
+        let checked = method == "get"
+            && args
+                .first()
+                .and_then(|k| flow::member_key_of(k, &attr.value))
+                .is_some_and(|m| ctx.narrowed.contains(&m));
+        let present = checked && self.known_dict(&attr.value, ctx);
         // `.get(k, default)` on a module-level dict of non-None literals: one
         // of its values or the default (`None` when not given).
         if method == "get" && matches!(args.len(), 1 | 2) && call.arguments.keywords.is_empty() {
@@ -1204,8 +1258,10 @@ impl<'a> Scope<'a> {
                 .and_then(|p| self.index.const_dict(self.module, &p));
             if let Some(Expr::Dict(d)) = dict {
                 let values = d.items.iter().map(|item| self.facts(&item.value, &Ctx::default()));
-                let default = args.get(1).map_or_else(ValueFacts::none_value, |d| self.facts(d, ctx));
-                return ValueFacts::join_all(values.chain(std::iter::once(default))).unwrap_or_default();
+                // A module-level dict display: a dict.
+                let default = (!checked)
+                    .then(|| args.get(1).map_or_else(ValueFacts::none_value, |d| self.facts(d, ctx)));
+                return ValueFacts::join_all(values.chain(default)).unwrap_or_default();
             }
         }
         match method {
@@ -1219,12 +1275,12 @@ impl<'a> Scope<'a> {
                 }
             }
             "get" if call.arguments.keywords.is_empty() && args.len() == 1 => {
-                ValueFacts::nullable()
+                nullable_unless(present)
             }
             "get" if args.len() == 2 && matches!(args[1], Expr::NoneLiteral(_)) => {
-                ValueFacts::nullable()
+                nullable_unless(present)
             }
-            "get" if args.len() == 1 && kw_is_none("default") => ValueFacts::nullable(),
+            "get" if args.len() == 1 && kw_is_none("default") => nullable_unless(present),
             "pop" if args.len() == 2 && matches!(args[1], Expr::NoneLiteral(_)) => {
                 ValueFacts::nullable()
             }
@@ -1684,6 +1740,44 @@ impl<'a> Scope<'a> {
         }
     }
 
+    /// Whether `expr` is known to hold a dict: a parameter annotated `dict`,
+    /// `Dict`, `Mapping` (or a subclass of dict: `defaultdict`, `OrderedDict`)
+    /// that the body does not rebind, or a local every assignment of which is
+    /// a dict display, a dict comprehension or a `dict()` / `defaultdict()` /
+    /// `OrderedDict()` construction.
+    fn known_dict(&self, expr: &Expr, ctx: &Ctx) -> bool {
+        const DICTS: [&str; 7] = ["dict", "Dict", "Mapping", "MutableMapping", "defaultdict", "DefaultDict", "OrderedDict"];
+        let Expr::Name(n) = expr else { return false };
+        let name = n.id.as_str();
+        if ctx.shadowed.contains(name) || self.flow.unstable.contains(name) || self.flow.opaque.contains(name) {
+            return false;
+        }
+        let head_is_dict = |e: &Expr| {
+            let e = match e {
+                Expr::Subscript(s) => s.value.as_ref(),
+                other => other,
+            };
+            dotted_parts(e).and_then(|p| p.last().cloned()).is_some_and(|h| DICTS.contains(&h.as_str()))
+        };
+        if let Some(p) = self.param(name) {
+            return !self.flow.binds(name) && p.annotation.as_ref().is_some_and(|a| head_is_dict(strip_optional(a)));
+        }
+        let constructed = |e: &Expr| match e {
+            Expr::Dict(_) | Expr::DictComp(_) => true,
+            Expr::Call(c) => {
+                head_is_dict(&c.func)
+                    && dotted_parts(&c.func)
+                        .and_then(|p| p.first().cloned())
+                        .is_some_and(|root| self.is_external(&root, ctx))
+            }
+            _ => false,
+        };
+        self.flow
+            .assignments
+            .get(name)
+            .is_some_and(|assigns| !assigns.is_empty() && assigns.iter().all(|a| constructed(a.value)))
+    }
+
     /// Where the element expression of comprehension `comp` is evaluated:
     /// its variables shadow the function's names; a variable bound by
     /// `for x in xs` over a collection of a project class (see
@@ -1691,6 +1785,9 @@ impl<'a> Scope<'a> {
     pub fn comprehension_ctx(&self, comp: &Expr, ctx: &Ctx) -> Ctx {
         let names = flow::bound_names_in_expr(comp);
         let mut c = ctx.shadow(names.iter().cloned());
+        // Every part may run before the element: a filter in this
+        // iteration, and every part in an earlier one.
+        c.narrowed.apply(&flow::effects(comp));
         let generators = match comp {
             Expr::ListComp(g) => &g.generators[..],
             Expr::SetComp(g) => &g.generators[..],
@@ -1956,8 +2053,8 @@ impl<'a> Scope<'a> {
         }
         match expr {
             Expr::If(i) => {
-                self.expand(&i.body, &ctx.narrow(flow::positive(&i.test)), non_none, depth + 1, out)
-                    && self.expand(&i.orelse, &ctx.narrow(flow::negative(&i.test)), non_none, depth + 1, out)
+                self.expand(&i.body, &ctx.branch(&i.test, true), non_none, depth + 1, out)
+                    && self.expand(&i.orelse, &ctx.branch(&i.test, false), non_none, depth + 1, out)
             }
             Expr::Name(n) => {
                 let name = n.id.as_str();
@@ -2282,9 +2379,19 @@ impl<'a> Scope<'a> {
                 .as_deref()
                 .map(|t| t.split('[').next().unwrap_or(t).trim().to_string())
         });
-        facts.type_name = annotated.filter(|t| VALUE_TYPES.contains(&t.as_str()));
+        facts.type_name = annotated.filter(|t| self.index.is_contract_type(t));
         facts.weak_type = false;
         facts
+    }
+}
+
+/// A value that may be `None`, unless `present`: then the value of a dict
+/// entry, whose facts are unknown.
+fn nullable_unless(present: bool) -> ValueFacts {
+    if present {
+        ValueFacts::default()
+    } else {
+        ValueFacts::nullable()
     }
 }
 
@@ -2556,6 +2663,7 @@ fn is_none_annotation(expr: &Expr) -> bool {
 
 /// Postcondition rows stating `facts`.
 pub fn facts_rows(
+    index: &ProjectIndex,
     facts: &ValueFacts,
     node_id: i64,
     source_file: &str,
@@ -2576,7 +2684,7 @@ pub fn facts_rows(
     if let Some(t) = facts
         .type_name
         .as_ref()
-        .filter(|t| VALUE_TYPES.contains(&t.as_str()))
+        .filter(|t| index.is_contract_type(t))
     {
         if !facts.weak_type {
             rows.push(ContractRecord {
@@ -2665,12 +2773,14 @@ mod tests {
     }
 
     /// Facts of the value of the last expression statement of function `f`
-    /// in module `code` (evaluated with the narrowing at that point).
+    /// in module `code` (evaluated with the narrowing at that point, and the
+    /// project's caller guards as edge discovery uses them).
     fn facts_of(files: &[(&str, &str)], func: &str) -> ValueFacts {
         let p = project(files);
         let f = p.index.function(func).expect("function");
         let flow = FunctionFlow::of_info(f);
-        let scope = Scope::new(&p.index, &p.summaries, Some(f), &flow);
+        let guards = crate::edge_discovery::caller_guards(&p);
+        let scope = Scope::new(&p.index, &p.summaries, Some(f), &flow).with_caller_guards(&guards);
         struct Last<'a>(Option<(&'a Expr, Narrowed)>);
         impl<'a> flow::FlowVisitor<'a> for Last<'a> {
             fn simple(&mut self, stmt: &'a ruff_python_ast::Stmt, n: &Narrowed) {
@@ -3160,6 +3270,236 @@ mod tests {
         assert_eq!(facts_of(&files, "code.h").nullable, Some(false));
         assert_eq!(facts_of(&files, "code.i").nullable, Some(true));
         assert_eq!(facts_of(&files, "code.j").max_length, Some(3));
+    }
+
+    /// CG-1.9: a `try` keeps what its fall-through paths agree on.
+    #[test]
+    fn test_try_reaching_definitions() {
+        let f = |handler: &str| {
+            one(&format!(
+                "def f(raw):\n    v = raw.get('n')\n    if not v:\n        return\n    try:\n        v = int(v)\n    except ValueError:\n        {handler}\n    v\n"
+            ))
+            .nullable
+        };
+        assert_eq!(f("return"), Some(false));
+        assert_eq!(f("v = 0"), Some(false));
+        assert_eq!(f("pass"), Some(true));
+    }
+
+    /// CG-1.9: under `k in d`, `d.get(k)` is `d[k]` (unknown), not the default.
+    #[test]
+    fn test_get_under_membership() {
+        assert_eq!(one("def f(d: dict, k):\n    if k in d:\n        d.get(k)\n").nullable, None);
+        assert_eq!(one("def f(d: dict, k):\n    if k in d:\n        d.get(k, None)\n").nullable, None);
+        assert_eq!(one("def f(d: dict, k):\n    if k in d:\n        d.get(k, default=None)\n").nullable, None);
+        assert_eq!(one("def f(d, k):\n    d.get(k)\n").nullable, Some(true));
+        assert_eq!(one("def f(d: dict, e, k):\n    if k in d:\n        e.get(k)\n").nullable, Some(true));
+        assert_eq!(one("def f(d: dict, k):\n    if k in d:\n        d.pop(k)\n        d.get(k)\n").nullable, Some(true));
+        assert_eq!(one("def f(d: dict, k):\n    if k in d and g():\n        d.get(k)\n").nullable, Some(true));
+        // Only a receiver known to be a dict has a `.get` that returns `d[k]`.
+        let get = |sig: &str, pre: &str| {
+            one(&format!("def f({sig}, k):\n    {pre}if k in d:\n        d.get(k)\n")).nullable
+        };
+        for (sig, pre) in [
+            ("d: Dict[str, str]", ""),
+            ("d: Mapping[str, str]", ""),
+            ("d: Optional[dict]", ""),
+            ("d: typing.MutableMapping", ""),
+            ("x", "d = {}\n    "),
+            ("x", "d = dict(a=x)\n    "),
+            ("x", "d = {y: y for y in x}\n    "),
+            ("x", "d = defaultdict(list)\n    "),
+        ] {
+            assert_eq!(get(sig, pre), None, "{sig} {pre}");
+        }
+        for (sig, pre) in [
+            ("d", ""),
+            ("d: Cache", ""),
+            ("d: dict", "d = load()\n    "),
+            ("x", "d = load()\n    "),
+            ("x", "d = {}\n    for d in x:\n        pass\n    "),
+        ] {
+            assert_eq!(get(sig, pre), Some(true), "{sig} {pre}");
+        }
+        assert_eq!(one("def f(o):\n    if 'a' in o.m:\n        o.m.get('a')\n").nullable, Some(true));
+        // A mutating call inside the expression, after the test.
+        for code in [
+            "str(d.pop(k)) and d.get(k)",
+            "k in d and str(d.pop(k)) and d.get(k)",
+            "d.get(k) if d.pop(k) else 'x'",
+            "'x' if not d.pop(k) else d.get(k)",
+        ] {
+            let narrowed = one(&format!("def f(d: dict, k):\n    if k in d:\n        {code}\n")).nullable;
+            assert_eq!(narrowed, Some(true), "{code}");
+        }
+        assert_eq!(one("def f(d: dict, k):\n    k in d and d.get(k) and d.get(k)\n").nullable, None);
+        let dict = "R = {'a': 'x'}\n";
+        let g = |body: &str| facts_of(&[("code.py", &format!("{dict}{body}"))], "code.f").nullable;
+        assert_eq!(g("def f(k):\n    if k in R:\n        R.get(k)\n"), Some(false));
+        assert_eq!(g("def f(k):\n    R.get(k)\n"), Some(true));
+    }
+
+    /// CG-1.9: a field every caller narrows has unknown nullability, when
+    /// the project shows every caller.
+    #[test]
+    fn test_caller_guards() {
+        let records = "from dataclasses import dataclass\nfrom typing import Optional\n\
+                       @dataclass\nclass H:\n    name: Optional[str]\n";
+        let f = |code: &str| {
+            let src = format!("{records}def label_of(h: H):\n    h.name\n{code}");
+            facts_of(&[("code.py", &src)], "code.label_of").nullable
+        };
+        let guarded = "def a(h: H):\n    if h.name:\n        label_of(h)\n\
+                       def b(h: H):\n    if h.name is None:\n        return\n    label_of(h=h)\n";
+        assert_eq!(f(guarded), None);
+        assert_eq!(f(&format!("{guarded}def c(h: H):\n    label_of(h)\n")), Some(true));
+        assert_eq!(f(&format!("{guarded}HANDLERS = [label_of]\n")), Some(true));
+        assert_eq!(f(&format!("{guarded}def c(h: H, o):\n    if h.name:\n        o.label_of(h)\n")), Some(true));
+        assert_eq!(f(&format!("{guarded}def c(h: H, kw):\n    if h.name:\n        label_of(**kw)\n")), Some(true));
+        assert_eq!(f(""), Some(true));
+        // A lookup by string can reach `label_of` by a call the project does not show.
+        for (code, want) in [
+            ("def c(o, n):\n    getattr(o, n)(H(name=None))\n", Some(true)),
+            ("def c(o):\n    getattr(o, 'label_of')(H(name=None))\n", Some(true)),
+            ("def c(o):\n    getattr(o, 'other')\n", None),
+            ("def c(o):\n    vars(o)\n", Some(true)),
+            ("def c(n):\n    globals()[n](H(name=None))\n", Some(true)),
+            ("def c(n):\n    locals()[n]\n", Some(true)),
+            ("import operator\nG = operator.attrgetter('m.label_of')\n", Some(true)),
+            ("import operator\nG = operator.methodcaller(NAME)\n", Some(true)),
+        ] {
+            assert_eq!(f(&format!("{guarded}{code}")), want, "{code}");
+        }
+        let src = format!("{records}def label_of(h: H):\n    h.name\n{guarded}");
+        for (other, want) in [
+            ("from code import label_of\ndef c(n):\n    globals()[n]\n", Some(true)),
+            ("from code import *\ndef c(n):\n    globals()[n]\n", Some(true)),
+            ("from code import a\ndef c(n):\n    globals()[n]\n", None),
+        ] {
+            let files = [("code.py", src.as_str()), ("other.py", other)];
+            assert_eq!(facts_of(&files, "code.label_of").nullable, want, "{other}");
+        }
+        let src = format!("{records}def label_of(h: H):\n    h.name\n{guarded}");
+        let aliased = [("code.py", src.as_str()), ("other.py", "from code import label_of as lo\nHANDLERS = [lo]\n")];
+        assert_eq!(facts_of(&aliased, "code.label_of").nullable, Some(true));
+        let decorated = format!("{records}@trace\ndef label_of(h: H):\n    h.name\n{guarded}");
+        assert_eq!(facts_of(&[("code.py", &decorated)], "code.label_of").nullable, Some(true));
+        // The body of an async function or a generator runs after the call.
+        // The generator reads `h.name` before its first `yield`, so only its
+        // own exclusion, not the loss of the guard at a suspension, keeps the error.
+        for def in ["async def", "def"] {
+            let body = if def == "def" { "h.name\n    _ = yield" } else { "h.name" };
+            let lazy = format!("{records}{def} label_of(h: H):\n    {body}\n{guarded}");
+            assert_eq!(facts_of(&[("code.py", &lazy)], "code.label_of").nullable, Some(true), "{def}");
+        }
+        let rebound = format!("{records}def label_of(h: H):\n    h = H(name=None)\n    h.name\n{guarded}");
+        assert_eq!(facts_of(&[("code.py", &rebound)], "code.label_of").nullable, Some(true));
+        let method = format!(
+            "{records}class S:\n    def label_of(self, h: H):\n        h.name\n\
+             def a(s: S, h: H):\n    if h.name:\n        s.label_of(h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &method)], "code.S.label_of").nullable, None);
+        let framework = method.replace("class S:", "from ext import Base\nclass S(Base):");
+        assert_eq!(facts_of(&[("code.py", &framework)], "code.S.label_of").nullable, Some(true));
+        let dunder = method.replace("label_of", "__label__");
+        assert_eq!(facts_of(&[("code.py", &dunder)], "code.S.__label__").nullable, Some(true));
+        // `*xs` may bind `h`, so the guarded `h` may bind `x`.
+        let starred = format!(
+            "{records}def label_of(x: H, h: H):\n    h.name\n\
+             def a(h: H, xs):\n    if h.name:\n        label_of(*xs, h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &starred)], "code.label_of").nullable, Some(true));
+        // Guards through a conditional expression and boolean operators.
+        for (code, want) in [
+            ("label_of(h) if h.name else None", None),
+            ("label_of(h) if not h.name else None", Some(true)),
+            ("None if h.name else label_of(h)", Some(true)),
+            ("None if h.name is None else label_of(h)", None),
+            ("h.name and label_of(h)", None),
+            ("not h.name or label_of(h)", None),
+            ("h.name or label_of(h)", Some(true)),
+        ] {
+            assert_eq!(f(&format!("def c(h: H):\n    {code}\n")), want, "{code}");
+        }
+        // A positional argument that falls into `*a` does not bind the
+        // keyword-only `h`, and neither does a third positional one.
+        let kwonly = format!(
+            "{records}def label_of(x, *a, h: H):\n    h.name\n\
+             def c(g, h: H):\n    if h.name:\n        label_of(g, h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &kwonly)], "code.label_of").nullable, Some(true));
+        let third = kwonly.replace("label_of(g, h)", "label_of(g, g, h)");
+        assert_eq!(facts_of(&[("code.py", &third)], "code.label_of").nullable, Some(true));
+        let bare = format!(
+            "{records}def label_of(x, *, h: H):\n    h.name\n\
+             def c(g, h: H):\n    if h.name:\n        label_of(g, h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &bare)], "code.label_of").nullable, Some(true));
+        let kwonly_ok = kwonly.replace("label_of(g, h)", "label_of(g, h=h)");
+        assert_eq!(facts_of(&[("code.py", &kwonly_ok)], "code.label_of").nullable, None);
+        let posonly = format!(
+            "{records}def label_of(h: H, /, x):\n    h.name\n\
+             def c(h: H):\n    if h.name:\n        label_of(h, 1)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &posonly)], "code.label_of").nullable, None);
+        // A narrowed field of the receiver binds `self`.
+        let recv = format!(
+            "{records}@dataclass\nclass K:\n    name: Optional[str]\n    def label_of(self):\n        self.name\n\
+             def a(k: K):\n    if k.name:\n        k.label_of()\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &recv)], "code.K.label_of").nullable, None);
+        let recv_bad = recv.replace("if k.name:", "if k:");
+        assert_eq!(facts_of(&[("code.py", &recv_bad)], "code.K.label_of").nullable, Some(true));
+        // A method reference is a use as a value.
+        let attr = format!("{method}def c(s: S):\n    cb = s.label_of\n");
+        assert_eq!(facts_of(&[("code.py", &attr)], "code.S.label_of").nullable, Some(true));
+        // Only a function's own recursion, or a cycle nothing else enters,
+        // shows no caller.
+        let own = format!(
+            // The read comes before the recursive call, which may write `h.name`.
+            "{records}def label_of(h: H, n: int):\n    h.name\n    if n:\n        if h.name:\n            return label_of(h, n - 1)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &own)], "code.label_of").nullable, Some(true));
+        let cycle = format!(
+            "{records}def label_of(h: H):\n    if h.name:\n        other(h)\n    h.name\n\
+             def other(h: H):\n    if h.name:\n        label_of(h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &cycle)], "code.label_of").nullable, Some(true));
+        // A chain of calls that starts at a function nothing calls.
+        let chain = format!(
+            "{records}def label_of(h: H):\n    h.name\n\
+             def mid(h: H):\n    if h.name:\n        label_of(h)\n\
+             def start(h: H):\n    if h.name:\n        mid(h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &chain)], "code.label_of").nullable, None);
+        // A call that can reach `h` may write `h.name` before the read.
+        for (body, want) in [
+            ("clear(h)", Some(true)),
+            ("clear(x=h)", Some(true)),
+            ("h.save()", Some(true)),
+            ("h.parts.append(1)", Some(true)),
+            ("q = h\n    reset(q)", Some(true)),
+            ("cb = lambda: h\n    cb()", Some(true)),
+            ("def g():\n        return h\n    g()", Some(true)),
+            ("if h:\n        pass", Some(true)),
+            // A write on one path only still ends the guard after the join.
+            ("if x:\n        clear(h)", Some(true)),
+            ("if x:\n        pass\n    else:\n        clear(h)", Some(true)),
+            ("if clear(h) is None:\n        pass", Some(true)),
+            ("if x:\n        pass", None),
+            ("setattr(h, 'name', None)", Some(true)),
+            ("await other", Some(true)),
+            ("log(h.name)", None),
+            ("if h is None:\n        return", None),
+            ("reset()", None),
+        ] {
+            let src = format!("{records}def label_of(h: H, x: H):\n    {body}\n    h.name\n\
+                               def a(h: H):\n    if h.name:\n        label_of(h, h)\n");
+            assert_eq!(facts_of(&[("code.py", &src)], "code.label_of").nullable, want, "{body}");
+        }
+        // An outside entry into the same recursion shows a caller.
+        let entered = format!("{own}def start(h: H):\n    if h.name:\n        label_of(h, 3)\n");
+        assert_eq!(facts_of(&[("code.py", &entered)], "code.label_of").nullable, None);
     }
 
     /// Round 7: class constants read through `self` / `cls` take every
