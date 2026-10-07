@@ -103,7 +103,8 @@ enum Commands {
         write_baseline: Option<PathBuf>,
 
         /// Compare the findings with the baseline file at PATH: show only the
-        /// new ones, count the others, and exit 1 when an error is new
+        /// new ones, count the others, and exit 1 when an error is new. It
+        /// cannot name the same file as --write-baseline
         #[arg(long, value_name = "PATH", conflicts_with = "evidence_record")]
         baseline: Option<PathBuf>,
     },
@@ -152,6 +153,15 @@ fn run(cli: Cli) -> Result<i32> {
             write_baseline,
             baseline: baseline_path,
         } => {
+            if let (Some(read), Some(write)) = (&baseline_path, &write_baseline) {
+                if baseline::same_file(read, write) {
+                    eprintln!(
+                        "error: --baseline and --write-baseline name the same file {}; overwriting the baseline with this run's findings would let the next run match its new errors",
+                        read.display()
+                    );
+                    return Ok(2);
+                }
+            }
             let baseline_findings = baseline_path.as_deref().map(baseline::read);
             if let Some(path) = &write_baseline {
                 baseline::remove(path)?;

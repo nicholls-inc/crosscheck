@@ -394,3 +394,34 @@ fn a_json_exit_code_the_process_contradicts_is_not_a_completed_run() {
     assert_eq!(out.status.code(), Some(2));
     assert!(!written.exists());
 }
+
+#[test]
+fn baseline_and_write_baseline_naming_one_file_exit_2_before_the_checker_runs() {
+    let f = Fixture::new(SOURCE);
+    let path = write_baseline(&f, &[error("x", 2)], 1);
+    let before = std::fs::read(&path).unwrap();
+    f.set_checker(&[error("x", 2), error("y", 3)], 1);
+    std::os::unix::fs::symlink(&path, f.path("link.json")).unwrap();
+    std::fs::create_dir(f.path("sub")).unwrap();
+    for write in [path.as_str(), "baseline.json", "./sub/../baseline.json", "link.json"] {
+        let _ = std::fs::remove_file(f.path("ran"));
+        let out = f.run(&["--baseline", &path, "--write-baseline", write]);
+        assert_eq!(out.status.code(), Some(2), "{write}");
+        assert!(out.stdout.is_empty(), "{write}");
+        assert!(String::from_utf8_lossy(&out.stderr).contains("same file"), "{write}");
+        assert!(!f.path("ran").exists(), "{write}: the checker ran");
+        assert_eq!(std::fs::read(&path).unwrap(), before, "{write}: the baseline changed");
+    }
+    let missing = f.path("missing.json");
+    let _ = std::fs::remove_file(f.path("ran"));
+    let out = f.run(&["--baseline", missing.to_str().unwrap(), "--write-baseline", "./sub/../missing.json"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("same file"));
+    assert!(!f.path("ran").exists());
+
+    let other = f.path("other.json");
+    let out = f.run(&["--baseline", &path, "--write-baseline", other.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(other.is_file());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+}

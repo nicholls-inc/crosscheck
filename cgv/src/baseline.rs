@@ -171,6 +171,25 @@ pub fn remove(path: &Path) -> Result<()> {
     }
 }
 
+/// Whether `a` and `b` name the same file (BL-1). A path that does not exist
+/// yet is compared by its canonical parent directory and its file name.
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    fn canonical(p: &Path) -> Option<PathBuf> {
+        if let Ok(c) = p.canonicalize() {
+            return Some(c);
+        }
+        let parent = match p.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d,
+            _ => Path::new("."),
+        };
+        Some(parent.canonicalize().ok()?.join(p.file_name()?))
+    }
+    match (canonical(a), canonical(b)) {
+        (Some(x), Some(y)) => x == y,
+        _ => a == b,
+    }
+}
+
 /// Match the keys of a run with a baseline (BL-7).
 pub fn diff(keys: &[Option<Key>], baseline: &BTreeMap<Key, usize>) -> Diff {
     let mut run: BTreeMap<&Key, usize> = BTreeMap::new();
