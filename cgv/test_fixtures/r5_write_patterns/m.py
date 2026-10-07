@@ -50,7 +50,7 @@ def c(i: Inv, x: Decimal) -> Inv:
 
 
 def e(x: Decimal) -> Inv:
-    # SAFE: model_validate is a validation boundary, and validation rejects 4 places
+    # BUG: model_validate of a dict display
     return Inv.model_validate({"total": four(x)})
 
 
