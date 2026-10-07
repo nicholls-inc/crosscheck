@@ -5,10 +5,10 @@ name: CGV CI
 
 on:
   pull_request:
-    paths: ["cgv/**", ".github/workflows/cgv-ci.yml"]
+    paths: ["cgv/**", ".github/workflows/cgv-ci.yml", ".claude/rules/protected-surfaces.md"]
   push:
     branches: [main]
-    paths: ["cgv/**", ".github/workflows/cgv-ci.yml"]
+    paths: ["cgv/**", ".github/workflows/cgv-ci.yml", ".claude/rules/protected-surfaces.md"]
 
 permissions:
   contents: read
@@ -64,3 +64,10 @@ jobs:
             echo "::error::A protected CGV statement changed. If intended, regenerate cgv/prover/protected-statements.txt (see its header), which makes this a Tier 3 change needing a governance note and a 'Protected-surface change' section in the PR body."
             exit 1
           fi
+
+      # SM-10 in intent/2026-10-07-manifest-reach-spec.md: fails if the
+      # generator stops checking the rules table, or the manifest stops
+      # recording what the protected statements reach.
+      - name: The manifest generator checks the rules table and hashes what the statements reach
+        working-directory: cgv/prover
+        run: scripts/manifest-selftest.sh

@@ -16,7 +16,7 @@ Intent: `intent/2026-10-07-manifest-reach.md`. It amends SM-1, SM-4 and CI-1 of 
   - the heading line is missing, the table has no rows, or a row does not have two columns.
 
   It reads `../../.claude/rules/protected-surfaces.md`, relative to `cgv/prover`, unless a path is given as its first argument.
-- **SM-10.** `cgv/prover/scripts/manifest-selftest.sh` checks SM-1, SM-4 and SM-9 against the real sources and exits non-zero if any case gives the other result, or if an edit matches nothing. Each source edit is to `ContractGraph/Main.lean`, which the script restores on exit. Each table edit is to a copy of the rules file.
+- **SM-10.** `cgv/prover/scripts/manifest-selftest.sh` checks SM-1, SM-4 and SM-9 against the real sources and exits non-zero if any case gives the other result, or if an edit matches nothing. Each source edit is to `ContractGraph/Main.lean` or `ContractGraph/Composition.lean`, which the script restores on exit. Each table edit is to a copy of the rules file.
   1. The unedited sources and rules file give the committed manifest.
   2. Table without `checkPath_sound`: the generator fails and says `ContractGraph.checkPath_sound` is not in the rules table.
   3. Table with an extra name `selftestUnlisted`: the generator fails and says it is not in the generator's lists.
@@ -26,7 +26,7 @@ Intent: `intent/2026-10-07-manifest-reach.md`. It amends SM-1, SM-4 and CI-1 of 
   7. `incompleteWith` returns status `"incomplete!"` instead of `"incomplete"`. Only `incompleteWith_exitCode`'s statement reaches it. The manifest block of `ContractGraph.incompleteWith` changes.
   8. `incompleteWith` takes its status from a `private def`. Changing that helper's string changes the helper's manifest block. A name-prefix scope would skip the helper, which is the reason SM-1 scopes by module.
   9. `outputToJson`, which nothing reaches, changes: the manifest does not change.
-  10. The proof of `incompleteWith_exitCode` changes from `rfl` to `by rfl`: the manifest does not change.
+  10. `checkPath`'s termination proof changes from `decreasing_by simp_wf` to `decreasing_by all_goals (simp only [List.length_cons]; omega)`: the manifest does not change. Lean keeps that proof in the auxiliary theorem `checkPath._proof_1`, which `checkPath`'s value names, so a walk that entered theorems would fail this case. A proof of a protected theorem would not: no reached definition names one.
 - **SM-11.** CGV CI runs the self-test after the manifest step.
 - **CI-1 (amended).** CGV CI runs on pull requests and on pushes to `main` that change `cgv/**`, the workflow file, or `.claude/rules/protected-surfaces.md`.
 
