@@ -71,7 +71,7 @@ describe("validateEvidenceInput (DE-1)", () => {
     ]);
   });
 
-  it.each([["docs/req.md"], [" docs/req.md#abs "], ["req.md#a#b"], ["docs/req v2.md#Section 1"]])(
+  it.each([["docs/req.md"], [" docs/req.md#abs "], ["req.md#a#b"], ["docs/req v2.md#Section 1"], ["docs/req.md#a/../b"]])(
     "accepts the requirement %j",
     (requirement) => {
       expect(validateEvidenceInput({ ...good, requirement })).toEqual([]);

@@ -236,6 +236,23 @@ describe("dafnyEvidence against a real git repository", () => {
       "proofs",
       "requirement: proofs is not a regular file",
     ],
+    [
+      "a glob that matches a tracked file",
+      async (r: string) => {
+        await mkdir(join(r, "docs"));
+        await writeFile(join(r, "docs", "req.md"), "# Abs\n");
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "req");
+      },
+      "docs/*.md",
+      "requirement: not committed: docs/*.md",
+    ],
+    [
+      "pathspec magic that matches a tracked file",
+      async () => undefined,
+      ":(top)proofs/Abs.dfy",
+      "requirement: not committed: :(top)proofs/Abs.dfy",
+    ],
   ])("refuses a requirement that names %s before any Dafny run (DE-4)", async (_label, setup, requirement, error) => {
     await setup(repo);
     const result = await dafnyEvidence({ ...input, requirement });
