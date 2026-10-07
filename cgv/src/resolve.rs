@@ -1692,7 +1692,9 @@ fn type_leaves(expr: &Expr, out: &mut Vec<Expr>) {
                     Expr::Tuple(t) => t.elts.iter().take(1).for_each(|e| type_leaves(e, out)),
                     other => type_leaves(other, out),
                 },
-                _ => {}
+                // A generic (`list[str]`) is a member of a union that names no
+                // type contract, but it is a member: it counts as a leaf.
+                _ => out.push(expr.clone()),
             }
         }
         Expr::BinOp(b) if matches!(b.op, ruff_python_ast::Operator::BitOr) => {
@@ -1892,6 +1894,9 @@ mod tests {
         assert_eq!(shadow("app", "float | str"), Some(Shadow::Unknown));
         assert_eq!(shadow("app", "Union[float, Decimal]"), Some(Shadow::Unknown));
         assert_eq!(shadow("app", "Decimal | units.float"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "float | list[str]"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Union[float, Callable[[], int]]"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Optional[list[float]]"), None);
         assert_eq!(shadow("units", "float"), units_float);
     }
 }
