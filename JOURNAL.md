@@ -13,6 +13,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 `scripts/ci/skill-references.mjs` reads the git index, so the pre-commit hook and CI see the same files. It resolves each `/name` against `crosscheck/skills/` and `crosscheck/agents/`, and each `/<plugin>:<name>` of another plugin against `crosscheck/slash-allowlist.txt`, which ships empty. The grammar was tuned on the 123 Markdown files under `crosscheck/`: a `/` after a letter, `.`, `/`, `<` or `*` is a path, URL or closing tag, not a reference. About 150 mentions in archives, dated snapshots, research notes and gh-aw examples name skills that were planned and never built, or GitHub comment commands. Those directories are not read yet, because a historical mention and an instruction look the same in the text. Four live documents named unbuilt skills, and they now write the name without its slash. Three dated records, `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md`, did too. The first draft rewrote them, and the maintainer reverted that, because rewriting a record falsifies it. The check skips those three files instead. The catalogue lost its hand-written categories, trigger phrases and owners, because none of them is in `crosscheck/skills/`. It is one table of names and frontmatter descriptions.
 
+## 2026-10-07 - The CGV manifest hashes what the protected statements mention
+
+**Type:** feat
+**Touches:** cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/protected-statements.txt, cgv/prover/scripts/manifest-selftest.sh, .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** Issue #51. The manifest hashed only what `constraintImplies`, `IsDataPath` and `stepwiseSound` reach, so a redefinition of `CheckResult.isError` or `runChecker` could change what the theorems promise with no manifest change. The generator's name lists were kept in step with the rules table by hand.
+**Links:** [intent](intent/2026-10-07-manifest-reach.md), [spec](intent/2026-10-07-manifest-reach-spec.md), [plan](intent/2026-10-07-manifest-reach-plan.md)
+
+The walk now starts from every constant in a protected statement as well as the three definitions, and scopes by defining module, so private helpers count. The manifest grows from 107 hashed constants to 386, the checker among them, so a change to the checker's definitions now makes a pull request Tier 3. The generator reads the CGV table in `.claude/rules/protected-surfaces.md` and fails if names or files differ, and CGV CI runs when that file changes. `scripts/manifest-selftest.sh` pins each behaviour with a case that fails when it is mutated away. Whether that script is itself a protected surface is TB-1.27.
+
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
 **Type:** fix
