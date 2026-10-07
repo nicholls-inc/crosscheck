@@ -72,8 +72,10 @@ parsed).
   A missing `claims.json` is an empty ledger. A `claims.json` that cannot be
   read, or is not valid JSON, fails CI, so a syntax error cannot pass as a
   ledger with no claims. A `claims.json` or `conformance` directory that is a
-  symlink to a missing target cannot be read, so it fails CI too. JSON that
-  parses but breaks the ledger schema fails CI as well:
+  symlink to a missing target cannot be read, so it fails CI too. So does a
+  plugin root that does not resolve, because the path is wrong or a symlink on
+  it dangles: a run that scans nothing cannot pass. JSON that parses but breaks
+  the ledger schema fails CI as well:
 
   | Place | Required keys | Optional keys |
   |---|---|---|

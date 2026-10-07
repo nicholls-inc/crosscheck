@@ -42,7 +42,10 @@
 //	            an optional expect_present (true or false, default true)
 //
 // Keys match exactly, including case. A key the schema does not name, a key
-// that appears twice in one object, and a null anywhere are ERRORs.
+// that appears twice in one object, and a null anywhere are ERRORs. A
+// claims.json or a conformance directory that is a symlink to a missing target
+// is an ERROR, and so is a plugin root that does not resolve, because it is
+// missing or a symlink on its path dangles.
 //
 // Not yet reached: what the text fields say. Two claims may share an id,
 // source and tracked_in need not name a real file or issue, and check.path may
@@ -498,7 +501,8 @@ func readMCPSource(root string) string {
 // a file that cannot be read, cannot be parsed, or breaks the ledger schema
 // (checkLedgerSchema) is an error, so a broken ledger fails
 // the run instead of passing with zero claims. A symlink to a missing target,
-// at claims.json or at conformance, cannot be read.
+// at claims.json or at conformance, cannot be read, and neither can a ledger
+// under a root that does not resolve.
 func loadLedger(root string) ([]claim, error) {
 	dir := filepath.Join(root, "conformance")
 	path := filepath.Join(dir, "claims.json")
@@ -508,6 +512,9 @@ func loadLedger(root string) ([]claim, error) {
 			if danglingSymlink(p) {
 				return nil, fmt.Errorf("cannot read conformance/claims.json: %s is a symbolic link to a missing target: %w", p, err)
 			}
+		}
+		if _, serr := os.Stat(root); serr != nil {
+			return nil, fmt.Errorf("cannot read conformance/claims.json: plugin root %s does not resolve: %w", root, serr)
 		}
 		return nil, nil
 	}
