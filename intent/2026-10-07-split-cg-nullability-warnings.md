@@ -12,7 +12,7 @@ Row CG-1.3 asks for one pull request to close every extractor gap that issue #6 
 One pull request with all three would mix a relation model and a narrowing change, a precision trade-off that needs a benchmark run before it is decided, and a documentation change that waits for another task. A reviewer could not tell which fixture covers which rule, and a fault in one would hold back the other two.
 
 ## Proposed outcome
-`docs/TASKS.md` replaces row CG-1.3 with three rows, in the order of how many replay bugs each cause hid: CG-1.28 (chained attribute reads, 2), CG-1.29 (`d.get(k, default)`, 1) and CG-1.30 (per-function narrowing, documented and pinned, 1). Each row names the code that holds the gap and asks for a fixture in which the bug is an error, or for CG-1.30 the verdict that CG-1.9 gives. CG-1.30 depends on CG-1.9. No other row names CG-1.3 in `Depends on`, so no dependency changes.
+`docs/TASKS.md` replaces row CG-1.3 with three rows, in the order of how many of the 3 warning-only replay bugs each cause hid: CG-1.28 (chained attribute reads, 2), CG-1.29 (`d.get(k, default)`, 1) and CG-1.30 (per-function narrowing, documented and pinned). CG-1.30 hid none of the 3: its bug was already an error (rank #176), which the fix did not clear. Each row names the code that holds the gap and asks for a fixture in which the bug is an error. CG-1.30 is the one exception to issue #6's "must be an error": its fixture pins the verdict that CG-1.9 gives, which is a warning, because a caller outside the project can still pass None. CG-1.30 depends on CG-1.9. No other row names CG-1.3 in `Depends on`, so no dependency changes.
 
 This pull request does nothing else, as the queue's rule for splitting a task requires. It sets no row to `done`. Issue #6 stays open until the last of the three rows is done.
 
@@ -23,7 +23,7 @@ This pull request does nothing else, as the queue's rule for splitting a task re
 ## Constraints
 - Task IDs are never reused. CG-1.28 to CG-1.30 appear in no row on `origin/main` and in no open pull request's diff. The highest CG ID on `origin/main` is CG-1.27, and the open pull requests use none above CG-1.20.
 - The task queue check must pass: each new ID names roadmap item CG-1, each dependency exists, and every status is `todo`.
-- The evaluation also found that an `Optional` value coming through a `@property` or tuple unpacking gives a warning where mypy and pyright give an error. Issue #6 does not list it, and the split rule allows only rows that replace CG-1.3, so it is not added here. It needs its own row or issue.
+- The evaluation also found that an `Optional` value coming through a `@property` or tuple unpacking gives a warning where mypy and pyright give an error. CGV does not yet reach it. The property that blocks it is that the value analysis gives a property return or an unpacked tuple element unknown nullability instead of its declared `Optional` type; the open question is how to carry the declared type through without turning every unknown value into an error. Issue #6 does not list it, and the split rule allows only rows that replace CG-1.3, so no row is added here. It needs its own row or issue, opened by the maintainer's next queue change.
 
 ## Open questions
 None for the split. Each new row carries its own question for its own intent. For CG-1.28, whether a read through a relation that may be null is a finding, and how a chained name is narrowed. For CG-1.29, which receivers and value types count as a dict whose stored values may be None, measured on the benchmark corpus first.
