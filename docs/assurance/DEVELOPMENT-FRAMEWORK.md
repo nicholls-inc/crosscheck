@@ -87,7 +87,12 @@ Evidence at this stage comes from deterministic CI jobs:
   reachable from `constraintImplies`, `IsDataPath` or `stepwiseSound`, changes
   without `cgv/prover/protected-statements.txt` changing too. It also fails when
   a protected theorem or definition depends on `sorry` or on a non-standard
-  axiom.
+  axiom. A kernel replay (`leanchecker`) then fails when a declaration of the
+  built environment does not re-check, such as one added with the kernel check
+  switched off. It does not cover everything: CI-9 in
+  `intent/2026-09-29-deterministic-evidence-spec.md` lists the four limits
+  (`unsafe` and `partial` constants, the kernel that built the files, the
+  `ContractGraphTest` library, and `implemented_by` and `extern`).
 - **The tier gate:** `tier-gate.yml` runs the gate's own tests.
 
 `/intent-check`, `/audit-spec-coverage`, `/audit-invariant-consistency` and
