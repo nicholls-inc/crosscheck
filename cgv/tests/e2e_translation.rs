@@ -57,9 +57,13 @@ fn intact_database_still_reports_its_errors() {
 
 #[test]
 fn edge_to_a_missing_node_is_rejected() {
+    // The contract rows of those nodes go first, so the edge ending at a
+    // deleted node is the first thing translation meets that names no row.
     assert_rejected(
-        "DELETE FROM nodes WHERE kind = 'model' AND name LIKE 'EnergyRecord.%';",
-        "which does not exist",
+        "DELETE FROM contracts WHERE node_id IN \
+           (SELECT id FROM nodes WHERE kind = 'model' AND name LIKE 'EnergyRecord.%'); \
+         DELETE FROM nodes WHERE kind = 'model' AND name LIKE 'EnergyRecord.%';",
+        "ends at node",
     );
 }
 
@@ -76,7 +80,7 @@ fn contract_row_of_a_missing_node_is_rejected() {
 fn contract_row_of_a_missing_edge_is_rejected() {
     assert_rejected(
         "UPDATE contracts SET edge_id = edge_id + 1000 WHERE edge_id IS NOT NULL;",
-        "which does not exist",
+        "names edge",
     );
 }
 
@@ -133,5 +137,16 @@ fn row_without_its_value_is_rejected() {
         "UPDATE contracts SET param_decimal_places = NULL WHERE contract_role = 'precondition' \
          AND constraint_type = 'precision';",
         "no value and no dependent_expr",
+    );
+}
+
+#[test]
+fn empty_contract_role_is_rejected_not_read_as_a_precondition() {
+    // `readOptionalString` reads '' as NULL, and a NULL role is a precondition,
+    // so the row would be checked as one instead of being rejected.
+    assert_rejected(
+        "PRAGMA ignore_check_constraints = ON; \
+         UPDATE contracts SET contract_role = '' WHERE contract_role = 'postcondition';",
+        "unknown contract_role ''",
     );
 }
