@@ -478,7 +478,7 @@ test('TG-8: a pass whose changed files hit every class reports one line per clas
     '- CI workflow, conformance job (go vet, go test, go run . ..): 1 file(s), e.g. crosscheck/conformance/main.go',
     '- Tier Gate workflow (node --test scripts/ci/*.test.mjs): 1 file(s), e.g. .claude/hooks/protected-surface-guard.mjs',
     '- Evidence Record workflow (node --test scripts/check-evidence-record.test.mjs): 1 file(s), e.g. scripts/check-evidence-record.mjs',
-    '- Incident Eval Check workflow: 1 file(s), e.g. evals/a.json',
+    '- not yet reached: 1 file(s), e.g. evals/a.json. Blocking property: no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for an eval under evals/ and a candidate invariant that name the incident. Open question: what runs an eval as a regression test, and which workflow runs it before the merge.',
     '- not yet reached: 1 file(s), e.g. docs/assurance/ROADMAP.md. Blocking property: their behaviour is prompt text that an agent interprets. Open question: what a replayable behavioural eval of a prompt artefact looks like.',
     "- not yet reached: 1 file(s), e.g. .github/workflows/ci.yml. Blocking property: a workflow runs only on GitHub's runners, on GitHub's events. Open question: how to replay a workflow against recorded events before it merges.",
     '- not yet reached: 1 file(s), e.g. docs/invariants/tier-gate.md. Blocking property: no CI job maps these invariants to the tests that cover them. Open question: which test covers each invariant, and which workflow checks that mapping.',

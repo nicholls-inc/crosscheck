@@ -147,7 +147,7 @@ which job holds the evidence for each class of changed file:
 | `crosscheck/conformance/**` | `CI`, conformance job: `go vet`, `go test`, `go run . ..` |
 | `scripts/ci/**`, `.claude/hooks/protected-surface-guard.mjs`, `.husky/pre-commit` | `Tier Gate`: `node --test scripts/ci/*.test.mjs` |
 | `scripts/check-evidence-record.mjs`, `scripts/check-evidence-record.test.mjs` | `Evidence Record`: `node --test scripts/check-evidence-record.test.mjs` |
-| `evals/**` | `Incident Eval Check` |
+| `evals/**` | not yet reached |
 | `docs/invariants/**` | not yet reached |
 | `.github/workflows/**` | not yet reached |
 | any other `.md` or `.pdf` file | not yet reached |
@@ -161,6 +161,12 @@ names the property that blocks a deterministic check and the open question:
   (`CLAUDE.md`, `AGENTS.md`, `REVIEW.md`). Their behaviour is prompt text that an agent
   interprets. The open question is what a replayable behavioural eval of a prompt
   artefact looks like.
+- **Evals** (`evals/**`). No CI job runs an eval. The Incident Eval Check runs only
+  after a merge, and only looks for an eval under `evals/` and a candidate invariant
+  that contain the incident id (`docs/gates/incident-eval-check.md`), so it says
+  nothing about what an eval checks.
+  The open question is what runs an eval as a regression test, and which workflow runs
+  it before the merge.
 - **Root invariant documents** (`docs/invariants/**`). No CI job maps these invariants
   to the tests that cover them. The open question is which test covers each invariant,
   and which workflow checks that mapping.

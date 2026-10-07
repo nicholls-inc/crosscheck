@@ -13,9 +13,7 @@ Dafny translate run. The exclusion rules are target-specific (Python vs Go) and
 eliminate Dafny runtime boilerplate files that are useless — or actively harmful —
 in the extracted output.
 
-## Invariants
-
-### I1 — Go: `/dafny/` directory paths are excluded
+## I1: Go: `/dafny/` directory paths are excluded
 
 For the `"go"` target, any path that contains the segment `/dafny/` (i.e., a
 directory named exactly `dafny`) returns `true`.
@@ -32,7 +30,7 @@ ship.
 
 ---
 
-### I2 — Go: `/System_/` directory paths are excluded
+## I2: Go: `/System_/` directory paths are excluded
 
 For the `"go"` target, any path that contains the segment `/System_/` returns `true`.
 
@@ -44,7 +42,7 @@ For the `"go"` target, any path that contains the segment `/System_/` returns `t
 
 ---
 
-### I3 — Python: `_dafny.py` paths are excluded
+## I3: Python: `_dafny.py` paths are excluded
 
 For the `"py"` target, any path whose basename equals `_dafny.py`, or that
 contains the substring `_dafny.py`, returns `true`.
@@ -57,7 +55,7 @@ contains the substring `_dafny.py`, returns `true`.
 
 ---
 
-### I4 — Python: `__pycache__` paths are excluded
+## I4: Python: `__pycache__` paths are excluded
 
 For the `"py"` target, any path that contains the string `__pycache__` returns `true`.
 
@@ -69,7 +67,7 @@ For the `"py"` target, any path that contains the string `__pycache__` returns `
 
 ---
 
-### I5 — Safe filenames are never excluded
+## I5: Safe filenames are never excluded
 
 A filename consisting only of lowercase ASCII letters (no special characters) with
 a `.py` or `.go` extension, with no path components matching any exclude pattern,
@@ -89,7 +87,7 @@ where `SafePyFilenames = { s + ".py" | s ∈ [a-z]{1,8} }` and
 
 ---
 
-### I6 — Target isolation
+## I6: Target isolation
 
 Python exclude patterns do not affect the `"go"` target, and vice versa.
 Specifically:

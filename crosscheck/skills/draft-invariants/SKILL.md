@@ -179,9 +179,9 @@ JSON. The marker has the shape (see also
    not, treat as marker-absent (the marker is scoped to a different
    session); fall through to the standard §6 red-pen.
 2. Recompute the content hash over `hash_inputs` using the discipline
-   documented at
+   documented under "SHA-256 computation (exact)" in
    `crosscheck/skills/intent-check/references/attestation-schema.md`
-   lines 76–92 (sorted absolute paths, raw bytes concatenated with no
+   (sorted absolute paths, raw bytes concatenated with no
    delimiter, single SHA-256, lowercase hex). If the recomputed hash
    does NOT match `hash_value`, refuse with a clear error: *"Marker hash
    mismatch — the spec, glossary, or module-map has changed since the
@@ -222,8 +222,8 @@ sub-agent) can write a forged marker. Future maintainers should not
 treat the marker as a tamper-resistant attestation. The actual safety
 net is the standard `§6` red-pen, which fires whenever the marker is
 absent. Compare `/intent-check`'s `.assurance/intent-check-attestation.json`,
-which uses the same hash discipline but for a different purpose (a
-fast pre-commit check that an LLM pipeline actually ran).
+which uses the same hash discipline for a different purpose: an
+advisory record of what an LLM pipeline said, which no gate reads.
 
 **Sign-off semantics.** The checklist item "User has explicitly signed
 off on English before any test code is written" (see the Checklist
