@@ -36,6 +36,7 @@ use crate::db::{
     ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
     VerificationLevel,
 };
+use crate::resolve::Shadow;
 
 /// Value types whose names are comparable with function type postconditions.
 pub const VALUE_TYPES: [&str; 5] = ["Decimal", "int", "str", "float", "bool"];
@@ -78,6 +79,9 @@ pub struct ClassCandidate {
     /// type (see `resolve::external_type_names`): fields annotated with one
     /// have unknown nullability and type.
     pub external_types: std::collections::HashSet<String>,
+    /// Fields whose annotation names a value type that the module binds to
+    /// something else (see `resolve::ProjectIndex::annotation_shadow`).
+    pub type_shadows: HashMap<String, Shadow>,
 }
 
 /// One annotated field of a recognised data class.
@@ -101,6 +105,11 @@ pub struct DataClassField {
     /// pydantic strict validation for this field (`Field(strict=True)`,
     /// `StrictInt`, ...): no numeric coercion.
     pub strict: bool,
+    /// pydantic does not validate the input against the annotation:
+    /// `SkipValidation`, a `PlainValidator` or `WrapValidator` in `Annotated`
+    /// metadata, or a `None` default under an annotation without None, which
+    /// pydantic v1 reads as Optional.
+    pub unvalidated: bool,
     pub source_file: String,
     pub source_line: u32,
 }
@@ -180,6 +189,7 @@ pub fn collect_classes_with(
         .map(|class_def| ClassCandidate {
             aliases: with_type_params(aliases, class_def.type_params.as_deref()),
             external_types: Default::default(),
+            type_shadows: Default::default(),
             class_def: class_def.clone(),
             module: module.clone(),
             source_file: source_file.to_string(),
@@ -351,7 +361,7 @@ struct PreValidated {
 
 /// Validators of class `name` and its project-local bases that run before
 /// (or around) field validation: `field_validator(..., mode="before" |
-/// "wrap")`, v1 `validator(..., pre=True)`, and for every field
+/// "wrap" | "plain")`, v1 `validator(..., pre=True)`, and for every field
 /// `model_validator(mode="before" | "wrap")` / `root_validator(pre=True)`.
 fn transforming_validators(
     name: &str,
@@ -377,7 +387,7 @@ fn transforming_validators(
                         _ => None,
                     }
                 });
-                let transforms = matches!(mode.as_deref(), Some("before" | "wrap"))
+                let transforms = matches!(mode.as_deref(), Some("before" | "wrap" | "plain"))
                     || keyword_is(call, "pre", true);
                 if !transforms {
                     continue;
@@ -406,6 +416,12 @@ fn transforming_validators(
 }
 
 impl DataClassField {
+    /// Whether pydantic validation enforces the field's recorded contract. Not
+    /// for precision: pydantic counts digits after normalising trailing zeros.
+    pub fn validation_enforces(&self) -> bool {
+        !self.unvalidated && self.decimal_places.is_none() && self.max_digits.is_none()
+    }
+
     /// Drop every requirement (a validator may replace the value first).
     fn clear_requirements(&mut self) {
         self.type_name = None;
@@ -586,8 +602,19 @@ fn dotted_name(expr: &Expr) -> Option<String> {
 }
 
 /// Last segment of a dotted name (`typing.Optional` → `Optional`).
-fn last_segment(expr: &Expr) -> Option<String> {
+pub(crate) fn last_segment(expr: &Expr) -> Option<String> {
     dotted_name(expr).map(|d| d.rsplit('.').next().unwrap_or(&d).to_string())
+}
+
+/// Field name and annotation of each annotated name in a class body.
+pub fn field_annotations(class_def: &ast::StmtClassDef) -> impl Iterator<Item = (String, &Expr)> {
+    class_def.body.iter().filter_map(|stmt| match stmt {
+        Stmt::AnnAssign(ann) => match ann.target.as_ref() {
+            Expr::Name(target) => Some((target.id.to_string(), ann.annotation.as_ref())),
+            _ => None,
+        },
+        _ => None,
+    })
 }
 
 /// Annotated fields declared directly in the class body.
@@ -606,11 +633,16 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
         };
         // A type imported from an unmodelled package may include None.
         let external = crate::resolve::annotation_is_external(&ann.annotation, &candidate.external_types);
+        let type_name = match (external, candidate.type_shadows.get(&field_name)) {
+            (true, _) | (false, Some(Shadow::Unknown)) => None,
+            (false, Some(Shadow::Class(q))) => info.type_name.map(|_| q.clone()),
+            (false, None) => info.type_name,
+        };
         let mut field = DataClassField {
             class_name: class_name.clone(),
             class_qualified: candidate_qualified(candidate),
             field_name,
-            type_name: if external { None } else { info.type_name },
+            type_name,
             nullable: if external && info.nullable == Some(false) { None } else { info.nullable },
             max_digits: None,
             decimal_places: None,
@@ -619,6 +651,7 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
             min_value: None,
             choices: info.choices,
             strict: info.strict,
+            unvalidated: info.unvalidated,
             source_file: candidate.source_file.clone(),
             source_line: line,
         };
@@ -631,10 +664,30 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
                     apply_constraint_keywords(&mut field, call);
                 }
             }
+            if field.nullable == Some(false) && default_is_none(value) {
+                field.unvalidated = true;
+            }
         }
+        bounds::narrow_to_digits(field.max_digits, field.decimal_places, &mut field.min_value, &mut field.max_value);
         fields.push(field);
     }
     fields
+}
+
+/// A class-body default of `None`: `= None`, `= Field(None)`, `= Field(default=None)`.
+fn default_is_none(value: &Expr) -> bool {
+    match value {
+        Expr::NoneLiteral(_) => true,
+        Expr::Call(call) if is_field_call(&call.func) => {
+            matches!(call.arguments.args.first(), Some(Expr::NoneLiteral(_)))
+                || call
+                    .arguments
+                    .keywords
+                    .iter()
+                    .any(|k| k.arg.as_deref() == Some("default") && matches!(k.value, Expr::NoneLiteral(_)))
+        }
+        _ => false,
+    }
 }
 
 /// What an annotation says about a field.
@@ -647,6 +700,8 @@ struct AnnotationInfo<'a> {
     choices: Option<Vec<String>>,
     /// A `Strict*` type.
     strict: bool,
+    /// `SkipValidation`, or a `PlainValidator` / `WrapValidator` in `Annotated`.
+    unvalidated: bool,
 }
 
 /// Type name and nullability an annotation states (`None` for `ClassVar[...]`).
@@ -664,6 +719,7 @@ fn analyze_annotation(expr: &Expr) -> Option<AnnotationInfo<'_>> {
         constraint_calls: Vec::new(),
         choices: None,
         strict: false,
+        unvalidated: false,
     };
     if walk_annotation(expr, &mut info) {
         Some(info)
@@ -679,6 +735,10 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             let head = last_segment(&sub.value).unwrap_or_default();
             match head.as_str() {
                 "ClassVar" => false,
+                "SkipValidation" => {
+                    info.unvalidated = true;
+                    walk_annotation(&sub.slice, info)
+                }
                 "Optional" => {
                     info.nullable = Some(true);
                     walk_annotation(&sub.slice, info)
@@ -688,6 +748,20 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                         let mut elts = t.elts.iter();
                         let keep = elts.next().is_none_or(|base| walk_annotation(base, info));
                         for meta in elts {
+                            let marker = match meta {
+                                Expr::Call(call) => last_segment(&call.func),
+                                other => last_segment(other),
+                            };
+                            // Metadata CGV does not know to leave validation
+                            // in force (a marker, a renamed import, an alias, a
+                            // validator held in a variable) keeps the write.
+                            let literal = matches!(
+                                meta,
+                                Expr::StringLiteral(_) | Expr::NumberLiteral(_) | Expr::BooleanLiteral(_)
+                            );
+                            if !literal && !marker.as_deref().is_some_and(is_validated_metadata) {
+                                info.unvalidated = true;
+                            }
                             if let Expr::Call(call) = meta {
                                 if is_field_call(&call.func) {
                                     info.constraint_calls.push(call);
@@ -733,6 +807,9 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                 }
                 // Generic containers: record the container name only.
                 _ => {
+                    if !is_validated_name(&head) {
+                        info.unvalidated = true;
+                    }
                     info.type_name = Some(head);
                     true
                 }
@@ -756,6 +833,8 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             if let Some(t) = type_name {
                 info.type_name = Some(t.to_string());
                 info.constraint_calls.push(call);
+            } else {
+                info.unvalidated = true;
             }
             true
         }
@@ -772,6 +851,7 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                 constraint_calls: Vec::new(),
                 choices: None,
                 strict: false,
+                unvalidated: false,
             };
             if !walk_annotation(parsed.expr(), &mut inner) {
                 return false;
@@ -779,6 +859,7 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             info.type_name = inner.type_name;
             info.choices = inner.choices;
             info.strict |= inner.strict;
+            info.unvalidated |= inner.unvalidated;
             info.nullable = match (info.nullable, inner.nullable) {
                 (Some(true), _) | (_, Some(true)) => Some(true),
                 (_, None) => None,
@@ -805,6 +886,9 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             } else if name.as_deref() == Some("Any") {
                 info.nullable = None;
             } else {
+                if !name.as_deref().is_some_and(is_validated_name) {
+                    info.unvalidated = true;
+                }
                 info.type_name = name;
             }
             true
@@ -829,8 +913,51 @@ fn walk_union<'a>(members: &[&'a Expr], info: &mut AnnotationInfo<'a>) -> bool {
         }
         keep
     } else {
-        true // a union of several value types has no single type contract
+        // A union of several value types has no single type contract, but a
+        // member CGV does not know pydantic validates may still store None.
+        for member in non_none {
+            let mut scratch = AnnotationInfo {
+                type_name: None,
+                nullable: Some(false),
+                constraint_calls: Vec::new(),
+                choices: None,
+                strict: false,
+                unvalidated: false,
+            };
+            walk_annotation(member, &mut scratch);
+            info.unvalidated |= scratch.unvalidated;
+        }
+        true
     }
+}
+
+/// Type names that pydantic validates against their annotation. A field whose
+/// annotation names anything else (a project class, a type alias, a renamed
+/// import of `SkipValidation`) is treated as unvalidated, so a pydantic
+/// validation call keeps its entry as a write, as for a constructor call.
+fn is_validated_name(name: &str) -> bool {
+    matches!(
+        name,
+        "str" | "int" | "float" | "bool" | "bytes" | "Decimal" | "date" | "datetime" | "time"
+            | "timedelta" | "UUID" | "None" | "NoneType" | "list" | "dict" | "set" | "frozenset"
+            | "tuple" | "List" | "Dict" | "Set" | "FrozenSet" | "Tuple" | "Sequence" | "Mapping"
+            | "Iterable" | "Optional" | "Union" | "Literal" | "Annotated" | "StrictInt"
+            | "StrictFloat" | "StrictStr" | "StrictBool" | "StrictBytes" | "PositiveInt"
+            | "NegativeInt" | "NonNegativeInt" | "NonPositiveInt" | "PositiveFloat"
+            | "NegativeFloat" | "NonNegativeFloat" | "NonPositiveFloat" | "EmailStr" | "AnyUrl"
+            | "HttpUrl" | "Json"
+    )
+}
+
+/// `Annotated` metadata that leaves pydantic validation of the annotated type
+/// in force: constraints, and a `BeforeValidator` (validation runs on its
+/// result). An `AfterValidator` may return a value validation would reject.
+fn is_validated_metadata(name: &str) -> bool {
+    matches!(
+        name,
+        "Field" | "FieldInfo" | "StringConstraints" | "Strict" | "Gt" | "Ge" | "Lt" | "Le"
+            | "MultipleOf" | "MinLen" | "MaxLen" | "Len" | "Interval" | "BeforeValidator"
+    )
 }
 
 fn flatten_bitor<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
@@ -864,8 +991,10 @@ fn apply_constraint_keywords(field: &mut DataClassField, call: &ast::ExprCall) {
         let value = int_literal(&kw.value);
         let bound = bounds::literal_bound(&kw.value);
         match arg.as_str() {
-            "max_digits" => field.max_digits = value.or(field.max_digits),
-            "decimal_places" => field.decimal_places = value.or(field.decimal_places),
+            // A later Field overrides an Annotated alias's, so a bound the
+            // extractor cannot read replaces a literal one with unknown.
+            "max_digits" => field.max_digits = value,
+            "decimal_places" => field.decimal_places = value,
             "max_length" => field.max_length = value.or(field.max_length),
             "le" => field.max_value = bound.or(field.max_value),
             "lt" => {
@@ -915,11 +1044,15 @@ fn int_literal(expr: &Expr) -> Option<i64> {
 /// The field's requirements as facts (what `write_data_classes` states as
 /// preconditions): what a read of the field yields, since every write to it
 /// is checked against them.
-pub fn requirement_facts(class: &DataClass, field: &DataClassField) -> crate::value_analysis::ValueFacts {
+pub fn requirement_facts(
+    index: &crate::resolve::ProjectIndex,
+    class: &DataClass,
+    field: &DataClassField,
+) -> crate::value_analysis::ValueFacts {
     use crate::value_analysis::{Dep, ValueFacts};
     let type_name = field.type_name.clone().filter(|t| {
         let numeric = matches!(t.as_str(), "Decimal" | "int" | "float");
-        VALUE_TYPES.contains(&t.as_str()) && !(numeric && class.lax_numeric(field))
+        index.is_contract_type(t) && !(numeric && class.lax_numeric(field))
     });
     ValueFacts {
         nullable: field.nullable,
@@ -943,6 +1076,7 @@ pub fn field_qualified(field: &DataClassField) -> String {
 /// Returns a map from qualified field name to node ID.
 pub fn write_data_classes(
     db: &ContractDb,
+    index: &crate::resolve::ProjectIndex,
     classes: &[DataClass],
     names: &HashMap<String, String>,
 ) -> Result<HashMap<String, i64>> {
@@ -976,7 +1110,7 @@ pub fn write_data_classes(
 
             if let Some(t) = &field.type_name {
                 let numeric = matches!(t.as_str(), "Decimal" | "int" | "float");
-                if VALUE_TYPES.contains(&t.as_str()) && !(numeric && class.lax_numeric(field)) {
+                if index.is_contract_type(t) && !(numeric && class.lax_numeric(field)) {
                     db.insert_contract(&ContractRecord {
                         param_type_name: Some(t.clone()),
                         ..base(ConstraintType::Type)
@@ -1076,6 +1210,105 @@ mod tests {
         assert_eq!(field(&cs, "M", "qty").max_value, mu(9_000_000));
         let pct = field(&cs, "M", "pct");
         assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), mu(100_000_000)));
+    }
+
+    #[test]
+    fn test_pydantic_max_digits_bounds() {
+        let cs = classes(
+            "class M(BaseModel):\n    \
+             amount: Decimal = Field(max_digits=5, decimal_places=2)\n    \
+             whole: Decimal = Field(max_digits=4)\n    \
+             capped: condecimal(max_digits=5, decimal_places=2, ge=0, le=5000)\n    \
+             places: Decimal = Field(decimal_places=2)\n",
+        );
+        let bounds = |name| {
+            let f = field(&cs, "M", name);
+            (f.min_value, f.max_value)
+        };
+        assert_eq!(bounds("amount"), (mu(-999_990_000), mu(999_990_000)));
+        assert_eq!(bounds("whole"), (mu(-9_999_000_000), mu(9_999_000_000)));
+        assert_eq!(bounds("capped"), (mu(0), mu(999_990_000)));
+        assert_eq!(bounds("places"), (None, None));
+    }
+
+    #[test]
+    fn test_unreadable_override_of_digits() {
+        let cs = classes(
+            "class M(BaseModel):\n    \
+             wider: Annotated[Decimal, Field(max_digits=5, decimal_places=2)] = Field(max_digits=LIMIT)\n    \
+             unplaced: Annotated[Decimal, Field(max_digits=5, decimal_places=2)] = Field(decimal_places=PLACES)\n    \
+             narrower: Annotated[Decimal, Field(max_digits=9, decimal_places=2)] = Field(max_digits=5)\n",
+        );
+        let f = |name| field(&cs, "M", name);
+        assert_eq!((f("wider").max_digits, f("wider").min_value, f("wider").max_value), (None, None, None));
+        assert_eq!(f("wider").decimal_places, Some(2));
+        assert_eq!(
+            (f("unplaced").decimal_places, f("unplaced").min_value, f("unplaced").max_value),
+            (None, mu(-99_999_000_000), mu(99_999_000_000))
+        );
+        assert_eq!((f("narrower").min_value, f("narrower").max_value), (mu(-999_990_000), mu(999_990_000)));
+        assert_eq!(f("narrower").decimal_places, Some(2));
+    }
+
+    #[test]
+    fn test_pydantic_unvalidated_markers() {
+        let cs = classes(
+            "class M(BaseModel):\n    \
+             skipped: SkipValidation[str]\n    \
+             plain: Annotated[str, PlainValidator(f)]\n    \
+             wrapped: Annotated[str, pydantic.WrapValidator(f)]\n    \
+             meta: Annotated[int, SkipValidation]\n    \
+             legacy: str = None\n    \
+             legacy_field: str = Field(None)\n    \
+             legacy_kw: str = Field(default=None, max_length=3)\n    \
+             before: Annotated[str, BeforeValidator(f)]\n    \
+             name: str\n    \
+             maybe: Optional[str] = None\n    \
+             d_plain: str = 'x'\n    \
+             d_field: str = Field(default='x')\n    \
+             d_required: str = Field(...)\n    \
+             quoted: 'SkipValidation[str]'\n    \
+             renamed: SV[str]\n    \
+             aliased: MyStr\n    \
+             renamed_meta: Annotated[str, PV(f)]\n    \
+             held: Annotated[str, my_validator]\n    \
+             after: Annotated[str, AfterValidator(f)]\n    \
+             union: Union[MyStr, int]\n    \
+             doc: Annotated[str, 'label', Field(max_length=3)]\n    \
+             items: list[str]\n    \
+             qualified: decimal.Decimal\n",
+        );
+        let unvalidated: Vec<(&str, bool)> =
+            cs[0].fields.iter().map(|f| (f.field_name.as_str(), f.unvalidated)).collect();
+        assert_eq!(
+            unvalidated,
+            [
+                ("skipped", true),
+                ("plain", true),
+                ("wrapped", true),
+                ("meta", true),
+                ("legacy", true),
+                ("legacy_field", true),
+                ("legacy_kw", true),
+                ("before", false),
+                ("name", false),
+                ("maybe", false),
+                ("d_plain", false),
+                ("d_field", false),
+                ("d_required", false),
+                ("quoted", true),
+                ("renamed", true),
+                ("aliased", true),
+                ("renamed_meta", true),
+                ("held", true),
+                ("after", true),
+                ("union", true),
+                ("doc", false),
+                ("items", false),
+                ("qualified", false),
+            ]
+        );
+        assert_eq!(field(&cs, "M", "skipped").type_name.as_deref(), Some("str"));
     }
 
     #[test]
@@ -1182,7 +1415,8 @@ mod tests {
              class B(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @validator('x', pre=True)\n    def r(cls, v):\n        return v\n\
              class C(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @field_validator('x')\n    def r(cls, v):\n        return v\n\
              class D(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @model_validator(mode='before')\n    def r(cls, v):\n        return v\n\
-             class E(A):\n    pass\n",
+             class E(A):\n    pass\n\
+             class F(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @field_validator('x', mode='plain')\n    def r(cls, v):\n        return v\n",
         );
         assert_eq!(field(&cs, "A", "x").decimal_places, None);
         assert_eq!(field(&cs, "A", "x").nullable, None);
@@ -1191,6 +1425,7 @@ mod tests {
         assert_eq!(field(&cs, "C", "x").decimal_places, Some(2), "after-validators do not");
         assert_eq!(field(&cs, "D", "x").decimal_places, None);
         assert_eq!(field(&cs, "E", "x").decimal_places, None, "inherited validator");
+        assert_eq!(field(&cs, "F", "x").decimal_places, None, "plain replaces validation");
     }
 
     /// String annotations are parsed: `"User | None"`, `"Optional[int]"`.

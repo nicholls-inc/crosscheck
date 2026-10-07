@@ -141,7 +141,7 @@ Skills that hit the cap MUST note dropped candidates in a structured block so a 
 
 ### "What this does NOT catch" section
 
-Every probabilistic or best-effort findings file MUST end with a verbatim honesty section enumerating the failure modes the skill cannot detect. The discipline:
+Every findings file from a probabilistic or search-only skill MUST end with a verbatim honesty section enumerating the failure modes the skill cannot detect. The discipline:
 
 - List 3–5 concrete gap classes (not generic disclaimers).
 - Where another skill catches the gap, name it.

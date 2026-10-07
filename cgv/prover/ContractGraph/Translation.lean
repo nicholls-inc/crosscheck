@@ -13,41 +13,44 @@ namespace ContractGraph
 
 open SQLite
 
-/-- Parse a constraint kind string from the database. -/
-def parseConstraintKind (s : String) : ConstraintKind :=
-  match s with
-  | "precision"   => .precision
-  | "nullability"  => .nullability
-  | "type"         => .type
-  | "range"        => .range
-  | "length"       => .length
-  | "choices"      => .choices
-  | "range_min"    => .rangeMin  -- not a schema value; `range` rows carry lower bounds
-  | _             => .precision  -- fallback; should not occur with valid schema
+/-- Parse a constraint kind string from the database; `none` if unknown.
+    `range_min` is not a schema value (`range` rows carry lower bounds) but
+    is kept for rows written by hand. -/
+def parseConstraintKind : String → Option ConstraintKind
+  | "precision"   => some .precision
+  | "nullability" => some .nullability
+  | "type"        => some .type
+  | "range"       => some .range
+  | "length"      => some .length
+  | "choices"     => some .choices
+  | "range_min"   => some .rangeMin
+  | _             => none
 
-/-- Parse a verification level string from the database. -/
-def parseVerifLevel (s : String) : VerificationLevel :=
-  match s with
-  | "PROVED"    => .proved
-  | "TESTED"    => .tested
-  | "EXTRACTED" => .extracted
-  | "ASSUMED"   => .assumed
-  | _           => .extracted  -- fallback
+/-- Parse a verification level string from the database; `none` if unknown. -/
+def parseVerifLevel : String → Option VerificationLevel
+  | "PROVED"    => some .proved
+  | "TESTED"    => some .tested
+  | "EXTRACTED" => some .extracted
+  | "ASSUMED"   => some .assumed
+  | _           => none
 
-/-- Parse a contract role string from the database. -/
-def parseContractRole (s : String) : ContractRole :=
-  match s with
-  | "precondition"  => .precondition
-  | "postcondition" => .postcondition
-  | _               => .precondition  -- fallback
+/-- Parse a contract role string from the database; `none` if unknown. -/
+def parseContractRole : String → Option ContractRole
+  | "precondition"  => some .precondition
+  | "postcondition" => some .postcondition
+  | _               => none
 
-/-- Parse a relationship string from the database. -/
-def parseRelationship (s : String) : Relationship :=
-  match s with
-  | "calls"     => .calls
-  | "writes_to" => .writesTo
-  | "flows_to"  => .flowsTo
-  | _           => .calls  -- fallback
+/-- Parse a relationship string from the database; `none` if unknown. -/
+def parseRelationship : String → Option Relationship
+  | "calls"     => some .calls
+  | "writes_to" => some .writesTo
+  | "flows_to"  => some .flowsTo
+  | _           => none
+
+/-- The node kinds of the schema. The checker starts paths only at
+    `function` nodes and ends them only at `model` nodes, so a misspelt kind
+    would drop the node from every path it starts or ends. -/
+def nodeKinds : List String := ["model", "function", "field"]
 
 /-- Helper to read an optional integer column (returns none if NULL). -/
 private def readOptionalInt (stmt : Stmt) (col : Int32) : IO (Option Int) := do
@@ -66,6 +69,10 @@ private def readOptionalString (stmt : Stmt) (col : Int32) : IO (Option String) 
   else
     let s ← stmt.columnText col
     if s.isEmpty then return none else return some s
+
+/-- Helper to read a nullable string column, keeping an empty string. -/
+private def readNullableText (stmt : Stmt) (col : Int32) : IO (Option String) := do
+  if ← stmt.columnNull col then return none else return some (← stmt.columnText col)
 
 /-- One `contracts` row, with the columns the checker reads. -/
 structure ContractRow where
@@ -122,7 +129,8 @@ structure EdgeRow where
   id             : Nat
   sourceId       : Nat
   targetId       : Nat
-  relationship   : Relationship
+  /-- `relationship` as stored; `translateRows` parses it. -/
+  relationship   : String
   /-- `some p`: only the target's preconditions with subject `p` (or none) apply. -/
   targetParam    : Option String := none
   /-- The source's postconditions are replaced by the rows with this edge's id. -/
@@ -193,8 +201,8 @@ def parseJsonStringArray (s : String) : Option (List String) :=
   | _ => none
 
 /-- `param_choices`: a JSON array of strings when it starts with `[`
-    (`none` if malformed; `readContractGraph` rejects a database holding
-    such a row, see `ContractRow.malformed`), otherwise the legacy
+    (`none` if malformed; `translateRows` rejects such a row, see
+    `ContractRow.malformed`), otherwise the legacy
     comma-separated list. -/
 def parseChoices (s : String) : Option (List String) :=
   if s.trimAscii.toString.startsWith "[" then parseJsonStringArray s
@@ -295,19 +303,43 @@ def ContractRow.lowerScaled (row : ContractRow) (scale : Nat) : Option Int :=
 def ContractRow.upperScaled (row : ContractRow) (scale : Nat) : Option Int :=
   scaledBound row.maxDecimal row.maxMicros row.maxReal row.maxValue true (!row.isGuarantee) scale
 
-/-- Why a contract row cannot be translated faithfully, if it cannot: a
-    `param_choices` value that starts like a JSON array but is not one, or an
-    exact decimal bound that is not a decimal. Translation would read such a
-    value as no constraint at all (dropping it silently), so
-    `readContractGraph` rejects the database instead (exit code 2). -/
+/-- Where a row came from, for error messages. -/
+def ContractRow.loc (row : ContractRow) : String :=
+  s!"{row.sourceFile}:{row.sourceLine} ({row.constraintType})"
+
+/-- Whether a row has the value that `translateContractRow` reads for `kind`. -/
+def ContractRow.hasValue (row : ContractRow) : ConstraintKind → Bool
+  | .precision => row.decimalPlaces.isSome
+  | .length => row.maxLength.isSome
+  | .nullability => row.nullable.isSome
+  | .type => row.typeName.isSome
+  | .choices => row.choices.isSome
+  | .rangeMin => row.minDecimal.isSome || row.minMicros.isSome || row.minReal.isSome ||
+      row.minValue.isSome
+  | .range => row.minDecimal.isSome || row.minMicros.isSome || row.minReal.isSome ||
+      row.minValue.isSome || row.maxDecimal.isSome || row.maxMicros.isSome ||
+      row.maxReal.isSome || row.maxValue.isSome
+
+/-- Why a contract row's values cannot be translated faithfully, if they
+    cannot: a `param_choices` value that starts like a JSON array but is not
+    one, an exact decimal bound that is not a decimal, a `dependent_expr`
+    that does not parse, or a row with neither the value its kind reads nor
+    a `dependent_expr`. Translation would read each as no constraint at all
+    (dropping it silently), so `translateRows` rejects the rows instead
+    (exit code 2). -/
 def ContractRow.malformed (row : ContractRow) : Option String :=
-  let loc := s!"{row.sourceFile}:{row.sourceLine} ({row.constraintType})"
+  let loc := row.loc
   if row.choices.any (fun s => (parseChoices s).isNone) then
     some s!"malformed param_choices at {loc}"
   else if row.minDecimal.any (fun s => (parseDecimal s).isNone) then
     some s!"malformed param_min_decimal at {loc}"
   else if row.maxDecimal.any (fun s => (parseDecimal s).isNone) then
     some s!"malformed param_max_decimal at {loc}"
+  else if row.dependentExpr.any (fun e => (parseDepExpr e).isNone) then
+    some s!"malformed dependent_expr at {loc}"
+  else if row.dependentExpr.isNone &&
+      (parseConstraintKind row.constraintType).any (fun k => !row.hasValue k) then
+    some s!"no value and no dependent_expr at {loc}"
   else none
 
 /-- A row's lower bound in micros. -/
@@ -328,7 +360,7 @@ def boundPlaces (dec : Option String) (micros : Option Int) (real : Option Float
 def rangeScale (rows : List ContractRow) : Nat :=
   rows.foldl (fun d row =>
     match parseConstraintKind row.constraintType with
-    | .range | .rangeMin =>
+    | some .range | some .rangeMin =>
       max d (max (boundPlaces row.minDecimal row.minMicros row.minReal)
                  (boundPlaces row.maxDecimal row.maxMicros row.maxReal))
     | _ => d) 0
@@ -353,9 +385,14 @@ def rangeScale (rows : List ContractRow) : Nat :=
                    strings, or legacy comma list)
     `dependent_expr` goes on the upper `range` constraint, or on `rangeMin`
     when the row has only a lower bound. `subject` is copied to every
-    constraint. -/
-def translateContractRow (row : ContractRow) (scale : Nat := 6) : List Constraint :=
-  let kind := parseConstraintKind row.constraintType
+    constraint. An unknown `constraint_type` or `verification_level`, or a
+    `malformed` row, is an error. -/
+def translateContractRow (row : ContractRow) (scale : Nat := 6) : Except String (List Constraint) := do
+  let some kind := parseConstraintKind row.constraintType
+    | throw s!"unknown constraint_type at {row.loc}"
+  let some level := parseVerifLevel row.verificationLevel
+    | throw s!"unknown verification_level '{row.verificationLevel}' at {row.loc}"
+  if let some msg := row.malformed then throw msg
   let depExpr := row.dependentExpr.bind parseDepExpr
   let depExpr := match kind with
     | .range | .rangeMin => depExpr.map (·.scaleLits (10 ^ scale))
@@ -365,11 +402,11 @@ def translateContractRow (row : ContractRow) (scale : Nat := 6) : List Constrain
     depExpr := depExpr
     sourceFile := row.sourceFile
     sourceLine := row.sourceLine
-    verificationLevel := parseVerifLevel row.verificationLevel
+    verificationLevel := level
     subject := row.subject
     scale := scale
   }
-  match kind with
+  return match kind with
   | .precision => [{ base with staticBound := row.decimalPlaces }]
   | .nullability => [{ base with staticBound := row.nullable }]
   | .length => [{ base with staticBound := row.maxLength }]
@@ -384,11 +421,15 @@ def translateContractRow (row : ContractRow) (scale : Nat := 6) : List Constrain
     | some lo, none => [{ base with kind := .rangeMin, staticBound := some lo }]
     | none, hi => [{ base with staticBound := hi }]
 
-/-- The role of a contracts row (`contract_role` NULL counts as precondition). -/
-def ContractRow.contractRole (row : ContractRow) : ContractRole :=
+/-- The role of a contracts row (`contract_role` NULL counts as precondition);
+    an unknown role is an error. -/
+def ContractRow.contractRole (row : ContractRow) : Except String ContractRole :=
   match row.role with
-  | some r => parseContractRole r
-  | none => .precondition
+  | none => .ok .precondition
+  | some r =>
+    match parseContractRole r with
+    | some role => .ok role
+    | none => .error s!"unknown contract_role '{r}' at {row.loc}"
 
 /-- Whether `table` has a column named `column` (so older databases without
     the data-flow v2 columns still translate). -/
@@ -446,7 +487,7 @@ def readContracts (db : SQLite) : IO (List ContractRow) := do
   let mut hasRow ← stmt.step
   while hasRow do
     let nodeId ← stmt.columnInt64 1
-    let role ← readOptionalString stmt 15
+    let role ← readNullableText stmt 15
     let legacyMin ← readOptionalFloat stmt 8
     let legacyMax ← readOptionalFloat stmt 9
     let minMicros ← readOptionalInt stmt 19
@@ -522,7 +563,7 @@ def readEdges (db : SQLite) : IO (List EdgeRow) := do
       id := edgeId.toInt.toNat
       sourceId := srcId.toInt.toNat
       targetId := tgtId.toInt.toNat
-      relationship := parseRelationship rel
+      relationship := rel
       targetParam := targetParam
       sourceOverride := override.getD 0 != 0
       siteFile := siteFile.getD ""
@@ -544,7 +585,33 @@ def groupBy {α : Type} (key : α → Option Nat) (xs : List α) : Std.HashMap N
     | some k => m.insert k (x :: m.getD k [])
     | none => m) ∅
 
-/-- Build a ContractGraph from raw database rows (pure).
+/-- The first id that occurs twice in `ids`, if any. -/
+def firstDuplicate (ids : List Nat) : Option Nat :=
+  (ids.foldl (fun (acc : Std.HashSet Nat × Option Nat) i =>
+    match acc with
+    | (_, some d) => (acc.1, some d)
+    | (seen, none) => if seen.contains i then (seen, some i) else (seen.insert i, none))
+    (∅, none)).2
+
+/-- Why a per-edge contract row cannot be attached to its edge, if it cannot:
+    the edge does not exist, has no `source_override` (so its source keeps
+    the node's own postconditions and the row would be ignored), starts at
+    another node, or the row is not a postcondition. -/
+def edgeRowProblem (edgeById : Std.HashMap Nat EdgeRow) (row : ContractRow) (role : ContractRole)
+    (e : Nat) : Option String :=
+  match edgeById.get? e with
+  | none => some s!"contract row at {row.loc} names edge {e}, which does not exist"
+  | some er =>
+    if !er.sourceOverride then
+      some s!"contract row at {row.loc} names edge {e}, which has no source_override"
+    else if er.sourceId != row.nodeId then
+      some s!"contract row at {row.loc} names node {row.nodeId}, but edge {e} starts at node {er.sourceId}"
+    else if role != .postcondition then
+      some s!"contract row at {row.loc} is a precondition of edge {e}; per-edge rows are postconditions"
+    else none
+
+/-- Translate raw database rows into a ContractGraph (pure), or say which row
+    cannot be translated.
 
     Nodes carry the node contracts (rows with `edge_id` NULL), their
     definition locations and call-site flags. Range bounds are scaled by
@@ -554,70 +621,76 @@ def groupBy {α : Type} (key : α → Option Nat) (xs : List α) : Std.HashMap N
     - `target`: when `target_param = p`, preconditions filtered to
       `appliesToParam p`; otherwise the node itself.
     Rows with `edge_id` set never belong to a node. Edges carry their site.
-    Rows are grouped by node and edge id once (hash maps), and node lookup
-    by id uses a hash map; the result is the same as filtering the row lists
-    per node and per edge. -/
-def buildGraph
+
+    Every row is translated or the result is an error, so no row is dropped:
+    two nodes or two edges with one id, a node kind outside `nodeKinds`, an
+    unknown enum string (`constraint_type`, `verification_level`,
+    `contract_role`, `relationship`), a `malformed` contract row, a contract
+    row whose `node_id` names no node, a per-edge row that `edgeRowProblem`
+    rejects, and an edge whose endpoint names no node are errors. -/
+def translateRows
     (nodeRows : List NodeRow)
     (contractRows : List ContractRow)
     (edgeRows : List EdgeRow)
-    : ContractGraph :=
+    : Except String ContractGraph := do
+  if let some id := firstDuplicate (nodeRows.map (·.id)) then
+    throw s!"two nodes have id {id}"
+  if let some id := firstDuplicate (edgeRows.map (·.id)) then
+    throw s!"two edges have id {id}"
+  if let some nr := nodeRows.find? (fun nr => !nodeKinds.contains nr.kind) then
+    throw s!"node {nr.id} ({nr.name}) has unknown kind '{nr.kind}'"
   let scale := rangeScale contractRows
-  let byNode := groupBy (fun r => if r.edgeId.isNone then some r.nodeId else none) contractRows
-  let byEdge := groupBy (·.edgeId) contractRows
+  let translated ← contractRows.mapM fun row => do
+    return (row, ← row.contractRole, ← translateContractRow row scale)
+  let nodeIds : Std.HashSet Nat := nodeRows.foldl (fun s nr => s.insert nr.id) ∅
+  let edgeById : Std.HashMap Nat EdgeRow := edgeRows.foldl (fun m er => m.insert er.id er) ∅
+  for (row, role, _) in translated do
+    match row.edgeId with
+    | none =>
+      unless nodeIds.contains row.nodeId do
+        throw s!"contract row at {row.loc} names node {row.nodeId}, which does not exist"
+    | some e =>
+      if let some msg := edgeRowProblem edgeById row role e then throw msg
+  let byNode := groupBy (fun (r, _, _) => if r.edgeId.isNone then some r.nodeId else none) translated
+  let byEdge := groupBy (fun (r, _, _) => r.edgeId) translated
+  let withRole (role : ContractRole) (rows : List (ContractRow × ContractRole × List Constraint)) :=
+    rows.flatMap fun (_, r, cs) => if r == role then cs else []
   let nodes := nodeRows.map fun nr =>
     let own := byNode.getD nr.id []
-    let preconditions := own.flatMap fun row =>
-      match row.contractRole with
-      | .precondition => translateContractRow row scale
-      | .postcondition => []
-    let postconditions := own.flatMap fun row =>
-      match row.contractRole with
-      | .postcondition => translateContractRow row scale
-      | .precondition => []
     ({ id := nr.id, name := nr.name, kind := nr.kind,
-       preconditions := preconditions, postconditions := postconditions,
+       preconditions := withRole .precondition own,
+       postconditions := withRole .postcondition own,
        sourceFile := nr.sourceFile, sourceLine := nr.sourceLine,
        isCallSite := nr.isCallSite } : Node)
-
-  -- first node with each id, as `List.find?` would pick
-  let nodeById : Std.HashMap Nat Node :=
-    nodes.foldr (fun n m => m.insert n.id n) ∅
-
-  let edges := edgeRows.filterMap fun row =>
-    match nodeById.get? row.sourceId, nodeById.get? row.targetId with
-    | some src, some tgt =>
-      let src := if row.sourceOverride then
-        { src with postconditions := (byEdge.getD row.id []).flatMap (translateContractRow · scale) }
-      else src
-      let tgt := match row.targetParam with
-        | some p => { tgt with preconditions := tgt.preconditions.filter (appliesToParam p) }
-        | none => tgt
-      some ({ source := src, target := tgt, relationship := row.relationship,
+  let nodeById : Std.HashMap Nat Node := nodes.foldl (fun m n => m.insert n.id n) ∅
+  let edges ← edgeRows.mapM fun row => do
+    let some rel := parseRelationship row.relationship
+      | throw s!"edge {row.id} has unknown relationship '{row.relationship}'"
+    let some src := nodeById.get? row.sourceId
+      | throw s!"edge {row.id} starts at node {row.sourceId}, which does not exist"
+    let some tgt := nodeById.get? row.targetId
+      | throw s!"edge {row.id} ends at node {row.targetId}, which does not exist"
+    let src := if row.sourceOverride then
+      { src with postconditions := (byEdge.getD row.id []).flatMap (·.2.2) }
+    else src
+    let tgt := match row.targetParam with
+      | some p => { tgt with preconditions := tgt.preconditions.filter (appliesToParam p) }
+      | none => tgt
+    return ({ source := src, target := tgt, relationship := rel,
               siteFile := row.siteFile, siteLine := row.siteLine } : Edge)
-    | _, _ => none
+  return { nodes := nodes, edges := edges }
 
-  { nodes := nodes, edges := edges }
-
-/-- Read all nodes, contracts, and edges from the SQLite database.
-    Uses leanprover/leansqlite low-level API.
-
-    Implementation:
-    1. Open the database in read-only mode
-    2. Read all rows from nodes, contracts, edges tables
-    3. Group node contracts by node_id and contract_role; attach per-edge
-       rows and target_param filtering to each edge's endpoint copies
-    4. Construct the typed ContractGraph structure
-
-    Throws when a contract row is malformed (`ContractRow.malformed`): a
-    constraint that cannot be read is an error, not an absent constraint. -/
+/-- Read all nodes, contracts, and edges from the SQLite database (read-only)
+    and translate them with `translateRows`, the only step that is not IO.
+    Throws when `translateRows` rejects a row: a row that cannot be
+    translated is an error, not an absent row. -/
 def readContractGraph (dbPath : String) : IO ContractGraph := do
   let db ← openWith dbPath .readonly
   let nodeRows ← readNodes db
   let contractRows ← readContracts db
   let edgeRows ← readEdges db
-  if let some msg := contractRows.findSome? ContractRow.malformed then
-    throw (IO.userError s!"cannot translate the database: {msg}")
-  return buildGraph nodeRows contractRows edgeRows
+  match translateRows nodeRows contractRows edgeRows with
+  | .ok graph => return graph
+  | .error msg => throw (IO.userError s!"cannot translate the database: {msg}")
 
 end ContractGraph
