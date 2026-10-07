@@ -2,7 +2,7 @@
 
 A **gate** is any point in Crosscheck's workflow where a human is asked to make a judgement call, or where an automated check refuses to proceed without one — a sign-off, a triage decision, a kill-criterion refusal, a blocked commit. Every gate in this repository presents the same four-line message so a reader always knows, at a glance, what decision is being asked of them and what each option costs: a bolded **Action needed** line (an imperative, under ten words), one sentence naming the decision and its reason, one sentence stating what approving and declining each lead to, and a `Full explanation:` link. That link always points here, to the explainer file for that specific gate, committed under `docs/gates/` on the default branch — so whoever hits the gate can read the full background in plain language before deciding, without needing prior familiarity with Crosscheck. Each explainer defines any Crosscheck-specific term (protected surface, oracle independence, false-positive tracker, and so on) the first time it is used.
 
-The table below inventories all seventeen gates: which explainer covers it, where in the codebase the gate actually fires and how the message reaches the reader, and what decision it asks for.
+The table below inventories all eighteen gates: which explainer covers it, where in the codebase the gate actually fires and how the message reaches the reader, and what decision it asks for.
 
 | # | Explainer | Surfaces at | Delivery | Decision asked |
 |---|-----------|-------------|----------|-----------------|
@@ -23,5 +23,6 @@ The table below inventories all seventeen gates: which explainer covers it, wher
 | 15 | [protected-surface-hook.md](protected-surface-hook.md) | new PreToolUse hook (`.claude/hooks/`) | Blocked-write message on stderr | Add a governance-note block before editing a protected surface (or abandon the edit) |
 | 16 | [tier-layer-gate.md](tier-layer-gate.md) | new tier-gate CI job (`.github/workflows/`) | Failed CI check message | Declare the correct `Tier: N` and supply the artefact the tier requires, or reduce the diff's scope |
 | 17 | [task-queue-check.md](task-queue-check.md) | task-queue CI job (`.github/workflows/task-queue.yml`) | Failed CI check message | Fix the queue row, or add the `Task:` line that names the task this pull request completes |
+| 18 | [skill-references.md](skill-references.md) | skill references CI job (`.github/workflows/skill-references.yml`) and `.husky/pre-commit` | Failed CI check or blocked commit message | Fix the slash-reference or regenerate the skill catalogue, or allowlist another plugin's skill |
 
 Anyone unsure how to respond to a gate, or who thinks a gate is miscalibrated, should raise it with the Crosscheck maintainers via a GitHub issue on this repository.
