@@ -197,7 +197,7 @@ If `match == false`, tell the user exactly what the back-translator perceived vs
 
 ### Step 8: What this does NOT catch
 
-The round-trip pipeline is Layer 5 best-effort. It is probabilistic and has well-characterised blind spots. Surface them in the report so the user knows the coverage boundary:
+The round-trip pipeline is a Layer 5 search tool. Its verdict is an LLM's judgement, so it points at likely problems and is never evidence. It has well-characterised blind spots. Surface them in the report so the user knows the coverage boundary:
 
 ```markdown
 ## What this does NOT catch

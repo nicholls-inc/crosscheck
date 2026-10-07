@@ -6,8 +6,9 @@ description: >-
   acceptance-scenario skeletons (YAML/JSON) plus a runner-script stub. Does NOT run
   the scenarios — that's CI's job. Enforces a strict mechanical-verification-only
   rule: subjective criteria ("UX feels good") must be quantified or rejected.
-  Layer 5 proxy for user-perspective / empirical assurance — measures whether the
-  spec was the right spec. Triggers: "acceptance oracle", "draft scenarios",
+  Layer 5 proxy for user-perspective / empirical assurance — checks user-observable
+  behaviour against scenarios a human approves; whether the spec was the right spec
+  is a human judgment, and a proof of it is not yet reached. Triggers: "acceptance oracle", "draft scenarios",
   "user-observable flows", "acceptance scenarios", "scenario skeletons".
 argument-hint: "[optional: target surface — cli | http | daemon | github | ui, or path]"
 ---
@@ -22,7 +23,7 @@ This skill is a methodology doc and scaffold generator. It does **not** execute 
 
 In Lamport's sense (*Who Builds a House without Drawing Blueprints?*, CACM 2015), an acceptance scenario is a blueprint — the durable artefact the implementation must conform to, written in advance so that imprecision in user-observable behaviour is surfaced before code is written rather than after. The mechanical-verification rule below is what makes the blueprint analogy hold: a blueprint that cannot be checked against the building is not a blueprint.
 
-**CRUCIAL RULE — mechanical verification only.** Every scenario's `then` assertion must be programmatically checkable: exit codes, regex matches, JSON schema validation, HTTP status + body schema, measurable latency thresholds, file existence/content hashes. Subjective criteria ("UX feels good", "response is readable", "user is satisfied") must either be quantified (e.g., "CLI startup < 300 ms measured via `hyperfine`", "response body matches schema `responses/ok.schema.json`") or rejected and reported out-of-scope. The oracle cannot proxy user-perspective assurance if its signals are themselves subjective.
+**CRUCIAL RULE — mechanical verification only.** Every scenario's `then` assertion must be programmatically checkable: exit codes, regex matches, JSON schema validation, HTTP status + body schema, measurable latency thresholds, file existence/content hashes. Subjective criteria ("UX feels good", "response is readable", "user is satisfied") must either be quantified (e.g., "CLI startup < 300 ms measured via `hyperfine`", "response body matches schema `responses/ok.schema.json`") or rejected and reported as not yet reached by this oracle, with the property that blocks a mechanical check and the open question (Step 7). The oracle cannot proxy user-perspective assurance if its signals are themselves subjective.
 
 See `references/scenario-schema.md` for the full schema, runner-script pseudocode, and worked rewrites of subjective criteria into mechanical ones.
 
@@ -141,15 +142,15 @@ For the initial draft, scenarios can live at `acceptance/scenarios/` inside the 
 
 ### Step 7: Explicitly Enumerate Rejected Flows
 
-This is non-negotiable. At the end of the output, print a section titled `## Rejected Flows (out of scope for this oracle)` listing every flow proposed during Step 2 that could not be mechanically verified, with the reason. Example:
+This is non-negotiable. At the end of the output, print a section titled `## Rejected Flows (not yet reached by this oracle)` listing every flow proposed during Step 2 that could not be mechanically verified. The "Why rejected" column names the property that blocks a mechanical check. A flow with no mechanical rewrite also names the open question; for a purely visual flow, the open question is how to specify "looks right". Example:
 
 ```
-## Rejected Flows (out of scope for this oracle)
+## Rejected Flows (not yet reached by this oracle)
 
 | Flow | Why rejected | Suggested alternative |
 |---|---|---|
 | "CLI help output is readable" | Subjective; no measurable signal. | Replace with "help output contains sections `USAGE`, `COMMANDS`, `FLAGS` (regex check)" — see §mechanical-rewrites in scenario-schema.md. |
-| "Dashboard looks nice" | Pure-visual; no programmatic observable. | Out of scope. Consider manual QA checklist or screenshot-diff tool. |
+| "Dashboard looks nice" | Pure-visual; no programmatic observable. | Not yet reached. Open question: how to specify "looks right". Today: a manual QA checklist or a screenshot-diff tool. |
 | "Error message is helpful" | Subjective. | Replace with "error message contains the failing path and a `hint:` prefix (regex check)". |
 ```
 

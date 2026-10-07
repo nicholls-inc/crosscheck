@@ -48,15 +48,15 @@ This is a Layer 5 + Layer 6 hybrid skill:
 - The within-module and cross-module passes are **Layer 6** (spec
   completeness — invariant set internal consistency).
 
-Layer 5 vs Layer 6 distinction matters for kill criteria and best-effort
-honesty: see Step 9 below.
+Layer 5 vs Layer 6 distinction matters for kill criteria and for saying
+honestly what a search does not reach: see Step 9 below.
 
 ### Distinct from /intent-check
 
 | Skill | Inputs | Trigger time | Pass shape |
 |---|---|---|---|
 | `/intent-check` | One invariant + one covering test + one code diff | Post-test, per-PR | Two-LLM round-trip informalisation (probabilistic, FP-tracked, 30% kill criterion) |
-| `/audit-invariant-consistency` | Glob of invariant docs + optional spec | Pre-test, doc-wide | Three-pass static cross-reference (best-effort, severity-ranked) |
+| `/audit-invariant-consistency` | Glob of invariant docs + optional spec | Pre-test, doc-wide | Three-pass static cross-reference (search, severity-ranked) |
 
 Use `/intent-check` to verify *one* invariant captures intent of *one*
 test/diff. Use this skill to verify the *set* of invariants is
@@ -388,8 +388,11 @@ This skill probes structural consistency. It cannot detect:
    self-contradictory (e.g. §3.2 says `X MUST` and §7.4 says `X MUST
    NOT`), this skill will compare invariants to each section
    independently and see consistency. Detecting spec-internal
-   contradictions is out of scope — the spec is treated as authoritative
-   for each section. Run a separate spec-internal-consistency review if
+   contradictions is not yet reached. The property that blocks it is
+   that this skill treats each spec section as authoritative and never
+   compares two sections with each other. The open question is how to
+   check a spec's own consistency, which a solver can decide once the
+   spec is formal. Run a separate spec-internal-consistency review if
    the spec is large or has been edited by multiple authors.
 3. **Contradictions that depend on running the code.** If two invariants
    are statically consistent but produce conflicting runtime behaviour
@@ -404,14 +407,18 @@ This skill probes structural consistency. It cannot detect:
    detect that they refer to the same thing. Aliasing detection is
    beyond static text analysis.
 
-The skill is best-effort by design. Layer 6 has no theorem for
-"completeness of consistency checking"; the goal is high-signal
-findings, not exhaustive coverage.
+The skill is a search. Its findings point at contradictions and are not
+evidence that none remain. A proof that an invariant set is consistent
+and complete is not yet reached: no formal requirement is tied to the
+spec, and the open question is how to write requirements formally and
+prove that a spec achieves them ([roadmap item
+RQ-1](https://github.com/nicholls-inc/crosscheck/blob/main/docs/assurance/ROADMAP.md)).
+The goal is high-signal findings, not exhaustive coverage.
 ```
 
 ### Step 9: Kill criteria
 
-This skill is Layer 5/6 best-effort:
+This skill is a Layer 5/6 search tool:
 
 - **Signal-to-noise < 1:5 after 4 runs** → the cross-module domain-noun
   threshold may be too loose; recalibrate.

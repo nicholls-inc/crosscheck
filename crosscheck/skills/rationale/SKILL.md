@@ -14,11 +14,11 @@ argument-hint: "[code path] [optional: requirements description]"
 
 ## Description
 
-Build a hierarchical claim tree arguing that code adequately satisfies its requirements. Each leaf claim is classified by verification method — formal (Dafny), behavioral (tests), static (code reading), or semantic (human judgment) — creating a traceable checklist that bridges formal and informal verification.
+Build a hierarchical claim tree arguing that code adequately satisfies its requirements. Each leaf claim is classified by verification method — formal (Dafny), behavioral (tests), static (code reading), or semantic (human judgment) — creating a traceable checklist that bridges formal and informal verification and says how strongly each leaf is supported.
 
 ## Instructions
 
-You are a verification expert building a structured adequacy argument. The goal is to decompose the high-level claim "this code is adequate" into verifiable subclaims, attempt automatic verification where possible, and produce a traceable checklist showing what has been verified and what remains.
+You are a verification expert building a structured adequacy argument. The goal is to decompose the high-level claim "this code is adequate" into verifiable subclaims, attempt automatic verification where possible, and produce a traceable checklist showing what has evidence, what an LLM only read, and what remains.
 
 This skill bridges Crosscheck's formal verification (Dafny) and semi-formal reasoning (evidence certificates) into a unified argument structure.
 
@@ -126,7 +126,7 @@ Write the generated test code to a file under `<run-dir>/tests/` (per the persis
 **`[STATIC]` claims:**
 - Read the relevant code and cite specific evidence in `claim-tree.md`.
 - Example: `Evidence: model.py:42-48 — all required fields set in constructor`.
-- Mark as `Verified (static)` — these are closed-loop in the same run.
+- Mark as `Read (static; LLM reading, not evidence)`. An LLM read the code, so under rule 1 of `docs/VISION.md` the reading is a search result that points at the code, not a proof or a test. The leaf stays open until a deterministic check (a type checker, a linter, an AST query, a CGV extraction) or a human confirms it. A deterministic check for each structural claim is not yet reached. The property that blocks it is that a static claim is stated in prose, so no checker is tied to it. The open question is which static claims can be restated as a check that a tool decides.
 
 **`[SEMANTIC]` claims:**
 - State what the human must judge.
@@ -160,10 +160,10 @@ ROOT: Code is adequate for [requirements summary]
 
 ### Verification Results
 
-- [x] C0.1 [STATIC]: No extern methods, IO, or network calls — verified at `sort.py:1-30` (pure function, imports limited to stdlib types)
+- [ ] C0.1 [STATIC]: No extern methods, IO, or network calls — Read (static; LLM reading, not evidence) at `sort.py:1-30` (pure function, imports limited to stdlib types)
 - [ ] C0.2 [SEMANTIC]: `<=` operator totality and transitivity — **human review required** (downstream FORMAL claims condition on this)
-- [x] C1.1 [STATIC]: Output type is `List[int]` — verified at `sort.py:15` (return type annotation)
-- [x] C1.2 [STATIC]: Result length equals input length — verified at `sort.py:28` (no elements added/removed in loop)
+- [ ] C1.1 [STATIC]: Output type is `List[int]` — Read (static; LLM reading, not evidence) at `sort.py:15` (return type annotation)
+- [ ] C1.2 [STATIC]: Result length equals input length — Read (static; LLM reading, not evidence) at `sort.py:28` (no elements added/removed in loop)
 - [ ] C2.1 [FORMAL]: Output is sorted — Routing: Layer 1 (pure functional). Pending byfuglien dispatch.
 - [ ] C2.2 [FORMAL]: Output is permutation of input — Routing: Layer 1. Pending byfuglien dispatch.
 - [ ] C2.3 [BEHAVIORAL]: Empty input → empty output — `<run-dir>/tests/test_C2_3.py` written. Pending test execution.
@@ -173,14 +173,14 @@ ROOT: Code is adequate for [requirements summary]
 
 ### Summary
 
-| Verification Method | Total | Verified | Pending |
-|-------------------|-------|----------|---------|
-| FORMAL | 2 | 2 | 0 |
-| STATIC | 3 | 3 | 0 |
-| BEHAVIORAL | 3 | 0 | 3 |
-| SEMANTIC | 2 | 0 | 2 |
+| Verification Method | Total | Evidence in hand (proved or tested) | Read only (LLM, not evidence) | Pending |
+|-------------------|-------|-------------------------------------|-------------------------------|---------|
+| FORMAL | 2 | 0 | 0 | 2 (Pending byfuglien dispatch) |
+| STATIC | 3 | 0 | 3 | 0 |
+| BEHAVIORAL | 3 | 0 | 0 | 3 (Pending test execution) |
+| SEMANTIC | 2 | 0 | 0 | 2 (Pending human review) |
 
-**If all pending items pass, the root claim holds by construction.**
+A FORMAL leaf counts as evidence only after byfuglien's pipeline proves it, and a BEHAVIORAL leaf only after its tests run, with the sample size and seed recorded. This run counts neither. If every pending item passes and a deterministic check or a human confirms every Read-only leaf, the root claim is supported by that evidence. The tree does not prove it. Whether the tree covers every requirement is not yet reached: the property that blocks it is that an LLM drew the decomposition and no formal requirement ties the leaves to the requirements, and the open question is how to write requirements formally and prove that a set of subclaims achieves them (roadmap item RQ-1).
 ```
 
 ### Step 6: Evidence Summary and Decisions for Review
@@ -193,7 +193,7 @@ Split the post-run handoff into two blocks. The Evidence Summary block lists wha
 - All requirements mapped to at least one leaf claim in the tree (or flagged as a gap).
 - No leaf claim left unclassified.
 - C0 trust-boundary branch enumerated for this code (extern methods, IO, network, float precision, generic-type erasure, concurrency).
-- [STATIC] leaves verified inline with file:line evidence — count: <N>.
+- [STATIC] leaves read inline with file:line citations — count: <N>. These are LLM readings, not evidence, until a deterministic check or a human confirms them.
 - [FORMAL] leaves classified by Layer 1 / Layer 4 routing — count: <N> Layer 1, <M> Layer 4, <K> ambiguous. Pending byfuglien dispatch.
 - [BEHAVIORAL] leaves materialised as test files under <run-dir>/tests/ — count: <N>. Pending test execution.
 - Artifact written to <run-dir>/claim-tree.md.
@@ -204,7 +204,7 @@ Split the post-run handoff into two blocks. The Evidence Summary block lists wha
 - [ ] [FORMAL] ambiguous-routing leaves: <K> claims could not be cleanly placed in Layer 1 or Layer 4. Reviewer (or byfuglien at dispatch time) selects the route.
 - [ ] Unaddressed requirements: <N> requirements have no covering leaf claim. Decide whether to add a leaf, accept the gap with a documented reason, or revise the requirements.
 
-If all Decisions resolve favorably (judgments approved, ambiguous routings selected, gaps addressed), and the Pending byfuglien dispatch + Pending test execution items run clean, the root claim holds by construction.
+If all Decisions resolve favorably (judgments approved, ambiguous routings selected, gaps addressed), and the Pending byfuglien dispatch + Pending test execution items run clean, and a deterministic check or a human confirms the Read-only [STATIC] leaves, the root claim is supported by that evidence. The tree does not prove it. A proof that the tree covers every requirement is not yet reached (see the Summary note above).
 ```
 
 The Evidence Summary lists what the agent did. The Decisions block is the legitimate human-judgment surface. Mixing the two is the "blank checklist of the analysis" anti-pattern the rest of this refactor removes.
