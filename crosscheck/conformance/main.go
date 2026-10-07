@@ -46,8 +46,14 @@
 // claims.json or a conformance directory that is a symlink to a missing target
 // is an ERROR, and so is a plugin root that does not resolve, because it is
 // missing or a symlink on its path dangles. A plugin root is a directory whose
-// .claude-plugin/plugin.json names crosscheck, and any other directory is an
-// ERROR.
+// .claude-plugin/plugin.json has a "name" key, spelt exactly, whose value is
+// crosscheck, and that holds at least one skill (skills/<name>/SKILL.md) and
+// one agent (agents/<name>.md). Any other directory is an ERROR.
+//
+// Not yet reached: a copied manifest next to one skill and one agent passes,
+// whatever else is missing. The property that blocks it is a check that ties
+// the tree to a released Crosscheck inventory; the open question is whether
+// one can be written without pinning a count that changes with every release.
 //
 // Not yet reached: what the text fields say. Two claims may share an id,
 // source and tracked_in need not name a real file or issue, and check.path may
