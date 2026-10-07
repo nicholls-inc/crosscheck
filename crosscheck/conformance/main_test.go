@@ -485,6 +485,21 @@ func TestLedgerLoad(t *testing.T) {
 			writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"}]}`)(t, filepath.Join(filepath.Dir(path), "real.json"))
 			symlink("real.json")(t, path)
 		}, "", 1},
+		{"top_null", writeLedger(`null`), parseErr + "the ledger is null", 0},
+		{"top_array", writeLedger(`[]`), parseErr, 0},
+		{"top_empty_object", writeLedger(`{}`), parseErr + "narrative_claims is missing", 0},
+		{"claims_missing", writeLedger(`{"version":1}`), parseErr + "narrative_claims is missing", 0},
+		{"claims_null", writeLedger(`{"version":1,"narrative_claims":null}`), parseErr + "narrative_claims is null", 0},
+		{"claim_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},null]}`), parseErr + "narrative_claims[1] is null", 0},
+		{"check_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":null}]}`), parseErr + "narrative_claims[0].check is null", 0},
+		{"check_not_object", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":"manual"}]}`), parseErr, 0},
+		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"zeta":1,"bogus":1}`), parseErr + `the ledger has unknown key "bogus"`, 0},
+		{"unknown_claim_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"known-gap","tracked-in":"#1"}]}`), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
+		{"unknown_check_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":{"type":"present_artifact","path":"README.md","expect-present":false}}]}`), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
+		{"key_case_mismatch", writeLedger(`{"Narrative_Claims":[]}`), parseErr + `the ledger has unknown key "Narrative_Claims"`, 0},
+		{"every_schema_key", writeLedger(`{"version":1,"description":"d","narrative_claims":[` +
+			`{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","tracked_in":"",` +
+			`"check":{"type":"present_artifact","path":"README.md","expect_present":true}}]}`), "", 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
