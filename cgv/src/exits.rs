@@ -92,7 +92,7 @@ impl Cx<'_> {
     /// off a module on the way (`errors.fail` after `from app import errors`:
     /// `fail` in `app.errors`).
     fn path_is_stable(&self, parts: &[String]) -> bool {
-        if !self.is_stable_global(&parts[0]) {
+        if parts.first().is_none_or(|head| !self.is_stable_global(head)) {
             return false;
         }
         for i in 1..parts.len() {
@@ -225,9 +225,11 @@ fn chain_is_stable(index: &ProjectIndex, module: &str, name: &str, depth: usize)
         return true;
     }
     match m.imports.get(name) {
-        Some(Import::Symbol { module: from, name: n }) => index
-            .find_module(from, module)
-            .is_none_or(|t| chain_is_stable(index, t, n, depth + 1)),
+        Some(Import::Symbol { module: from, name: n }) => index.find_module(from, module).is_none_or(|t| {
+            // A package importing its own submodule (`from . import errors`).
+            let own_submodule = t == module && index.find_module(&format!("{t}.{n}"), module).is_some();
+            own_submodule || chain_is_stable(index, t, n, depth + 1)
+        }),
         Some(Import::Module(_)) => true,
         // A builtin or a submodule, unless a star import may supply the name.
         None => m.star_imports.is_empty(),
@@ -589,7 +591,7 @@ mod tests {
     fn test_exit_through_an_alias_chain_and_a_cycle() {
         let imp = "from typing import NoReturn\n\ndef abort(m) -> NoReturn:\n    raise E(m)\n";
         let code = "from pkg import stop\n\ndef f(x):\n    stop(x)\n";
-        // The rebind is on the renamed name, two hops from the definition.
+        // The rebind is on the renamed name, at the last hop.
         let files = [("impl.py", imp), ("mid.py", "from impl import abort as stop\n"), ("pkg.py", "from mid import stop\nstop = wrap(stop)\n"), ("code.py", code)];
         assert_eq!(marked(&files, "f").0, Vec::<String>::new());
         let files = [("impl.py", imp), ("mid.py", "from impl import abort as stop\n"), ("pkg.py", "from mid import stop\n"), ("code.py", code)];
@@ -600,6 +602,29 @@ mod tests {
         // A cycle of re-exports resolves to nothing and ends.
         let files = [("a.py", "from b import stop\n"), ("b.py", "from a import stop\n"), ("code.py", "from a import stop\n\ndef f(x):\n    stop(x)\n")];
         assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_exit_through_a_package_that_rebinds_or_imports_its_own_submodule() {
+        let imp = "from typing import NoReturn\n\ndef fail(m) -> NoReturn:\n    raise E(m)\n";
+        let enums = "from enum import Enum\n\nclass Color(Enum):\n    RED = 1\n    GREEN = 2\n";
+        let code = "import app.errors\nimport app.models\nfrom app import errors\n\ndef f(x):\n    app.errors.fail(x)\n\ndef g(x):\n    errors.fail(x)\n\ndef h(c: app.models.Color):\n    match c:\n        case app.models.Color.RED | app.models.Color.GREEN:\n            return 1\n";
+        let run = |init: &str, models: &str| {
+            let files = [("app/__init__.py", init), ("app/impl.py", imp), ("app/errors.py", "from .impl import fail\n"), ("app/colors.py", enums), ("app/models.py", models), ("code.py", code)];
+            (marked(&files, "f").0, marked(&files, "g").0, marked(&files, "h").1)
+        };
+        let models = "from .colors import Color\n";
+        let (f, g, h) = run("", models);
+        assert_eq!((f, g, h), (vec!["app.errors.fail(x)".to_string()], vec!["errors.fail(x)".to_string()], vec!["match c:".to_string()]));
+        // A package that imports its own submodule is no obstacle.
+        let (f, g, _) = run("from . import errors\n", models);
+        assert_eq!((f, g), (vec!["app.errors.fail(x)".to_string()], vec!["errors.fail(x)".to_string()]));
+        // The package binds the submodule name again.
+        let (f, g, _) = run("errors = other\n", models);
+        assert_eq!((f, g), (vec![], vec![]));
+        // A leaf module that binds the enum again.
+        let (_, _, h) = run("", "from .colors import Color\nColor = wrap(Color)\n");
+        assert_eq!(h, Vec::<String>::new());
     }
 
     #[test]
