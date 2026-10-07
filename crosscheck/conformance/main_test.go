@@ -133,8 +133,9 @@ func baseTree() map[string]string {
 			"# /reason\n\nA skill body long enough to clear the empty threshold easily.",
 		"agents/byfuglien.md": "---\nname: byfuglien\nadd-mode: bootstrap\ndescription: orchestrates verification\n---\n" +
 			"# Byfuglien\n\nbody text.",
-		"README.md":               "Crosscheck ships `/reason` and the `byfuglien` orchestrator.",
-		"conformance/claims.json": `{"version":1,"narrative_claims":[]}`,
+		"README.md":                  "Crosscheck ships `/reason` and the `byfuglien` orchestrator.",
+		"conformance/claims.json":    `{"version":1,"narrative_claims":[]}`,
+		".claude-plugin/plugin.json": `{"name":"crosscheck"}`,
 	}
 }
 
@@ -547,62 +548,116 @@ func TestLedgerLoad(t *testing.T) {
 	}
 }
 
-// TestLedgerLoadRoot covers a plugin root that does not resolve: the ledger
-// read reports a missing file, but no ledger exists to be missing.
+// TestLedgerLoadRoot covers plugin roots that are not plugin trees: a root
+// that does not resolve (LL-10), a directory with no Crosscheck manifest
+// (LL-11), and a root the ledger read cannot open (LL-2).
 func TestLedgerLoadRoot(t *testing.T) {
-	const readErr = "[ledger] cannot read conformance/claims.json: plugin root "
 	symlink := func(t *testing.T, target, path string) {
 		if err := os.Symlink(target, path); err != nil {
 			t.Fatal(err)
 		}
 	}
+	withManifest := func(manifest string) func(*testing.T, string) string {
+		return func(t *testing.T, _ string) string {
+			files := baseTree()
+			files[".claude-plugin/plugin.json"] = manifest
+			return writeTree(t, files)
+		}
+	}
 	tests := []struct {
-		name       string
-		root       func(t *testing.T, base string) string
-		wantPrefix string
+		name     string
+		root     func(t *testing.T, base string) string
+		wantErrs []string
 	}{
 		{"missing_root", func(_ *testing.T, base string) string {
 			return filepath.Join(base, "missing")
-		}, readErr},
+		}, []string{"LL-10"}},
 		{"dangling_root", func(t *testing.T, base string) string {
 			root := filepath.Join(base, "root")
 			symlink(t, "missing", root)
 			return root
-		}, readErr},
+		}, []string{"LL-10"}},
 		{"dangling_ancestor", func(t *testing.T, base string) string {
 			symlink(t, "missing", filepath.Join(base, "repo"))
 			return filepath.Join(base, "repo", "crosscheck")
-		}, readErr},
+		}, []string{"LL-10"}},
 		{"empty_root", func(_ *testing.T, base string) string {
 			return base
-		}, ""},
+		}, []string{"LL-11"}},
+		{"no_manifest", func(t *testing.T, _ string) string {
+			root := writeTree(t, map[string]string{"README.md": "Not a plugin."})
+			if err := os.Mkdir(filepath.Join(root, "skills"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return root
+		}, []string{"LL-11"}},
+		{"manifest_not_json", withManifest("name: crosscheck"), []string{"LL-11"}},
+		{"manifest_other_name", withManifest(`{"name":"cloudflare"}`), []string{"LL-11"}},
 		{"root_symlink_to_tree", func(t *testing.T, base string) string {
 			files := baseTree()
 			delete(files, "conformance/claims.json")
 			root := filepath.Join(base, "root")
 			symlink(t, writeTree(t, files), root)
 			return root
-		}, ""},
+		}, nil},
+		{"root_regular_file", func(t *testing.T, base string) string {
+			root := filepath.Join(base, "root")
+			if err := os.WriteFile(root, []byte("a file"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return root
+		}, []string{"LL-2"}},
+		{"root_symlink_loop", func(t *testing.T, base string) string {
+			symlink(t, "b", filepath.Join(base, "a"))
+			symlink(t, "a", filepath.Join(base, "b"))
+			return filepath.Join(base, "a")
+		}, []string{"LL-2"}},
+		{"root_no_permission", func(t *testing.T, _ string) string {
+			if os.Geteuid() == 0 {
+				t.Skip("root can read a mode-000 directory")
+			}
+			root := writeTree(t, baseTree())
+			if err := os.Chmod(root, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
+			return root
+		}, []string{"LL-11", "LL-2"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			root := tc.root(t, t.TempDir())
 			r := analyze(root)
 			out := report(r)
-			if tc.wantPrefix == "" {
+			if len(tc.wantErrs) == 0 {
 				if len(r.errors) != 0 || !strings.Contains(out, "RESULT: PASS") {
 					t.Errorf("want a pass with no errors, got: %v", r.errors)
 				}
 				return
 			}
-			if len(r.errors) != 1 || !strings.HasPrefix(r.errors[0], tc.wantPrefix) {
-				t.Errorf("want one error starting %q, got: %v", tc.wantPrefix, r.errors)
+			prefix := map[string]string{
+				"LL-2":  "[ledger] cannot read conformance/claims.json: ",
+				"LL-10": "[ledger] cannot read conformance/claims.json: plugin root " + root + " does not resolve: ",
+				"LL-11": "[root] plugin root " + root + " is not a Crosscheck plugin tree: ",
+			}
+			if len(r.errors) != len(tc.wantErrs) {
+				t.Fatalf("want %d errors (%v), got: %v", len(tc.wantErrs), tc.wantErrs, r.errors)
+			}
+			for i, rule := range tc.wantErrs {
+				if !strings.HasPrefix(r.errors[i], prefix[rule]) {
+					t.Errorf("error %d: want %s, starting %q, got: %q", i, rule, prefix[rule], r.errors[i])
+				}
+				if rule != "LL-10" && strings.Contains(r.errors[i], "does not resolve") {
+					t.Errorf("error %d: want %s, got an LL-10 error: %q", i, rule, r.errors[i])
+				}
 			}
 			if !strings.Contains(out, "RESULT: FAIL") {
 				t.Errorf("want RESULT: FAIL, got:\n%s", out)
 			}
-			if _, err := loadLedger(root); !errors.Is(err, fs.ErrNotExist) {
-				t.Errorf("want an error that wraps fs.ErrNotExist, got: %v", err)
+			if tc.wantErrs[0] == "LL-10" {
+				if _, err := loadLedger(root); !errors.Is(err, fs.ErrNotExist) {
+					t.Errorf("want an error that wraps fs.ErrNotExist, got: %v", err)
+				}
 			}
 		})
 	}
