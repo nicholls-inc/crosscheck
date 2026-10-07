@@ -118,7 +118,9 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
   them can be checked without a network call. Two `id`s that differ only by a
   look-alike letter from another script are distinct. What blocks it is a rule
   for which characters an `id` may hold, and the open question is whether that
-  is an allowlist or a Unicode confusables check (PB-1.45). Text that no reader
+  is an allowlist or a Unicode confusables check (PB-1.45). Two `id`s that differ
+  only by a format character, such as `C1` and `C1` plus U+200B, are distinct
+  (PB-1.49). Text that no reader
   sees but that is neither white space nor a format character, such as U+3164
   HANGUL FILLER, is not blank. The property that blocks it is a definition of
   visible text, and the open question is whether Unicode's

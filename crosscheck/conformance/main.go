@@ -67,7 +67,8 @@
 // and the tracker; the open question is which of them can be checked without a
 // network call. Two ids that differ only by a look-alike letter from another
 // script are distinct; what blocks it is a rule for which characters an id may
-// hold (PB-1.45). Text no reader sees that is neither white space nor a format
+// hold (PB-1.45). Two ids that differ only by a format character such as U+200B
+// are distinct (PB-1.49). Text no reader sees that is neither white space nor a format
 // character, such as U+3164, is not blank; the property that blocks it is a
 // definition of visible text, and the open question is whether
 // Default_Ignorable_Code_Point is it.

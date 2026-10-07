@@ -23,10 +23,10 @@ White space inside an `id` is not trimmed, so `C 1` and `C1` stay distinct. They
 
 ## Constraints
 - No protected surface changes. `crosscheck/conformance/` is not in `.claude/rules/protected-surfaces.md`.
-- The rule numbers of the spec stay as they are. LL-9 grows by one bullet, so this change adds no number that an open pull request (#119 for PB-1.41) might also take.
+- The rule numbers of the spec stay as they are. LL-9 grows by one bullet, so this change adds no new rule number.
 - The check runs after each claim's own shape checks, so a claim with a missing or blank `id` still reports that fault first.
 
 ## Open questions
 None. The task row asks for the comparison to be decided. It is settled above.
 
-Not yet reached: two `id`s that differ only by a character a reader cannot see, such as a zero-width space (`C1` and `C1\u200b`), or by a look-alike letter from another script (Latin `C1` and Cyrillic `С1`), are still distinct. The property that blocks it is a definition of which characters an `id` may hold, and the open question is whether that is an allowlist of characters or a Unicode confusables check. PB-1.43 already queues zero-width characters in `id`, and this change queues look-alike letters as PB-1.45.
+Not yet reached: two `id`s that differ only by a character a reader cannot see, such as a zero-width space (`C1` and `C1\u200b`), or by a look-alike letter from another script (Latin `C1` and Cyrillic `С1`), are still distinct. The property that blocks it is a definition of which characters an `id` may hold, and the open question is whether that is an allowlist of characters or a Unicode confusables check. PB-1.49 queues format characters in `id` such as the zero-width space, and this change queues look-alike letters as PB-1.45.
