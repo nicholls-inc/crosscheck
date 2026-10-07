@@ -50,5 +50,5 @@ Task TB-1.3, issue #51, found in the review of #46 (https://github.com/nicholls-
 - [x] Authoriser is a named human.
 - [x] TB-1 lists issue #51.
 - [x] The diff plan names every changed protected file.
-- [x] No check is weakened: the manifest only gains blocks, and the generator only gains failure modes.
+- [x] No check is weakened: no theorem statement or earlier block changes (the manifest gains blocks and its heading is reworded), and the generator only gains failure modes.
 - [ ] REQUIRES HUMAN VERIFICATION: the maintainer accepts that every change to the checker's definitions (`checkEdge`, `checkPath`, `runChecker` and what they reach) now changes the manifest and so needs Tier 3 review.

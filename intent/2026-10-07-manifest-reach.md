@@ -27,10 +27,10 @@ The CGV statement manifest, `cgv/prover/protected-statements.txt`, has two gaps.
 ## Constraints
 
 - A proof-only edit must still leave the manifest unchanged.
-- Theorem statements and the three protected definitions keep their current lines. The manifest only gains lines.
+- Theorem statements and the three protected definitions keep their current lines. The manifest gains lines, and its section heading is reworded to match the wider reach.
 - No CI step calls an LLM.
 - Use the toolchain pinned in `cgv/prover/lean-toolchain` (Lean 4.28.0).
 
 ## Open questions
 
-None.
+Whether `manifest-selftest.sh` is itself a protected surface (TB-1.27).

@@ -101,7 +101,8 @@ below includes both: the generator decides what the manifest records, so an
 edit to it can weaken the check while the manifest stays the same. The
 manifest records two things:
 - the statement of every theorem in the table;
-- the type and a value hash of every non-theorem constant defined in a
+- the type, and a value hash where the constant has a value, of every
+  non-theorem constant defined in a
   `ContractGraph` module, private ones included, that `constraintImplies`,
   `IsDataPath`, `stepwiseSound` or a theorem's statement reaches.
 
