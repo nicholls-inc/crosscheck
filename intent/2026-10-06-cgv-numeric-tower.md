@@ -46,4 +46,5 @@ So `int` into `float` holds for every target that carries a `float` requirement.
 
 ## Open questions
 - Where does a strictness-aware `type` check belong, in the extractor or in `constraintImplies`? It decides both `bool` into `float` (PEP 484 accepts, strict pydantic rejects) and the `complex` half of the tower. Not settled here; filed as #86.
-- The evidence for "every extracted `float` requirement accepts an `int`" is the PEP 484 text and one pydantic 2.11.10 run. mypy, pyright and attrs validators were not run, so a new source of `float` requirements needs its own check before this rule is relied on for it.
+- The evidence for "every extracted `float` requirement accepts an `int`" is the PEP 484 text and one pydantic 2.11.10 run. mypy, pyright and attrs validators were not run, so a new source of `float` requirements needs its own check before this rule is relied on for it. No issue tracks this yet; the next change that adds a source of `float` requirements must run mypy and pyright at pinned versions and record the versions in `BehaviorModel.lean`.
+- The extractor reads annotation names syntactically, so a project that defines or imports its own `float` or `int` is read as the builtin, and the new `int` into `float` pair is accepted across that shadow. Name resolution is not yet reached; the premise is now stated in `BehaviorModel.lean`.

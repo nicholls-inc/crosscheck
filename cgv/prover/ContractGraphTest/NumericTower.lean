@@ -37,10 +37,27 @@ example : ¬ constraintImplies (ty "float") (ty "int") := by
   simp [constraintImplies, ty, typeAccepts]
 
 /-- The executable check and the trusted rule in `BehaviorModel.lean` agree on
-    every pair of type names. If either one changes, this stops building. -/
+    every pair of type names. If the two diverge, this stops building. An edit
+    that changes both together still builds: that is for the governance note
+    and the manifest hash of `typeAccepts` to catch. -/
 theorem typeAccepts_iff_annotationAcceptsNumeric (s t : String) :
     typeAccepts s t = true ↔ BehaviorModel.annotationAcceptsNumeric s t := by
   simp [typeAccepts, BehaviorModel.annotationAcceptsNumeric]
+
+/-- The protected `constraintImplies`, on two type constraints that both carry
+    a name, says exactly what the trusted rule says. -/
+theorem constraintImplies_type_iff (s t : String) :
+    constraintImplies (ty s) (ty t) ↔ BehaviorModel.annotationAcceptsNumeric s t := by
+  simp [constraintImplies, ty, typeAccepts, BehaviorModel.annotationAcceptsNumeric]
+
+/-- The checker's `type` verdict is consistent exactly when the trusted rule
+    accepts the pair. -/
+theorem checkTypeConsistency_iff (s t : String) (a b : Constraint) :
+    isConsistent (checkTypeConsistency s t a b) = true ↔
+      BehaviorModel.annotationAcceptsNumeric s t := by
+  rw [← typeAccepts_iff_annotationAcceptsNumeric]
+  unfold checkTypeConsistency
+  split <;> simp_all [isConsistent]
 
 -- Multi-hop: a value widened from `int` to `float` at the middle node is then a
 -- `float`, so it is still rejected where the last node requires an `int`.
