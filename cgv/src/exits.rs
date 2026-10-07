@@ -628,6 +628,25 @@ mod tests {
     }
 
     #[test]
+    fn test_enum_leaf_module_is_checked_for_the_annotation_and_the_patterns_separately() {
+        // `app.models.Color` is rebound in the leaf module; `Hue` reaches the
+        // enum directly. Each of the annotation and the patterns alone must refuse.
+        let enums = "from enum import Enum\n\nclass Color(Enum):\n    RED = 1\n    GREEN = 2\n";
+        let models = "from .colors import Color\nColor = wrap(Color)\n";
+        let head = "import app.models\nfrom app.colors import Color as Hue\n\n";
+        let cases = [
+            ("def f(c: app.models.Color):\n    match c:\n        case Hue.RED | Hue.GREEN:\n            return 1\n", 0),
+            ("def f(c: Hue):\n    match c:\n        case app.models.Color.RED | app.models.Color.GREEN:\n            return 1\n", 0),
+            ("def f(c: Hue):\n    match c:\n        case Hue.RED | Hue.GREEN:\n            return 1\n", 1),
+        ];
+        for (body, marked_matches) in cases {
+            let code = format!("{head}{body}");
+            let files = [("app/__init__.py", ""), ("app/colors.py", enums), ("app/models.py", models), ("code.py", code.as_str())];
+            assert_eq!(marked(&files, "f").1.len(), marked_matches, "{body}");
+        }
+    }
+
+    #[test]
     fn test_name_that_a_module_both_imports_and_defines_with_a_plain_import() {
         let fallback = "try:\n    import extlib as fail\nexcept ImportError:\n    from typing import NoReturn\n\n    def fail(m) -> NoReturn:\n        raise E(m)\n";
         let code = "from compat import fail\n\ndef f(x):\n    fail(x)\n";
