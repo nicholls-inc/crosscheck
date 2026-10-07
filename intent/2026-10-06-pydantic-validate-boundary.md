@@ -34,9 +34,10 @@ A new fixture, `cgv/test_fixtures/pydantic_validate_boundary/`, pins the behavio
 ## Effect on the guarantee
 Exit 0 promises less about one kind of call. For a field whose contract validation enforces, it no longer says that the input to a validation call passes validation. It says nothing false about the stored value, because validation rejects a value that breaks that field's contract before it is stored. For the other fields, exit 0 promises what it did before.
 
-Two limits remain, both not yet reached:
+Three limits remain, all not yet reached:
 - A report of a validation call whose input always fails validation. The property that blocks it is that CGV's checks ask whether a value may break a constraint. They do not tell a value that may fail validation from one that must fail. The open question is whether a must-fail check belongs in CGV, or in a witness-based report like CG-1.6.
 - The boundary for one kind of constraint at a time. An Optional value given to a `decimal_places` field through `model_validate` is still a non-null error, though validation rejects it, because the whole entry stays a write. The property that blocks it is that an edge from a producer carries all of the producer's guarantees, so one kind cannot be dropped for one edge. The open question is whether edges should carry a per-kind mask.
+- The unvalidated markers are recognised by their literal names. A renamed import (`SkipValidation as SV`), an alias of an unvalidated annotation (`Skip = SkipValidation[str]`) and an `Annotated[T, AfterValidator(f)]` (whose result pydantic does not revalidate) keep the field's requirements and drop the write, so exit 0 does not check an entry into them. The property that blocks it is that the extractor reads names, not what they import. The open question is whether it should resolve imports and aliases before matching, or treat an unresolved annotation head as unvalidated (CG-1.43).
 
 ## Affected users and systems
 - People who run `crosscheck-contracts contracts check` on code that validates raw data with pydantic. They lose false errors at each `model_validate` call into a field whose contract validation enforces.
