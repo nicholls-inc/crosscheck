@@ -194,7 +194,11 @@ This trips the PR-Gate. `assurance-pr-gate.md` runs:
 
 1. `assurance_pr_gate_plan.py` computes the content hash for I2 (its
    prose changed, the covering test changed, and the module source
-   changed). No cache hit. `action: run_intent_check`.
+   changed). No cache hit. `action: run_intent_check`. (Not yet reached:
+   the shipped `tier-b/assurance_pr_gate_plan.py` reads only
+   `## Invariant <ID>` headings, so on a canonical `## I<N>:` doc it finds
+   no invariant. The step shows the intended behaviour. PB-1.27 tracks the
+   parser.)
 2. `assurance-pr-gate.md` invokes `/crosscheck:intent-check` with:
    - The new I2 prose (includes "max_retries + 1")
    - The new covering test (`test_poison_item_does_not_redeliver`)
