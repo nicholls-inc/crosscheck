@@ -25,21 +25,39 @@
 //	reviewed-disclosed - reviewed, and the docs disclose where reality differs
 //	reviewed-accurate  - reviewed, and the claim holds as written
 //
-// Any other status, including an empty or missing one, is an ERROR, so a typo
-// such as 'reviewed-disclsed' cannot pass as a reviewed claim.
+// Any other status, including an empty one, is an ERROR, so a typo such as
+// 'reviewed-disclsed' cannot pass as a reviewed claim.
 //
 // A missing claims.json is an empty ledger. A claims.json that cannot be read,
 // including a symlink to a missing target, or does not parse as the ledger
-// shape, is an ERROR. The shape is a schema: the top level, each claim and each
-// check must be objects, narrative_claims must be present and not null, and
-// every key must be one the schema names, matched exactly. A claims.json or a
-// conformance directory that is a symlink to a missing target is an ERROR, and so
-// is a plugin root that does not resolve, because it is missing or a symlink on
-// its path dangles. A plugin root is a directory whose .claude-plugin/plugin.json
-// names crosscheck, and any other directory is an ERROR.
+// schema, is an ERROR. The schema (ledgerSchema, claimSchema, checkSchemas):
+//
+//	top level - version (the number 1) and narrative_claims (an array) are
+//	            required; description (a string) is optional
+//	claim     - id, source, claim and reality (non-blank strings), status (a
+//	            string) and check (an object) are required; tracked_in (a
+//	            string) is optional
+//	check     - type is manual or present_artifact; manual takes no other key;
+//	            present_artifact requires path (a non-blank string) and takes
+//	            an optional expect_present (true or false, default true)
+//
+// Keys match exactly, including case. A key the schema does not name, a key
+// that appears twice in one object, and a null anywhere are ERRORs. A
+// claims.json or a conformance directory that is a symlink to a missing target
+// is an ERROR, and so is a plugin root that does not resolve, because it is
+// missing or a symlink on its path dangles. A plugin root is a directory whose
+// .claude-plugin/plugin.json names crosscheck, and any other directory is an
+// ERROR.
+//
+// Not yet reached: what the text fields say. Two claims may share an id,
+// source and tracked_in need not name a real file or issue, and check.path may
+// point outside the plugin root. The property that blocks it is a check of
+// each field against the tree and the tracker; the open question is which of
+// them can be checked without a network call. Unique ids are PB-1.42.
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -531,79 +549,223 @@ func loadLedger(root string) ([]claim, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read conformance/claims.json: %w", err)
 	}
-	var lf ledgerFile
-	if err := json.Unmarshal(data, &lf); err != nil {
+	if err := checkLedgerSchema(data); err != nil {
 		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
-	if err := checkLedgerSchema(data); err != nil {
+	var lf ledgerFile
+	if err := json.Unmarshal(data, &lf); err != nil {
 		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
 	return lf.NarrativeClaims, nil
 }
 
-// The ledger schema: the keys each object in claims.json may carry. Key names
-// match exactly, because json.Unmarshal matches them without regard to case
-// and drops any key it cannot place.
+// field is one key of the ledger schema: whether an object must carry it, and
+// the kind its value must have.
+type field struct {
+	required bool
+	kind     kind
+}
+
+// schema maps each key an object may carry to its field. Key names match
+// exactly, because json.Unmarshal matches them without regard to case and
+// drops any key it cannot place.
+type schema map[string]field
+
+// kind returns "" for a value of the right kind, or the fault. A null never
+// reaches a kind: checkFields rejects it first.
+type kind func(raw json.RawMessage) string
+
+func nonBlank(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) != nil || strings.TrimSpace(s) == "" {
+		return "must be a non-blank string"
+	}
+	return ""
+}
+
+func anyString(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) != nil {
+		return "must be a string"
+	}
+	return ""
+}
+
+func boolean(raw json.RawMessage) string {
+	var b bool
+	if json.Unmarshal(raw, &b) != nil {
+		return "must be true or false"
+	}
+	return ""
+}
+
+// versionOne accepts only the number 1 written as 1, the one ledger version.
+func versionOne(raw json.RawMessage) string {
+	if string(raw) != "1" {
+		return "must be 1, got " + string(raw)
+	}
+	return ""
+}
+
+// nested is the kind of an object or array that checkLedgerSchema walks itself.
+func nested(json.RawMessage) string { return "" }
+
 var (
-	ledgerKeys = map[string]bool{"version": true, "description": true, "narrative_claims": true}
-	claimKeys  = map[string]bool{"id": true, "source": true, "claim": true, "reality": true, "status": true, "check": true, "tracked_in": true}
-	checkKeys  = map[string]bool{"type": true, "path": true, "expect_present": true}
+	ledgerSchema = schema{
+		"version":          {true, versionOne},
+		"description":      {false, anyString},
+		"narrative_claims": {true, nested},
+	}
+	claimSchema = schema{
+		"id":         {true, nonBlank},
+		"source":     {true, nonBlank},
+		"claim":      {true, nonBlank},
+		"reality":    {true, nonBlank},
+		"status":     {true, anyString},
+		"check":      {true, nested},
+		"tracked_in": {false, anyString},
+	}
+	// checkSchemas holds one schema per check.type. A type not listed here is
+	// an error, so a misspelt type cannot pass as a check that never runs.
+	checkSchemas = map[string]schema{
+		"manual": {
+			"type": {true, nonBlank},
+		},
+		"present_artifact": {
+			"type":           {true, nonBlank},
+			"path":           {true, nonBlank},
+			"expect_present": {false, boolean},
+		},
+	}
 )
 
-// checkLedgerSchema rejects JSON that json.Unmarshal accepts into ledgerFile
-// but that is not a ledger: a value that should be an object and is not, a
-// missing or null narrative_claims, or a key the schema does not name.
+// checkLedgerSchema rejects JSON that is not a ledger: an object that repeats a
+// key, a key the schema does not name, a required key that is absent, a null,
+// or a value of the wrong kind. It runs before json.Unmarshal, which would
+// drop a repeated key, fold case and read null as a zero value.
 func checkLedgerSchema(data []byte) error {
-	top, err := schemaObject(data, "the ledger", ledgerKeys)
+	top, err := readObject(data, "the ledger")
 	if err != nil {
 		return err
 	}
-	raw, ok := top["narrative_claims"]
-	if !ok {
-		return errors.New("narrative_claims is missing")
+	if err := checkFields("the ledger", top, ledgerSchema, ""); err != nil {
+		return err
 	}
 	var claims []json.RawMessage
-	if err := json.Unmarshal(raw, &claims); err != nil {
+	if err := json.Unmarshal(top["narrative_claims"], &claims); err != nil {
 		return fmt.Errorf("narrative_claims: %w", err)
-	}
-	if claims == nil {
-		return errors.New("narrative_claims is null")
 	}
 	for i, c := range claims {
 		where := fmt.Sprintf("narrative_claims[%d]", i)
-		fields, err := schemaObject(c, where, claimKeys)
+		fields, err := readObject(c, where)
 		if err != nil {
 			return err
 		}
-		if check, ok := fields["check"]; ok {
-			if _, err := schemaObject(check, where+".check", checkKeys); err != nil {
-				return err
-			}
+		if err := checkFields(where, fields, claimSchema, ""); err != nil {
+			return err
+		}
+		if err := checkCheck(where+".check", fields["check"]); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// schemaObject decodes data as a JSON object whose keys are all in allowed.
-func schemaObject(data []byte, where string, allowed map[string]bool) (map[string]json.RawMessage, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
+// checkCheck checks a claim's check against the schema its type names.
+func checkCheck(where string, raw json.RawMessage) error {
+	fields, err := readObject(raw, where)
+	if err != nil {
+		return err
+	}
+	typ, ok := fields["type"]
+	if !ok {
+		return fmt.Errorf("%s.type is missing", where)
+	}
+	var name string
+	_ = json.Unmarshal(typ, &name)
+	sch, ok := checkSchemas[name]
+	if !ok {
+		return fmt.Errorf("%s.type is %s, want one of manual|present_artifact", where, typ)
+	}
+	return checkFields(where, fields, sch, fmt.Sprintf(" for type %q", name))
+}
+
+// readObject decodes data as one JSON object and returns its keys, failing on
+// null, on any other non-object value, and on a key that appears twice. It
+// reads every copy of every key, which json.Unmarshal into a map does not.
+func readObject(data []byte, where string) (map[string]json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil {
 		return nil, fmt.Errorf("%s: %w", where, err)
 	}
-	if fields == nil {
+	if tok == nil {
 		return nil, fmt.Errorf("%s is null", where)
 	}
-	keys := make([]string, 0, len(fields))
-	for k := range fields {
+	if tok != json.Delim('{') {
+		return nil, fmt.Errorf("%s is not an object", where)
+	}
+	fields := map[string]json.RawMessage{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", where, err)
+		}
+		key, ok := tok.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s: unexpected token %v", where, tok)
+		}
+		if _, dup := fields[key]; dup {
+			return nil, fmt.Errorf("%s has duplicate key %q", where, key)
+		}
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return nil, fmt.Errorf("%s: %w", where, err)
+		}
+		fields[key] = v
+	}
+	return fields, nil
+}
+
+// checkFields checks one object's keys against sch: unknown keys, then missing
+// keys, then each present key for null and kind, each pass in sorted order.
+// suffix follows an unknown-key fault, to name the check type that decides it.
+func checkFields(where string, fields map[string]json.RawMessage, sch schema, suffix string) error {
+	path := func(k string) string {
+		if where == "the ledger" {
+			return k
+		}
+		return where + "." + k
+	}
+	keys := sortedKeys(fields)
+	for _, k := range keys {
+		if _, ok := sch[k]; !ok {
+			return fmt.Errorf("%s has unknown key %q%s", where, k, suffix)
+		}
+	}
+	for _, k := range sortedKeys(sch) {
+		if _, ok := fields[k]; sch[k].required && !ok {
+			return fmt.Errorf("%s is missing", path(k))
+		}
+	}
+	for _, k := range keys {
+		if string(fields[k]) == "null" {
+			return fmt.Errorf("%s is null", path(k))
+		}
+		if fault := sch[k].kind(fields[k]); fault != "" {
+			return fmt.Errorf("%s %s", path(k), fault)
+		}
+	}
+	return nil
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	for _, k := range keys {
-		if !allowed[k] {
-			return nil, fmt.Errorf("%s has unknown key %q", where, k)
-		}
-	}
-	return fields, nil
+	return keys
 }
 
 // danglingSymlink reports whether path exists as a directory entry but not
