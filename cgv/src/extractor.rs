@@ -161,7 +161,9 @@ impl Project {
                 func.return_line = m.lines.line(func.return_line);
                 function_extractor::apply_aliases(&mut func, aliases);
                 function_extractor::apply_external_types(&mut func, &external_types);
-                function_extractor::apply_shadows(&mut func, &|a| index.annotation_shadow(&m.module, a));
+                function_extractor::apply_shadows(&mut func, &|a| {
+                    index.annotation_shadow(&m.module, dataclass_extractor::unalias(a, aliases))
+                });
                 match index.function_ids.get(&func.qualified_name) {
                     Some(&i) => index.functions[i] = func,
                     None => {
@@ -207,7 +209,10 @@ impl Project {
                     .map(|mut c| {
                         c.external_types = external_types.clone();
                         c.type_shadows = dataclass_extractor::field_annotations(&c.class_def)
-                            .filter_map(|(field, a)| Some((field, index.annotation_shadow(&m.module, a)?)))
+                            .filter_map(|(field, a)| {
+                                let a = dataclass_extractor::unalias(a, aliases);
+                                Some((field, index.annotation_shadow(&m.module, a)?))
+                            })
                             .collect();
                         c
                     }),

@@ -24,6 +24,12 @@
       "source_guarantee": "type = float",
       "target_requirement": "type = units.float",
       "target": "Box.value"
+    },
+    {
+      "path": "measured -> Gauge.level",
+      "source_guarantee": "type = float",
+      "target_requirement": "type = units.float",
+      "target": "Gauge.level"
     }
   ]
 }

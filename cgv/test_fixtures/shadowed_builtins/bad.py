@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Annotated
 
 from records import Reading, measured
 from units import float
@@ -14,6 +15,15 @@ class int:
 @dataclass
 class Box:
     value: float
+
+
+Metric = Annotated[float, "metres"]
+
+
+@dataclass
+class Gauge:
+    # An alias in this module: the float inside it is units.float
+    level: Metric
 
 
 def parsed() -> float:
@@ -43,3 +53,8 @@ def store_counted_value() -> Reading:
 def box_measured() -> Box:
     # BUG: a builtin float is not a units.float
     return Box(value=measured())
+
+
+def gauge_measured() -> Gauge:
+    # BUG: a builtin float is not a units.float, even through an alias
+    return Gauge(level=measured())
