@@ -44,12 +44,13 @@ Issue #36, decided in `intent/2026-10-07-backlog-review-decisions.md` ("#36 → 
 | 6 | `.github/workflows/skill-references.yml` | whole file | added |
 | 7 | `docs/assurance/DEVELOPMENT-FRAMEWORK.md` | stage 5 workflow list | added a bullet |
 | 8 | `crosscheck/skills/journal-context/SKILL.md` | line 30 | reworded (no semantic change) |
+| 9 | `crosscheck/skills/journal-context/docs/invariants/journal-context.md` | two mentions of `journal-lint` | slash dropped (wording only; not a protected path, since the hook anchors `crosscheck/docs/invariants/**` at the repository root) |
 
 ### Test / Coverage Impact
 
 - `node --test scripts/ci/*.test.mjs`, run by the Tier Gate workflow, gains the SR-10 cases and one pre-commit case.
 - The pre-commit hook now fails a commit that stages a `crosscheck/` Markdown file with a reference that does not resolve, or that leaves the catalogue stale.
-- No invariant doc or eval changes. No attestation or intent-check baseline exists for these files.
+- One invariant doc changes in wording only (diff plan row 9); no eval changes. No attestation or intent-check baseline exists for these files.
 - REQUIRES HUMAN VERIFICATION: the checker skips `crosscheck/docs/add/.retrospective/`, `crosscheck/.assurance/`, `crosscheck/docs/research/`, `crosscheck/docs/reports/` and `crosscheck/docs/examples/workflows/`, where the decision for #36 named all of `crosscheck/**/*.md`. The spec's "Files not checked" concern gives the reason. Confirm this line, or name the files to rewrite instead.
 
 ### Review Checklist

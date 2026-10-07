@@ -60,6 +60,7 @@ const GRAMMAR = [
   ['/Reason /reasoN /foo_bar /foo- /foo--bar /9lives', []],
   ['/reason: /reason< /reason> /reason\\n', []],
   ['/crosscheck:Reason', []],
+  ['$/reason @/reason /reason* x*/reason', []],
 ];
 
 for (const [line, expected] of GRAMMAR) {
@@ -73,12 +74,13 @@ test('SR-3: line numbers are 1-based and a fenced code block is read like prose'
 });
 
 test('SR-5: the allowlist keeps <plugin>:<name> lines and reports malformed and crosscheck lines', () => {
-  const { entries, problems } = parseAllowlist('# comment\n\nother:thing\n  other-plugin:two  \nnot valid\ncrosscheck:alpha\nOther:thing\n');
+  const { entries, problems } = parseAllowlist('# comment\n\nother:thing\n  other-plugin:two  \nnot valid\ncrosscheck:alpha\nOther:thing\nother:thing garbage\n');
   assert.deepEqual([...entries], ['other:thing', 'other-plugin:two']);
   assert.deepEqual(problems, [
     'crosscheck/slash-allowlist.txt:5: "not valid" is not of the form <plugin>:<name>',
     'crosscheck/slash-allowlist.txt:6: crosscheck:alpha is a crosscheck entry, which would let a name with no skill or agent pass; delete the line',
     'crosscheck/slash-allowlist.txt:7: "Other:thing" is not of the form <plugin>:<name>',
+    'crosscheck/slash-allowlist.txt:8: "other:thing garbage" is not of the form <plugin>:<name>',
   ]);
 });
 
@@ -90,6 +92,19 @@ test('SR-6: parseDescription folds a block scalar and reads an inline one', () =
   assert.equal(parseDescription('---\r\ndescription: >-\r\n  Windows\r\n  lines.\r\n---\r\n'), 'Windows lines.');
   assert.equal(parseDescription('---\nname: a\n---\ndescription: not frontmatter\n'), null);
   assert.equal(parseDescription('# no frontmatter\ndescription: x\n'), null);
+});
+
+test('SR-6: parseDescription reads every block form, double quotes, and returns null for an empty or unterminated description', () => {
+  for (const indicator of ['>', '>-', '>+', '|', '|-', '|+']) {
+    assert.equal(parseDescription(`---\ndescription: ${indicator}\n  One\n  two.\n---\n`), 'One two.', indicator);
+  }
+  assert.equal(parseDescription('---\ndescription: "Double: quoted."\n---\n'), 'Double: quoted.');
+  assert.equal(parseDescription('---\ndescription:\n---\n'), null, 'an empty scalar is no description');
+  assert.equal(parseDescription('---\ndescription: ""\n---\n'), null, 'an empty quoted value is no description');
+  assert.equal(parseDescription('---\ndescription: >-\n---\n'), null, 'an empty block scalar is no description');
+  assert.equal(parseDescription('---\ndescription: Never closed.\n'), null, 'frontmatter with no closing --- is not frontmatter');
+  assert.equal(parseDescription('\n---\ndescription: Not first.\n---\n'), null, 'frontmatter must start on the first line');
+  assert.equal(parseDescription('intro\ndescription: Not first.\n---\n'), null, 'a closing --- with no opening --- is not frontmatter');
 });
 
 test('SR-6: renderCatalogue sorts by name, links each skill and escapes a pipe', () => {

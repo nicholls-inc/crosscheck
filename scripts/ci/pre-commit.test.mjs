@@ -340,9 +340,28 @@ test('SR-8, PC-5: a staged crosscheck Markdown file with a broken reference fail
   assert.match(r.output, /^pre-commit: skill references$/m);
   assert.match(r.output, /^- crosscheck\/docs\/x\.md:3: \/no-such-skill names no skill in crosscheck\/skills\/ and no agent in crosscheck\/agents\/$/m);
   assert.match(r.output, /^Fix: edit each line above so every \/name names a skill/m);
+  assert.doesNotMatch(r.output, /^Fix: node scripts\/ci\/skill-references\.mjs --write/m, 'a reference-only failure prints no catalogue fix');
   assert.match(r.output, /^Then rerun: node scripts\/ci\/pre-commit\.mjs$/m);
   assert.match(r.output, /^Full explanation: docs\/gates\/skill-references\.md$/m);
   const fixed = commit(scratchClone(CROSSCHECK_TREE), { 'crosscheck/docs/x.md': '# X\n\nRun /alpha, then /beta.\n' });
   assert.equal(fixed.status, 0, `a resolving reference passes; the hook printed: ${fixed.output}`);
   assert.equal(fixed.moved, true);
+});
+
+test('SR-8, PC-5: staging only the allowlist runs the check, and a stale catalogue prints its own Fix line and no reference Fix line', () => {
+  const allowlist = commit(scratchClone(CROSSCHECK_TREE), { 'crosscheck/slash-allowlist.txt': 'crosscheck:alpha\n' });
+  assert.equal(allowlist.status, 1);
+  assert.equal(allowlist.hook, 1);
+  assert.match(allowlist.output, /^pre-commit: skill references$/m);
+  assert.match(allowlist.output, /^- crosscheck\/slash-allowlist\.txt:1: crosscheck:alpha is a crosscheck entry/m);
+  const stale = commit(scratchClone(CROSSCHECK_TREE), { 'crosscheck/docs/skills.md': '# hand-written\n' });
+  assert.equal(stale.status, 1);
+  assert.match(stale.output, /^Fix: node scripts\/ci\/skill-references\.mjs --write, then git add crosscheck\/docs\/skills\.md$/m);
+  assert.doesNotMatch(stale.output, /^Fix: edit each line above/m);
+  const both = commit(scratchClone(CROSSCHECK_TREE), {
+    'crosscheck/docs/skills.md': '# hand-written\n',
+    'crosscheck/docs/x.md': 'Run /no-such-skill.\n',
+  });
+  assert.match(both.output, /^Fix: edit each line above/m);
+  assert.match(both.output, /^Fix: node scripts\/ci\/skill-references\.mjs --write, then git add crosscheck\/docs\/skills\.md$/m);
 });
