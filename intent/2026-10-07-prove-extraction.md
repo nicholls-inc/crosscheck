@@ -44,11 +44,11 @@ This pull request changes no code and no protected surface.
 - `docs/TASKS.md`, this intent, the plan, and the root `JOURNAL.md`. None is protected, so the change is Tier 1.
 
 ## Constraints
-- Task IDs are never reused. TB-1.1 to TB-1.4 are on `origin/main`. Open pull requests #99 and #101 add TB-1.5 to TB-1.10. No other open pull request adds a TB row. So the new rows start at TB-1.11.
+- Task IDs are never reused. TB-1.1 to TB-1.4 are on `origin/main`. Open pull requests #99 and #101 add TB-1.5 to TB-1.10. As of 2026-10-07, checked with `gh pr list` and `gh pr diff`, no other open pull request adds a TB row. So the new rows start at TB-1.11.
 - A dependency must name a row already in the queue, or the task queue check fails. CG-1.17, which amends `pydanticDecimalAccepts`, is only in open pull request #90, so TB-1.18 names it in text and does not depend on it.
 - Each new theorem that becomes part of the end-to-end guarantee goes into the table in `.claude/rules/protected-surfaces.md` and into `cgv/prover/scripts/ProtectedStatements.lean` in the same pull request. That makes each theorem row Tier 3, with a governance note and a **Protected-surface change** section.
 - No LLM output counts as evidence for any row (rule 1). D's harnesses are deterministic given their seed (rule 3).
 - What a row does not reach is named "not yet reached", with its blocking property and open question.
 
 ## Open questions
-None for the split. Each row carries its own question for its own intent. TB-1.11 decides how a negative `Int` bound meets the `Nat` arguments of `charFieldAccepts`. TB-1.12 decides whether a `length` or `precision` row with no bound and no dependent expression is malformed or an absent constraint. TB-1.13 decides whether `max_digits` becomes a range requirement from the extractor (Tier 2) or a new check in `constraintImplies` (Tier 3). TB-1.22 decides whether the harness evaluates `satisfies` through a Lean executable or a Python copy. TB-1.25 decides the value semantics of a dependent-expression bound.
+None for the split. Each row carries its own question for its own intent. TB-1.11 decides how a negative `Int` bound meets the `Nat` arguments of `charFieldAccepts`. TB-1.12 decides whether a `length` or `precision` row with no bound and no dependent expression is malformed or an absent constraint. TB-1.13 decides whether `max_digits` becomes a range requirement from the extractor (Tier 2) or a new check in `constraintImplies` (Tier 3). TB-1.25 decides the value semantics of a dependent-expression bound.
