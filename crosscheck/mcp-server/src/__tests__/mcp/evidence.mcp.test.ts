@@ -5,7 +5,8 @@ import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-vi.mock("../../docker.js", () => ({
+vi.mock("../../docker.js", async (importOriginal) => ({
+  SANDBOX_FLAGS: (await importOriginal<typeof import("../../docker.js")>()).SANDBOX_FLAGS,
   getDockerImage: vi.fn(() => "crosscheck-dafny:latest"),
   getLeanDockerImage: vi.fn(() => "crosscheck-lean:latest"),
   dockerImageId: vi.fn(async () => "sha256:feed"),

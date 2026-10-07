@@ -20992,6 +20992,12 @@ import { join as join2 } from "node:path";
 import { spawn } from "node:child_process";
 var DEFAULT_TIMEOUT_MS = 12e4;
 var LEAN_TIMEOUT_MS = 24e4;
+var SANDBOX_FLAGS = [
+  "--cap-drop=ALL",
+  "--security-opt=no-new-privileges",
+  "--pids-limit=512",
+  "--user=65534:65534"
+];
 function getDockerImage() {
   return process.env.DAFNY_DOCKER_IMAGE || "crosscheck-dafny:latest";
 }
@@ -21009,6 +21015,7 @@ function runDocker(image, tempDir, args, opts) {
     `--network=${network}`,
     `--memory=${memory}`,
     `--cpus=${cpus}`,
+    ...opts.sandboxed ? SANDBOX_FLAGS : [],
     "-v",
     opts.readOnly ? `${tempDir}:/work:ro` : `${tempDir}:/work`,
     image,
@@ -21063,9 +21070,14 @@ function dockerImageId(image) {
     proc.on("error", () => resolve(null));
   });
 }
-async function runDafny(tempDir, args, { image = getDockerImage(), readOnly = false } = {}) {
+async function runDafny(tempDir, args, {
+  image = getDockerImage(),
+  readOnly = false,
+  sandboxed = false
+} = {}) {
   return runDocker(image, tempDir, args, {
     readOnly,
+    sandboxed,
     memory: "512m",
     cpus: "1",
     timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -21398,7 +21410,7 @@ function shellQuote(s) {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 function rerunCommand(image, files) {
-  const run = `docker run --rm --network=none -v "$PWD":/work:ro ${shellQuote(image)}`;
+  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(image)}`;
   const paths = files.map((f) => shellQuote(`/work/${f}`));
   return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`;
 }
@@ -21552,7 +21564,7 @@ async function dafnyEvidence(input) {
   const image = getDockerImage();
   const imageId = await dockerImageId(image);
   if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
-  const run = { image: imageId, readOnly: true };
+  const run = { image: imageId, readOnly: true, sandboxed: true };
   const paths = included.files.map((f) => `/work/${f}`);
   const verify = await runDafny(
     root,

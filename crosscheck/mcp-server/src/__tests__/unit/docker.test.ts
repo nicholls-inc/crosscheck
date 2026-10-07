@@ -70,6 +70,48 @@ describe("runDafny", () => {
     ]);
   });
 
+  it("passes the four sandbox flags, in order, when sandboxed", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+
+    const promise = runDafny("/tmp/workdir", ["verify", "/work/a.dfy"], { readOnly: true, sandboxed: true });
+    mockProc.emit("close", 0);
+    await promise;
+
+    expect(vi.mocked(spawn).mock.lastCall).toEqual([
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--network=none",
+        "--memory=512m",
+        "--cpus=1",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=512",
+        "--user=65534:65534",
+        "-v",
+        "/tmp/workdir:/work:ro",
+        "crosscheck-dafny:latest",
+        "verify",
+        "/work/a.dfy",
+      ],
+    ]);
+  });
+
+  it("passes the sandbox flags without a read-only mount when only sandboxed is set", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+
+    const promise = runDafny("/tmp/workdir", ["verify", "/work/a.dfy"], { sandboxed: true });
+    mockProc.emit("close", 0);
+    await promise;
+
+    const args = vi.mocked(spawn).mock.lastCall![1] as string[];
+    expect(args).toEqual(expect.arrayContaining(["--cap-drop=ALL", "--user=65534:65534", "/tmp/workdir:/work"]));
+    expect(args).not.toContain("/tmp/workdir:/work:ro");
+  });
+
   it.each([
     [{ image: "sha256:feed" }, "sha256:feed", "/tmp/workdir:/work"],
     [{ readOnly: true }, "crosscheck-dafny:latest", "/tmp/workdir:/work:ro"],

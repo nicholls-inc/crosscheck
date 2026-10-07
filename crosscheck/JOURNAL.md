@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — `dafny_evidence` and its rerun command run Dafny as `nobody` with no capabilities
+
+**Type:** feature
+**Touches:** mcp-server/src/docker.ts, mcp-server/src/tools/evidence.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The Dafny runs of `dafny_evidence` and the rerun command a record hands an auditor ran the toolchain as root, with Docker's default capabilities and no process limit.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-docker-hardening.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+Both now pass `--cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534`, read from one list, `SANDBOX_FLAGS` in `docker.ts`, so the tool's runs and the rerun cannot drift. The user is set at run time rather than in the image, so the image and every earlier record's trusted base stay the same. The process limit counts threads too: a probe peaked at 23 under the tool's CPU limit and 186 with `--cores 64`, and a run over the limit exits 1. Running as `nobody` means a Linux tree that others cannot read makes Dafny fail and the tool refuse; a new concern in the spec records why the caller's own user was not used. `dafny_verify`, `dafny_compile` and the Lean tools keep their old flags, because `dafny_compile` writes into a mount that `nobody` may not be able to write on Linux.
+
+---
+
 ## 2026-10-06 — The MCP tool `dafny_evidence` emits an evidence record, and no skill calls it yet
 
 **Type:** feature
