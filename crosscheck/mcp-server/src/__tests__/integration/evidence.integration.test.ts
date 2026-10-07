@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmod, link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -207,8 +207,8 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(result).toEqual({
       success: false,
       errors: [
-        `theorem not verified in proofs/Abs.dfy: Twice; ${hint}`,
-        `theorem not verified in proofs/Abs.dfy: AbsPositive; ${hint}`,
+        `theorem not verified in proofs/Abs.dfy or its includes: Twice; ${hint}`,
+        `theorem not verified in proofs/Abs.dfy or its includes: AbsPositive; ${hint}`,
       ],
       record: null,
       writtenTo: null,
@@ -302,15 +302,94 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(runDafny).not.toHaveBeenCalled();
   });
 
-  it("returns the record but fails when the write fails (DE-11)", async () => {
+  it("returns the record but fails when the write fails, leaving the old record and no temp file (DE-11)", async () => {
+    const old = '{"format": "evidence-record/1"}\n';
     await mkdir(join(repo, "out"));
-    await writeFile(join(repo, "out", "taken.json"), '{"format": "evidence-record/1"}\n');
-    await chmod(join(repo, "out", "taken.json"), 0o444);
-    const result = await dafnyEvidence({ ...input, outputPath: "out/taken.json" });
+    await writeFile(join(repo, "out", "taken.json"), old);
+    await chmod(join(repo, "out"), 0o555);
+    try {
+      const result = await dafnyEvidence({ ...input, outputPath: "out/taken.json" });
+      expect(result.success).toBe(false);
+      expect(result.record?.commit).toBe(commit);
+      expect(result.writtenTo).toBeNull();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatch(new RegExp(`^could not write ${join(repo, "out", "taken.json")}: EACCES`));
+      expect(await readFile(join(repo, "out", "taken.json"), "utf-8")).toBe(old);
+      expect(await readdir(join(repo, "out"))).toEqual(["taken.json"]);
+    } finally {
+      await chmod(join(repo, "out"), 0o755);
+    }
+  });
+
+  it("checks outputPath again just before writing, so a link planted during the runs is refused (DE-11)", async () => {
+    await mkdir(join(repo, "out"));
+    vi.mocked(runDafny).mockImplementation(async (_dir, args) => {
+      if (args[0] === "audit") await symlink(join(repo, "proofs", "Abs.dfy"), join(repo, "out", "r.json"));
+      return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+    });
+    const result = await dafnyEvidence({ ...input, outputPath: "out/r.json" });
     expect(result.success).toBe(false);
+    expect(result.errors).toEqual(["outputPath out/r.json is a symbolic link"]);
     expect(result.record?.commit).toBe(commit);
-    expect(result.writtenTo).toBeNull();
-    expect(result.errors[0]).toContain(`could not write ${join(repo, "out", "taken.json")}`);
+    expect(await readFile(join(repo, "proofs", "Abs.dfy"), "utf-8")).toBe(SOURCE);
+  });
+
+  it.each([
+    ["assume-unchanged", "--assume-unchanged"],
+    ["skip-worktree", "--skip-worktree"],
+  ])("refuses a tracked file whose %s flag hides an edit (DE-3)", async (flag, option) => {
+    git(repo, "update-index", option, "proofs/Abs.dfy");
+    await writeFile(join(repo, "proofs", "Abs.dfy"), SOURCE + "lemma {:axiom} Hidden() ensures false\n");
+    const result = await dafnyEvidence(input);
+    expect(result).toEqual({
+      success: false,
+      errors: [`work tree differs from ${commit}: ${flag} hides changes to proofs/Abs.dfy`],
+      record: null,
+      writtenTo: null,
+    });
+    expect(runDafny).not.toHaveBeenCalled();
+  });
+
+  it("refuses when git cannot list the hidden-change flags (DE-3)", async () => {
+    const bin = realpathSync(await mkdtemp(join(tmpdir(), "fake-git-")));
+    const realGit = execFileSync("sh", ["-c", "command -v git"]).toString().trim();
+    await writeFile(
+      join(bin, "git"),
+      `#!/bin/sh\ncase " $* " in *" ls-files -v "*) exit 1 ;; esac\nexec ${realGit} "$@"\n`
+    );
+    await chmod(join(bin, "git"), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      expect((await dafnyEvidence(input)).errors).toEqual([`git could not read the work tree state in ${repo}`]);
+    } finally {
+      process.env.PATH = path;
+      await rm(bin, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when a flag hides a change made while Dafny runs (DE-13)", async () => {
+    vi.mocked(runDafny).mockImplementation(async (_dir, args) => {
+      if (args[0] === "verify") git(repo, "update-index", "--assume-unchanged", "proofs/Abs.dfy");
+      return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+    });
+    expect((await dafnyEvidence(input)).errors).toEqual([
+      "work tree changed while Dafny ran: assume-unchanged hides changes to proofs/Abs.dfy",
+    ]);
+  });
+
+  it("accepts a theorem declared in an include, by the name the log gives it (DE-5)", async () => {
+    await commitFiles({ "proofs/Abs.dfy": `include "Lib.dfy"\n${SOURCE}`, "proofs/Lib.dfy": "" });
+    vi.mocked(runDafny).mockImplementation(async (_dir, args) =>
+      args[0] === "--version"
+        ? ok("4.11.0\n")
+        : args[0] === "audit"
+          ? ok(AUDIT_CLEAN)
+          : ok(`${VERIFY_LOG}\nLib.Helper (correctness),Passed,0,0,0`)
+    );
+    const result = await dafnyEvidence({ ...input, theorems: ["AbsNonneg", "Lib.Helper"] });
+    expect(result.errors).toEqual([]);
+    expect(result.record?.claims[0].basis).toEqual({ theorems: ["AbsNonneg", "Lib.Helper"] });
   });
 
   describe("outputPath containment (DE-11)", () => {
@@ -392,6 +471,12 @@ describe("dafnyEvidence against a real git repository", () => {
       await refusesBeforeDafny("docs/other.json", NOT_A_RECORD);
       await refusesBeforeDafny("out/.env", NOT_A_RECORD);
       await refusesBeforeDafny("out/dir", NOT_A_RECORD);
+    });
+
+    it("refuses a FIFO without reading it", async () => {
+      await mkdir(join(repo, "out"));
+      execFileSync("mkfifo", [join(repo, "out", "pipe.json")]);
+      await refusesBeforeDafny("out/pipe.json", NOT_A_RECORD);
     });
 
     it("overwrites an earlier record inside the tree", async () => {

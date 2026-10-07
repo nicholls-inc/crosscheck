@@ -55,8 +55,8 @@ describe.skipIf(!process.env.RUN_E2E)("dafny_evidence E2E", () => {
     };
     expect((await dafnyEvidence({ ...input, theorems: ["M.C.L"] })).errors).toEqual([]);
     expect((await dafnyEvidence({ ...input, theorems: ["L", "M.L"] })).errors).toEqual([
-      "theorem not verified in Abs.dfy: L; name it as Dafny's verification log does, qualified by every enclosing module and type",
-      "theorem not verified in Abs.dfy: M.L; name it as Dafny's verification log does, qualified by every enclosing module and type",
+      "theorem not verified in Abs.dfy or its includes: L; name it as Dafny's verification log does, qualified by every enclosing module and type",
+      "theorem not verified in Abs.dfy or its includes: M.L; name it as Dafny's verification log does, qualified by every enclosing module and type",
     ]);
   }, 300_000);
 

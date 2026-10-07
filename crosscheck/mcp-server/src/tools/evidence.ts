@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
+import { lstat, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, posix, relative, resolve as resolvePath, sep } from "node:path";
 import { dockerImageId, getDockerImage, runDafny } from "../docker.js";
 
@@ -149,7 +149,13 @@ function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string
 
 async function treeChanges(root: string): Promise<string[] | null> {
   const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
-  return status.ok ? status.stdout.split("\n").filter((l) => l !== "") : null;
+  const tags = await git(root, ["ls-files", "-v"]);
+  if (!status.ok || !tags.ok) return null;
+  const hidden = tags.stdout
+    .split("\n")
+    .filter((l) => /^[a-zS] /.test(l))
+    .map((l) => `${/^[sS]/.test(l) ? "skip-worktree" : "assume-unchanged"} hides changes to ${l.slice(2)}`);
+  return [...status.stdout.split("\n").filter((l) => l !== ""), ...hidden];
 }
 
 async function untrackedReason(root: string, path: string): Promise<string | null> {
@@ -213,7 +219,7 @@ async function outputTarget(
   const existing = await lstat(out).catch(() => null);
   if (existing === null) return { out, error: null };
   if (existing.isSymbolicLink()) return fail("is a symbolic link");
-  if (!(await isEvidenceRecord(out))) {
+  if (!existing.isFile() || !(await isEvidenceRecord(out))) {
     return fail("names an existing file that is not an evidence record");
   }
   return { out, error: null };
@@ -242,7 +248,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   const commit = head.stdout.trim();
 
   const dirty = await treeChanges(root);
-  if (dirty === null) return refuse([`git status failed in ${root}`]);
+  if (dirty === null) return refuse([`git could not read the work tree state in ${root}`]);
   if (dirty.length > 0) return refuse(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
 
   let source: string;
@@ -289,7 +295,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   if (unverified.length > 0) {
     return refuse(
       unverified.map(
-        (t) => `theorem not verified in ${input.file}: ${t}; name it as Dafny's verification log does, qualified by every enclosing module and type`
+        (t) => `theorem not verified in ${input.file} or its includes: ${t}; name it as Dafny's verification log does, qualified by every enclosing module and type`
       )
     );
   }
@@ -305,13 +311,17 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
     return refuse([`HEAD moved from ${commit} while Dafny ran: ${headAfter.stdout.trim()}`]);
   }
   const dirtyAfter = await treeChanges(root);
-  if (dirtyAfter === null) return refuse([`git status failed in ${root}`]);
+  if (dirtyAfter === null) return refuse([`git could not read the work tree state in ${root}`]);
   if (dirtyAfter.length > 0) return refuse(dirtyAfter.map((l) => `work tree changed while Dafny ran: ${l}`));
 
   const record = buildRecord({ ...input, includes: included.files.slice(1), commit, dafnyVersion, image, imageId });
-  if (out === null) return { success: true, errors: [], record, writtenTo: null };
+  if (out === null || input.outputPath === undefined) return { success: true, errors: [], record, writtenTo: null };
+  const stillSafe = await outputTarget(root, input.outputPath);
+  if (stillSafe.error !== null) return refuse([stillSafe.error], record);
+  const temp = `${out}.${process.pid}.tmp`;
   try {
-    await writeFile(out, JSON.stringify(record, null, 2) + "\n", "utf-8");
+    await writeFile(temp, JSON.stringify(record, null, 2) + "\n", { encoding: "utf-8", flag: "wx" });
+    await rename(temp, out);
   } catch (err) {
     return refuse([`could not write ${out}: ${(err as Error).message}`], record);
   }

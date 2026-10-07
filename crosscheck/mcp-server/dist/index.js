@@ -21354,7 +21354,7 @@ async function dafnyCleanup() {
 
 // src/tools/evidence.ts
 import { execFile } from "node:child_process";
-import { lstat, readFile as readFile2, realpath, writeFile as writeFile3 } from "node:fs/promises";
+import { lstat, readFile as readFile2, realpath, rename, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolvePath, sep } from "node:path";
 var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
@@ -21433,7 +21433,10 @@ function git(cwd, args) {
 }
 async function treeChanges(root) {
   const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
-  return status.ok ? status.stdout.split("\n").filter((l) => l !== "") : null;
+  const tags = await git(root, ["ls-files", "-v"]);
+  if (!status.ok || !tags.ok) return null;
+  const hidden = tags.stdout.split("\n").filter((l) => /^[a-zS] /.test(l)).map((l) => `${/^[sS]/.test(l) ? "skip-worktree" : "assume-unchanged"} hides changes to ${l.slice(2)}`);
+  return [...status.stdout.split("\n").filter((l) => l !== ""), ...hidden];
 }
 async function untrackedReason(root, path) {
   if (!(await git(root, ["ls-files", "--error-unmatch", "--", path])).ok) return `not committed: ${path}`;
@@ -21486,7 +21489,7 @@ async function outputTarget(root, outputPath) {
   const existing = await lstat(out).catch(() => null);
   if (existing === null) return { out, error: null };
   if (existing.isSymbolicLink()) return fail("is a symbolic link");
-  if (!await isEvidenceRecord(out)) {
+  if (!existing.isFile() || !await isEvidenceRecord(out)) {
     return fail("names an existing file that is not an evidence record");
   }
   return { out, error: null };
@@ -21510,7 +21513,7 @@ async function dafnyEvidence(input) {
   const root = top.stdout.trim();
   const commit = head.stdout.trim();
   const dirty = await treeChanges(root);
-  if (dirty === null) return refuse([`git status failed in ${root}`]);
+  if (dirty === null) return refuse([`git could not read the work tree state in ${root}`]);
   if (dirty.length > 0) return refuse(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
   let source;
   try {
@@ -21553,7 +21556,7 @@ async function dafnyEvidence(input) {
   if (unverified.length > 0) {
     return refuse(
       unverified.map(
-        (t) => `theorem not verified in ${input.file}: ${t}; name it as Dafny's verification log does, qualified by every enclosing module and type`
+        (t) => `theorem not verified in ${input.file} or its includes: ${t}; name it as Dafny's verification log does, qualified by every enclosing module and type`
       )
     );
   }
@@ -21567,12 +21570,16 @@ async function dafnyEvidence(input) {
     return refuse([`HEAD moved from ${commit} while Dafny ran: ${headAfter.stdout.trim()}`]);
   }
   const dirtyAfter = await treeChanges(root);
-  if (dirtyAfter === null) return refuse([`git status failed in ${root}`]);
+  if (dirtyAfter === null) return refuse([`git could not read the work tree state in ${root}`]);
   if (dirtyAfter.length > 0) return refuse(dirtyAfter.map((l) => `work tree changed while Dafny ran: ${l}`));
   const record2 = buildRecord({ ...input, includes: included.files.slice(1), commit, dafnyVersion, image, imageId });
-  if (out === null) return { success: true, errors: [], record: record2, writtenTo: null };
+  if (out === null || input.outputPath === void 0) return { success: true, errors: [], record: record2, writtenTo: null };
+  const stillSafe = await outputTarget(root, input.outputPath);
+  if (stillSafe.error !== null) return refuse([stillSafe.error], record2);
+  const temp = `${out}.${process.pid}.tmp`;
   try {
-    await writeFile3(out, JSON.stringify(record2, null, 2) + "\n", "utf-8");
+    await writeFile3(temp, JSON.stringify(record2, null, 2) + "\n", { encoding: "utf-8", flag: "wx" });
+    await rename(temp, out);
   } catch (err) {
     return refuse([`could not write ${out}: ${err.message}`], record2);
   }

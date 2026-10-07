@@ -112,7 +112,7 @@ describe("dafny_evidence over MCP", () => {
     expect(body).toEqual({
       success: false,
       errors: [
-        "theorem not verified in Abs.dfy: M.AbsNonneg; name it as Dafny's verification log does, qualified by every enclosing module and type",
+        "theorem not verified in Abs.dfy or its includes: M.AbsNonneg; name it as Dafny's verification log does, qualified by every enclosing module and type",
       ],
       record: null,
       writtenTo: null,
