@@ -20,6 +20,22 @@ def graphOf (nodeRows : List NodeRow) (contractRows : List ContractRow)
   | .ok g => g
   | .error msg => panic! s!"translateRows rejected test rows: {msg}"
 
+/--
+error: could not synthesize default value for parameter 'accepted' using tactics
+---
+error: Tactic `native_decide` evaluated that the proposition
+  (translateRows
+        [match (1, "a", "function") with
+          | (id, name, kind) => { id := id, name := name, kind := kind },
+          match (1, "b", "model") with
+          | (id, name, kind) => { id := id, name := name, kind := kind }]
+        [] []).isOk =
+    true
+is false
+-/
+#guard_msgs in
+example : ContractGraph := graphOf [(1, "a", "function"), (1, "b", "model")] [] []
+
 /-- `make` (4dp) writes `Invoice.total` (2dp) on edge 1, whose override row
     says 2dp. -/
 def nodes : List NodeRow := [(1, "make", "function"), (2, "Invoice.total", "model")]
