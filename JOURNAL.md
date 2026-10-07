@@ -183,6 +183,15 @@ The maintainer then settled the review's open questions with one rule: exit 0 pr
 
 At `model_validate`, `model_validate_json`, `model_validate_strings`, `parse_obj` and `parse_raw` on a pydantic class, an entry is no longer a write when validation enforces the field's contract. The first draft dropped every entry. Review and a pydantic 2.13.5 run showed that this left reads of some fields resting on a contract nothing checked: `decimal_places` and `max_digits` count digits after trailing zeros are dropped, and `SkipValidation`, `PlainValidator` and `WrapValidator` can store None in a `str` field. Those fields, and a `None` default that pydantic v1 reads as Optional, keep their writes. A later review found that matching those markers by literal name lets a renamed import or an alias drop the write, so the rule is now an allowlist: a field counts as validated only when every name in its annotation, every union member and every `Annotated` metadata item is on a list of types and constraints that pydantic validates, and anything else keeps the write. A project name that shadows a listed name is still read as the listed type (CG-1.43), and container arguments and aliased validator decorators are not inspected (CG-1.44). So `r5_write_patterns` keeps its `model_validate` precision error. A typed constructor call and `model_copy(update=...)` stay writes. `BehaviorModel.lean` needs no rule for lax coercion, but its `pydanticDecimalAccepts` is false for trailing zeros (CG-1.17), and `Annotated` validators do not clear requirements as the decorator forms do (CG-1.18). `model_construct` records no write (CG-1.16).
 
+## 2026-10-06 - CI runs the evidence record checker's tests
+
+**Type:** ci
+**Touches:** .github/workflows/evidence-record.yml, scripts/ci/evidence-record-workflow.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/assurance/TIER-LAYER-MAP.md, docs/TASKS.md
+**Why:** No workflow ran the checker's tests, so a pull request that broke the checker merged green, and the tier gate reported the checker as "not yet reached".
+**Links:** [intent](intent/2026-10-06-evidence-record-ci.md), [spec](intent/2026-10-06-evidence-record-ci-spec.md), [plan](intent/2026-10-06-evidence-record-ci-plan.md)
+
+The `Evidence Record` workflow runs `node --test scripts/check-evidence-record.test.mjs` on every pull request. It is its own workflow, not a step of the Tier Gate job, so a checker failure does not read as a tier gate failure. The tier gate's evidence table names the workflow for the checker and its test file, and for no other path under `scripts/`. `scripts/ci/evidence-record-workflow.test.mjs` runs the step's own script against the committed checker and against one whose `checkRecord` reports nothing, and the second must fail. The test sees the step's script, not the `on:` trigger, so the pull request's own run is the runner evidence.
+
 ---
 
 ## 2026-10-06 - A parameter typed `object` accepts None
