@@ -9,16 +9,24 @@ namespace ContractGraphTest.Translation
 
 open ContractGraph
 
-instance : Inhabited ContractGraph := ⟨{ nodes := [], edges := [] }⟩
-
-/-- `translateRows` on rows a test means to be well formed. A rejection
-    panics, which `lake build` prints but does not fail on; build with
-    `LEAN_ABORT_ON_PANIC=1` to make it fail. -/
-def graphOf (nodeRows : List NodeRow) (contractRows : List ContractRow)
-    (edgeRows : List EdgeRow) : ContractGraph :=
-  match translateRows nodeRows contractRows edgeRows with
+/-- The graph of a translation that is known to be accepted. The `.error`
+    branch runs only after `accepted` failed to elaborate, so the build has
+    already failed; an `absurd` there crashes Lean before it prints why. -/
+def acceptedGraph (rows : Except String ContractGraph) (_accepted : rows.isOk) : ContractGraph :=
+  match rows with
   | .ok g => g
-  | .error msg => panic! s!"translateRows rejected test rows: {msg}"
+  | .error _ => { nodes := [], edges := [] }
+
+/-- The graph `translateRows` builds from a test's rows. `native_decide`
+    proves at elaboration that the rows are accepted, so rejected rows fail
+    the build instead of giving the test an empty graph. A test graph with
+    parameters translates its rows in a separate def and takes the same
+    `accepted` argument, so the proof runs at each call. -/
+def graphOf (nodeRows : List NodeRow) (contractRows : List ContractRow)
+    (edgeRows : List EdgeRow)
+    (accepted : (translateRows nodeRows contractRows edgeRows).isOk := by native_decide) :
+    ContractGraph :=
+  acceptedGraph _ accepted
 
 /--
 error: could not synthesize default value for parameter 'accepted' using tactics
