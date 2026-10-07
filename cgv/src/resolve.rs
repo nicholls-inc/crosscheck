@@ -125,6 +125,10 @@ pub struct ModuleInfo {
     pub star_imports: Vec<String>,
     /// Top-level `def` and `class` names; a later definition replaces an earlier one.
     pub defs: HashMap<String, DefKind>,
+    /// Module globals whose value may be other than their one import or
+    /// definition: bound by any other statement at module level, declared
+    /// `global` in a function, imported from two places, or defined twice.
+    pub rebound: HashSet<String>,
 }
 
 impl ModuleInfo {
@@ -148,6 +152,7 @@ impl ModuleInfo {
             }
         }
         collect_imports(stmts, &mut info);
+        info.rebound.extend(rebound_globals(stmts));
         for name in module_constants(stmts).into_keys() {
             if !info.imports.contains_key(&name) && !info.defs.contains_key(&name) {
                 info.defs.insert(name, DefKind::Constant);
@@ -559,8 +564,11 @@ fn collect_imports(stmts: &[Stmt], info: &mut ModuleInfo) {
                             (head.clone(), head)
                         }
                     };
-                    if !info.defs.contains_key(&local) {
-                        info.imports.insert(local, Import::Module(target));
+                    if info.defs.contains_key(&local) {
+                        // The definition wins, but the name may be the import.
+                        info.rebound.insert(local);
+                    } else {
+                        insert_import(info, local, Import::Module(target));
                     }
                 }
             }
@@ -577,14 +585,14 @@ fn collect_imports(stmts: &[Stmt], info: &mut ModuleInfo) {
                         continue;
                     }
                     let local = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
-                    if !info.defs.contains_key(&local) {
-                        info.imports.insert(
-                            local,
-                            Import::Symbol {
-                                module: module.clone(),
-                                name: alias.name.to_string(),
-                            },
-                        );
+                    if info.defs.contains_key(&local) {
+                        info.rebound.insert(local);
+                    } else {
+                        let imp = Import::Symbol {
+                            module: module.clone(),
+                            name: alias.name.to_string(),
+                        };
+                        insert_import(info, local, imp);
                     }
                 }
             }
@@ -609,6 +617,67 @@ fn collect_imports(stmts: &[Stmt], info: &mut ModuleInfo) {
             _ => {}
         }
     }
+}
+
+fn insert_import(info: &mut ModuleInfo, local: String, imp: Import) {
+    if info.imports.get(&local).is_some_and(|old| *old != imp) {
+        info.rebound.insert(local.clone());
+    }
+    info.imports.insert(local, imp);
+}
+
+/// Module globals bound other than by an import or one top-level `def` /
+/// `class` (see `ModuleInfo::rebound`), except names imported from two places.
+fn rebound_globals(stmts: &[Stmt]) -> HashSet<String> {
+    use ruff_python_ast::visitor::{self, Visitor};
+    use ruff_python_ast::{ExprContext, Pattern};
+    struct B(HashSet<String>);
+    impl<'a> Visitor<'a> for B {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+                visitor::walk_stmt(self, stmt);
+            }
+        }
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Name(n) = expr {
+                if matches!(n.ctx, ExprContext::Store | ExprContext::Del) {
+                    self.0.insert(n.id.to_string());
+                }
+            }
+            visitor::walk_expr(self, expr);
+        }
+        fn visit_except_handler(&mut self, handler: &'a ruff_python_ast::ExceptHandler) {
+            let ruff_python_ast::ExceptHandler::ExceptHandler(h) = handler;
+            self.0.extend(h.name.as_ref().map(|n| n.to_string()));
+            visitor::walk_except_handler(self, handler);
+        }
+        fn visit_pattern(&mut self, pattern: &'a Pattern) {
+            let name = match pattern {
+                Pattern::MatchAs(p) => p.name.as_ref(),
+                Pattern::MatchStar(p) => p.name.as_ref(),
+                Pattern::MatchMapping(p) => p.rest.as_ref(),
+                _ => None,
+            };
+            self.0.extend(name.map(|n| n.to_string()));
+            visitor::walk_pattern(self, pattern);
+        }
+    }
+    let mut b = B(global_names(stmts));
+    let mut defined = HashSet::new();
+    for stmt in stmts {
+        b.visit_stmt(stmt);
+    }
+    for stmt in module_defs(stmts) {
+        let name = match stmt {
+            Stmt::FunctionDef(f) => f.name.as_str(),
+            Stmt::ClassDef(c) => c.name.as_str(),
+            _ => continue,
+        };
+        if !defined.insert(name) {
+            b.0.insert(name.to_string());
+        }
+    }
+    b.0
 }
 
 /// Absolute module path of `from <level dots><module> import ...` in `importer`.
@@ -676,6 +745,9 @@ pub struct ClassInfo {
     /// For enum-like classes (Django `TextChoices` / `IntegerChoices`, `enum.Enum`):
     /// how member values are read.
     pub enum_kind: Option<EnumKind>,
+    /// For enum-like classes, every member name, when the body makes the
+    /// list certain (`enum_member_names`).
+    pub enum_members: Option<Vec<String>>,
     /// Whether instances are validated strictly (pydantic strict mode):
     /// no numeric coercion.
     pub strict: bool,
@@ -718,6 +790,7 @@ impl ClassInfo {
             stored_attrs: HashSet::new(),
             body_names: HashSet::new(),
             enum_kind: None,
+            enum_members: None,
             strict: false,
             constant_order: Vec::new(),
             field_nullable: HashMap::new(),
@@ -739,6 +812,7 @@ impl ClassInfo {
             }
         });
         let is_enum = self.enum_kind.is_some();
+        self.enum_members = is_enum.then(|| enum_member_names(body)).flatten();
         self.patterns = module_patterns(body).into_iter().collect();
         for (name, value) in single_assignments(body) {
             // Enum members `NAME = value, label` may have a non-literal label.
@@ -775,6 +849,53 @@ impl ClassInfo {
         }
         (!out.is_empty()).then_some(out)
     }
+}
+
+/// The member names of an enum class body, in order, when every
+/// class-level statement is `NAME = value` with one name target, a `def` (not
+/// decorated `@member`), a docstring or `pass`, and the body neither defines `__eq__` nor binds
+/// `_ignore_`; `None` otherwise. Dunder and sunder names (as `enum` defines
+/// them) are not members.
+fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for stmt in body {
+        let name = match stmt {
+            Stmt::Assign(a) => match a.targets.as_slice() {
+                [Expr::Name(n)] => n.id.as_str(),
+                _ => return None,
+            },
+            // `@enum.member` makes a method a member.
+            Stmt::FunctionDef(f) if f.name.as_str() != "__eq__" => {
+                if f.decorator_list.iter().any(is_member_decorator) {
+                    return None;
+                }
+                continue;
+            }
+            Stmt::Pass(_) => continue,
+            Stmt::Expr(e) if matches!(e.value.as_ref(), Expr::StringLiteral(_)) => continue,
+            _ => return None,
+        };
+        if matches!(name, "__eq__" | "_ignore_") {
+            return None;
+        }
+        let b = name.as_bytes();
+        let n = b.len();
+        let dunder = n > 4 && name.starts_with("__") && name.ends_with("__") && b[2] != b'_' && b[n - 3] != b'_';
+        let sunder = n > 2 && b[0] == b'_' && b[n - 1] == b'_' && b[1] != b'_' && b[n - 2] != b'_';
+        if !dunder && !sunder {
+            out.push(name.to_string());
+        }
+    }
+    Some(out)
+}
+
+/// A decorator whose last name is `member`, bare or called.
+fn is_member_decorator(d: &ruff_python_ast::Decorator) -> bool {
+    let expr = match &d.expression {
+        Expr::Call(c) => c.func.as_ref(),
+        e => e,
+    };
+    dotted_parts(expr).is_some_and(|p| p.last().is_some_and(|n| n == "member"))
 }
 
 /// A string or integer literal as a choice value (`"a"` -> `a`, `3` -> `3`).

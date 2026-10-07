@@ -35,13 +35,45 @@
 //! A narrowing (and the definition set) is dropped when the name is rebound
 //! other than by a simple assignment; entering a loop drops every name the
 //! loop rebinds, and after a `match` only narrowings from before it that it
-//! does not rebind survive. A `with` body is walked like straight-line code.
-//! A name whose definition set is not known takes the join of every assignment.
+//! does not rebind survive. A `with` body is walked like straight-line code,
+//! except that what it narrowed does not survive it when it holds a marked
+//! exit. A name whose definition set is not known takes the join of every
+//! assignment.
 
 use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, ExprContext, Pattern, Stmt, UnaryOp};
+use ruff_text_size::Ranged;
+
+/// Statements of one function body that never complete, by start byte
+/// offset (filled by `resolve::function_exits`, which can see what a call
+/// resolves to and what members an enum has). Any other statement is
+/// assumed to complete.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exits {
+    /// Expression statements whose call never returns.
+    pub calls: HashSet<u32>,
+    /// `match` statements whose cases cover every member of the subject's enum.
+    pub matches: HashSet<u32>,
+}
+
+impl Exits {
+    /// Whether a statement of `stmt` is marked, so that a context manager
+    /// around it may suppress the exception the marked call raises.
+    fn marks_within(&self, stmt: &Stmt) -> bool {
+        let r = stmt.range();
+        self.calls.iter().chain(&self.matches).any(|&at| r.contains(at.into()))
+    }
+
+    fn is_exit_call(&self, stmt: &Stmt) -> bool {
+        matches!(stmt, Stmt::Expr(_)) && self.calls.contains(&stmt.start().to_u32())
+    }
+
+    fn is_exhaustive(&self, m: &ast::StmtMatch) -> bool {
+        match_is_exhaustive(m) || self.matches.contains(&m.start().to_u32())
+    }
+}
 
 /// Where a local's value can come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -218,15 +250,17 @@ pub trait FlowVisitor<'a> {
 pub fn walk_block<'a, V: FlowVisitor<'a>>(
     stmts: &'a [Stmt],
     narrowed: &Narrowed,
+    exits: &Exits,
     v: &mut V,
 ) -> Narrowed {
-    walk(stmts, narrowed, v, &mut HashMap::new())
+    walk(stmts, narrowed, exits, v, &mut HashMap::new())
 }
 
 /// `counts`: simple assignments seen so far per name (the next `Def::Assign` index).
 fn walk<'a, V: FlowVisitor<'a>>(
     stmts: &'a [Stmt],
     narrowed: &Narrowed,
+    exits: &Exits,
     v: &mut V,
     counts: &mut HashMap<String, usize>,
 ) -> Narrowed {
@@ -240,8 +274,8 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
                 body_n.extend(positive(&s.test));
-                let end = walk(&s.body, &body_n, v, counts);
-                if !always_exits(&s.body) {
+                let end = walk(&s.body, &body_n, exits, v, counts);
+                if !always_exits(&s.body, exits) {
                     ends.push(end);
                 }
                 let mut negated = negative(&s.test);
@@ -258,16 +292,16 @@ fn walk<'a, V: FlowVisitor<'a>>(
                             clause_n.apply(&e);
                             let mut bn = clause_n.clone();
                             bn.extend(positive(test));
-                            let end = walk(&clause.body, &bn, v, counts);
+                            let end = walk(&clause.body, &bn, exits, v, counts);
                             negated.extend(negative(test));
                             end
                         }
                         None => {
                             has_else = true;
-                            walk(&clause.body, &clause_n, v, counts)
+                            walk(&clause.body, &clause_n, exits, v, counts)
                         }
                     };
-                    if !always_exits(&clause.body) {
+                    if !always_exits(&clause.body, exits) {
                         ends.push(end);
                     }
                 }
@@ -295,8 +329,8 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 // A call in a later iteration may already have run.
                 n.apply(&effects_of_stmt(stmt));
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
-                walk(&f.body, &n, v, counts);
-                walk(&f.orelse, &n, v, counts);
+                walk(&f.body, &n, exits, v, counts);
+                walk(&f.orelse, &n, exits, v, counts);
             }
             Stmt::While(w) => {
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
@@ -304,8 +338,8 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects_of_stmt(stmt));
                 let mut body_n = n.clone();
                 body_n.extend(positive(&w.test));
-                walk(&w.body, &body_n, v, counts);
-                walk(&w.orelse, &n, v, counts);
+                walk(&w.body, &body_n, exits, v, counts);
+                walk(&w.orelse, &n, exits, v, counts);
             }
             Stmt::With(w) => {
                 for item in &w.items {
@@ -321,9 +355,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     n.apply(&Effects::suspension());
                 }
                 // The body runs once, in order (a context manager that
-                // suppresses an exception is not modelled).
-                let end = walk(&w.body, &n, v, counts);
-                if always_exits(&w.body) {
+                // suppresses an exception is not modelled). A marked exit in
+                // the body may be suppressed, and then control leaves the body
+                // early, so what the body narrowed does not carry past it.
+                let end = walk(&w.body, &n, exits, v, counts);
+                if always_exits(&w.body, &Exits::default()) || exits.marks_within(stmt) {
                     remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 } else {
                     n = end;
@@ -340,16 +376,16 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     a.apply(&effects_of_stmt(stmt));
                     a
                 };
-                let body_end = walk(&t.body, &n, v, counts);
-                let else_end = walk(&t.orelse, &body_end, v, counts);
+                let body_end = walk(&t.body, &n, exits, v, counts);
+                let else_end = walk(&t.orelse, &body_end, exits, v, counts);
                 let mut ends = Vec::new();
-                if !always_exits(&t.body) && !always_exits(&t.orelse) {
+                if !always_exits(&t.body, exits) && !always_exits(&t.orelse, exits) {
                     ends.push(else_end);
                 }
                 for handler in &t.handlers {
                     let ast::ExceptHandler::ExceptHandler(h) = handler;
-                    let end = walk(&h.body, &after, v, counts);
-                    if !always_exits(&h.body) {
+                    let end = walk(&h.body, &after, exits, v, counts);
+                    if !always_exits(&h.body, exits) {
                         ends.push(end);
                     }
                 }
@@ -359,7 +395,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 } else {
                     // `finally` also runs on exceptional paths, from `after`.
                     let start = Narrowed::join(&[joined, after]).unwrap_or_default();
-                    walk(&t.finalbody, &start, v, counts)
+                    walk(&t.finalbody, &start, exits, v, counts)
                 };
             }
             Stmt::Match(m) => {
@@ -370,7 +406,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects_of_stmt(stmt));
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 for case in &m.cases {
-                    walk(&case.body, &n, v, counts);
+                    walk(&case.body, &n, exits, v, counts);
                 }
             }
             Stmt::FunctionDef(f) => {
@@ -835,18 +871,19 @@ pub fn simple_attr_targets(a: &ast::StmtAssign) -> Option<Vec<(String, &Expr)>> 
 }
 
 /// Whether control never falls off the end of `body` (it ends in
-/// `return` / `raise` / `continue` / `break`, or an `if` or exhaustive
-/// `match` whose every branch does).
-pub fn always_exits(body: &[Stmt]) -> bool {
+/// `return` / `raise` / `continue` / `break`, a call in `exits`, or an `if`
+/// or exhaustive `match` whose every branch does).
+pub fn always_exits(body: &[Stmt], exits: &Exits) -> bool {
     match body.last() {
         Some(Stmt::Return(_) | Stmt::Raise(_) | Stmt::Continue(_) | Stmt::Break(_)) => true,
+        Some(s @ Stmt::Expr(_)) => exits.is_exit_call(s),
         Some(Stmt::If(s)) => {
-            always_exits(&s.body)
+            always_exits(&s.body, exits)
                 && s.elif_else_clauses.iter().any(|c| c.test.is_none())
-                && s.elif_else_clauses.iter().all(|c| always_exits(&c.body))
+                && s.elif_else_clauses.iter().all(|c| always_exits(&c.body, exits))
         }
         Some(Stmt::Match(m)) => {
-            match_is_exhaustive(m) && m.cases.iter().all(|c| always_exits(&c.body))
+            exits.is_exhaustive(m) && m.cases.iter().all(|c| always_exits(&c.body, exits))
         }
         _ => false,
     }
@@ -868,13 +905,15 @@ pub fn match_is_exhaustive(m: &ast::StmtMatch) -> bool {
 }
 
 /// Whether execution can reach the end of a function body (an implicit `return None`).
-pub fn falls_through(body: &[Stmt]) -> bool {
-    !terminates(body)
+pub fn falls_through(body: &[Stmt], exits: &Exits) -> bool {
+    !terminates(body, exits)
 }
 
-fn terminates(body: &[Stmt]) -> bool {
+fn terminates(body: &[Stmt], exits: &Exits) -> bool {
+    let terminates = |b: &[Stmt]| terminates(b, exits);
     match body.last() {
         Some(Stmt::Return(_) | Stmt::Raise(_)) => true,
+        Some(s @ Stmt::Expr(_)) => exits.is_exit_call(s),
         Some(Stmt::If(s)) => {
             terminates(&s.body)
                 && s.elif_else_clauses.iter().any(|c| c.test.is_none())
@@ -884,9 +923,12 @@ fn terminates(body: &[Stmt]) -> bool {
             matches!(w.test.as_ref(), Expr::BooleanLiteral(b) if b.value)
                 && !contains_break(&w.body)
         }
-        Some(Stmt::With(w)) => terminates(&w.body),
+        // A context manager may suppress the exception a call that never
+        // returns raises (`contextlib.suppress(SystemExit)`), so only the
+        // statements that end the body whatever the manager does count.
+        Some(Stmt::With(w)) => crate::flow::terminates(&w.body, &Exits::default()),
         Some(Stmt::Match(m)) => {
-            match_is_exhaustive(m) && m.cases.iter().all(|c| terminates(&c.body))
+            exits.is_exhaustive(m) && m.cases.iter().all(|c| terminates(&c.body))
         }
         Some(Stmt::Try(t)) => {
             terminates(&t.finalbody)
@@ -1151,6 +1193,8 @@ pub struct FunctionFlow<'a> {
     /// The body contains `yield` / `yield from` (outside nested definitions):
     /// calling the function returns a generator, never `None`.
     pub is_generator: bool,
+    /// The statements of the body that never complete (walks of the body use them).
+    pub exits: Exits,
 }
 
 /// The `obj.f` names of simple attribute assignments in `body` (not in
@@ -1203,26 +1247,27 @@ pub fn is_generator_body(body: &[Stmt]) -> bool {
 
 impl<'a> FunctionFlow<'a> {
     pub fn of(body: &'a [Stmt]) -> Self {
-        Self::with_entry(body, Narrowed::new())
+        Self::with_entry(body, Narrowed::new(), Exits::default())
     }
 
     /// The flow of an extracted function's body.
     pub fn of_info(f: &'a crate::function_extractor::FunctionInfo) -> Self {
-        Self::of_function(&f.body, f.params.iter().map(|p| p.name.as_str()))
+        let params = Narrowed::with_params(f.params.iter().map(|p| p.name.as_str()));
+        Self::with_entry(&f.body, params, f.exits.clone())
     }
 
     /// The flow of a function body whose parameters are `params`.
     pub fn of_function<'p>(body: &'a [Stmt], params: impl IntoIterator<Item = &'p str>) -> Self {
-        Self::with_entry(body, Narrowed::with_params(params))
+        Self::with_entry(body, Narrowed::with_params(params), Exits::default())
     }
 
-    fn with_entry(body: &'a [Stmt], mut entry: Narrowed) -> Self {
+    fn with_entry(body: &'a [Stmt], mut entry: Narrowed, exits: Exits) -> Self {
         // Every attribute the body assigns starts with its value from before.
         for name in assigned_attributes(body) {
             entry.defs.insert(name, vec![(Def::Param, false)]);
         }
         let mut flow = FunctionFlow {
-            falls_through: falls_through(body),
+            falls_through: falls_through(body, &exits),
             is_generator: is_generator_body(body),
             entry: entry.clone(),
             ..Default::default()
@@ -1276,7 +1321,8 @@ impl<'a> FunctionFlow<'a> {
             .collect();
         flow.opaque = binders.names;
         flow.opaque.extend(binders.imports);
-        walk_block(body, &entry, &mut flow);
+        walk_block(body, &entry, &exits, &mut flow);
+        flow.exits = exits;
         let mut uses = Uses {
             escaping: HashSet::new(),
             passes: HashMap::new(),
@@ -1494,6 +1540,10 @@ mod tests {
 
     /// Narrowing in effect at each `use(...)` expression statement, in order.
     fn narrowing_at_uses(src: &str) -> Vec<Vec<String>> {
+        narrowing_with_exits(src, &Exits::default())
+    }
+
+    fn narrowing_with_exits(src: &str, exits: &Exits) -> Vec<Vec<String>> {
         struct V(Vec<Vec<String>>);
         impl<'a> FlowVisitor<'a> for V {
             fn simple(&mut self, stmt: &'a Stmt, n: &Narrowed) {
@@ -1521,8 +1571,67 @@ mod tests {
         }
         let b = body(src);
         let mut v = V(Vec::new());
-        walk_block(&b, &Narrowed::new(), &mut v);
+        walk_block(&b, &Narrowed::new(), exits, &mut v);
         v.0
+    }
+
+    /// `Exits` marking the statements of `src` that start with `calls` / `matches`.
+    fn exits_at(src: &str, calls: &[&str], matches: &[&str]) -> Exits {
+        let at = |text: &&str| src.find(text).expect("statement") as u32;
+        Exits {
+            calls: calls.iter().map(at).collect(),
+            matches: matches.iter().map(at).collect(),
+        }
+    }
+
+    #[test]
+    fn test_exit_calls_end_the_flow() {
+        let src = "def f(x):\n    if x is None:\n        stop(1)\n    use()\n    stop(2)\n";
+        let exits = exits_at(src, &["stop(1)", "stop(2)"], &[]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![vec!["x".to_string()]]);
+        assert!(!falls_through(&body(src), &exits));
+        assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new()]);
+        assert!(falls_through(&body(src), &Exits::default()));
+        // Only an expression statement is a call exit.
+        let src = "def f(x):\n    y = stop(2)\n";
+        assert!(falls_through(&body(src), &exits_at(src, &["y = stop(2)"], &[])));
+    }
+
+    #[test]
+    fn test_marked_match_is_exhaustive() {
+        let src = "def f(c, x):\n    if x is None:\n        match c:\n            case E.A:\n                return 1\n    use()\n    match c:\n        case E.A:\n            return 1\n";
+        let exits = exits_at(src, &[], &["match c:\n            case", "match c:\n        case"]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![vec!["x".to_string()]]);
+        assert!(!falls_through(&body(src), &exits));
+        assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new()]);
+        assert!(falls_through(&body(src), &Exits::default()));
+    }
+
+    #[test]
+    fn test_marked_match_with_a_case_that_falls_through_is_no_exit() {
+        let src = "def f(c, x):\n    if x is None:\n        match c:\n            case E.A:\n                pass\n    use()\n";
+        let exits = exits_at(src, &[], &["match c:"]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
+        let src = "def f(c):\n    match c:\n        case E.A:\n            pass\n";
+        assert!(falls_through(&body(src), &exits_at(src, &[], &["match c:"])));
+    }
+
+    #[test]
+    fn test_exit_call_in_a_with_body_may_be_suppressed() {
+        // `with suppress(SystemExit): sys.exit(1)` completes normally.
+        let src = "def f(x):\n    with m:\n        stop(1)\n";
+        assert!(falls_through(&body(src), &exits_at(src, &["stop(1)"], &[])));
+        // The exit nested in an `if`: `x` is None after the suppressed exit.
+        let src = "def f(x):\n    with m:\n        if x is None:\n            stop(1)\n    use()\n";
+        let exits = exits_at(src, &["stop(1)"], &[]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
+        // The same for a marked match.
+        let src = "def f(x, c):\n    with m:\n        if x is None:\n            match c:\n                case E.A:\n                    return 1\n    use()\n";
+        let exits = exits_at(src, &[], &["match c:"]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
+        // Without a marked statement in the body, its narrowing carries on.
+        let src = "def f(x):\n    with m:\n        if x is None:\n            return\n    use()\n";
+        assert_eq!(narrowing_with_exits(src, &Exits::default()), vec![vec!["x".to_string()]]);
     }
 
     #[test]
@@ -1743,38 +1852,38 @@ mod tests {
 
     #[test]
     fn test_falls_through() {
-        assert!(!falls_through(&body("def f(x):\n    return x\n")));
+        assert!(!falls_through(&body("def f(x):\n    return x\n"), &Exits::default()));
         assert!(falls_through(&body(
             "def f(x):\n    if x:\n        return 1\n"
-        )));
+        ), &Exits::default()));
         assert!(!falls_through(&body(
             "def f(x):\n    if x:\n        return 1\n    else:\n        raise E()\n"
-        )));
+        ), &Exits::default()));
         assert!(!falls_through(&body(
             "def f(x):\n    while True:\n        return 1\n"
-        )));
+        ), &Exits::default()));
         assert!(falls_through(&body(
             "def f(x):\n    while True:\n        break\n"
-        )));
+        ), &Exits::default()));
         assert!(!falls_through(&body(
             "def f(x):\n    try:\n        return 1\n    except E:\n        return 2\n"
-        )));
+        ), &Exits::default()));
         // Round 5 N1: an exhaustive `match` whose every case returns or raises.
         assert!(!falls_through(&body(
             "def f(x):\n    match x:\n        case 'a':\n            return 1\n        case _:\n            raise E()\n"
-        )));
+        ), &Exits::default()));
         assert!(!falls_through(&body(
             "def f(x):\n    match x:\n        case 1 | other:\n            return 1\n"
-        )));
+        ), &Exits::default()));
         assert!(falls_through(&body(
             "def f(x):\n    match x:\n        case 'a':\n            return 1\n"
-        )));
+        ), &Exits::default()));
         assert!(falls_through(&body(
             "def f(x):\n    match x:\n        case _ if x:\n            return 1\n"
-        )));
+        ), &Exits::default()));
         assert!(falls_through(&body(
             "def f(x):\n    match x:\n        case 'a':\n            pass\n        case _:\n            return 2\n"
-        )));
+        ), &Exits::default()));
     }
 
     #[test]

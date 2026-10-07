@@ -17,11 +17,26 @@
 // ledger entry with status 'unreviewed' is promoted to an ERROR (forces
 // triage), and a 'present_artifact' auto-check that disagrees with reality is
 // likewise promoted to an ERROR.
+//
+// A ledger claim's status must be one of these four, matched exactly:
+//
+//	unreviewed         - new and not yet triaged; an ERROR until triaged
+//	known-gap          - the claim does not hold yet; needs a tracked_in link
+//	reviewed-disclosed - reviewed, and the docs disclose where reality differs
+//	reviewed-accurate  - reviewed, and the claim holds as written
+//
+// Any other status, including an empty or missing one, is an ERROR, so a typo
+// such as 'reviewed-disclsed' cannot pass as a reviewed claim.
+//
+// A missing claims.json is an empty ledger. A claims.json that cannot be read,
+// or does not parse as the ledger shape, is an ERROR.
 package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,6 +52,14 @@ var docFiles = []string{
 	"docs/agents.md",
 	"docs/assurance-hierarchy.md",
 	"docs/research/assurance-hierarchy.md",
+}
+
+// knownStatus is the ledger status allowlist the header comment documents.
+var knownStatus = map[string]bool{
+	"unreviewed":         true,
+	"known-gap":          true,
+	"reviewed-disclosed": true,
+	"reviewed-accurate":  true,
 }
 
 // reqKeys are the frontmatter keys every skill and agent must declare.
@@ -395,8 +418,17 @@ func analyze(root string) result {
 	}
 
 	// ---- LEDGER: narrative claims ----
-	r.ledger = loadLedger(root)
+	ledger, err := loadLedger(root)
+	if err != nil {
+		r.errors = append(r.errors, "[ledger] "+err.Error())
+	}
+	r.ledger = ledger
 	for _, c := range r.ledger {
+		if !knownStatus[c.Status] {
+			r.errors = append(r.errors, fmt.Sprintf(
+				"[ledger] claim %s has unknown status %q (want one of unreviewed|known-gap|reviewed-disclosed|reviewed-accurate)",
+				c.ID, c.Status))
+		}
 		if c.Status == "unreviewed" {
 			r.errors = append(r.errors, fmt.Sprintf(
 				"[ledger] claim %s is UNREVIEWED — triage required", c.ID))
@@ -442,17 +474,22 @@ func readMCPSource(root string) string {
 	return sb.String()
 }
 
-// loadLedger reads conformance/claims.json, or returns nil if absent/unreadable.
-func loadLedger(root string) []claim {
-	data := readFile(filepath.Join(root, "conformance", "claims.json"))
-	if data == "" {
-		return nil
+// loadLedger reads conformance/claims.json. A missing file is an empty ledger;
+// a file that cannot be read or parsed is an error, so a broken ledger fails
+// the run instead of passing with zero claims.
+func loadLedger(root string) ([]claim, error) {
+	data, err := os.ReadFile(filepath.Join(root, "conformance", "claims.json"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot read conformance/claims.json: %w", err)
 	}
 	var lf ledgerFile
-	if err := json.Unmarshal([]byte(data), &lf); err != nil {
-		return nil
+	if err := json.Unmarshal(data, &lf); err != nil {
+		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
-	return lf.NarrativeClaims
+	return lf.NarrativeClaims, nil
 }
 
 // report renders the human-readable oracle report from a result.

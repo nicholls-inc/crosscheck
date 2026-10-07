@@ -74,10 +74,15 @@ pub struct FunctionInfo {
     /// a type variable).
     pub return_nullable: Option<bool>,
     /// Decorators as dotted names (`background_task`, `app.task`; a call
-    /// `@d(...)` gives `d`).
+    /// `@d(...)` gives `d`; any other expression gives an empty name).
     pub decorators: Vec<Vec<String>>,
     /// The body yields: calling the function returns a generator.
     pub is_generator: bool,
+    /// An `async def`: calling it returns a coroutine.
+    pub is_async: bool,
+    /// The statements of the body that never complete (`resolve::function_exits`,
+    /// filled once the project index is complete).
+    pub exits: crate::flow::Exits,
     /// Byte offset of the return annotation (a line after `Project::build`).
     pub return_line: u32,
 }
@@ -313,6 +318,8 @@ pub fn module_function(stmts: &[Stmt], source_file: &str, module: &str) -> Optio
         decorators: Vec::new(),
         return_line: 0,
         is_generator: false,
+        is_async: false,
+        exits: Default::default(),
     })
 }
 
@@ -427,15 +434,17 @@ fn extract_function_info(
         decorators: func_def
             .decorator_list
             .iter()
-            .filter_map(|d| {
+            .map(|d| {
                 let target = match &d.expression {
                     Expr::Call(c) => c.func.as_ref(),
                     other => other,
                 };
-                crate::resolve::dotted_parts(target)
+                crate::resolve::dotted_parts(target).unwrap_or_default()
             })
             .collect(),
         is_generator: crate::flow::is_generator_body(&func_def.body),
+        is_async: func_def.is_async,
+        exits: Default::default(),
         return_line: func_def
             .returns
             .as_deref()

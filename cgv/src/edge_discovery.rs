@@ -161,7 +161,7 @@ pub fn discover(project: &Project) -> Discovered {
             observations: Vec::new(),
             forwarder_edges: Vec::new(),
         };
-        let end = flow::walk_block(&func.body, &flow.entry, &mut walker);
+        let end = flow::walk_block(&func.body, &flow.entry, &flow.exits, &mut walker);
         if flow.falls_through {
             walker.observations.push((None, end));
             // Falling off the end returns None, against a non-Optional
@@ -366,7 +366,7 @@ pub fn caller_guards(project: &Project) -> CallerGuards {
             resolved: &mut resolved,
             callers: &mut callers,
         };
-        flow::walk_block(&func.body, &flow.entry, &mut collector);
+        flow::walk_block(&func.body, &flow.entry, &flow.exits, &mut collector);
     }
     let entered = entered_functions(&callers);
     guards.retain(|q, _| {

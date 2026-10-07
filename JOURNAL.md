@@ -4,6 +4,59 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - Baseline mode reports only the findings that a change introduces
+
+**Type:** feature
+**Touches:** cgv/src/baseline.rs, cgv/src/report.rs, cgv/src/main.rs, cgv/src/lib.rs, cgv/tests/e2e_baseline.rs, cgv/README.md, docs/TASKS.md
+**Why:** A whole-project run on a real codebase reports about 240 errors, and a real bug ranked between #140 and #180. Nobody triages that on a pull request (#7).
+**Links:** [intent](intent/2026-10-07-cgv-baseline-mode.md), [spec](intent/2026-10-07-cgv-baseline-mode-spec.md)
+
+`--write-baseline PATH` writes a run's findings, and `--baseline PATH` prints only the findings that are not in the baseline, counts the rest, and lists the baseline findings that are gone. The key of a finding is its class, source, target, hop, bounds, site file and the normalised text of the site's line, with no line number, so an edit above a finding does not make it new. The comparison counts each key, and when a key's count rises every finding with that key is printed as new. Baseline mode exits 1 when any error is unmatched, so it can only hide a finding that has an equal key in the baseline. A finding swapped for an equal one is not yet reached, and the spec names the open question. Exit 0 in baseline mode does not carry `runChecker_sound_all`, so `--baseline` refuses `--evidence-record`. It also refuses a `--write-baseline` that names the same file, which would overwrite the baseline with the run's new errors. Without either flag the output is unchanged. On the 10 cases of the public bench corpus, a baseline from `fix/` compared with `pre/` exits 1 on exactly the 5 cases whose `pre/` has an error that `fix/` lacks.
+
+## 2026-10-07 - Proving CGV's extraction is split into sixteen rows
+
+**Type:** docs
+**Touches:** intent/2026-10-07-prove-extraction.md, intent/2026-10-07-prove-extraction-plan.md, docs/TASKS.md
+**Why:** #16 names three unproved links between Python source and the graph that `runChecker_sound_all` is about, and four approaches to them, but the queue had one row for all of it.
+**Links:** [intent](intent/2026-10-07-prove-extraction.md), [plan](intent/2026-10-07-prove-extraction-plan.md)
+
+TB-1.11 to TB-1.26 follow the issue's recommendation. Link 3 is proved per constraint kind against `BehaviorModel.lean`, then end to end. Link 2 is made strict and pure, then proved, and its IO shell is tested. Link 1 is tested against values observed in generated programs, and certificate checking is piloted on one pattern to measure its cost. Reading the code found that `param_max_digits` is written by the extractor and dropped by `Translation.lean`, so a write with too many integer digits into a `DecimalField` exits 0 (measured on a two-file fixture with binaries built from earlier task branches, not yet re-measured on `main`), and that `buildGraph` drops an edge whose endpoint names no node, which the README's trust table contradicts by saying malformed rows exit 2. TB-1.12 corrects that row. TB-1.13 and TB-1.12 cover them. A proof of link 1 and a proof of completeness stay not yet reached, and the intent names the blocking property and the open question for each.
+
+---
+
+## 2026-10-07 - The text report counts a missing guarantee as coverage instead of printing it
+
+**Type:** feature
+**Touches:** cgv/src/report.rs, cgv/src/main.rs, cgv/tests/e2e_text_format.rs, cgv/tests/e2e_cli.rs, cgv/README.md, docs/TASKS.md
+**Why:** On a private Django codebase, 7,595 of 8,374 warnings said only that a source had no nullability guarantee. Readers took them for findings, and the errors were lost among them (#9).
+**Links:** [intent](intent/2026-10-07-cgv-unverified-coverage.md), [spec](intent/2026-10-07-cgv-unverified-coverage-spec.md)
+
+`--format text` sorts each checker result into one of four classes: incomplete, error, unverified and warning. A warning whose `source_guarantee` reads `<kind> (unspecified)` is unverified. By default the report prints no block for it, and counts it in a new `COVERAGE BY MODULE` section and in the `RESULT:` line, so a run that exits 0 with unverified requirements still says so. The section names the blocking property and the open question. `--warnings` prints the blocks, labelled `UNVERIFIED`. The edge counts come from the contract database the checker read, and on every fixture they sum to `edges_checked`. JSON and the exit code are unchanged. The class rests on the checker's wording, and a warning the report cannot classify is printed, not hidden. CG-1.31 moves the class into the checker's JSON and counts checked hop states for each module.
+
+---
+
+## 2026-10-07 - The imported Crosscheck backlog has one decision per issue
+
+**Type:** docs
+**Touches:** intent/2026-10-07-backlog-review.md, intent/2026-10-07-backlog-review-decisions.md, docs/TASKS.md
+**Why:** AD-1 asks for one decision, Refine or Drop, on each of the 23 issues (#19 to #41) that came with Crosscheck. They were written before the vision, and none had a row in the queue.
+**Links:** [intent](intent/2026-10-07-backlog-review.md), [decisions](intent/2026-10-07-backlog-review-decisions.md)
+
+Twenty-one issues are refined and two are dropped. #37 is already done on `main`, and #34 is done apart from two residues that move to AD-1.11, and the decisions file cites the lines that do them. The refined issues give 19 new rows: PB-1.18 to PB-1.21 for Crosscheck's own deterministic CI checks, VA-1.9 to VA-1.11 for agents and skills that present an unchecked or LLM verdict as evidence, and AD-1.2 to AD-1.13 for work that serves a design rule and no other current item. Two refinements change what an issue asked for, because the original conflicts with rule 1 of the vision. #22 no longer makes an LLM judge the pass condition of the acceptance oracles. #32 no longer lets an LLM's tag close a finding. The GitHub issues are rewritten and closed from the decisions file after review, not in this pull request.
+
+---
+
+## 2026-10-06 - A call that never returns, and a match over every enum member, end the flow
+
+**Type:** fix
+**Touches:** cgv/README.md, cgv/src/exits.rs, cgv/src/flow.rs, cgv/src/resolve.rs, cgv/src/extractor.rs, cgv/src/function_extractor.rs, cgv/src/edge_discovery.rs, cgv/src/value_analysis.rs, cgv/test_fixtures/no_return_exits/, cgv/bench/baseline.json, docs/TASKS.md
+**Why:** CGV treated a body that ends in `assert_never(x)`, `sys.exit(1)` or a `match` over every member of an enum as falling through to `return None`, a false non-null error against a non-Optional return. It was 2 of the 20 triaged non-null errors in the real-codebase evaluation, and the `no-return` false positive in the labelled benchmark.
+**Links:** [intent](intent/2026-10-06-no-return-exits.md)
+
+`flow.rs` cannot resolve a name, so the decision is made once per function after the project index is complete. `exits::function_exits` returns an `Exits`, two sets of statement offsets kept on `FunctionInfo`, and `always_exits`, `terminates` and `walk` read it. A call counts when it reaches `sys.exit`, `os._exit`, `os.abort`, `typing.assert_never` or `typing_extensions.assert_never` through a non-project import, the builtins `exit` or `quit`, or a project function annotated `NoReturn` or `Never` with no wrapping decorator, awaited exactly when it is `async`. A match counts when its subject is an unrebound parameter annotated with a project enum whose member list is certain, and unguarded `E.NAME` patterns name every member. A name the function binds, a module global the module rebinds, and a name reached through an import chain in which a module rebinds it, or imports it from two places, and a name that a module with a star import neither imports nor defines, never count (a star import after an explicit import is CG-1.22). Anything unrecognised is assumed to complete, which can only add errors. Instance method calls, attribute or local subjects, and enums or `NoReturn` functions from outside the project are not yet reached, and the intent names the blocking property and the open question for each.
+
+---
+
 ## 2026-10-06 - CGV narrows None in four more patterns
 
 **Type:** fix
