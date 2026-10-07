@@ -1657,7 +1657,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
                 }
             }
         }
-        let mut rows = facts_rows(&facts, 0, file, line, VerificationLevel::Extracted);
+        let mut rows = facts_rows(self.scope.index, &facts, 0, file, line, VerificationLevel::Extracted);
         if is_return && matches!(target, Target::Field(..)) {
             self.add_docstring_rows(&mut rows);
         }
@@ -1702,7 +1702,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             .map(Vec::as_slice)
             .unwrap_or(&[]);
         let mut rows: Vec<ContractRecord> =
-            function_extractor::postcondition_rows(func, &summary, doc, 0)
+            function_extractor::postcondition_rows(&self.project.index, func, &summary, doc, 0)
                 .into_iter()
                 .filter(|r| r.constraint_type != ConstraintType::Nullability)
                 .collect();

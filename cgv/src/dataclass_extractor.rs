@@ -36,6 +36,7 @@ use crate::db::{
     ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
     VerificationLevel,
 };
+use crate::resolve::Shadow;
 
 /// Value types whose names are comparable with function type postconditions.
 pub const VALUE_TYPES: [&str; 5] = ["Decimal", "int", "str", "float", "bool"];
@@ -78,6 +79,9 @@ pub struct ClassCandidate {
     /// type (see `resolve::external_type_names`): fields annotated with one
     /// have unknown nullability and type.
     pub external_types: std::collections::HashSet<String>,
+    /// Fields whose annotation names a value type that the module binds to
+    /// something else (see `resolve::ProjectIndex::annotation_shadow`).
+    pub type_shadows: HashMap<String, Shadow>,
 }
 
 /// One annotated field of a recognised data class.
@@ -185,6 +189,7 @@ pub fn collect_classes_with(
         .map(|class_def| ClassCandidate {
             aliases: with_type_params(aliases, class_def.type_params.as_deref()),
             external_types: Default::default(),
+            type_shadows: Default::default(),
             class_def: class_def.clone(),
             module: module.clone(),
             source_file: source_file.to_string(),
@@ -601,6 +606,17 @@ pub(crate) fn last_segment(expr: &Expr) -> Option<String> {
     dotted_name(expr).map(|d| d.rsplit('.').next().unwrap_or(&d).to_string())
 }
 
+/// Field name and annotation of each annotated name in a class body.
+pub fn field_annotations(class_def: &ast::StmtClassDef) -> impl Iterator<Item = (String, &Expr)> {
+    class_def.body.iter().filter_map(|stmt| match stmt {
+        Stmt::AnnAssign(ann) => match ann.target.as_ref() {
+            Expr::Name(target) => Some((target.id.to_string(), ann.annotation.as_ref())),
+            _ => None,
+        },
+        _ => None,
+    })
+}
+
 /// Annotated fields declared directly in the class body.
 fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
     let class_name = candidate.class_def.name.to_string();
@@ -617,11 +633,16 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
         };
         // A type imported from an unmodelled package may include None.
         let external = crate::resolve::annotation_is_external(&ann.annotation, &candidate.external_types);
+        let type_name = match (external, candidate.type_shadows.get(&field_name)) {
+            (true, _) | (false, Some(Shadow::Unknown)) => None,
+            (false, Some(Shadow::Class(q))) => info.type_name.map(|_| q.clone()),
+            (false, None) => info.type_name,
+        };
         let mut field = DataClassField {
             class_name: class_name.clone(),
             class_qualified: candidate_qualified(candidate),
             field_name,
-            type_name: if external { None } else { info.type_name },
+            type_name,
             nullable: if external && info.nullable == Some(false) { None } else { info.nullable },
             max_digits: None,
             decimal_places: None,
@@ -1023,11 +1044,15 @@ fn int_literal(expr: &Expr) -> Option<i64> {
 /// The field's requirements as facts (what `write_data_classes` states as
 /// preconditions): what a read of the field yields, since every write to it
 /// is checked against them.
-pub fn requirement_facts(class: &DataClass, field: &DataClassField) -> crate::value_analysis::ValueFacts {
+pub fn requirement_facts(
+    index: &crate::resolve::ProjectIndex,
+    class: &DataClass,
+    field: &DataClassField,
+) -> crate::value_analysis::ValueFacts {
     use crate::value_analysis::{Dep, ValueFacts};
     let type_name = field.type_name.clone().filter(|t| {
         let numeric = matches!(t.as_str(), "Decimal" | "int" | "float");
-        VALUE_TYPES.contains(&t.as_str()) && !(numeric && class.lax_numeric(field))
+        index.is_contract_type(t) && !(numeric && class.lax_numeric(field))
     });
     ValueFacts {
         nullable: field.nullable,
@@ -1051,6 +1076,7 @@ pub fn field_qualified(field: &DataClassField) -> String {
 /// Returns a map from qualified field name to node ID.
 pub fn write_data_classes(
     db: &ContractDb,
+    index: &crate::resolve::ProjectIndex,
     classes: &[DataClass],
     names: &HashMap<String, String>,
 ) -> Result<HashMap<String, i64>> {
@@ -1084,7 +1110,7 @@ pub fn write_data_classes(
 
             if let Some(t) = &field.type_name {
                 let numeric = matches!(t.as_str(), "Decimal" | "int" | "float");
-                if VALUE_TYPES.contains(&t.as_str()) && !(numeric && class.lax_numeric(field)) {
+                if index.is_contract_type(t) && !(numeric && class.lax_numeric(field)) {
                     db.insert_contract(&ContractRecord {
                         param_type_name: Some(t.clone()),
                         ..base(ConstraintType::Type)
