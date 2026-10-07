@@ -636,6 +636,40 @@ describe("dafnyEvidence against a real git repository", () => {
       ]);
     });
 
+    it.each([
+      ["a percent escape that Dafny decodes", "L%69b.dfy"],
+      ["an escaped parent directory", "%2e%2e/Lib.dfy"],
+      ["a trailing space, which Dafny trims", "Lib.dfy "],
+    ])("refuses an include path with %s", async (_name, path) => {
+      await commitFiles({ "proofs/Abs.dfy": `include "${path}"\n${SOURCE}`, "proofs/Lib.dfy": "" });
+      await refusesBeforeDafny([
+        `include "${path}" in proofs/Abs.dfy is outside the tracked files: the path has characters outside A-Z a-z 0-9 _ . / -, which Dafny may decode before it opens the file`,
+      ]);
+    });
+
+    it.each([
+      ["UTF-16 with a byte-order mark", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('include "Lib.dfy"\n', "utf16le")])],
+      ["UTF-16 big-endian with a mark", Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('include "Lib.dfy"\n', "utf16le").swap16()])],
+      ["a NUL byte", Buffer.from('include "Lib.dfy"\n\0')],
+    ])("refuses an included file that is %s, which Dafny decodes and the scan cannot read", async (_name, bytes) => {
+      await commitFiles({ "proofs/Abs.dfy": `include "Wide.dfy"\n${SOURCE}`, "proofs/Wide.dfy": bytes, "proofs/Lib.dfy": "" });
+      await refusesBeforeDafny([
+        'include "Wide.dfy" in proofs/Abs.dfy is outside the tracked files: could not be read: proofs/Wide.dfy is not UTF-8 text (it has a NUL byte, as UTF-16 and UTF-32 text does)',
+      ]);
+    });
+
+    it("refuses a verified file that is UTF-16 text", async () => {
+      await commitFiles({ "proofs/Abs.dfy": Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(SOURCE, "utf16le")]) });
+      await refusesBeforeDafny([
+        "could not read proofs/Abs.dfy: proofs/Abs.dfy is not UTF-8 text (it has a NUL byte, as UTF-16 and UTF-32 text does)",
+      ]);
+    });
+
+    it("accepts a UTF-8 byte-order mark", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `\uFEFFinclude "Lib.dfy"\n${SOURCE}`, "proofs/Lib.dfy": "" });
+      expect((await dafnyEvidence(input)).errors).toEqual([]);
+    });
+
     it("refuses a backslash in an include path with the outside-the-tree reason", async () => {
       await commitFiles({ "proofs/Abs.dfy": `include "..\\Lib.dfy"\n${SOURCE}` });
       await refusesBeforeDafny([
@@ -685,7 +719,7 @@ describe("dafnyEvidence against a real git repository", () => {
     });
   });
 
-  async function commitFiles(files: Record<string, string>) {
+  async function commitFiles(files: Record<string, string | Buffer>) {
     for (const [path, content] of Object.entries(files)) {
       await mkdir(join(repo, path, ".."), { recursive: true });
       await writeFile(join(repo, path), content);

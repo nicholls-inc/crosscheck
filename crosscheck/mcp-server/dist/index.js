@@ -21447,6 +21447,12 @@ async function untrackedReason(root, path) {
   return null;
 }
 var INCLUDE = /\binclude\b(?:\s+"([^"]*)")?/g;
+var PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
+async function readScannedSource(root, path) {
+  const bytes = await readFile2(resolvePath(root, path));
+  if (bytes.includes(0)) throw new Error(`${path} is not UTF-8 text (it has a NUL byte, as UTF-16 and UTF-32 text does)`);
+  return bytes.toString("utf-8");
+}
 async function includedFiles(root, file, source) {
   const files = [file];
   const errors = [];
@@ -21460,12 +21466,14 @@ async function includedFiles(root, file, source) {
       }
       const path = posix.normalize(posix.join(posix.dirname(from), target));
       const outside = isAbsolute(target) || target.includes("\\") || path === ".." || path.startsWith("../");
-      if (!outside && files.includes(path)) continue;
+      if (!outside && PLAIN_PATH.test(target) && files.includes(path)) continue;
       let reason = `resolves outside the work tree: ${target}`;
-      if (!outside) {
+      if (!outside && !PLAIN_PATH.test(target)) {
+        reason = "the path has characters outside A-Z a-z 0-9 _ . / -, which Dafny may decode before it opens the file";
+      } else if (!outside) {
         try {
           reason = await untrackedReason(root, path);
-          if (reason === null) queue.push([path, await readFile2(resolvePath(root, path), "utf-8")]);
+          if (reason === null) queue.push([path, await readScannedSource(root, path)]);
         } catch (err) {
           reason = `could not be read: ${err.message}`;
         }
@@ -21524,7 +21532,7 @@ async function dafnyEvidence(input) {
   try {
     const reason = await untrackedReason(root, input.file);
     if (reason !== null) return refuse([reason]);
-    source = await readFile2(resolvePath(root, input.file), "utf-8");
+    source = await readScannedSource(root, input.file);
   } catch (err) {
     return refuse([`could not read ${input.file}: ${err.message}`]);
   }

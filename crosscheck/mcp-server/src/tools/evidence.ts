@@ -174,6 +174,18 @@ async function untrackedReason(root: string, path: string): Promise<string | nul
 // else is refused rather than skipped.
 const INCLUDE = /\binclude\b(?:\s+"([^"]*)")?/g;
 
+// Dafny decodes a source file by its byte-order mark and percent-decodes an include path, so the scan
+// reads only text it decodes the same way: no NUL byte (which UTF-16 and UTF-32 text always has), and an include path of
+// plain path characters.
+const PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
+
+async function readScannedSource(root: string, path: string): Promise<string> {
+  const bytes = await readFile(resolvePath(root, path));
+  // UTF-16 and UTF-32 text carries a NUL byte beside every ASCII character, `include` included.
+  if (bytes.includes(0)) throw new Error(`${path} is not UTF-8 text (it has a NUL byte, as UTF-16 and UTF-32 text does)`);
+  return bytes.toString("utf-8");
+}
+
 async function includedFiles(
   root: string,
   file: string,
@@ -191,12 +203,14 @@ async function includedFiles(
       }
       const path = posix.normalize(posix.join(posix.dirname(from), target));
       const outside = isAbsolute(target) || target.includes("\\") || path === ".." || path.startsWith("../");
-      if (!outside && files.includes(path)) continue;
+      if (!outside && PLAIN_PATH.test(target) && files.includes(path)) continue;
       let reason: string | null = `resolves outside the work tree: ${target}`;
-      if (!outside) {
+      if (!outside && !PLAIN_PATH.test(target)) {
+        reason = "the path has characters outside A-Z a-z 0-9 _ . / -, which Dafny may decode before it opens the file";
+      } else if (!outside) {
         try {
           reason = await untrackedReason(root, path);
-          if (reason === null) queue.push([path, await readFile(resolvePath(root, path), "utf-8")]);
+          if (reason === null) queue.push([path, await readScannedSource(root, path)]);
         } catch (err) {
           reason = `could not be read: ${(err as Error).message}`;
         }
@@ -265,7 +279,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   try {
     const reason = await untrackedReason(root, input.file);
     if (reason !== null) return refuse([reason]);
-    source = await readFile(resolvePath(root, input.file), "utf-8");
+    source = await readScannedSource(root, input.file);
   } catch (err) {
     return refuse([`could not read ${input.file}: ${(err as Error).message}`]);
   }
