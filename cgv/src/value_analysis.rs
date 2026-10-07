@@ -24,7 +24,6 @@ use ruff_python_ast::visitor;
 use ruff_python_ast::{self as ast, BoolOp, Expr, Number, Operator, UnaryOp};
 
 use crate::bounds::{self, Dec};
-use crate::dataclass_extractor::VALUE_TYPES;
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
 use crate::flow::{self, Def, FunctionFlow, Narrowed};
 use crate::function_extractor::{strip_optional, FunctionInfo, MethodKind, ParamInfo, ParamKind};
@@ -2380,7 +2379,7 @@ impl<'a> Scope<'a> {
                 .as_deref()
                 .map(|t| t.split('[').next().unwrap_or(t).trim().to_string())
         });
-        facts.type_name = annotated.filter(|t| VALUE_TYPES.contains(&t.as_str()));
+        facts.type_name = annotated.filter(|t| self.index.is_contract_type(t));
         facts.weak_type = false;
         facts
     }
@@ -2664,6 +2663,7 @@ fn is_none_annotation(expr: &Expr) -> bool {
 
 /// Postcondition rows stating `facts`.
 pub fn facts_rows(
+    index: &ProjectIndex,
     facts: &ValueFacts,
     node_id: i64,
     source_file: &str,
@@ -2684,7 +2684,7 @@ pub fn facts_rows(
     if let Some(t) = facts
         .type_name
         .as_ref()
-        .filter(|t| VALUE_TYPES.contains(&t.as_str()))
+        .filter(|t| index.is_contract_type(t))
     {
         if !facts.weak_type {
             rows.push(ContractRecord {

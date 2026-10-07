@@ -1276,6 +1276,65 @@ impl ProjectIndex {
         }
     }
 
+    /// What the type-contract name in `annotation` (see `canonical_modules`)
+    /// refers to, as seen from `module`, when that is not the type the name
+    /// spells: `None` for the builtin (or `decimal.Decimal`, or pydantic's
+    /// `StrictInt`, ...), and for a name `module` does not bind.
+    pub fn annotation_shadow(&self, module: &str, annotation: &Expr) -> Option<Shadow> {
+        let mut leaves = Vec::new();
+        type_leaves(annotation, &mut leaves);
+        leaves.iter().find_map(|leaf| self.name_shadow(module, leaf))
+    }
+
+    fn name_shadow(&self, module: &str, leaf: &Expr) -> Option<Shadow> {
+        let parts = dotted_parts(leaf)?;
+        let name = parts.last()?.as_str();
+        let canonical = canonical_modules(name)?;
+        let info = self.modules.get(module)?;
+        let class_or_unknown = |sym: Symbol| match sym {
+            Symbol::Class(q) if q.contains('.') => Shadow::Class(q),
+            _ => Shadow::Unknown,
+        };
+        if let [head] = parts.as_slice() {
+            if info.rebound.contains(head) {
+                return Some(Shadow::Unknown);
+            }
+            if let Some(sym) = self.lookup(module, head) {
+                return Some(class_or_unknown(sym));
+            }
+            return match info.imports.get(head) {
+                Some(Import::Symbol { module: m, name: n })
+                    if canonical.contains(&m.as_str()) && n == name =>
+                {
+                    None
+                }
+                Some(_) => Some(Shadow::Unknown),
+                None => None,
+            };
+        }
+        match self.resolve_dotted(module, &parts) {
+            // `decimal.Decimal` resolves to a module path outside the project.
+            Some(Symbol::Module(path)) if !self.modules.contains_key(&path) => {}
+            Some(sym) => return Some(class_or_unknown(sym)),
+            None => {}
+        }
+        let (head, middle) = (&parts[0], &parts[1..parts.len() - 1]);
+        let path = match info.imports.get(head)? {
+            Import::Module(path) => path.clone(),
+            Import::Symbol { module: m, name: n } => qualify(m, n),
+        };
+        let path = std::iter::once(path).chain(middle.iter().cloned()).collect::<Vec<_>>().join(".");
+        (!canonical.contains(&path.as_str())).then_some(Shadow::Unknown)
+    }
+
+    /// Whether `t`, a type name taken from an annotation, is one that type
+    /// contracts compare: a value type, or a project class that shadows one.
+    pub fn is_contract_type(&self, t: &str) -> bool {
+        crate::dataclass_extractor::VALUE_TYPES.contains(&t)
+            || t.rsplit_once('.').is_some_and(|(_, last)| canonical_modules(last).is_some())
+                && self.classes.contains_key(t)
+    }
+
     /// Whether bare `name` in `module` is a module-level compiled pattern
     /// (defined there or imported from where it is defined).
     pub fn is_pattern(&self, module: &str, name: &str) -> bool {
@@ -1584,6 +1643,66 @@ pub fn dotted_parts(expr: &Expr) -> Option<Vec<String>> {
     }
 }
 
+/// What a type-contract name in an annotation refers to when a module binds
+/// it to something other than the type it spells (see
+/// `ProjectIndex::annotation_shadow`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Shadow {
+    /// A project class, by qualified name (`units.float`): the type contract names it.
+    Class(String),
+    /// Anything else (a function, a constant, a rebound global, an import
+    /// from another module): no type contract.
+    Unknown,
+}
+
+/// The modules a type-contract name means when imported from them (an
+/// unimported builtin name means the builtin), or `None` for a name that
+/// gives no type contract.
+fn canonical_modules(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        "int" | "float" | "str" | "bool" => Some(&["builtins"]),
+        "Decimal" => Some(&["decimal", "_decimal", "_pydecimal"]),
+        "StrictInt" | "StrictFloat" | "StrictStr" | "StrictBool" => Some(&["pydantic", "pydantic.types"]),
+        _ => None,
+    }
+}
+
+/// The names in an annotation that can give its type, read as
+/// `dataclass_extractor::walk_annotation` reads them: through `Optional`,
+/// unions, `Annotated`, `Final` and similar wrappers, and quoted forward
+/// references, but not into the arguments of a generic (`list[float]`) or
+/// a `Literal`.
+fn type_leaves(expr: &Expr, out: &mut Vec<Expr>) {
+    match expr {
+        Expr::Name(_) | Expr::Attribute(_) => out.push(expr.clone()),
+        Expr::Subscript(sub) => {
+            let head = dotted_parts(&sub.value).and_then(|p| p.last().cloned()).unwrap_or_default();
+            match head.as_str() {
+                "Optional" | "Union" | "Final" | "Required" | "NotRequired" | "ReadOnly"
+                | "SkipValidation" => match sub.slice.as_ref() {
+                    Expr::Tuple(t) => t.elts.iter().for_each(|e| type_leaves(e, out)),
+                    other => type_leaves(other, out),
+                },
+                "Annotated" => match sub.slice.as_ref() {
+                    Expr::Tuple(t) => t.elts.iter().take(1).for_each(|e| type_leaves(e, out)),
+                    other => type_leaves(other, out),
+                },
+                _ => {}
+            }
+        }
+        Expr::BinOp(b) if matches!(b.op, ruff_python_ast::Operator::BitOr) => {
+            type_leaves(&b.left, out);
+            type_leaves(&b.right, out);
+        }
+        Expr::StringLiteral(s) => {
+            if let Ok(parsed) = ruff_python_parser::parse_expression(s.value.to_str().trim()) {
+                type_leaves(parsed.expr(), out);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Display names: the short name when no other node has it, else the
 /// qualified name. Input pairs are `(qualified, short)`.
 pub fn display_names(nodes: &[(String, String)]) -> HashMap<String, String> {
@@ -1730,5 +1849,41 @@ mod tests {
         ]);
         assert_eq!(names["billing.code.make"], "billing.code.make");
         assert_eq!(names["helpers.label"], "label");
+    }
+
+    #[test]
+    fn test_annotation_shadow() {
+        let idx = index(&[
+            ("units.py", "class float:\n    pass\n"),
+            (
+                "app.py",
+                "import builtins\nimport units\nimport decimal\nfrom decimal import Decimal\n\
+                 from units import float\nfrom ctypes import c_int as int\nstr = bytes\n\
+                 def bool(): pass\n",
+            ),
+            ("plain.py", "from builtins import int as float\n"),
+        ]);
+        let shadow = |module: &str, annotation: &str| {
+            let expr = ruff_python_parser::parse_expression(annotation).unwrap().into_expr();
+            idx.annotation_shadow(module, &expr)
+        };
+        let units_float = Some(Shadow::Class("units.float".to_string()));
+        assert_eq!(shadow("app", "float"), units_float);
+        assert_eq!(shadow("app", "Optional[float]"), units_float);
+        assert_eq!(shadow("app", "float | None"), units_float);
+        assert_eq!(shadow("app", "Annotated[float, Field(ge=0)]"), units_float);
+        assert_eq!(shadow("app", "'float'"), units_float);
+        assert_eq!(shadow("app", "units.float"), units_float);
+        assert_eq!(shadow("plain", "units.float"), None);
+        assert_eq!(shadow("app", "int"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "str"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "bool"), Some(Shadow::Unknown));
+        assert_eq!(shadow("plain", "float"), Some(Shadow::Unknown));
+        assert_eq!(shadow("plain", "int"), None);
+        assert_eq!(shadow("app", "Decimal"), None);
+        assert_eq!(shadow("app", "decimal.Decimal"), None);
+        assert_eq!(shadow("app", "builtins.int"), None);
+        assert_eq!(shadow("app", "list[float]"), None);
+        assert_eq!(shadow("units", "float"), units_float);
     }
 }

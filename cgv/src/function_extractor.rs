@@ -3,7 +3,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use crate::dataclass_extractor::{annotation_facts, last_segment, VALUE_TYPES};
 use crate::db::{ConstraintType, ContractRecord, ContractRole, VerificationLevel};
 use crate::docstring_parser::DocstringContract;
-use crate::resolve::qualify;
+use crate::resolve::{qualify, Shadow};
 use crate::value_analysis::{facts_rows, ValueFacts};
 
 /// How a parameter binds arguments.
@@ -542,6 +542,37 @@ pub fn apply_external_types(func: &mut FunctionInfo, external: &std::collections
     }
 }
 
+/// Resolve the type names that `func`'s annotations give against the project
+/// (`shadow`, see `resolve::ProjectIndex::annotation_shadow`): a project
+/// class that shadows a value type is named by its qualified name, and
+/// anything else that shadows one gives no type.
+pub fn apply_shadows(func: &mut FunctionInfo, shadow: &dyn Fn(&Expr) -> Option<Shadow>) {
+    let resolve = |t: &mut Option<String>, annotation: &Expr| {
+        if t.is_none() {
+            return;
+        }
+        match shadow(annotation) {
+            Some(Shadow::Class(q)) => *t = Some(q),
+            Some(Shadow::Unknown) => *t = None,
+            None => {}
+        }
+    };
+    for p in &mut func.params {
+        if let Some(a) = &p.annotation {
+            resolve(&mut p.type_name, a);
+        }
+    }
+    let Some(ret) = &func.return_annotation else { return };
+    resolve(&mut func.return_type, ret);
+    if let Expr::Subscript(sub) = ret {
+        if let Expr::Tuple(t) = sub.slice.as_ref() {
+            if let Some(first) = t.elts.first() {
+                resolve(&mut func.tuple_element_type, first);
+            }
+        }
+    }
+}
+
 /// The value type and nullability a parameter annotation gives. `object`
 /// includes `None`, so a parameter typed `object`, or a union with an
 /// `object` member, accepts it.
@@ -744,6 +775,7 @@ pub fn docstring_postcondition_rows(
 /// Docstring `ensures:` clauses (ASSUMED) take precedence over extracted
 /// facts (`summary`, from the return annotation and body) of the same kind.
 pub fn postcondition_rows(
+    index: &crate::resolve::ProjectIndex,
     func: &FunctionInfo,
     summary: &ValueFacts,
     doc: &[DocstringContract],
@@ -752,6 +784,7 @@ pub fn postcondition_rows(
     let mut rows = docstring_postcondition_rows(func, doc, node_id);
     let documented: Vec<ConstraintType> = rows.iter().map(|r| r.constraint_type.clone()).collect();
     for row in facts_rows(
+        index,
         summary,
         node_id,
         &func.source_file,

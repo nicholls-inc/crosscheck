@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
+
+**Type:** fix
+**Touches:** cgv/src/resolve.rs, cgv/src/function_extractor.rs, cgv/src/dataclass_extractor.rs, cgv/src/value_analysis.rs, cgv/src/extractor.rs, cgv/src/edge_discovery.rs, cgv/test_fixtures/shadowed_builtins/, cgv/README.md, docs/TASKS.md
+**Why:** CGV read an annotation's type by the last segment of its name, so a project `class float` got the builtin's type contract. Writes between it and a builtin `float` passed with exit 0 (CG-1.15). The numeric tower in #87 would also let a project `int` into a `float` field.
+**Links:** [intent](intent/2026-10-07-cgv-shadowed-builtins.md)
+
+`ProjectIndex::annotation_shadow` resolves the type-contract names of an annotation (`int`, `float`, `str`, `bool`, `Decimal`, `Strict*`) in the module that holds it. A name bound to a project class gives a contract that names the class by its qualified name (`units.float`), which equals only itself, so neither equality nor the numeric tower matches it to a builtin. A name bound to anything else gives no type contract. The extractor applies the answer to parameter, return and data class field annotations, and `ProjectIndex::is_contract_type` replaces the `VALUE_TYPES` filters, so the qualified name survives into the database. No Lean file changes. Names bound in a class body or a function, star imports from outside the project, aliases from another module and shadowed `con*()` helpers are not yet reached (CG-1.49).
+
+---
+
 ## 2026-10-07 - Baseline mode reports only the findings that a change introduces
 
 **Type:** feature
