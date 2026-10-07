@@ -21388,7 +21388,7 @@ function validateEvidenceInput(input) {
     errors.push("requirement is blank; pass null when the claim traces to no requirement");
   } else if (input.requirement !== null) {
     const path = requirementPath(input.requirement);
-    if (isAbsolute(path) || path.includes("\\") || path.split("/").some((s) => s === ".." || s === "." || s === "") || input.requirement.trim().endsWith("#")) {
+    if (path.includes("\\") || path.split("/").some((s) => s === ".." || s === "." || s === "") || input.requirement.trim().endsWith("#")) {
       errors.push(
         `requirement must be a relative path with no "." or ".." segment, optionally followed by #<anchor>: ${input.requirement}`
       );

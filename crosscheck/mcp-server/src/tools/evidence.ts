@@ -73,7 +73,6 @@ export function validateEvidenceInput(input: EvidenceInput): string[] {
   } else if (input.requirement !== null) {
     const path = requirementPath(input.requirement);
     if (
-      isAbsolute(path) ||
       path.includes("\\") ||
       path.split("/").some((s) => s === ".." || s === "." || s === "") ||
       input.requirement.trim().endsWith("#")
