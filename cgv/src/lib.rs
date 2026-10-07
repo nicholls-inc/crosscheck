@@ -1,3 +1,4 @@
+pub mod baseline;
 pub mod body_analyzer;
 pub mod bounds;
 pub mod dataclass_extractor;
