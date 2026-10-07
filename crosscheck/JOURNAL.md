@@ -74,6 +74,17 @@ The research doc's Scope section, its Layer 1, 2, 3 and 6 text, and its "What th
 
 ---
 
+## 2026-10-06 — Layers 4 to 6 say what they prove, test or only search
+
+**Type:** docs
+**Touches:** README.md, docs/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-06-layer-strengths-docs.md
+**Why:** Rule 1 of `docs/VISION.md` makes `/intent-check` a search tool, and rule 7 asks every claim to name its strength. The hierarchy guide said Layers 4 to 6 "prove the specification is the right specification" and gave Layer 5 the confidence "Probabilistic (~96%)". The README called `/intent-check` "round-trip intent verification".
+**Links:** [intent](../intent/2026-10-06-layer-strengths-docs.md)
+
+The hierarchy table's "Confidence" column is now "Strength", and each of Layers 4 and 5 says what proves, what tests and what only searches. At Layer 4, only `/check-regressions` proves, and only the Dafny source of a hard-constraint spec. For soft constraints it only checks that the property-test file still exists and suggests that a person run it. The `/invariant-coverage-scaffold` gate checks that each non-aspirational invariant is referenced by a comment in a test file, not that a test checks the invariant, and `/assurance-probe`'s mutation probe is deterministic mutation testing (AST-derived mutations, Python only in Phase 1), so whether a covering test kills each mutation is tested evidence about that test; a person judges whether a survivor shows a weak test. Layer 5 is search only for spec–intent alignment (`/intent-check`, and the invariant-vs-spec pass of `/audit-invariant-consistency`, whose other two passes are Layer 6), and a proof that a spec achieves its intent is not yet reached for the same reason as Layer 6 (RQ-1). The ~96% is now described as the accuracy Claimcheck reports for the round-trip method on a development benchmark, which measures the search, not the spec. Step 4 of the hierarchy guide's onboarding flow still says `/intent-check` "verifies"; open PR #72 (VA-1.1) rewrites that step, so this change leaves it alone. The research doc keeps the old Layer 5 wording; this change adds VA-1.7 for it. `/rationale` still marks static leaves "Verified (static)" and `/acceptance-oracle-draft` still says it measures whether the spec was the right spec; `/rationale`'s summary table also counts FORMAL leaves as `Verified` while they are only pending byfuglien dispatch, and says the root claim `holds by construction`. All are Class A skill text that VA-1.5 owns, and the docs now say otherwise.
+
+---
+
 ## 2026-10-06 — The README and the hierarchy guide say "not yet reached"
 
 **Type:** docs
