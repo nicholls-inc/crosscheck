@@ -89,7 +89,9 @@ Evidence at this stage comes from deterministic CI jobs:
   a protected theorem or definition depends on `sorry` or on a non-standard
   axiom. A kernel replay (`leanchecker`) then fails when a declaration of the
   built environment does not re-check, such as one added with the kernel check
-  switched off.
+  switched off. It skips `unsafe` and `partial` constants and does not replay
+  `ContractGraphTest` (limits CI-9 in
+  `intent/2026-09-29-deterministic-evidence-spec.md`).
 - **The tier gate:** `tier-gate.yml` runs the gate's own tests.
 
 `/intent-check`, `/audit-spec-coverage`, `/audit-invariant-consistency` and

@@ -52,7 +52,7 @@ The manifest does not catch changes outside what the listed definitions reach. E
 - **CI-4.** Runs `scripts/check-fixtures.sh`.
 - **CI-5.** Regenerates the statement manifest and fails on any difference from the committed file, printing the diff, or when the generator fails (SM-2, SM-6).
 - **CI-6.** Calls no LLM and uses no secret.
-- **CI-7.** Added by `intent/2026-10-07-kernel-replay.md`. After CI-3, in `cgv/prover`, replays the built environment through the Lean kernel with the `leanchecker` of the pinned toolchain, and fails if any declaration does not re-check:
+- **CI-7.** Added by `intent/2026-10-07-kernel-replay.md`. After CI-5, in `cgv/prover`, replays the built environment through the Lean kernel with the `leanchecker` of the pinned toolchain, and fails if any declaration does not re-check:
   - `lake env leanchecker --fresh ContractGraph.Main` replays every declaration in the import closure of `ContractGraph.Main` into an empty environment, which covers the Lean library, the `lake` dependencies that `Main` imports, and every `ContractGraph` module that `Main` imports;
   - `lake env leanchecker ContractGraph` replays the declarations of every `ContractGraph.*` module (matched by name component, so `ContractGraphTest.*` is not replayed) into the environment of its imports.
 - **CI-8.** Added by `intent/2026-10-07-kernel-replay.md`. Before CI-7, a self-test compiles, with the pinned toolchain and outside the Lake package, a module that adds `theorem bad : False := True.intro` under `debug.skipKernelTC` and a second module that imports it. The step fails unless `leanchecker` rejects the first module and `leanchecker --fresh` rejects the second.

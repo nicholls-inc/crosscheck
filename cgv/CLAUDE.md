@@ -49,13 +49,13 @@ python3 -m unittest discover -s scripts/tests
 cd prover && lake build ContractGraph ContractGraph.Main \
   && lake env lean --run scripts/ProtectedStatements.lean | diff -u protected-statements.txt -
 
-# Kernel replay: re-check every declaration with the pinned toolchain's kernel
+# Kernel replay: re-check every safe declaration with the pinned toolchain's kernel
 cd prover && lake env leanchecker --fresh ContractGraph.Main && lake env leanchecker ContractGraph
 ```
 
 `protected-statements.txt` records the statement of every protected soundness theorem, and the type and value hash of `constraintImplies`, `IsDataPath`, `stepwiseSound` and every definition they reach. A proof-only edit leaves it unchanged. The generator also exits 1 if a protected theorem or definition depends on `sorry` or on any axiom other than `propext`, `Classical.choice` and `Quot.sound` (`lake build` only warns on `sorry`). If a statement changes on purpose, regenerate the file (`> protected-statements.txt`). The file is a protected surface, so the pull request becomes Tier 3 and needs a governance note and a **Protected-surface change** section (see `.claude/rules/protected-surfaces.md` at the repository root).
 
-The axiom check reads which constants a proof uses and does not re-check the proof, so a declaration added with `debug.skipKernelTC` passes it. The kernel replay catches that: `leanchecker --fresh ContractGraph.Main` (about a minute) re-checks the whole import closure of `ContractGraph.Main`, and `leanchecker ContractGraph` (a few seconds) every `ContractGraph.*` module.
+The axiom check reads which constants a proof uses and does not re-check the proof, so a declaration added with `debug.skipKernelTC` passes it. The kernel replay catches that: `leanchecker --fresh ContractGraph.Main` (about a minute) re-checks the whole import closure of `ContractGraph.Main`, and `leanchecker ContractGraph` (a few seconds) every `ContractGraph.*` module. It skips `unsafe` and `partial` constants, uses the kernel that built the files, does not replay `ContractGraphTest`, and does not see `implemented_by` or `extern` (limits CI-9 in `intent/2026-09-29-deterministic-evidence-spec.md`).
 
 CI (`.github/workflows/cgv-ci.yml`) runs `lake build`, `cargo test`, `cargo build --release`, `scripts/check-fixtures.sh`, the manifest and axiom check, and the kernel replay with its self-test on every pull request that touches `cgv/`. Every CGV change follows the repository's development framework (`docs/assurance/DEVELOPMENT-FRAMEWORK.md`): an intent for every change, and for behavioural changes a spec. The spec can be the changed Lean statements plus fixture `expected.json` files, cited with `Spec: <path>`. See `docs/assurance/TIER-LAYER-MAP.md`.
 
