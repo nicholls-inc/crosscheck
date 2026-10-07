@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - A call that never returns, and a match over every enum member, end the flow
+
+**Type:** fix
+**Touches:** cgv/README.md, cgv/src/exits.rs, cgv/src/flow.rs, cgv/src/resolve.rs, cgv/src/extractor.rs, cgv/src/function_extractor.rs, cgv/src/edge_discovery.rs, cgv/src/value_analysis.rs, cgv/test_fixtures/no_return_exits/, cgv/bench/baseline.json, docs/TASKS.md
+**Why:** CGV treated a body that ends in `assert_never(x)`, `sys.exit(1)` or a `match` over every member of an enum as falling through to `return None`, a false non-null error against a non-Optional return. It was 2 of the 20 triaged non-null errors in the real-codebase evaluation, and the `no-return` false positive in the labelled benchmark.
+**Links:** [intent](intent/2026-10-06-no-return-exits.md)
+
+`flow.rs` cannot resolve a name, so the decision is made once per function after the project index is complete. `exits::function_exits` returns an `Exits`, two sets of statement offsets kept on `FunctionInfo`, and `always_exits`, `terminates` and `walk` read it. A call counts when it reaches `sys.exit`, `os._exit`, `os.abort`, `typing.assert_never` or `typing_extensions.assert_never` through a non-project import, the builtins `exit` or `quit`, or a project function annotated `NoReturn` or `Never` with no wrapping decorator, awaited exactly when it is `async`. A match counts when its subject is an unrebound parameter annotated with a project enum whose member list is certain, and unguarded `E.NAME` patterns name every member. A name the function binds, a module global the module rebinds, and a name reached through an import chain in which a module rebinds it, or imports it from two places, and a name that a module with a star import neither imports nor defines, never count (a star import after an explicit import is CG-1.22). Anything unrecognised is assumed to complete, which can only add errors. Instance method calls, attribute or local subjects, and enums or `NoReturn` functions from outside the project are not yet reached, and the intent names the blocking property and the open question for each.
+
+---
+
 ## 2026-10-06 - A parameter typed `object` accepts None
 
 **Type:** fix

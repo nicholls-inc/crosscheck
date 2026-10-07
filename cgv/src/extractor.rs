@@ -11,6 +11,7 @@ use crate::db::{
 use crate::defaults::{self, FieldDefaults};
 use crate::docstring_parser::{self, DocstringContract};
 use crate::edge_discovery::{self, CallSite, DiscoveredEdge, SiteKey};
+use crate::exits;
 use crate::function_extractor;
 use crate::model_extractor::{self, ModelField};
 use crate::resolve::{self, ClassInfo, ClassKind, EnumKind, ModuleInfo, ProjectIndex, Symbol};
@@ -182,7 +183,19 @@ impl Project {
                         .as_ref()
                         .map(|a| a.args.to_vec())
                         .unwrap_or_default();
-                    let info = ClassInfo::new(&m.module, &name, bases).with_body(&class.body);
+                    let mut info = ClassInfo::new(&m.module, &name, bases).with_body(&class.body);
+                    // A metaclass keyword or a class decorator may change how members are made.
+                    let plain_decorators = class.decorator_list.iter().all(|d| {
+                        let target = match &d.expression {
+                            Expr::Call(c) => c.func.as_ref(),
+                            other => other,
+                        };
+                        resolve::dotted_parts(target)
+                            .is_some_and(|p| p.last().is_some_and(|l| l == "unique" || l == "verify"))
+                    });
+                    if !plain_decorators || class.arguments.as_ref().is_some_and(|a| !a.keywords.is_empty()) {
+                        info.enum_members = None;
+                    }
                     index.classes.insert(info.qualified.clone(), info);
                 }
             }
@@ -265,6 +278,15 @@ impl Project {
                 (!doc.is_empty()).then(|| (f.qualified_name.clone(), doc))
             })
             .collect();
+
+        let exits: Vec<_> = index
+            .functions
+            .iter()
+            .map(|f| exits::function_exits(&index, f))
+            .collect();
+        for (f, e) in index.functions.iter_mut().zip(exits) {
+            f.exits = e;
+        }
 
         let summaries = value_analysis::compute_summaries(&index);
 
