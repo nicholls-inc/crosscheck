@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -40,6 +40,8 @@ describe("dafny_evidence over MCP", () => {
     git("config", "user.email", "t@example.com");
     git("config", "user.name", "t");
     await writeFile(join(repo, "Abs.dfy"), "lemma AbsNonneg(x: int) ensures x * x >= 0 {}\n");
+    await mkdir(join(repo, "docs"));
+    await writeFile(join(repo, "docs", "req.md"), "# Abs\n");
     git("add", ".");
     git("commit", "-q", "-m", "init");
     commit = git("rev-parse", "HEAD");

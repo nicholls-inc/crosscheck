@@ -21371,6 +21371,9 @@ import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolve
 var PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
 var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
+function requirementPath(requirement) {
+  return requirement.trim().split("#")[0];
+}
 function validateEvidenceInput(input) {
   const errors = [];
   if (!isAbsolute(input.repoPath)) errors.push(`repoPath must be absolute: ${input.repoPath}`);
@@ -21383,10 +21386,20 @@ function validateEvidenceInput(input) {
   if (input.statement.trim() === "") errors.push("statement is blank");
   if (input.requirement !== null && input.requirement.trim() === "") {
     errors.push("requirement is blank; pass null when the claim traces to no requirement");
+  } else if (input.requirement !== null) {
+    const path = requirementPath(input.requirement);
+    if (isAbsolute(path) || path.includes("\\") || path.split("/").some((s) => s === ".." || s === "." || s === "") || input.requirement.trim().endsWith("#")) {
+      errors.push(
+        `requirement must be a relative path with no "." or ".." segment, optionally followed by #<anchor>: ${input.requirement}`
+      );
+    }
   }
   if (input.theorems.length === 0) errors.push("theorems is empty");
   for (const name of input.theorems) {
     if (!NAME.test(name)) errors.push(`not a Dafny name: ${name}`);
+  }
+  for (const name of new Set(input.theorems)) {
+    if (input.theorems.indexOf(name) !== input.theorems.lastIndexOf(name)) errors.push(`theorem named more than once: ${name}`);
   }
   return errors;
 }
@@ -21559,6 +21572,14 @@ async function dafnyEvidence(input) {
   }
   const included = await includedFiles(root, input.file, source);
   if (included.errors.length > 0) return refuse(included.errors);
+  if (input.requirement !== null) {
+    try {
+      const reason = await untrackedReason(root, requirementPath(input.requirement));
+      if (reason !== null) return refuse([`requirement: ${reason}`]);
+    } catch (err) {
+      return refuse([`requirement: could not read ${requirementPath(input.requirement)}: ${err.message}`]);
+    }
+  }
   let out = null;
   if (input.outputPath !== void 0) {
     const target = await outputTarget(root, input.outputPath);
@@ -21773,8 +21794,8 @@ function createServer() {
       repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
       file: external_exports.string().describe("Path of the .dfy file relative to the work tree's top level, with / separators"),
       statement: external_exports.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
-      requirement: external_exports.string().nullable().describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
-      theorems: external_exports.array(external_exports.string()).describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
+      requirement: external_exports.string().nullable().describe("Path of the tracked file that holds the requirement the claim traces to, relative to the work tree's top level with / separators, optionally followed by #anchor; or null when the claim traces to no requirement. The anchor is not checked"),
+      theorems: external_exports.array(external_exports.string()).describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, each once, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
       outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree, ending in .json, with no directory or file name that starts with a dot; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record")
     },
     async (args) => {
