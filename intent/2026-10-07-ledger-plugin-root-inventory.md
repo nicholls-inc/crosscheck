@@ -19,7 +19,7 @@ The task row asked what the minimum inventory of a Crosscheck tree is: at least 
 ## Proposed outcome
 - New rule LL-12. When LL-11 passes (the root is a directory whose manifest names `crosscheck`) and the scan finds no skill or no agent, `analyze` appends one error, `[root] plugin root <root> is not a Crosscheck plugin tree: it holds <n> skills and <m> agents, want at least one skill (skills/<name>/SKILL.md) and one agent (agents/<name>.md)`. A skill directory without a `SKILL.md` is not a skill, as discovery already treats it.
 - LL-11 reads the key `name` exactly, as Claude Code does. A manifest whose only name key is `Name` fails LL-11 with `has no "name" key`. A `name` that is not a string fails LL-11.
-- `TestLedgerLoadRoot` pins the LL-11 cases `{}`, a `plugin.json` that is a directory, a `"Name"` key and a non-string `name`, and the LL-12 cases of a manifest-only root, a root with no agent, a root with no skill and a root whose only skill directory has no `SKILL.md`.
+- `TestLedgerLoadRoot` pins the LL-11 cases `{}`, a `plugin.json` that is a directory, a `"Name"` key, a non-string or `null` `name` and a `null` manifest, and the LL-12 cases of a manifest-only root, a root with no agent, a root with no skill and a root whose only skill directory has no `SKILL.md`.
 - The spec, the `main.go` header and `crosscheck/conformance/README.md` state LL-12 and the exact key match.
 
 ## Affected users and systems
