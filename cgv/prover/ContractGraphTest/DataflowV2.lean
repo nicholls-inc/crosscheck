@@ -3,7 +3,7 @@
 -- lower bounds, per-edge source overrides, target_param filtering,
 -- composition through the next edge's copy of a node, `calls` edges not
 -- followed, hop attribution, and the every-hop missing-postcondition warning.
--- Graphs are built with `buildGraph` from row structures, so the translation
+-- Graphs are built with `graphOf` (`translateRows`) from row structures, so the translation
 -- rules for `edge_id`, `source_override`, `target_param` and `subject` are
 -- exercised too.
 
@@ -13,10 +13,12 @@ import ContractGraph.Composition
 import ContractGraph.Diagnostics
 import ContractGraph.Translation
 import ContractGraph.Main
+import ContractGraphTest.Translation
 
 namespace ContractGraphTest.DataflowV2
 
 open ContractGraph
+open ContractGraphTest.Translation (graphOf)
 
 instance : Inhabited Node := ⟨{ id := 0, name := "", kind := "", preconditions := [],
                                 postconditions := [] }⟩
@@ -61,12 +63,12 @@ def kindsAndBounds (cs : List Constraint) : List (ConstraintKind × Option Int) 
   cs.map fun c => (c.kind, c.staticBound)
 
 -- (`minValue`/`maxValue` are plain units; the constraints are in micros.)
-#guard kindsAndBounds (translateContractRow (rangeRow (some 0) (some 10)))
-  == [(.range, some 10000000), (.rangeMin, some 0)]
-#guard kindsAndBounds (translateContractRow (rangeRow (some (-5)) none))
-  == [(.rangeMin, some (-5000000))]
-#guard kindsAndBounds (translateContractRow (rangeRow none (some 7)))
-  == [(.range, some 7000000)]
+#guard kindsAndBounds <$> (translateContractRow (rangeRow (some 0) (some 10))).toOption
+  == some [(.range, some 10000000), (.rangeMin, some 0)]
+#guard kindsAndBounds <$> (translateContractRow (rangeRow (some (-5)) none)).toOption
+  == some [(.rangeMin, some (-5000000))]
+#guard kindsAndBounds <$> (translateContractRow (rangeRow none (some 7))).toOption
+  == some [(.range, some 7000000)]
 
 -- The soundness theorem covers lower bounds: a consistent pair gives tr ≤ sg.
 example : constraintImplies (bound .rangeMin 5) (bound .rangeMin 0) :=
@@ -74,13 +76,13 @@ example : constraintImplies (bound .rangeMin 5) (bound .rangeMin 0) :=
 
 /-- adjust (range ≥ -50) writes_to Stock.qty (PositiveIntegerField: range ≥ 0). -/
 def lowerGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "adjust", "function"), (2, "Stock.qty", "model")]
     [{ nodeId := 1, constraintType := "range", minValue := some (-50),
        role := some "postcondition", sourceFile := "inv.py", sourceLine := 4 },
      { nodeId := 2, constraintType := "range", minValue := some 0,
        role := some "precondition", sourceFile := "models.py", sourceLine := 9 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]
 
 #guard (errors (runChecker lowerGraph)).map (fun r => (r.sourceGuarantee, r.targetRequirement))
   == [("range ≥ -50", "range ≥ 0")]
@@ -92,7 +94,7 @@ def lowerGraph : ContractGraph :=
 own postconditions (6dp for its return value) are not used on either write. -/
 
 def overrideGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "make", "function"), (2, "Invoice.total", "model"), (3, "Invoice.fee", "model")]
     [ -- make's return value: 6dp (must not be applied to the writes)
       { nodeId := 1, constraintType := "precision", decimalPlaces := some 6,
@@ -106,8 +108,8 @@ def overrideGraph : ContractGraph :=
         role := some "postcondition", edgeId := some 1, sourceLine := 5 },
       { nodeId := 1, constraintType := "precision", decimalPlaces := some 4,
         role := some "postcondition", edgeId := some 2, sourceLine := 6 } ]
-    [ { id := 1, sourceId := 1, targetId := 2, relationship := .writesTo, sourceOverride := true },
-      { id := 2, sourceId := 1, targetId := 3, relationship := .writesTo, sourceOverride := true } ]
+    [ { id := 1, sourceId := 1, targetId := 2, relationship := "writes_to", sourceOverride := true },
+      { id := 2, sourceId := 1, targetId := 3, relationship := "writes_to", sourceOverride := true } ]
 
 -- Override rows never become node contracts.
 #guard (overrideGraph.nodes.map (·.postconditions.length)) == [1, 0, 0]
@@ -122,22 +124,22 @@ def overrideGraph : ContractGraph :=
 -- An override with no rows: the source guarantees nothing, and the field's
 -- precision requirement passes vacuously with a warning.
 def emptyOverrideGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "make", "function"), (2, "Invoice.total", "model")]
     [{ nodeId := 1, constraintType := "precision", decimalPlaces := some 6,
        role := some "postcondition" },
      { nodeId := 2, constraintType := "precision", decimalPlaces := some 2,
        role := some "precondition" }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo, sourceOverride := true }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to", sourceOverride := true }]
 
 #guard (errors (runChecker emptyOverrideGraph)).isEmpty
 #guard (warnings (runChecker emptyOverrideGraph)).map (·.hop) == [["make", "Invoice.total"]]
 #guard (runChecker emptyOverrideGraph).exitCode == 0
 
--- Without the override flag, rows with an edge_id are ignored and the node's
--- own 6dp postcondition applies.
-def noOverrideGraph : ContractGraph :=
-  buildGraph
+-- Without the override flag, the edge's source keeps the node's own 6dp
+-- postcondition, so a row with that edge_id would be ignored: the rows are
+-- rejected instead (TB-1.12).
+#guard !(translateRows
     [(1, "make", "function"), (2, "Invoice.total", "model")]
     [{ nodeId := 1, constraintType := "precision", decimalPlaces := some 6,
        role := some "postcondition" },
@@ -145,9 +147,7 @@ def noOverrideGraph : ContractGraph :=
        role := some "postcondition", edgeId := some 1 },
      { nodeId := 2, constraintType := "precision", decimalPlaces := some 2,
        role := some "precondition" }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo }]
-
-#guard (errors (runChecker noOverrideGraph)).map (·.sourceGuarantee) == ["precision ≤ 6"]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]).isOk
 
 /-! ## 3. target_param filtering and 6. hop attribution
 
@@ -156,7 +156,7 @@ and non-null for every parameter (subject NULL). `rate_of` (4dp) is passed as
 `rate`; `with_tax` (4dp) is passed as `amount`. -/
 
 def paramGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "rate_of", "function"), (2, "with_tax", "function"),
      (3, "combine", "function"), (4, "Invoice.total", "model")]
     [ { nodeId := 1, constraintType := "precision", decimalPlaces := some 4,
@@ -183,9 +183,9 @@ def paramGraph : ContractGraph :=
         role := some "precondition", sourceFile := "m.py", sourceLine := 7 },
       { nodeId := 4, constraintType := "nullability", nullable := some 0,
         role := some "precondition", sourceFile := "m.py", sourceLine := 7 } ]
-    [ { id := 1, sourceId := 1, targetId := 3, relationship := .flowsTo, targetParam := some "rate" },
-      { id := 2, sourceId := 2, targetId := 3, relationship := .flowsTo, targetParam := some "amount" },
-      { id := 3, sourceId := 3, targetId := 4, relationship := .writesTo } ]
+    [ { id := 1, sourceId := 1, targetId := 3, relationship := "flows_to", targetParam := some "rate" },
+      { id := 2, sourceId := 2, targetId := 3, relationship := "flows_to", targetParam := some "amount" },
+      { id := 3, sourceId := 3, targetId := 4, relationship := "writes_to" } ]
 
 -- The node keeps every precondition; each edge's target copy only the
 -- bound parameter's and the subject-less ones.
@@ -225,7 +225,7 @@ def paramGraph : ContractGraph :=
 has no return postconditions of its own. `measure` (4dp) flows into `pick`. -/
 
 def depGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "measure", "function"), (2, "pick", "function"), (3, "Reading.kwh", "model")]
     [ { nodeId := 1, constraintType := "precision", decimalPlaces := some 4,
         role := some "postcondition", sourceFile := "a.py", sourceLine := 1 },
@@ -233,8 +233,8 @@ def depGraph : ContractGraph :=
         role := some "postcondition", edgeId := some 2, sourceFile := "a.py", sourceLine := 8 },
       { nodeId := 3, constraintType := "precision", decimalPlaces := some 3,
         role := some "precondition", sourceFile := "m.py", sourceLine := 2 } ]
-    [ { id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo },
-      { id := 2, sourceId := 2, targetId := 3, relationship := .writesTo, sourceOverride := true } ]
+    [ { id := 1, sourceId := 1, targetId := 2, relationship := "flows_to" },
+      { id := 2, sourceId := 2, targetId := 3, relationship := "writes_to", sourceOverride := true } ]
 
 -- measure → pick → Reading.kwh: max(3, 4) = 4 > 3.
 #guard (errors (runChecker depGraph)).map (fun r => (r.path, r.sourceGuarantee, r.hop))
@@ -266,14 +266,14 @@ def depGraphClean : ContractGraph :=
 /-! ## 5. `calls` edges are not followed -/
 
 def callsGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "caller", "function"), (2, "label", "function"), (3, "Invoice.customer", "model")]
     [ { nodeId := 2, constraintType := "length", maxLength := some 64,
         role := some "postcondition" },
       { nodeId := 3, constraintType := "length", maxLength := some 32,
         role := some "precondition" } ]
-    [ { id := 1, sourceId := 1, targetId := 2, relationship := .calls },
-      { id := 2, sourceId := 2, targetId := 3, relationship := .writesTo } ]
+    [ { id := 1, sourceId := 1, targetId := 2, relationship := "calls" },
+      { id := 2, sourceId := 2, targetId := 3, relationship := "writes_to" } ]
 
 -- The calls edge stays in the graph ...
 #guard callsGraph.edges.length == 2
@@ -283,13 +283,13 @@ def callsGraph : ContractGraph :=
 
 -- A graph whose only route to a model is through a calls edge has no paths.
 def callsOnlyGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "f", "function"), (2, "M.x", "model")]
     [{ nodeId := 1, constraintType := "precision", decimalPlaces := some 9,
        role := some "postcondition" },
      { nodeId := 2, constraintType := "precision", decimalPlaces := some 2,
        role := some "precondition" }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .calls }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "calls" }]
 
 #guard (enumeratePaths callsOnlyGraph).isEmpty
 #guard (runChecker callsOnlyGraph).results.isEmpty
@@ -301,7 +301,7 @@ range ≥ 0, a type and choices. The precision, nullability, rangeMin and
 choices requirements pass vacuously and warn; type does not. -/
 
 def finalHopGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "make", "function"), (2, "Invoice.total", "model")]
     [ { nodeId := 1, constraintType := "type", typeName := some "Decimal",
         role := some "postcondition" },
@@ -315,7 +315,7 @@ def finalHopGraph : ContractGraph :=
         role := some "precondition", sourceLine := 4 },
       { nodeId := 2, constraintType := "choices", choices := some "a,b",
         role := some "precondition", sourceLine := 5 } ]
-    [ { id := 1, sourceId := 1, targetId := 2, relationship := .writesTo } ]
+    [ { id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" } ]
 
 #guard (warnings (runChecker finalHopGraph)).map
     (fun r => (r.target.line, r.hop, contains r.suggestion "pass vacuously",
@@ -331,7 +331,7 @@ def finalHopGraph : ContractGraph :=
 -- On a two-hop path the last hop warns too, naming the (composed)
 -- intermediate node as the hop source; the shorter path's copy is kept.
 def twoHopGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "outer", "function"), (2, "inner", "function"), (3, "Invoice.total", "model")]
     [ { nodeId := 1, constraintType := "type", typeName := some "Decimal",
         role := some "postcondition" },
@@ -339,8 +339,8 @@ def twoHopGraph : ContractGraph :=
         role := some "postcondition" },
       { nodeId := 3, constraintType := "precision", decimalPlaces := some 2,
         role := some "precondition" } ]
-    [ { id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo },
-      { id := 2, sourceId := 2, targetId := 3, relationship := .writesTo } ]
+    [ { id := 1, sourceId := 1, targetId := 2, relationship := "flows_to" },
+      { id := 2, sourceId := 2, targetId := 3, relationship := "writes_to" } ]
 
 -- Before deduplication the warning appears on both paths ...
 #guard ((collectResults (checkAllPaths twoHopGraph)).filter (·.severity == "warning")).map
