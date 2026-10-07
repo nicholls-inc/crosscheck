@@ -13,6 +13,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 The generator walks from the constants in each protected theorem's statement and from the three protected definitions, through types, values, opaque values, constructors and `_unsafe_rec` helpers, and fails if a reached constant of a `ContractGraph` module carries either attribute. It scopes by module, not namespace, because private helpers live under `_private`. A `partial def` is an opaque constant to the kernel, and the compiler runs its `_unsafe_rec` helper, so the walk follows that helper. The manifest is unchanged. A self-test in CGV CI edits `Main.lean` five ways and checks the generator's verdict on each. Library code (103 constants with either attribute are reachable through Lean core and `leansqlite`) and `@[csimp]` lemmas (TB-1.7) are not yet reached.
 
+## 2026-10-07 - The CGV manifest hashes what the protected statements mention
+
+**Type:** feat
+**Touches:** cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/protected-statements.txt, cgv/prover/scripts/manifest-selftest.sh, .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** Issue #51. The manifest hashed only what `constraintImplies`, `IsDataPath` and `stepwiseSound` reach, so a redefinition of `CheckResult.isError` or `runChecker` could change what the theorems promise with no manifest change. The generator's name lists were kept in step with the rules table by hand.
+**Links:** [intent](intent/2026-10-07-manifest-reach.md), [spec](intent/2026-10-07-manifest-reach-spec.md), [plan](intent/2026-10-07-manifest-reach-plan.md)
+
+The walk now starts from every constant in a protected statement as well as the three definitions, and scopes by defining module, so private helpers count. The manifest grows from 107 hashed constants to 386, the checker among them, so a change to the checker's definitions now makes a pull request Tier 3. The generator reads the CGV table in `.claude/rules/protected-surfaces.md` and fails if names or files differ, and CGV CI runs when that file changes. `scripts/manifest-selftest.sh` pins each behaviour with a case that fails when it is mutated away. Whether that script is itself a protected surface is TB-1.27.
+
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
 **Type:** fix
