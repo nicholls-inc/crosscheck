@@ -15,17 +15,6 @@ The walk now starts from every constant in a protected statement as well as the 
 
 ---
 
-## 2026-10-06 - Only a whole `Fixes-Incident:` line is an incident reference
-
-**Type:** fix
-**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/tier-layer-gate.md, intent/2026-09-30-incident-eval-range-spec.md, docs/TASKS.md
-**Why:** The check matched its trigger anywhere in a line. The run for #62 failed after the merge with the incident id `<id>` and a backtick, because the body quoted the trigger and a commit wrapped a sentence onto it.
-**Links:** [intent](intent/2026-10-06-incident-line.md), [spec](intent/2026-10-06-incident-line-spec.md), [plan](intent/2026-10-06-incident-line-plan.md)
-
-A line now counts only when it holds the trigger and one id, optionally indented, with nothing else on it. That is the anchor the tier gate uses for `Tier:` and the queue check for `Task:`, with one extra condition: no second word after the id, because wrapped commit prose can start a line with the trigger. The body is matched one line at a time, so an empty trigger line no longer takes the next line's first word. Replaying #62 against the remote now prints the skip line. A reference written as a sentence is now skipped silently; the `incident` label still forces the check. A trigger line in a fenced code block and a placeholder id still count. The spec records all three as not yet reached.
-
----
-
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
 **Type:** fix
@@ -105,6 +94,39 @@ TB-1.11 to TB-1.26 follow the issue's recommendation. Link 3 is proved per const
 **Links:** [intent](intent/2026-10-07-backlog-review.md), [decisions](intent/2026-10-07-backlog-review-decisions.md)
 
 Twenty-one issues are refined and two are dropped. #37 is already done on `main`, and #34 is done apart from two residues that move to AD-1.11, and the decisions file cites the lines that do them. The refined issues give 19 new rows: PB-1.18 to PB-1.21 for Crosscheck's own deterministic CI checks, VA-1.9 to VA-1.11 for agents and skills that present an unchecked or LLM verdict as evidence, and AD-1.2 to AD-1.13 for work that serves a design rule and no other current item. Two refinements change what an issue asked for, because the original conflicts with rule 1 of the vision. #22 no longer makes an LLM judge the pass condition of the acceptance oracles. #32 no longer lets an LLM's tag close a finding. The GitHub issues are rewritten and closed from the decisions file after review, not in this pull request.
+
+---
+
+## 2026-10-07 - CGV CI replays the built environment through the Lean kernel
+
+**Type:** feature
+**Touches:** .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** The generator's axiom check uses `collectAxioms`, which does not re-check a proof. A theorem of `False` added under `debug.skipKernelTC` with `addDecl` kept `lake build` green, left the manifest unchanged and passed the axiom check (#47).
+**Links:** [intent](intent/2026-10-07-kernel-replay.md), [plan](intent/2026-10-07-kernel-replay-plan.md)
+
+The pinned toolchain ships `leanchecker`, so no dependency was added. `leanchecker --fresh ContractGraph.Main` replays the whole import closure of `ContractGraph.Main` (the Lean library, `leansqlite` and the `ContractGraph` modules) into an empty environment, and `leanchecker ContractGraph` replays every `ContractGraph.*` module. Locally the first took 48 to 57 s and the second 3.5 s. A self-test step compiles a bad module and a module that imports it outside the Lake package, and fails unless both modes reject them with the kernel's type mismatch, so a toolchain whose `leanchecker` changes cannot pass silently. The self-test sets `PATH` to the pinned toolchain's `bin`: run from a scratch directory, `leanchecker` otherwise asked elan's default toolchain for its sysroot and failed on an incompatible `Init.olean`. The replay skips constants whose kernel safety is `unsafe` or `partial`, and a safe theorem that uses one fails with an unknown constant. It uses the kernel that built the files, so a second, independent checker stays not yet reached: it needs an export of the proofs that a second checker reads, and the open question is which checker to use. The tier gate's evidence line for `cgv/**` does not name the replay yet (TB-1.5).
+
+---
+
+## 2026-10-06 - Only a whole `Fixes-Incident:` line is an incident reference
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/tier-layer-gate.md, intent/2026-09-30-incident-eval-range-spec.md, docs/TASKS.md
+**Why:** The check matched its trigger anywhere in a line. The run for #62 failed after the merge with the incident id `<id>` and a backtick, because the body quoted the trigger and a commit wrapped a sentence onto it.
+**Links:** [intent](intent/2026-10-06-incident-line.md), [spec](intent/2026-10-06-incident-line-spec.md), [plan](intent/2026-10-06-incident-line-plan.md)
+
+A line now counts only when it holds the trigger and one id, optionally indented, with nothing else on it. That is the anchor the tier gate uses for `Tier:` and the queue check for `Task:`, with one extra condition: no second word after the id, because wrapped commit prose can start a line with the trigger. The body is matched one line at a time, so an empty trigger line no longer takes the next line's first word. Replaying #62 against the remote now prints the skip line. A reference written as a sentence is now skipped silently; the `incident` label still forces the check. A trigger line in a fenced code block and a placeholder id still count. The spec records all three as not yet reached.
+
+---
+
+## 2026-10-06 - Every description of the Incident Eval Check matches stage 5
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/gates/incident-eval-check.md, docs/gates/README.md, docs/assurance/TIER-LAYER-MAP.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, evals/README.md, CLAUDE.md, docs/TASKS.md
+**Why:** After PB-1.8, the check's own failure message still said the change "stays blocked", though it prints after the merge, the tier gate credited the check with evidence for `evals/**`, and `evals/README.md` made the invariant optional. IE-2 said a rebase merge leaves an empty range, which GitHub's documentation contradicts.
+**Links:** [intent](intent/2026-10-06-incident-eval-surfaces.md), [spec](intent/2026-10-06-incident-eval-surfaces-spec.md), [plan](intent/2026-10-06-incident-eval-surfaces-plan.md)
+
+The check has an explainer, `docs/gates/incident-eval-check.md`, and its failure message links to it and asks for a follow-up pull request. The tier gate now reports `evals/**` as not yet reached, because the check finds an eval under `evals/` and a candidate invariant that name the incident and never runs the eval. Two tests replay a pull request onto the base with a new committer, as GitHub's rebase merge does, and show the check still reads its commits. A follow-up pull request with no incident reference of its own is skipped, so nothing deterministic records that an incident was closed after the merge. The explainer says to repeat the incident reference in the follow-up.
 
 ---
 
