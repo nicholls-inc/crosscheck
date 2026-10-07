@@ -84,7 +84,23 @@ impl Cx<'_> {
     /// Whether the global `name`, read in the function, has the value of
     /// the module's one import or definition of it.
     fn is_stable_global(&self, name: &str) -> bool {
-        !self.local.contains(name) && !self.module.rebound.contains(name)
+        !self.local.contains(name) && chain_is_stable(self.index, &self.module.name, name, 0)
+    }
+
+    /// Whether the dotted `parts`, read in the function, reach what their
+    /// imports name: the head is a stable global, and (`mod.name` through
+    /// `import mod`) so is `name` in `mod`.
+    fn path_is_stable(&self, parts: &[String]) -> bool {
+        if !self.is_stable_global(&parts[0]) {
+            return false;
+        }
+        match (self.module.imports.get(&parts[0]), parts) {
+            (Some(Import::Module(path)), [_, attr, ..]) => self
+                .index
+                .find_module(path, &self.module.name)
+                .is_none_or(|m| chain_is_stable(self.index, m, attr, 1)),
+            _ => true,
+        }
     }
 
     /// Whether the expression statement `expr` is a call that never returns.
@@ -100,7 +116,7 @@ impl Cx<'_> {
         let Some(parts) = dotted_parts(&call.func) else {
             return false;
         };
-        if !self.is_stable_global(&parts[0]) {
+        if !self.path_is_stable(&parts) {
             return false;
         }
         if !awaited && self.is_process_exit(&parts) {
@@ -142,7 +158,7 @@ impl Cx<'_> {
             Pattern::MatchValue(v) => {
                 let Some(parts) = dotted_parts(&v.value) else { return };
                 let [prefix @ .., name] = parts.as_slice() else { return };
-                if prefix.first().is_some_and(|head| self.is_stable_global(head))
+                if self.path_is_stable(prefix)
                     && self.index.resolve_dotted(&self.module.name, prefix)
                         == Some(Symbol::Class(class_q.to_string()))
                 {
@@ -166,8 +182,7 @@ impl Cx<'_> {
 
 /// Whether a call of `g` never returns: its return annotation is `NoReturn`
 /// or `Never`, no decorator wraps it, it is no overload stub and no
-/// generator, and its module does not rebind its name (a method: its class's name)
-/// and no module rebinds a re-export of it.
+/// generator, and its module does not rebind its name (a method: its class's name).
 fn never_returns(index: &ProjectIndex, g: &FunctionInfo) -> bool {
     g.wrapping_decorators().next().is_none()
         // A plain name (`cache`, `wraps`) that a project function defines
@@ -181,24 +196,35 @@ fn never_returns(index: &ProjectIndex, g: &FunctionInfo) -> bool {
             // bound again.
             !m.rebound.contains(g.class_name.as_deref().unwrap_or(&g.name))
         })
-        && (g.class_name.is_some() || !is_rebound_when_reexported(index, &g.name))
         && g.return_annotation
             .as_ref()
             .is_some_and(|a| is_no_return_annotation(index, &g.module, a))
 }
 
-/// Whether some module imports a function named `name` and binds that
-/// imported name again (`from .impl import abort` then `abort = wrap(abort)`),
-/// so a call of the name through that module's re-export may not be the
-/// function. Name-based, so it also fires for an unrelated function of the
-/// same name: it can only keep a call from counting as an exit.
-fn is_rebound_when_reexported(index: &ProjectIndex, name: &str) -> bool {
-    index.modules.values().any(|m| {
-        m.imports.iter().any(|(local, imp)| {
-            m.rebound.contains(local)
-                && matches!(imp, Import::Symbol { name: n, .. } if n == name)
-        })
-    })
+/// Whether the global `name` of `module` is the value of its one import or
+/// definition, through every module its imports pass through: none binds the
+/// name again, imports it from two places, or reaches it by a star import.
+/// (`from .impl import f` in a package that then does `f = wrap(f)` makes `f`
+/// unstable for a module that imports it from the package.)
+fn chain_is_stable(index: &ProjectIndex, module: &str, name: &str, depth: usize) -> bool {
+    let Some(m) = index.modules.get(module) else {
+        return true;
+    };
+    if depth > 8 || m.rebound.contains(name) {
+        return false;
+    }
+    if m.defs.contains_key(name) {
+        return true;
+    }
+    match m.imports.get(name) {
+        Some(Import::Symbol { module: from, name: n }) => index
+            .find_module(from, module)
+            .is_none_or(|t| chain_is_stable(index, t, n, depth + 1)),
+        Some(Import::Module(_)) => true,
+        // A builtin or a submodule in the function's own module; in another
+        // module a name no import or definition names comes from a star import.
+        None => depth == 0 || m.star_imports.is_empty(),
+    }
 }
 
 /// `NoReturn` / `Never` from `typing` or `typing_extensions`, imported by
@@ -280,6 +306,9 @@ impl<'i> ExitFinder<'i> {
             other => other,
         };
         let index = self.cx.index;
+        if !dotted_parts(annotation).is_some_and(|p| self.cx.path_is_stable(&p)) {
+            return None;
+        }
         let class = index.resolve_class(&self.f.module, annotation)?;
         let plain_bases = class.bases.iter().all(|b| {
             dotted_parts(b)
@@ -479,6 +508,63 @@ mod tests {
         let plain = ("pkg.py", "from impl import abort\n");
         let files = [("impl.py", imp.as_str()), plain, ("code.py", code)];
         assert_eq!(marked(&files, "f").0, ["abort(x)"]);
+    }
+
+    #[test]
+    fn test_exit_through_a_hop_that_rebinds_or_star_imports() {
+        let imp = "from typing import NoReturn\n\ndef abort(m) -> NoReturn:\n    raise E(m)\n";
+        let enums = "from enum import Enum\n\nclass Color(Enum):\n    RED = 1\n    GREEN = 2\n";
+        let code = "from pkg import abort, Color\nimport pkg\n\ndef f(x):\n    abort(x)\n\ndef g(x):\n    pkg.abort(x)\n\ndef h(c: Color):\n    match c:\n        case Color.RED | Color.GREEN:\n            return 1\n";
+        let marked_with = |pkg: &str| {
+            let files = [("impl.py", imp), ("colors.py", enums), ("pkg.py", pkg), ("code.py", code)];
+            (marked(&files, "f"), marked(&files, "g"), marked(&files, "h"))
+        };
+        let clean = "from impl import abort\nfrom colors import Color\n";
+        let ((f, _), (g, _), (_, h)) = marked_with(clean);
+        assert_eq!((f, g, h), (vec!["abort(x)".to_string()], vec!["pkg.abort(x)".to_string()], vec!["match c:".to_string()]));
+        for pkg in [
+            // The re-export binds the names again.
+            "from impl import abort\nfrom colors import Color\nabort = wrap(abort)\nColor = wrap(Color)\n",
+            // The names come from a star import.
+            "from impl import *\nfrom colors import *\n",
+            // An alias chain whose last hop is rebound.
+            "from impl import abort as stop\nfrom colors import Color as Hue\nstop = wrap(stop)\nHue = wrap(Hue)\nabort, Color = stop, Hue\n",
+            // Two sources for a name.
+            "try:\n    from extlib import abort, Color\nexcept ImportError:\n    from impl import abort\n    from colors import Color\n",
+        ] {
+            let ((f, _), (g, _), (_, h)) = marked_with(pkg);
+            assert_eq!((f, g, h), (vec![], vec![], vec![]), "{pkg}");
+        }
+    }
+
+    #[test]
+    fn test_enum_annotation_and_patterns_each_need_a_stable_path() {
+        // `Color` reaches the enum through a package that rebinds it; `Hue`
+        // reaches it directly. Each name alone must not make the match exhaustive.
+        let enums = "from enum import Enum\n\nclass Color(Enum):\n    RED = 1\n    GREEN = 2\n";
+        let pkg = "from colors import Color\nColor = wrap(Color)\n";
+        let head = "from pkg import Color\nfrom colors import Color as Hue\n\n";
+        let cases = [
+            ("def f(c: Color):\n    match c:\n        case Hue.RED | Hue.GREEN:\n            return 1\n", false),
+            ("def f(c: Hue):\n    match c:\n        case Color.RED | Color.GREEN:\n            return 1\n", false),
+            ("def f(c: Hue):\n    match c:\n        case Hue.RED | Hue.GREEN:\n            return 1\n", true),
+        ];
+        for (body, exhaustive) in cases {
+            let code = format!("{head}{body}");
+            let files = [("colors.py", enums), ("pkg.py", pkg), ("code.py", code.as_str())];
+            assert_eq!(marked(&files, "f").1.len(), usize::from(exhaustive), "{body}");
+        }
+    }
+
+    #[test]
+    fn test_name_that_a_module_both_imports_and_defines_with_a_plain_import() {
+        let fallback = "try:\n    import extlib as fail\nexcept ImportError:\n    from typing import NoReturn\n\n    def fail(m) -> NoReturn:\n        raise E(m)\n";
+        let code = "from compat import fail\n\ndef f(x):\n    fail(x)\n";
+        let files = [("compat.py", fallback), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        let plain = "from typing import NoReturn\n\ndef fail(m) -> NoReturn:\n    raise E(m)\n";
+        let files = [("compat.py", plain), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, ["fail(x)"]);
     }
 
     #[test]
