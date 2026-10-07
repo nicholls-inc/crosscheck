@@ -4,16 +4,14 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
-## 2026-10-06 - Every description of the Incident Eval Check matches stage 5
+## 2026-10-07 - The CGV manifest hashes what the protected statements mention
 
-**Type:** fix
-**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/gates/incident-eval-check.md, docs/gates/README.md, docs/assurance/TIER-LAYER-MAP.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, evals/README.md, CLAUDE.md, docs/TASKS.md
-**Why:** After PB-1.8, the check's own failure message still said the change "stays blocked", though it prints after the merge, the tier gate credited the check with evidence for `evals/**`, and `evals/README.md` made the invariant optional. IE-2 said a rebase merge leaves an empty range, which GitHub's documentation contradicts.
-**Links:** [intent](intent/2026-10-06-incident-eval-surfaces.md), [spec](intent/2026-10-06-incident-eval-surfaces-spec.md), [plan](intent/2026-10-06-incident-eval-surfaces-plan.md)
+**Type:** feat
+**Touches:** cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/protected-statements.txt, cgv/prover/scripts/manifest-selftest.sh, .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** Issue #51. The manifest hashed only what `constraintImplies`, `IsDataPath` and `stepwiseSound` reach, so a redefinition of `CheckResult.isError` or `runChecker` could change what the theorems promise with no manifest change. The generator's name lists were kept in step with the rules table by hand.
+**Links:** [intent](intent/2026-10-07-manifest-reach.md), [spec](intent/2026-10-07-manifest-reach-spec.md), [plan](intent/2026-10-07-manifest-reach-plan.md)
 
-The check has an explainer, `docs/gates/incident-eval-check.md`, and its failure message links to it and asks for a follow-up pull request. The tier gate now reports `evals/**` as not yet reached, because the check finds an eval under `evals/` and a candidate invariant that name the incident and never runs the eval. Two tests replay a pull request onto the base with a new committer, as GitHub's rebase merge does, and show the check still reads its commits. A follow-up pull request with no incident reference of its own is skipped, so nothing deterministic records that an incident was closed after the merge. The explainer says to repeat the incident reference in the follow-up.
-
----
+The walk now starts from every constant in a protected statement as well as the three definitions, and scopes by defining module, so private helpers count. The manifest grows from 107 hashed constants to 386, the checker among them, so a change to the checker's definitions now makes a pull request Tier 3. The generator reads the CGV table in `.claude/rules/protected-surfaces.md` and fails if names or files differ, and CGV CI runs when that file changes. `scripts/manifest-selftest.sh` pins each behaviour with a case that fails when it is mutated away. Whether that script is itself a protected surface is TB-1.27.
 
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
@@ -96,6 +94,15 @@ TB-1.11 to TB-1.26 follow the issue's recommendation. Link 3 is proved per const
 Twenty-one issues are refined and two are dropped. #37 is already done on `main`, and #34 is done apart from two residues that move to AD-1.11, and the decisions file cites the lines that do them. The refined issues give 19 new rows: PB-1.18 to PB-1.21 for Crosscheck's own deterministic CI checks, VA-1.9 to VA-1.11 for agents and skills that present an unchecked or LLM verdict as evidence, and AD-1.2 to AD-1.13 for work that serves a design rule and no other current item. Two refinements change what an issue asked for, because the original conflicts with rule 1 of the vision. #22 no longer makes an LLM judge the pass condition of the acceptance oracles. #32 no longer lets an LLM's tag close a finding. The GitHub issues are rewritten and closed from the decisions file after review, not in this pull request.
 
 ---
+
+## 2026-10-06 - Every description of the Incident Eval Check matches stage 5
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/gates/incident-eval-check.md, docs/gates/README.md, docs/assurance/TIER-LAYER-MAP.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, evals/README.md, CLAUDE.md, docs/TASKS.md
+**Why:** After PB-1.8, the check's own failure message still said the change "stays blocked", though it prints after the merge, the tier gate credited the check with evidence for `evals/**`, and `evals/README.md` made the invariant optional. IE-2 said a rebase merge leaves an empty range, which GitHub's documentation contradicts.
+**Links:** [intent](intent/2026-10-06-incident-eval-surfaces.md), [spec](intent/2026-10-06-incident-eval-surfaces-spec.md), [plan](intent/2026-10-06-incident-eval-surfaces-plan.md)
+
+The check has an explainer, `docs/gates/incident-eval-check.md`, and its failure message links to it and asks for a follow-up pull request. The tier gate now reports `evals/**` as not yet reached, because the check finds an eval under `evals/` and a candidate invariant that name the incident and never runs the eval. Two tests replay a pull request onto the base with a new committer, as GitHub's rebase merge does, and show the check still reads its commits. A follow-up pull request with no incident reference of its own is skipped, so nothing deterministic records that an incident was closed after the merge. The explainer says to repeat the incident reference in the follow-up.
 
 ## 2026-10-06 - A call that never returns, and a match over every enum member, end the flow
 

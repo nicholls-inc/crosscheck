@@ -37,18 +37,18 @@ Inputs are unchanged: `PR_BODY`, `PR_LABELS`, `CHANGED_FILES`, `BASE_REF`, and `
 
 - **SM-1.** `cgv/prover/scripts/ProtectedStatements.lean` prints, in a fixed order:
   - the type of every theorem listed in the CGV table in `.claude/rules/protected-surfaces.md`;
-  - the type and a structural value hash of `constraintImplies`, `IsDataPath`, and `stepwiseSound`, and of every non-theorem `ContractGraph.*` constant those three reach through types or values. Inductive types include their constructors.
+  - the type and a structural value hash of every non-theorem constant defined in a `ContractGraph` module that `constraintImplies`, `IsDataPath`, `stepwiseSound` or the statement of a listed theorem reaches through types or values. Inductive types include their constructors. Amended by TB-1.3: `intent/2026-10-07-manifest-reach-spec.md`.
 - **SM-2.** The script fails with a non-zero exit if a listed name is missing, or if a listed theorem is not a theorem. This covers a rename or deletion.
 - **SM-3.** The output is byte-identical across runs on the same sources and the same toolchain.
-- **SM-4.** Changing only a proof leaves the output unchanged. Changing a listed statement, a listed definition, or a definition they reach changes the output.
+- **SM-4.** Changing only a proof leaves the output unchanged. Changing a listed statement, a listed definition, or a definition they reach changes the output. SM-9 to SM-11 in `intent/2026-10-07-manifest-reach-spec.md` add the rules-table check and its self-test.
 - **SM-5.** `cgv/prover/protected-statements.txt` is the committed output. CI fails when a fresh run differs from it. The manifest is a protected path, so updating it forces Tier 3 (TG-1), a governance note (TG-5), and the protected-surface change section (TG-7). The generator is a protected path for the same reason: it decides what the manifest records.
 - **SM-6.** The script fails with a non-zero exit if a listed theorem or definition depends on an axiom other than `propext`, `Classical.choice` and `Quot.sound`. `lake build` accepts `sorry` with a warning, so without SM-6 a `sorry`, or a new axiom that closes a proof, would leave the manifest and every CI step unchanged. A declaration the kernel never checked is not yet reached: `set_option debug.skipKernelTC true` with `addDecl` adds a theorem that reports no axioms. The property that blocks it is a kernel replay of the built environment, and the open question is whether a replay (`lean4checker`, `Environment.replay`) fits CGV CI's time budget.
 
-The manifest does not catch changes outside what the listed definitions reach. Examples are the checker (`runChecker`, `checkEdge`) and `Translation.lean`. That is intended: the theorems prove the checker against the statements, and the translation is untrusted by design (see `cgv/CLAUDE.md`, Trust model). A Lean toolchain bump may change the pretty-printed text or the hashes, and so forces a manifest update and Tier 3 review. That is acceptable, because a toolchain bump changes the trusted kernel.
+The manifest does not catch changes outside what the listed statements and definitions reach. Examples are `Translation.lean` and the JSON output. That is intended: no theorem is about them, and the translation is untrusted by design (see `cgv/CLAUDE.md`, Trust model). A Lean toolchain bump may change the pretty-printed text or the hashes, and so forces a manifest update and Tier 3 review. That is acceptable, because a toolchain bump changes the trusted kernel.
 
 ## CGV CI (`.github/workflows/cgv-ci.yml`)
 
-- **CI-1.** Runs on pull requests and on pushes to `main` that change `cgv/**` or the workflow file itself.
+- **CI-1.** Runs on pull requests and on pushes to `main` that change `cgv/**`, the workflow file itself, or `.claude/rules/protected-surfaces.md` (whose CGV table the generator reads).
 - **CI-2.** In `cgv/`, runs `cargo test` and `cargo build --release`, after CI-3: the end-to-end Rust test runs the checker binary that `lake build` produces, and skips when it is missing.
 - **CI-3.** Installs the toolchain pinned in `cgv/prover/lean-toolchain`, then runs `lake build` for the default targets in `cgv/prover`. These are the proofs, the checker, and the `#guard` tests.
 - **CI-4.** Runs `scripts/check-fixtures.sh`.
