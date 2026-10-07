@@ -673,6 +673,7 @@ func checkLedgerSchema(data []byte) error {
 			return err
 		}
 		var id string
+		// checkFields has already required a non-blank string id, so this cannot fail.
 		_ = json.Unmarshal(fields["id"], &id)
 		for j, prev := range ids {
 			if sameID(prev, id) {

@@ -572,7 +572,7 @@ func TestLedgerLoad(t *testing.T) {
 		{"dup_id_case", ledger(withID("CLAIM-A"), withID("claim-a")), parseErr + `narrative_claims[1].id "claim-a" repeats narrative_claims[0].id "CLAIM-A"`, 0},
 		{"dup_id_space", ledger(withID("C1"), withID(` C1\t`)), parseErr + `narrative_claims[1].id " C1\t" repeats narrative_claims[0].id "C1"`, 0},
 		{"dup_id_case_and_space", ledger(withID("c1 "), withID("C1")), parseErr + `narrative_claims[1].id "C1" repeats narrative_claims[0].id "c1 "`, 0},
-		{"dup_id_escaped", ledger(withID("C1"), withID(`C1`)), parseErr + `narrative_claims[1].id "C1" repeats narrative_claims[0].id "C1"`, 0},
+		{"dup_id_escaped", ledger(withID("C1"), withID(`\u0043\u0031`)), parseErr + `narrative_claims[1].id "C1" repeats narrative_claims[0].id "C1"`, 0},
 		{"dup_id_not_adjacent", ledger(withID("C1"), withID("C2"), withID("c1")), parseErr + `narrative_claims[2].id "c1" repeats narrative_claims[0].id "C1"`, 0},
 		{"dup_id_after_check_fault", ledger(okClaim, `{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual","path":"x"}}`), parseErr + `narrative_claims[1].check has unknown key "path" for type "manual"`, 0},
 		{"ids_distinct", ledger(withID("C1"), withID("C2"), withID("C3")), "", 3},
