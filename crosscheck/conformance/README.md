@@ -73,7 +73,9 @@ parsed).
   read, or is not valid JSON for the ledger types, fails CI, so a syntax error
   cannot pass as a ledger with no claims. A `claims.json` or `conformance`
   directory that is a symlink to a missing target cannot be read, so it fails
-  CI too. Not yet reached: JSON that decodes but has the wrong shape, such as a
+  CI too. So does a plugin root that does not resolve, because the path is
+  wrong or a symlink on it dangles: a run that scans nothing cannot pass. Not
+  yet reached: JSON that decodes but has the wrong shape, such as a
   top-level `null`, a missing `narrative_claims` or unknown keys, still loads
   as an empty or partial ledger, because `json.Unmarshal` accepts any JSON that
   fits the struct (PB-1.25). The open question is which schema the ledger
