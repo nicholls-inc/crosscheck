@@ -24,6 +24,17 @@ The walk now starts from every constant in a protected statement as well as the 
 
 ---
 
+## 2026-10-06 - The protected-surface hook's `**` matches a newline
+
+**Type:** fix
+**Touches:** .claude/hooks/protected-surface-guard.mjs, scripts/ci/protected-surface-guard.test.mjs, docs/TASKS.md
+**Why:** The hook compiled `**` to `.*` with no flags, and `.` matches no newline. An edit to `docs/assurance/n<newline>l.md` exited 0 with no governance note.
+**Links:** [intent](intent/2026-10-06-hook-newline.md), [spec](intent/2026-10-06-hook-newline-spec.md), [plan](intent/2026-10-06-hook-newline-plan.md)
+
+Each glob now compiles with the `s` flag, as the tier gate's has since PB-1.10. `*` and `?` compile to negated classes, which already matched a newline, so only `**` changed. A path with no newline matches the same globs as before. The tests feed the hook a `PreToolUse` payload. No test drives a real harness edit of a file whose name holds a newline. The pull request also queues PB-1.17, for the pre-commit hook on a merge commit.
+
+---
+
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
 **Type:** fix

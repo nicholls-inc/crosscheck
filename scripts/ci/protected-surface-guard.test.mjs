@@ -234,6 +234,23 @@ test('PG-6: an unprotected file with no note is allowed', () => {
   assertAllowed(runHook(repo, 'README.md'));
 });
 
+test('PG-9: ** matches a file name that holds a newline', () => {
+  const repo = scratch();
+  assertBlocked(runHook(repo, 'protected/n\nl.txt'));
+});
+
+test('PG-9: ** matches a directory name and a file below it that hold a newline', () => {
+  const repo = scratch();
+  assertBlocked(runHook(repo, 'protected/x\ny/n\nl.txt'));
+});
+
+test('PG-9: a new note that names a path with a newline unlocks it', () => {
+  const repo = scratch();
+  assertBlocked(runHook(repo, 'protected/n\nl.txt'));
+  write(repo.checkout, NOTE, block('protected/n\nl.txt'));
+  assertAllowed(runHook(repo, 'protected/n\nl.txt'));
+});
+
 test('PG-5: the hook source runs git without a shell', () => {
   const source = readFileSync(HOOK, 'utf8');
   assert.ok(!source.includes('execSync'));
