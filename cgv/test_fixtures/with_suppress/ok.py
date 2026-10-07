@@ -26,3 +26,9 @@ def raised_after(k: str) -> str:
     with suppress(KeyError):
         print(k)
     raise ValueError(k)
+
+
+def first_item(x: Optional[str]) -> str:
+    with x.upper(), suppress(KeyError):
+        pass
+    return x
