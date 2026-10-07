@@ -2111,6 +2111,39 @@ mod tests {
         }
     }
 
+    /// A field whose annotation names something CGV does not know pydantic
+    /// validates (a renamed import of a marker, an alias, a project type, an
+    /// `AfterValidator`) keeps its `model_validate` entry as a write.
+    #[test]
+    fn test_pydantic_validate_unknown_annotation_keeps_write() {
+        let d = discovered(&[
+            (
+                "records.py",
+                "from pydantic import BaseModel, SkipValidation as SV, PlainValidator as PV, AfterValidator\n\
+                 Skip = SkipValidation[str]\n\
+                 class Inv(BaseModel):\n    \
+                 renamed: SV[str]\n    \
+                 aliased: Skip\n    \
+                 renamed_meta: Annotated[str, PV(f)]\n    \
+                 after: Annotated[str, AfterValidator(f)]\n    \
+                 name: str\n",
+            ),
+            (
+                "code.py",
+                "from records import Inv\n\
+                 def four(x):\n    return x\n\
+                 def v(x):\n    return Inv.model_validate({'renamed': four(x), 'aliased': four(x), 'renamed_meta': four(x), 'after': four(x), 'name': four(x)})\n",
+            ),
+        ]);
+        let s = site_summary(&d);
+        for field in ["renamed", "aliased", "renamed_meta", "after"] {
+            let want = format!("code.four@5 -writes_to-> records.Inv.{field}");
+            assert!(s.contains(&want), "missing {want} in {s:#?}");
+        }
+        let unwanted = "code.four@5 -writes_to-> records.Inv.name".to_string();
+        assert!(!s.contains(&unwanted), "unexpected {unwanted} in {s:#?}");
+    }
+
     /// A dataclass with its own `__init__` binds that method's parameters,
     /// and a generic base (`Base[T]`) is resolved to its class.
     #[test]

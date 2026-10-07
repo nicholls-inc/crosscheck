@@ -730,10 +730,14 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                                 Expr::Call(call) => last_segment(&call.func),
                                 other => last_segment(other),
                             };
-                            if matches!(
-                                marker.as_deref(),
-                                Some("SkipValidation" | "PlainValidator" | "WrapValidator")
-                            ) {
+                            // Metadata CGV does not know to leave validation
+                            // in force (a marker, a renamed import, an alias, a
+                            // validator held in a variable) keeps the write.
+                            let literal = matches!(
+                                meta,
+                                Expr::StringLiteral(_) | Expr::NumberLiteral(_) | Expr::BooleanLiteral(_)
+                            );
+                            if !literal && !marker.as_deref().is_some_and(is_validated_metadata) {
                                 info.unvalidated = true;
                             }
                             if let Expr::Call(call) = meta {
@@ -781,6 +785,9 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                 }
                 // Generic containers: record the container name only.
                 _ => {
+                    if !is_validated_name(&head) {
+                        info.unvalidated = true;
+                    }
                     info.type_name = Some(head);
                     true
                 }
@@ -804,6 +811,8 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             if let Some(t) = type_name {
                 info.type_name = Some(t.to_string());
                 info.constraint_calls.push(call);
+            } else {
+                info.unvalidated = true;
             }
             true
         }
@@ -855,6 +864,9 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             } else if name.as_deref() == Some("Any") {
                 info.nullable = None;
             } else {
+                if !name.as_deref().is_some_and(is_validated_name) {
+                    info.unvalidated = true;
+                }
                 info.type_name = name;
             }
             true
@@ -879,8 +891,51 @@ fn walk_union<'a>(members: &[&'a Expr], info: &mut AnnotationInfo<'a>) -> bool {
         }
         keep
     } else {
-        true // a union of several value types has no single type contract
+        // A union of several value types has no single type contract, but a
+        // member CGV does not know pydantic validates may still store None.
+        for member in non_none {
+            let mut scratch = AnnotationInfo {
+                type_name: None,
+                nullable: Some(false),
+                constraint_calls: Vec::new(),
+                choices: None,
+                strict: false,
+                unvalidated: false,
+            };
+            walk_annotation(member, &mut scratch);
+            info.unvalidated |= scratch.unvalidated;
+        }
+        true
     }
+}
+
+/// Type names that pydantic validates against their annotation. A field whose
+/// annotation names anything else (a project class, a type alias, a renamed
+/// import of `SkipValidation`) is treated as unvalidated, so a pydantic
+/// validation call keeps its entry as a write, as for a constructor call.
+fn is_validated_name(name: &str) -> bool {
+    matches!(
+        name,
+        "str" | "int" | "float" | "bool" | "bytes" | "Decimal" | "date" | "datetime" | "time"
+            | "timedelta" | "UUID" | "None" | "NoneType" | "list" | "dict" | "set" | "frozenset"
+            | "tuple" | "List" | "Dict" | "Set" | "FrozenSet" | "Tuple" | "Sequence" | "Mapping"
+            | "Iterable" | "Optional" | "Union" | "Literal" | "Annotated" | "StrictInt"
+            | "StrictFloat" | "StrictStr" | "StrictBool" | "StrictBytes" | "PositiveInt"
+            | "NegativeInt" | "NonNegativeInt" | "NonPositiveInt" | "PositiveFloat"
+            | "NegativeFloat" | "NonNegativeFloat" | "NonPositiveFloat" | "EmailStr" | "AnyUrl"
+            | "HttpUrl" | "Json"
+    )
+}
+
+/// `Annotated` metadata that leaves pydantic validation of the annotated type
+/// in force: constraints, and a `BeforeValidator` (validation runs on its
+/// result). An `AfterValidator` may return a value validation would reject.
+fn is_validated_metadata(name: &str) -> bool {
+    matches!(
+        name,
+        "Field" | "FieldInfo" | "StringConstraints" | "Strict" | "Gt" | "Ge" | "Lt" | "Le"
+            | "MultipleOf" | "MinLen" | "MaxLen" | "Len" | "Interval" | "BeforeValidator"
+    )
 }
 
 fn flatten_bitor<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
@@ -1145,7 +1200,16 @@ mod tests {
              d_plain: str = 'x'\n    \
              d_field: str = Field(default='x')\n    \
              d_required: str = Field(...)\n    \
-             quoted: 'SkipValidation[str]'\n",
+             quoted: 'SkipValidation[str]'\n    \
+             renamed: SV[str]\n    \
+             aliased: MyStr\n    \
+             renamed_meta: Annotated[str, PV(f)]\n    \
+             held: Annotated[str, my_validator]\n    \
+             after: Annotated[str, AfterValidator(f)]\n    \
+             union: Union[MyStr, int]\n    \
+             doc: Annotated[str, 'label', Field(max_length=3)]\n    \
+             items: list[str]\n    \
+             qualified: decimal.Decimal\n",
         );
         let unvalidated: Vec<(&str, bool)> =
             cs[0].fields.iter().map(|f| (f.field_name.as_str(), f.unvalidated)).collect();
@@ -1166,6 +1230,15 @@ mod tests {
                 ("d_field", false),
                 ("d_required", false),
                 ("quoted", true),
+                ("renamed", true),
+                ("aliased", true),
+                ("renamed_meta", true),
+                ("held", true),
+                ("after", true),
+                ("union", true),
+                ("doc", false),
+                ("items", false),
+                ("qualified", false),
             ]
         );
         assert_eq!(field(&cs, "M", "skipped").type_name.as_deref(), Some("str"));
