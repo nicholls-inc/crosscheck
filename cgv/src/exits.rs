@@ -861,6 +861,10 @@ mod tests {
             "class K(Base):\n    (s := print)\n",
             "class K(Base):\n    def g(self, a=(s := print)):\n        pass\n",
             "class K(Base):\n    type s = int\n",
+            // Bound by a statement in a `case` body.
+            "class K(Base):\n    match 1:\n        case _:\n            s = print\n",
+            "class K(Base):\n    match 1:\n        case _:\n            def s(m):\n                return m\n",
+            "class K(Base):\n    match 1:\n        case _:\n            from lib import s\n",
             // The MRO puts the override first (depth-first search would not).
             "class Right(Base):\n    @staticmethod\n    def s(m):\n        return m\n\nclass K(Left, Right):\n    pass\n",
             // Bound twice in the class that defines it.
@@ -889,7 +893,12 @@ mod tests {
             assert_eq!(calls(&src(body), "f"), ["Outer.K.s(x)"], "{body}");
         }
         // The enclosing body rebinds `Base`.
-        for body in ["    Base = Other\n", "    from lib import Base\n", "    def Base():\n        pass\n"] {
+        for body in [
+            "    Base = Other\n",
+            "    from lib import Base\n",
+            "    def Base():\n        pass\n",
+            "    match 1:\n        case _:\n            Base = Other\n",
+        ] {
             assert_eq!(calls(&src(body), "f"), Vec::<String>::new(), "{body}");
         }
     }
@@ -935,6 +944,8 @@ mod tests {
         // A nested enum's bases are read in the enclosing class body.
         let nested = "from enum import Enum\n\nclass Outer:\n    Enum = dict\n    class E(Enum):\n        A = 1\n\ndef f(e: Outer.E):\n    match e:\n        case Outer.E.A:\n            return 1\n";
         assert_eq!(marked(&[("code.py", nested)], "f").1, Vec::<String>::new());
+        let in_case = nested.replace("    Enum = dict\n", "    match 1:\n        case _:\n            Enum = dict\n");
+        assert_eq!(marked(&[("code.py", &in_case)], "f").1, Vec::<String>::new());
         let nested = nested.replace("    Enum = dict\n", "");
         assert_eq!(marked(&[("code.py", &nested)], "f").1, ["match e:"]);
     }

@@ -987,6 +987,11 @@ fn body_bindings(body: &[Stmt]) -> Vec<String> {
                         walk(&clause.body, out);
                     }
                 }
+                Stmt::Match(m) => {
+                    for case in &m.cases {
+                        walk(&case.body, out);
+                    }
+                }
                 Stmt::Try(t) => {
                     walk(&t.body, out);
                     for handler in &t.handlers {
