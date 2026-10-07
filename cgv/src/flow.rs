@@ -1853,6 +1853,35 @@ mod tests {
     }
 
     #[test]
+    fn test_while_test_reads_the_loops_effects() {
+        // The test of a `while` runs again after every iteration, so the
+        // header sees a key fact only when nothing in the loop may pop it.
+        fn at_while_test(src: &str) -> Vec<String> {
+            struct V(Vec<Vec<String>>);
+            impl<'a> FlowVisitor<'a> for V {
+                fn simple(&mut self, _: &'a Stmt, _: &Narrowed) {}
+                fn header(&mut self, _: &'a Expr, n: &Narrowed) {
+                    let mut names: Vec<String> = n.names().cloned().collect();
+                    names.sort();
+                    self.0.push(names);
+                }
+            }
+            let b = body(src);
+            let mut v = V(Vec::new());
+            walk_block(&b, &Narrowed::new(), &Exits::default(), &mut v);
+            // The first header is the `if` test; the last is the `while` test.
+            v.0.pop().expect("a while test")
+        }
+        let loop_with = |inner: &str| {
+            at_while_test(&format!(
+                "def f(d, k):\n    if k in d:\n        while d.get(k):\n            {inner}\n"
+            ))
+        };
+        assert_eq!(loop_with("pass"), vec!["d[k]".to_string()]);
+        assert_eq!(loop_with("d.pop(k)"), Vec::<String>::new());
+    }
+
+    #[test]
     fn test_falls_through() {
         assert!(!falls_through(&body("def f(x):\n    return x\n"), &Exits::default()));
         assert!(falls_through(&body(

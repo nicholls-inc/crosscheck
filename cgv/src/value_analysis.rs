@@ -3385,8 +3385,10 @@ mod tests {
         let decorated = format!("{records}@trace\ndef label_of(h: H):\n    h.name\n{guarded}");
         assert_eq!(facts_of(&[("code.py", &decorated)], "code.label_of").nullable, Some(true));
         // The body of an async function or a generator runs after the call.
+        // The generator reads `h.name` before its first `yield`, so only its
+        // own exclusion, not the loss of the guard at a suspension, keeps the error.
         for def in ["async def", "def"] {
-            let body = if def == "def" { "yield\n    h.name" } else { "h.name" };
+            let body = if def == "def" { "h.name\n    _ = yield" } else { "h.name" };
             let lazy = format!("{records}{def} label_of(h: H):\n    {body}\n{guarded}");
             assert_eq!(facts_of(&[("code.py", &lazy)], "code.label_of").nullable, Some(true), "{def}");
         }
