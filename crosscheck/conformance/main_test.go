@@ -413,6 +413,68 @@ func TestLedgerStatusAllowlist(t *testing.T) {
 	}
 }
 
+func TestLedgerLoad(t *testing.T) {
+	const readErr = "[ledger] cannot read conformance/claims.json: "
+	const parseErr = "[ledger] cannot parse conformance/claims.json: "
+	writeLedger := func(content string) func(t *testing.T, path string) {
+		return func(t *testing.T, path string) {
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	tests := []struct {
+		name       string
+		setup      func(t *testing.T, path string)
+		wantPrefix string
+	}{
+		{"missing", func(*testing.T, string) {}, ""},
+		{"directory", func(t *testing.T, path string) {
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, readErr},
+		{"no_permission", func(t *testing.T, path string) {
+			if os.Geteuid() == 0 {
+				t.Skip("root reads a mode-000 file")
+			}
+			writeLedger(`{"version":1,"narrative_claims":[]}`)(t, path)
+			if err := os.Chmod(path, 0o000); err != nil {
+				t.Fatal(err)
+			}
+		}, readErr},
+		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr},
+		{"empty", writeLedger(``), parseErr},
+		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files := baseTree()
+			delete(files, "conformance/claims.json")
+			root := writeTree(t, files)
+			if err := os.MkdirAll(filepath.Join(root, "conformance"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			tc.setup(t, filepath.Join(root, "conformance", "claims.json"))
+
+			r := analyze(root)
+			out := report(r)
+			if tc.wantPrefix == "" {
+				if len(r.errors) != 0 || !strings.Contains(out, "RESULT: PASS") {
+					t.Errorf("missing ledger must pass with no errors, got: %v", r.errors)
+				}
+				return
+			}
+			if len(r.errors) != 1 || !strings.HasPrefix(r.errors[0], tc.wantPrefix) {
+				t.Errorf("want one error starting %q, got: %v", tc.wantPrefix, r.errors)
+			}
+			if !strings.Contains(out, "RESULT: FAIL") {
+				t.Errorf("want RESULT: FAIL, got:\n%s", out)
+			}
+		})
+	}
+}
+
 func TestReportPassFail(t *testing.T) {
 	pass := report(result{})
 	if !strings.Contains(pass, "RESULT: PASS") {
