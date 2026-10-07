@@ -70,6 +70,35 @@ describe("runDafny", () => {
     ]);
   });
 
+  it("passes the sandbox flags only when asked", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+
+    const promise = runDafny("/tmp/workdir", ["verify", "/work/a.dfy"], { readOnly: true, sandboxed: true });
+    mockProc.emit("close", 0);
+    await promise;
+
+    expect(vi.mocked(spawn).mock.lastCall).toEqual([
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--network=none",
+        "--memory=512m",
+        "--cpus=1",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=512",
+        "--user=65534:65534",
+        "-v",
+        "/tmp/workdir:/work:ro",
+        "crosscheck-dafny:latest",
+        "verify",
+        "/work/a.dfy",
+      ],
+    ]);
+  });
+
   it.each([
     [{ image: "sha256:feed" }, "sha256:feed", "/tmp/workdir:/work"],
     [{ readOnly: true }, "crosscheck-dafny:latest", "/tmp/workdir:/work:ro"],

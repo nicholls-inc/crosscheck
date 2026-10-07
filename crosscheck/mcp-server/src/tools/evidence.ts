@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { lstat, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, posix, relative, resolve as resolvePath, sep } from "node:path";
-import { dockerImageId, getDockerImage, runDafny } from "../docker.js";
+import { SANDBOX_FLAGS, dockerImageId, getDockerImage, runDafny } from "../docker.js";
 
 export interface EvidenceInput {
   repoPath: string;
@@ -98,7 +98,7 @@ export function shellQuote(s: string): string {
 }
 
 export function rerunCommand(image: string, files: string[]): string {
-  const run = `docker run --rm --network=none -v "$PWD":/work:ro ${shellQuote(image)}`;
+  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(image)}`;
   const paths = files.map((f) => shellQuote(`/work/${f}`));
   return (
     `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && ` +
@@ -304,7 +304,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   const imageId = await dockerImageId(image);
   if (imageId === null) return refuse([`could not read the ID of image ${image}`]);
 
-  const run = { image: imageId, readOnly: true };
+  const run = { image: imageId, readOnly: true, sandboxed: true };
   const paths = included.files.map((f) => `/work/${f}`);
   const verify = await runDafny(
     root,

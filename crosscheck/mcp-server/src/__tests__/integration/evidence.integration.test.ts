@@ -10,7 +10,8 @@ vi.mock("node:fs/promises", async (original) => {
   return { ...real, rename: vi.fn(real.rename) };
 });
 
-vi.mock("../../docker.js", () => ({
+vi.mock("../../docker.js", async (importOriginal) => ({
+  SANDBOX_FLAGS: (await importOriginal<typeof import("../../docker.js")>()).SANDBOX_FLAGS,
   getDockerImage: vi.fn(() => "crosscheck-dafny:latest"),
   dockerImageId: vi.fn(),
   runDafny: vi.fn(),
@@ -112,7 +113,7 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(await readFile(join(repo, "out", "record.json"), "utf-8")).toBe(
       JSON.stringify(expected, null, 2) + "\n"
     );
-    const run = { image: "sha256:feed", readOnly: true };
+    const run = { image: "sha256:feed", readOnly: true, sandboxed: true };
     expect(vi.mocked(runDafny).mock.calls).toEqual([
       [repo, ["verify", "/work/proofs/Abs.dfy", "--verify-included-files", "--log-format", LOG_FORMAT], run],
       [repo, ["audit", "/work/proofs/Abs.dfy"], run],

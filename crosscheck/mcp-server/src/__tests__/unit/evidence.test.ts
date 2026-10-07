@@ -98,16 +98,16 @@ describe("unverifiedTheorems (DE-5)", () => {
 describe("rerunCommand (DE-9)", () => {
   it("is the exact command for a plain path", () => {
     expect(rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"])).toBe(
-      `docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
-        `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
+      `docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+        `out=$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
         `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`
     );
   });
 
   it("verifies the first file with its includes and audits every file", () => {
     expect(rerunCommand("img", ["proofs/Abs.dfy", "proofs/Lib.dfy"])).toBe(
-      `docker run --rm --network=none -v "$PWD":/work:ro 'img' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
-        `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'img' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
+      `docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'img' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+        `out=$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'img' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
         `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`
     );
   });
