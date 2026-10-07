@@ -15,6 +15,17 @@ The walk now starts from every constant in a protected statement as well as the 
 
 ---
 
+## 2026-10-07 - The text report counts a missing guarantee as coverage instead of printing it
+
+**Type:** feature
+**Touches:** cgv/src/report.rs, cgv/src/main.rs, cgv/tests/e2e_text_format.rs, cgv/tests/e2e_cli.rs, cgv/README.md, docs/TASKS.md
+**Why:** On a private Django codebase, 7,595 of 8,374 warnings said only that a source had no nullability guarantee. Readers took them for findings, and the errors were lost among them (#9).
+**Links:** [intent](intent/2026-10-07-cgv-unverified-coverage.md), [spec](intent/2026-10-07-cgv-unverified-coverage-spec.md)
+
+`--format text` sorts each checker result into one of four classes: incomplete, error, unverified and warning. A warning whose `source_guarantee` reads `<kind> (unspecified)` is unverified. By default the report prints no block for it, and counts it in a new `COVERAGE BY MODULE` section and in the `RESULT:` line, so a run that exits 0 with unverified requirements still says so. The section names the blocking property and the open question. `--warnings` prints the blocks, labelled `UNVERIFIED`. The edge counts come from the contract database the checker read, and on every fixture they sum to `edges_checked`. JSON and the exit code are unchanged. The class rests on the checker's wording, and a warning the report cannot classify is printed, not hidden. CG-1.31 moves the class into the checker's JSON and counts checked hop states for each module.
+
+---
+
 ## 2026-10-07 - The imported Crosscheck backlog has one decision per issue
 
 **Type:** docs
