@@ -11,9 +11,7 @@
 Dafny output stream into two disjoint lists: `errors` and `warnings`. It is a
 pure function — no IO, no side effects, deterministic.
 
-## Invariants
-
-### I1 — Error membership
+## I1: Error membership
 
 Every string in `errors` contains the substring `"error"` (case-insensitive).
 
@@ -25,7 +23,7 @@ Every string in `errors` contains the substring `"error"` (case-insensitive).
 
 ---
 
-### I2 — Warning membership
+## I2: Warning membership
 
 Every string in `warnings` contains the substring `"warning"` (case-insensitive).
 
@@ -37,7 +35,7 @@ Every string in `warnings` contains the substring `"warning"` (case-insensitive)
 
 ---
 
-### I3 — Disjointness
+## I3: Disjointness
 
 No line appears in both `errors` and `warnings`. The two output lists are disjoint.
 
@@ -49,7 +47,7 @@ No line appears in both `errors` and `warnings`. The two output lists are disjoi
 
 ---
 
-### I4 — Error takes precedence over Warning
+## I4: Error takes precedence over Warning
 
 A line matching both `Error` (CI) and `Warning` (CI) is placed in `errors` only,
 never in `warnings`. The error-path check runs first and short-circuits.
@@ -66,7 +64,7 @@ separately valuable because it encodes the parsing priority rule.
 
 ---
 
-### I5 — Verifier summary exclusion
+## I5: Verifier summary exclusion
 
 Lines whose trimmed prefix matches `/^Dafny program verifier/` are excluded from
 `errors` even when they contain the substring `"Error"`. These lines are the
@@ -84,7 +82,7 @@ not a source-level error. Conflating it with errors causes false positives in th
 
 ---
 
-### I6 — Empty input gives empty output
+## I6: Empty input gives empty output
 
 When both `stdout` and `stderr` are the empty string, both output lists are empty.
 
@@ -96,7 +94,7 @@ stdout = "" ∧ stderr = "" → result.errors = [] ∧ result.warnings = []
 
 ---
 
-### I7 — Categorization is bounded by input
+## I7: Categorization is bounded by input
 
 The total number of categorized lines (errors + warnings) never exceeds the total
 number of non-empty lines in the combined input.
