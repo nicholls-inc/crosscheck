@@ -567,6 +567,8 @@ func TestLedgerLoad(t *testing.T) {
 		{"claim_word_joiner_space", ledger(`{"id":"C1","source":"s","claim":" \u2060 ","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].claim must be a non-blank string", 0},
 		{"reality_byte_order_mark", ledger(`{"id":"C1","source":"s","claim":"c","reality":"\ufeff","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].reality must be a non-blank string", 0},
 		{"id_zero_width_inside", ledger(`{"id":"C\u200b1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), "", 1},
+		{"check_type_lone_surrogate", ledger(claimWith(base + `,"check":{"type":"\ud800"}`)), parseErr + "narrative_claims[0].check.type must not contain U+FFFD or an unpaired surrogate", 0},
+		{"check_type_replacement_char", ledger(claimWith(base + `,"check":{"type":"manual\ufffd"}`)), parseErr + "narrative_claims[0].check.type must not contain U+FFFD or an unpaired surrogate", 0},
 		{"id_lone_surrogate", ledger(`{"id":"\udc00","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].id must not contain U+FFFD or an unpaired surrogate", 0},
 		{"source_replacement_char", ledger(`{"id":"C1","source":"s` + "\ufffd" + `","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].source must not contain U+FFFD or an unpaired surrogate", 0},
 		{"tracked_in_lone_surrogate", ledger(claimWith(base + `,"tracked_in":"#1\ud800","check":{"type":"manual"}`)), parseErr + "narrative_claims[0].tracked_in must not contain U+FFFD or an unpaired surrogate", 0},

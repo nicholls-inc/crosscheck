@@ -745,9 +745,9 @@ func checkCheck(where string, raw json.RawMessage) error {
 	if string(typ) == "null" {
 		return fmt.Errorf("%s.type is null", where)
 	}
-	var name string
-	if json.Unmarshal(typ, &name) != nil {
-		return fmt.Errorf("%s.type must be a string", where)
+	name, fault := text(typ)
+	if fault != "" {
+		return fmt.Errorf("%s.type %s", where, fault)
 	}
 	sch, ok := checkSchemas[name]
 	if !ok {
