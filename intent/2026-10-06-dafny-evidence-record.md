@@ -1,4 +1,4 @@
-# Intent: The Dafny pipeline emits an evidence record
+# Intent: The MCP server emits an evidence record for a Dafny run
 
 Task: ER-1.3. Governing roadmap item: ER-1.
 
@@ -29,14 +29,14 @@ So an `{:axiom}` declaration passes `dafny verify` with exit 0, and `dafny audit
 - `docs/TASKS.md` marks ER-1.3 `done` with this file as its record.
 
 ## Affected users and systems
-- A Claude Code user running the Dafny pipeline (`/generate-verified`, `/spec-iterate`) gets a record that an engineer or auditor can read and rerun, without reading the skill that produced the result.
+- A caller of the MCP tool `dafny_evidence` gets a record that an engineer or auditor can read and rerun. No skill calls the tool yet, so a Claude Code user running the Dafny pipeline (`/generate-verified`, `/spec-iterate`) gets no record until ER-1.6 wires `/generate-verified` to call it (#80).
 - The MCP server in `crosscheck/mcp-server/` gains a tool. The six existing tools do not change.
 - ER-1.4's checker gets a real record to check.
 - `CLAUDE.md` and `crosscheck/README.md` list the MCP tools, and both gain the new one.
 
 ## Constraints
 - The record must satisfy EV-1 to EV-12 of the evidence record spec.
-- No LLM decides any part of the claim's strength. The caller, usually an LLM, drafts the statement and names the theorems. The tool decides `proved` only from Dafny's exit code, the audit's finding count and the theorem names that the file declares. Rule 1 of `docs/VISION.md` makes the statement a draft that a person reviews, and the record cannot show that a person did. The spec flags it.
+- No LLM decides any part of the claim's strength. The caller, usually an LLM, drafts the statement and names the theorems. The tool decides `proved` only from Dafny's exit codes, the audit's clean line and the theorem names that Dafny's verification log reports as passed for the file and its includes (DE-5 of the spec). Rule 1 of `docs/VISION.md` makes the statement a draft that a person reviews, and the record cannot show that a person did. The spec flags it.
 - The skills that drive the Dafny pipeline are Class A protected surfaces. This task does not edit them, so no skill calls the tool yet. Issue #80 covers wiring `/generate-verified` to call it.
 - No new dependency.
 

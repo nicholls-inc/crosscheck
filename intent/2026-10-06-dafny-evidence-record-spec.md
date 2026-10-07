@@ -34,7 +34,7 @@ This spec defines the MCP tool `dafny_evidence`. It runs `dafny verify` and `daf
   1. `{"component": "Dafny verifier", "version": "<dafny version>"}`;
   2. `{"component": "Z3 solver shipped with the Dafny release", "version": "Dafny <dafny version>"}`;
   3. `{"component": "Dafny Docker image <image>", "version": "<image ID>"}`.
-- **DE-9. Rerun.** `rerun.exit_code` is 0, and `rerun.command` is, with `<i>` the image, `<f>` the path `/work/<file>`, and `<fs>` that path followed by `/work/<include>` for every file DE-12 reached, each, and `<i>`, single-quoted for a POSIX shell and separated by spaces (the template below leaves `<i>` unquoted for readability):
+- **DE-9. Rerun.** `rerun.exit_code` is 0, the exit code the command below should give. The tool does not run that command. It runs the same verify and audit itself (DE-6, DE-7), under its own limits, so the 0 is what those runs predict, not an exit the tool observed. A unit test runs the command under `sh` with a stub `docker` for each exit path, and the end-to-end suite runs it against the real image, but `npm test` skips that suite; ER-1.9 brings real Dafny into `npm test`. `rerun.command` is, with `<i>` the image, `<f>` the path `/work/<file>`, and `<fs>` that path followed by `/work/<include>` for every file DE-12 reached, each, and `<i>`, single-quoted for a POSIX shell and separated by spaces (the template below leaves `<i>` unquoted for readability):
 
   ```
   docker run --rm --network=none -v "$PWD":/work:ro <i> verify <f> --verify-included-files && out=$(docker run --rm --network=none -v "$PWD":/work:ro <i> audit <fs> 2>&1) && printf '%s\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'
