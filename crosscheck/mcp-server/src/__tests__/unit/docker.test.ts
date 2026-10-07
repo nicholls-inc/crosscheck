@@ -70,7 +70,7 @@ describe("runDafny", () => {
     ]);
   });
 
-  it("passes the sandbox flags only when asked", async () => {
+  it("passes the four sandbox flags, in order, when sandboxed", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);
 
@@ -97,6 +97,19 @@ describe("runDafny", () => {
         "/work/a.dfy",
       ],
     ]);
+  });
+
+  it("passes the sandbox flags without a read-only mount when only sandboxed is set", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+
+    const promise = runDafny("/tmp/workdir", ["verify", "/work/a.dfy"], { sandboxed: true });
+    mockProc.emit("close", 0);
+    await promise;
+
+    const args = vi.mocked(spawn).mock.lastCall![1] as string[];
+    expect(args).toEqual(expect.arrayContaining(["--cap-drop=ALL", "--user=65534:65534", "/tmp/workdir:/work"]));
+    expect(args).not.toContain("/tmp/workdir:/work:ro");
   });
 
   it.each([
