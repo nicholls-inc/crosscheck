@@ -612,7 +612,7 @@ Each row in the `contracts` table maps to a `Constraint` value according to the 
 |-------------------|----------------------------------|-------|
 | `'precision'` | `param_decimal_places` | Fractional digit bound; this is the value compared against function postconditions. `param_max_digits` is stored but used only for the integer-digit check (see behavior model). |
 | `'nullability'` | `param_nullable` | 0 = NOT NULL, 1 = NULL. Interpreted as `Bool` in the checker. |
-| `'type'` | `none` (uses `typeName` field) | Type constraints use string equality (`param_type_name`), not numeric bounds. |
+| `'type'` | `none` (uses `typeName` field) | Type constraints compare `param_type_name` strings (`typeAccepts`: equal names, or `int` where `float` is required), not numeric bounds. |
 | `'range'` | `param_min_value` and/or `param_max_value` | Generates up to two `Constraint` values: one for min bound, one for max bound. |
 | `'length'` | `param_max_length` | Direct mapping. |
 | `'choices'` | `none` (uses `choicesList` field) | Choices use string list membership (`param_choices`, split on commas). |

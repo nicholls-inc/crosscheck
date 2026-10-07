@@ -7,9 +7,7 @@
 
 `/journal-context <path>` is a deterministic walk of the directory tree from a starting path up to the enclosing git repository root, emitting the contents of every `JOURNAL.md` it encounters along the way. The skill is the §3.4 layer-2 enforcement piece for the §3.3 walk-up rule — the cheap deterministic instrument that fires the rule without putting an LLM in the loop. Agents and humans invoke it to load the narrative record before making non-trivial changes; the rule lives in `AGENTS.md`, this skill lets the rule actually fire.
 
-## Invariants
-
-### I1 — Walk shape: from the path's directory up to the repo root, inclusive
+## I1: Walk shape: from the path's directory up to the repo root, inclusive
 
 The walk starts at the directory containing the input path (the path itself if it is a directory; its parent if it is a file). It proceeds via the parent-of relation, visiting each ancestor directory exactly once, and terminates at — and includes — the enclosing git repository root (`git rev-parse --show-toplevel`). The walk does not cross into a parent repository when the input is inside a nested or submodule repo; the innermost repo's root is the stopping point.
 
@@ -24,7 +22,7 @@ walk(p) = sequence of directories such that
 
 ---
 
-### I2 — Ordering: deepest first, root last
+## I2: Ordering: deepest first, root last
 
 Files are emitted in walk order — the `JOURNAL.md` closest to the input path comes first, the repo-root `JOURNAL.md` comes last. Within each file, content is emitted verbatim; the skill does not reorder, filter, paginate, or truncate entries inside a file. The "newest first" property is a convention of how journal entries are written, not something this skill enforces.
 
@@ -32,7 +30,7 @@ Files are emitted in walk order — the `JOURNAL.md` closest to the input path c
 
 ---
 
-### I3 — Determinism: same filesystem state, same output
+## I3: Determinism: same filesystem state, same output
 
 Given identical filesystem state and identical input path, the skill produces byte-identical output. The walk consults no LLM, no clock, no random source, and makes no network call. The only inputs are the directory tree and the location of the enclosing git toplevel.
 
@@ -40,7 +38,7 @@ Given identical filesystem state and identical input path, the skill produces by
 
 ---
 
-### I4 — Read-only: no filesystem or git mutation
+## I4: Read-only: no filesystem or git mutation
 
 The skill creates, modifies, and deletes no files. It does not run any git command that mutates state (no `fetch`, `commit`, `checkout`, `add`, `rm`, `clean`, `reset`, `pull`, `push`). It may invoke read-only git commands such as `rev-parse` and `ls-files`.
 
@@ -48,7 +46,7 @@ The skill creates, modifies, and deletes no files. It does not run any git comma
 
 ---
 
-### I5 — Symbolic links: walk literal parents, not link targets
+## I5: Symbolic links: walk literal parents, not link targets
 
 When the input path or one of its ancestors is a symbolic link, the walk uses the literal parent-of relation on the path's components (not the resolved link target). This keeps the walk's semantics stable under filesystem layout changes that move symlink targets around, and prevents a misconfigured symlink from quietly redirecting the walk into an unrelated tree.
 
@@ -56,7 +54,7 @@ When the input path or one of its ancestors is a symbolic link, the walk uses th
 
 ---
 
-### I6 — Empty result is explicit, not silent
+## I6: Empty result is explicit, not silent
 
 If the walk completes with zero `JOURNAL.md` files encountered — either because none exist along the path, or because the input path is not inside any git repository — the skill emits an explicit human- and agent-readable message naming the condition. It does not return zero bytes. A silent empty output is indistinguishable from a tool failure to a downstream consumer, and that ambiguity is the failure mode this invariant exists to prevent.
 
@@ -64,7 +62,7 @@ If the walk completes with zero `JOURNAL.md` files encountered — either becaus
 
 ---
 
-### I7 — File boundaries visible in output, fixed delimiter shape
+## I7: File boundaries visible in output, fixed delimiter shape
 
 Each `JOURNAL.md`'s content is preceded by a delimiter line on its own line, immediately followed by the file's content. The delimiter shape is fixed at:
 

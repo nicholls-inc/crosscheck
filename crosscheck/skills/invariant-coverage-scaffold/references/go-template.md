@@ -25,7 +25,7 @@ import (
 
 var (
 	headerRe       = regexp.MustCompile(`^## (I\d+[a-z]?):`)    // "## I1: Name"
-	commentRe      = regexp.MustCompile(`^//\s*Invariant\s+([A-Z]+\d+[a-z]?):\s`) // "// Invariant I1: Name."
+	commentRe      = regexp.MustCompile(`^//\s*Invariant\s+(I\d+[a-z]?):\s`) // "// Invariant I1: Name."
 	aspirationalRe = regexp.MustCompile(`<!--\s*aspirational\s*-->`)
 
 	testSuffix = "<test-suffix>" // e.g. "_invariants_prop_test.go"

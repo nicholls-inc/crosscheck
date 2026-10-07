@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — One invariant-heading grammar for the gate, the templates and the real docs
+
+**Type:** fix
+**Touches:** conformance/heading_grammar_test.go, skills/invariant-coverage-scaffold/references/{python,go,typescript}-template.md, docs/examples/workflows/tier-a/check_invariant_coverage.py, docs/invariants/*.md, skills/journal-context/docs/invariants/journal-context.md, docs/examples/workflows/example.md, ../docs/TASKS.md
+**Why:** The coverage gate's comment pattern read any upper-case ID prefix while its header pattern read only `I`, and every real invariant doc used `### I1 — Name`, which the `add-orchestrator` grep counts as zero invariants. The guard test passed because it never read a real doc or a comment pattern (#26).
+**Links:** [intent](../intent/2026-10-07-invariant-heading-grammar.md), [spec](../intent/2026-10-07-invariant-heading-grammar-spec.md), [plan](../intent/2026-10-07-invariant-heading-grammar-plan.md)
+
+The alphabet is `I`. The header pattern, the `add-orchestrator` grep and `draft-invariants` already used it, so the comment pattern narrowed to match rather than the grammar widening. The four invariant docs and the worked example now use `## I<N>: <Name>`. `heading_grammar_test.go` extracts each template's comment pattern and checks it against its header pattern over a list of IDs, and reads every `docs/invariants/*.md` in the repository for a heading in any other form. Two mutants, the old comment pattern in one template and one h3 heading, each fail a test (`TestCommentGrammarAgreement` and `TestRealInvariantDocsCanonical`). A comment with another prefix is now ignored silently (PB-1.26), and the tier-b example parses a third form, `## Invariant <ID>:` (PB-1.27).
+
+---
+
 ## 2026-10-07 — The research doc says what Layers 4 to 6 prove, test or only search
 
 **Type:** docs
@@ -67,6 +78,19 @@ The rerun command now names the image by the ID the trusted base records. A prob
 **Links:** [intent](../intent/2026-10-07-dafny-evidence-docker-hardening.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
 
 Both now pass `--cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534`, read from one list, `SANDBOX_FLAGS` in `docker.ts`, so the tool's runs and the rerun cannot drift. The user is set at run time rather than in the image, so the image and every earlier record's trusted base stay the same. The process limit counts threads too: a probe peaked at 23 under the tool's CPU limit and 186 with `--cores 64`, and a run over the limit exits 1. Running as `nobody` means a Linux tree that others cannot read makes Dafny fail and the tool refuse; a new concern in the spec records why the caller's own user was not used. `dafny_verify`, `dafny_compile` and the Lean tools keep their old flags, because `dafny_compile` writes into a mount that `nobody` may not be able to write on Linux.
+
+---
+
+## 2026-10-06 — `/generate-verified` emits an evidence record when the caller names where to commit
+
+**Type:** feature
+**Touches:** skills/generate-verified/SKILL.md, docs/skills.md, README.md, ../docs/TASKS.md
+**Why:** ER-1's acceptance asks for one Crosscheck pipeline to emit an evidence record. `dafny_evidence` existed, and no skill called it.
+**Links:** [intent](../intent/2026-10-06-generate-verified-evidence.md), [spec](../intent/2026-10-06-generate-verified-evidence-spec.md), [plan](../intent/2026-10-06-generate-verified-evidence-plan.md), #80
+
+A new Step 7 runs when the invocation names `evidence: <path.dfy>`. It ignores `.crosscheck/` with a self-ignoring `.crosscheck/.gitignore` (`*`) when git does not already, stops on any other change in the tree, commits the verified program to the named path, and calls `dafny_evidence` with the record going to `.crosscheck/work/dafny/<spec-id>/evidence.json`. The record path is ignored, so the tree stays clean and the next run overwrites it. The agent drafts the theorems (the declarations that carry the signed-off contracts) and the statement, and the Evidence Summary asks a person to check the statement whenever a record is emitted against the contracts.
+
+The opt-in is the main choice. `.crosscheck/` is gitignored by convention, so `impl.dfy` there can never be the tracked file DE-4 asks for, and choosing a tracked location means inventing a directory in someone else's repository and committing to it. The caller names the path instead, as CGV's caller names `--evidence-record`. So a default run still emits no record, and the spec flags that, the ignored record location and `/spec-iterate` as concerns.
 
 ---
 

@@ -19,7 +19,7 @@ There is no silent third option. Crosscheck treats only two outcomes as valid en
 
 ## What happens next in each case
 
-- **Accepted:** the governance-amendment commit is kept, `lowry` resumes driving to green against the amended contract, and the change still goes through Crosscheck's normal review and intent-check steps before merge — accepting the amendment is not the same as approving the final result.
+- **Accepted:** the governance-amendment commit is kept, `lowry` resumes driving to green against the amended contract, and the change still goes through Crosscheck's normal review, optionally with an advisory `/intent-check` run, before merge — accepting the amendment is not the same as approving the final result.
 - **Sent back:** the drift packet is discarded, no invariant changes, and `lowry` continues the run-to-green loop against the invariants as originally approved.
 
 ## How long this takes

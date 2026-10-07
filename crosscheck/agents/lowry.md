@@ -162,9 +162,9 @@ is **necessary, not sufficient**. `lowry`'s terminal report is:
 > A3 mode-tags is not yet enforceable — RED by design until CLAIM-MODES is
 > wired). This is
 > `passes-oracles`. It is NOT a claim that the implementation matches intent —
-> that is a human / hellebuyck judgment (`/crosscheck:intent-check`,
-> `/crosscheck:rationale`). Routing the intent check is the next step; I do
-> not close it."*
+> that is a human judgment. `/crosscheck:intent-check` and
+> `/crosscheck:rationale` can point at likely gaps, but their output is not
+> evidence. I do not close the question of intent."*
 
 This disclaimer is load-bearing and mirrors `add-orchestrator`'s
 CLAIM-ADDORCH-TERMINAL: a green build over a wrong spec is false confidence.
@@ -221,8 +221,9 @@ in exactly that failure mode.
 `lowry` reaches one of two terminal states and hands off — it never
 auto-merges:
 
-- **Green (passes-oracles).** Route the intent check to `hellebuyck`
-  (`/crosscheck:intent-check`, `/crosscheck:rationale`) and the per-invariant
+- **Green (passes-oracles).** Leave the judgment of intent to the human, who
+  may ask `hellebuyck` for an advisory search (`/crosscheck:intent-check`,
+  `/crosscheck:rationale`). Route the per-invariant
   verification to `byfuglien` (`/crosscheck:lightweight-verify`,
   `/spec-iterate` → `/generate-verified` → `/extract-code`, or the Lean
   pipeline) per the contract's verification path. The user approves and merges
