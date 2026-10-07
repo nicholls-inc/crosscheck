@@ -1614,6 +1614,8 @@ mod tests {
             "yield from it\n        use()",
             "xs = [x async for x in it]\n        use()",
             "xs = {x: x async for x in it}\n        use()",
+            "xs = {x async for x in it}\n        use()",
+            "xs = [w for x in it async for y in x for w in y]\n        use()",
             "xs = (y for x in it for y in x if True for z in x async for w in z)\n        use()",
             "if [x async for x in it]:\n            pass\n        use()",
             "async with cm:\n            use()",
