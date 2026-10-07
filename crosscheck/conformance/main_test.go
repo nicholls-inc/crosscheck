@@ -677,6 +677,8 @@ func TestLedgerLoadRoot(t *testing.T) {
 		}, []string{"LL-11"}},
 		{"manifest_name_key_case", withManifest(`{"Name":"crosscheck"}`), []string{"LL-11"}},
 		{"manifest_name_not_string", withManifest(`{"name":5}`), []string{"LL-11"}},
+		{"manifest_name_null", withManifest(`{"name":null}`), []string{"LL-11"}},
+		{"manifest_top_null", withManifest(`null`), []string{"LL-11"}},
 		{"manifest_only", func(t *testing.T, _ string) string {
 			return writeTree(t, map[string]string{".claude-plugin/plugin.json": `{"name":"crosscheck"}`})
 		}, []string{"LL-12"}},
@@ -736,6 +738,17 @@ func TestLedgerLoadRoot(t *testing.T) {
 				"LL-10": "[ledger] cannot read conformance/claims.json: plugin root " + root + " does not resolve: ",
 				"LL-11": "[root] plugin root " + root + " is not a Crosscheck plugin tree: ",
 				"LL-12": "[root] plugin root " + root + " is not a Crosscheck plugin tree: it holds ",
+			}
+			reasons := map[string]string{
+				"manifest_empty_object":    `.claude-plugin/plugin.json has no "name" key`,
+				"manifest_is_directory":    "plugin.json: is a directory",
+				"manifest_name_key_case":   `.claude-plugin/plugin.json has no "name" key`,
+				"manifest_name_not_string": `.claude-plugin/plugin.json name is 5, want "crosscheck"`,
+				"manifest_name_null":       `.claude-plugin/plugin.json names "", want "crosscheck"`,
+				"manifest_top_null":        `.claude-plugin/plugin.json has no "name" key`,
+			}
+			if want, ok := reasons[tc.name]; ok && !strings.HasSuffix(r.errors[0], want) {
+				t.Errorf("want the reason %q, got: %q", want, r.errors[0])
 			}
 			const inventory = ", want at least one skill (skills/<name>/SKILL.md) and one agent (agents/<name>.md)"
 			if len(r.errors) != len(tc.wantErrs) {

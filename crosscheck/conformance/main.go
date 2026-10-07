@@ -318,11 +318,11 @@ func missingKeys(fm map[string]string) []string {
 // root and returns the assembled result.
 func analyze(root string) result {
 	var r result
-	if err := checkPluginRoot(root); err != nil {
-		r.errors = append(r.errors, "[root] "+err.Error())
-	}
 	r.skills = discoverSkills(root)
 	r.agents = discoverAgents(root)
+	if err := checkPluginRoot(root, len(r.skills), len(r.agents)); err != nil {
+		r.errors = append(r.errors, "[root] "+err.Error())
+	}
 	docText, present := scanDocs(root)
 	r.presentDocs = present
 	r.refTokens = referencedTokens(docText)
@@ -483,24 +483,37 @@ func analyze(root string) result {
 }
 
 // checkPluginRoot reports a root directory whose .claude-plugin/plugin.json
-// cannot be read, does not decode, or does not name crosscheck. A root that is
-// not a directory to os.Stat passes here, because the ledger read reports it.
-func checkPluginRoot(root string) error {
+// cannot be read, does not decode, or does not name crosscheck (LL-11), or
+// that holds no skill or no agent (LL-12). A root that is not a directory to
+// os.Stat passes here, because the ledger read reports it.
+func checkPluginRoot(root string, skills, agents int) error {
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {
 		return nil
 	}
+	notTree := "plugin root " + root + " is not a Crosscheck plugin tree: "
 	data, err := os.ReadFile(filepath.Join(root, ".claude-plugin", "plugin.json"))
 	if err != nil {
-		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: %w", root, err)
+		return fmt.Errorf("%s%w", notTree, err)
 	}
-	var manifest struct {
-		Name string `json:"name"`
-	}
+	// A map, not a struct: json.Unmarshal folds a struct field's key case, and
+	// Claude Code rejects a manifest whose only name key is "Name".
+	var manifest map[string]json.RawMessage
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: .claude-plugin/plugin.json: %w", root, err)
+		return fmt.Errorf("%s.claude-plugin/plugin.json: %w", notTree, err)
 	}
-	if manifest.Name != "crosscheck" {
-		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: .claude-plugin/plugin.json names %q, want \"crosscheck\"", root, manifest.Name)
+	raw, ok := manifest["name"]
+	if !ok {
+		return fmt.Errorf("%s.claude-plugin/plugin.json has no \"name\" key", notTree)
+	}
+	var name string
+	if err := json.Unmarshal(raw, &name); err != nil {
+		return fmt.Errorf("%s.claude-plugin/plugin.json name is %s, want \"crosscheck\"", notTree, raw)
+	}
+	if name != "crosscheck" {
+		return fmt.Errorf("%s.claude-plugin/plugin.json names %q, want \"crosscheck\"", notTree, name)
+	}
+	if skills == 0 || agents == 0 {
+		return fmt.Errorf("%sit holds %d skills and %d agents, want at least one skill (skills/<name>/SKILL.md) and one agent (agents/<name>.md)", notTree, skills, agents)
 	}
 	return nil
 }
