@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool_commit": "1d286ea49c7a5a1e7442db2a7e601c51ff9e06a3",
+  "tool_commit": "385e425d98f17dc340002393f0e74a0a3eeafe37",
   "corpora": [
     "public"
   ],
@@ -271,12 +271,12 @@
       "pre": {
         "exit": 1,
         "errors": 1,
-        "warnings": 1
+        "warnings": 3
       },
       "fix": {
         "exit": 0,
         "errors": 0,
-        "warnings": 1
+        "warnings": 3
       },
       "matched": [
         {
