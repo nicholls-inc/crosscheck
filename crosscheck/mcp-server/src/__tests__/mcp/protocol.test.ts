@@ -47,18 +47,19 @@ describe("MCP Protocol", () => {
   });
 
   describe("listTools", () => {
-    it("returns 6 tools across the Dafny and Lean engines", async () => {
+    it("returns 7 tools across the Dafny and Lean engines", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
         "dafny_cleanup",
         "dafny_compile",
+        "dafny_evidence",
         "dafny_verify",
         "lean_check",
         "lean_run",
         "lean_test",
       ]);
-      expect(result.tools).toHaveLength(6);
+      expect(result.tools).toHaveLength(7);
     });
   });
 

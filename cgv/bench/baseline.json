@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool_commit": "f71b04ee4f8b252f61bae80b52d8c7b029e0b78d",
+  "tool_commit": "385e425d98f17dc340002393f0e74a0a3eeafe37",
   "corpora": [
     "public"
   ],
@@ -271,12 +271,12 @@
       "pre": {
         "exit": 1,
         "errors": 1,
-        "warnings": 1
+        "warnings": 3
       },
       "fix": {
         "exit": 0,
         "errors": 0,
-        "warnings": 1
+        "warnings": 3
       },
       "matched": [
         {
@@ -328,19 +328,16 @@
     {
       "id": "labelled-app",
       "corpus": "public",
-      "errors": 7,
-      "labelled": 7,
+      "errors": 4,
+      "labelled": 4,
       "true_bug": 2,
       "benign": 1,
-      "false_positive": 4,
-      "precision": 0.2857,
+      "false_positive": 1,
+      "precision": 0.5,
       "unlabelled": 0,
-      "stale_labels": 0,
+      "stale_labels": 3,
       "false_positive_causes": {
-        "narrowing": 1,
-        "no-return": 1,
-        "numeric-tower": 1,
-        "object-param": 1
+        "numeric-tower": 1
       }
     }
   ],

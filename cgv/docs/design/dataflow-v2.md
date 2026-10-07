@@ -288,7 +288,9 @@ make the run incomplete (exit 2) unless `--allow-parse-errors`.
 - More write patterns: `dataclasses.replace(obj, f=v)`,
   `obj.model_copy(update={...})`, `Cls.model_validate({...})`,
   `Cls(**{**base, "f": v})` (the explicit keys), `setattr(obj, "f", v)` with a
-  literal name.
+  literal name. Since CG-1.10, `Cls.model_validate(...)` writes only the
+  fields whose contract validation does not enforce
+  (`intent/2026-10-06-pydantic-validate-boundary.md`).
 - `--exclude GLOB` (repeatable) skips matching files; the README recommends
   `--exclude '**/tests/**'` for Django projects whose tests build invalid
   unsaved instances on purpose.

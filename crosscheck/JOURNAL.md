@@ -4,6 +4,87 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — The research doc says what Layers 4 to 6 prove, test or only search
+
+**Type:** docs
+**Touches:** docs/research/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-07-layer-strengths-research-doc.md
+**Why:** VA-1.4 fixed the Layer 4 to 6 strengths in the README and the hierarchy guide, but the research doc they link to still called Layer 5 "probabilistic" with "~96% accuracy", called Layer 4 "still deterministic", and said claimcheck "validates intent alignment".
+**Links:** [intent](../intent/2026-10-07-layer-strengths-research-doc.md)
+
+The research doc now uses the wording VA-1.4 settled. Layer 5 checks spec–intent alignment only by search, and the ~96% is the accuracy Claimcheck reports for the round-trip method on a development benchmark, which measures the search, not the spec. At Layer 4 a verifier proves the Dafny source against the spec as it now stands, so the doc also says that a person confirms an edited spec did not weaken; VA-1.12 adds the same caveat to the README and the guide. `/acceptance-oracle-draft` moved from the Layer 6 paragraph to Layer 5, where the guide lists it. The implementation-chain summary still calls Layers 1 to 3 "deterministically verifiable" although Layers 2 and 3 are not yet reached; VA-1.13 owns that. VA-1.14 owns the placement of `/acceptance-oracle-draft`, the "exhaustive" wording in the Layer 6 section and in "Supporting Workflow Elements", and the point that a person's confirmation of an unweakened spec is a one-time check. The "formally verified user stories" sentence says a property without a verifier gets a test file the tools only check exists, because `/check-regressions` does not run soft-constraint tests. VA-1.13 also owns saying what holds at Layer 4 for the Lean path.
+
+---
+
+## 2026-10-07 — `dafny_evidence` runs Dafny on a copy of the blobs at `commit`
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/__tests__/integration/evidence.integration.test.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The tool mounted the whole work tree into the Dafny container, and DE-13 compared the tree only before and after the runs, so an edit made and reverted while Dafny ran could change what Dafny checked without changing the record.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-commit-export.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+ER-1.10 asked whether to mount a `git archive` copy of `commit`. The answer is yes, with a smaller copy. DE-12 already names every file Dafny reads, so the tool reads `file` and each include as its blob at `commit` with `git ls-tree` and `git cat-file blob`, scans those bytes for includes, and writes the same bytes into a fresh `dafny-` temporary directory with modes `0755` and `0644`. Every Dafny run mounts that directory. The copy is the include closure, so its cost grows with the proof, not the repository. `git archive` was not used because it applies `.gitattributes` export filters, so its output can differ from the blob. DE-3 and DE-13 stay, because the rerun command still mounts the auditor's checkout. ER-1.18 asks whether it should build its mount from `commit` too.
+
+---
+
+## 2026-10-07 — `dafny_evidence` checks that `requirement` names a tracked file, and refuses a theorem named twice
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/index.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The evidence record format defines `requirement` as a repository path with an optional anchor, but DE-1 accepted any non-blank string, so a record could name a requirement no reader can open at `commit`. `theorems` accepted a name twice, so `basis.theorems` could repeat it.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-inputs.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+The task offered a choice: check the path, or describe the field as free text. The format already calls it a path, so the tool now checks it. DE-1 refuses a requirement whose path part, the trimmed text before the first `#`, has an empty, `.` or `..` segment or a `\`, which covers an absolute path, and one that ends in an empty anchor. DE-4 runs the same tracked-file checks on that path as on `file`, before any Dafny run, so with DE-3 it names a tracked regular file at `commit`. The anchor is not checked, because the format fixes no anchor syntax, and the spec flags that as not yet reached. DE-1 also refuses each theorem name that appears more than once.
+
+---
+
+## 2026-10-07 — `npm test` replays real Dafny output through `dafny_evidence`
+
+**Type:** test
+**Touches:** mcp-server/src/__tests__/fixtures/, mcp-server/src/__tests__/integration/evidence.dafny-output.integration.test.ts, mcp-server/src/__tests__/e2e/dafny-output.e2e.test.ts, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** `npm test` covered DE-5 to DE-8 only with Dafny output typed by hand, and no test ran the evidence record checker on a record the tool wrote.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-real-output-tests.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+Eight Dafny programs, from a proved lemma to an included `{:axiom}`, were run through `dafny_evidence` against the real image, and every Dafny run's arguments, exit code and output are committed as fixtures. The integration test replays them and refuses a run whose arguments differ, so a change to how the tool calls Dafny forces a new recording. The fixtures show two things the hand-written logs did not: a lemma that rests on an unproved include, and one with an `assume`, both appear as `Passed` in the verification log, so only verify's exit code refuses them. The e2e test rewrites the fixtures under `RECORD_DAFNY_FIXTURES=1` and otherwise fails when the image's output drifts from them. The rerun command still runs only in the e2e suite.
+
+---
+
+## 2026-10-07 — `dafny_evidence` reruns by image ID, and narrows its output and include paths
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The rerun command named the image tag, so a rebuilt or retagged image ran under the same command. The output path could land in a dot directory or a dot-named file that a hook or tool reads as configuration, and an include could be any file Dafny reads as source.
+**Links:** [intent](../intent/2026-10-06-dafny-evidence-paths-and-image-id.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+The rerun command now names the image by the ID the trusted base records. A probe showed that `docker run` with an ID no local image has exits 125 without a pull, that `docker save` and `docker load` keep the ID, and that a second build of the same Dockerfile does not. So the command runs the recorded image or fails, and an auditor on another machine loads the author's saved image first. A rerun with no help from the author waits on a published image with a pinned base, and the spec's concern says so. This reverses the earlier argument for the tag, which held that a command failing on another machine was worse than one running a different image there. `outputPath` must end in `.json` and have no part, directory or file name, that starts with `.`, which replaces the `.git` rule. An include must end in `.dfy`, because Dafny 4.11.0 reads `include "Lib.txt"` as source.
+
+---
+
+## 2026-10-07 — `dafny_evidence` and its rerun command run Dafny as `nobody` with no capabilities
+
+**Type:** feature
+**Touches:** mcp-server/src/docker.ts, mcp-server/src/tools/evidence.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The Dafny runs of `dafny_evidence` and the rerun command a record hands an auditor ran the toolchain as root, with Docker's default capabilities and no process limit.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-docker-hardening.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+Both now pass `--cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534`, read from one list, `SANDBOX_FLAGS` in `docker.ts`, so the tool's runs and the rerun cannot drift. The user is set at run time rather than in the image, so the image and every earlier record's trusted base stay the same. The process limit counts threads too: a probe peaked at 23 under the tool's CPU limit and 186 with `--cores 64`, and a run over the limit exits 1. Running as `nobody` means a Linux tree that others cannot read makes Dafny fail and the tool refuse; a new concern in the spec records why the caller's own user was not used. `dafny_verify`, `dafny_compile` and the Lean tools keep their old flags, because `dafny_compile` writes into a mount that `nobody` may not be able to write on Linux.
+
+---
+
+## 2026-10-06 — The MCP tool `dafny_evidence` emits an evidence record, and no skill calls it yet
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/docker.ts, mcp-server/src/index.ts, mcp-server/dist/index.js, README.md, ../CLAUDE.md, ../docs/TASKS.md
+**Why:** ER-1's acceptance asks for one Crosscheck pipeline to emit an evidence record. `dafny_verify` returned success on a source string, with no commit, no trusted base and no rerun command.
+**Links:** [intent](../intent/2026-10-06-dafny-evidence-record.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md), #80, #81
+
+The new MCP tool `dafny_evidence` takes a committed `.dfy` file in a clean work tree and the theorems that prove a statement. It runs `dafny verify` and `dafny audit` with the work tree mounted, and emits a record with one `proved` claim, or refuses. The audit is the load-bearing part: a probe showed that a bodiless `lemma {:axiom}` passes `dafny verify` with exit 0, and that `dafny audit` reports it but also exits 0, so the tool and the rerun command both require a line that is exactly "Dafny auditor completed with 0 findings". The trusted base names the Dafny version the image reports, the Z3 in that release, and the local image ID. The rerun command names the image tag, not a digest, so a later rebuild can change what it runs. Nothing checks that the statement matches the contracts, and the record does not say whether a person reviewed it.
+
+Review decisions on the same PR tightened it, under one rule: the record must be true of what was checked, so a gap that is cheap to close is closed rather than documented. Theorem names must be fully qualified, as the `proved` row of the evidence record spec's basis table asks, and the tool reads them from Dafny's own verification log rather than matching the source, which also retires the lexical check. An include that leaves the tracked files refuses (DE-12). The image ID is read before the runs and every run uses it, and HEAD and the tree are checked again afterwards (DE-13). `outputPath` stays inside the work tree (DE-11). Neither Dafny run in the rerun command is in a pipe, so the audit's exit code counts (DE-9). The round 3 review then showed that `dafny verify` checks no proof in an included file and that `dafny audit` reports only the files it is named, so a theorem resting on an included false lemma or `{:axiom}` passed both. The tool now verifies with `--verify-included-files`, audits every included file, mounts the tree read-only, and overwrites only an earlier evidence record. Round 4 found that `git status` hides an edit to a file flagged `assume-unchanged` or `skip-worktree`, so the clean-tree check now reads `git ls-files -v` as well, and the record is written to a temporary file and renamed into place after the output path is checked again.
+
+The Dafny pipeline as a user runs it does not emit a record yet. The MCP tool does, when something calls it, but no skill calls it, because the skills are protected surfaces. So the ER-1.3 row now reads "The MCP server emits an evidence record for a Dafny run (`dafny_evidence`)", and ER-1.6 carries ER-1's goal: one Crosscheck pipeline, `/generate-verified`, emits a record by calling `dafny_evidence` (#80). The maintainer's convergence round made the audit match exact, and filed the remaining review items as ER-1.6 to ER-1.10: the wiring, Docker hardening, tighter `outputPath`, include and rerun-image rules, tests that run the evidence record checker and real Dafny outside the e2e suite, and a decision on mounting a `git archive` copy. The last round's low findings became ER-1.11 (the `requirement` description and duplicate theorem names), ER-1.12 (an include's `..` through a linked directory) and ER-1.13 (an inherited `GIT_DIR`, and conversion filters that `git status` hides). DE-3 and DE-12 now say those gaps are not yet reached.
+
+---
+
 ## 2026-10-06 — The research doc and the reference workflows say "not yet reached"
 
 **Type:** docs
@@ -12,6 +93,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 **Links:** [intent](../intent/2026-10-06-not-yet-reached-research-docs.md)
 
 The research doc's Scope section, its Layer 1, 2, 3 and 6 text, and its "What this hierarchy is not good for" section (now "Where this hierarchy does not reach yet") use the wording VA-1.2 gave the README. The workflows label Layer 6 "search only". Dated research records, the ADR, the reports and the ADD retrospectives keep their wording, since they record what was believed at the time. The research doc's Layer 5 confidence stays for VA-1.7.
+
+---
+
+## 2026-10-06 — Layers 4 to 6 say what they prove, test or only search
+
+**Type:** docs
+**Touches:** README.md, docs/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-06-layer-strengths-docs.md
+**Why:** Rule 1 of `docs/VISION.md` makes `/intent-check` a search tool, and rule 7 asks every claim to name its strength. The hierarchy guide said Layers 4 to 6 "prove the specification is the right specification" and gave Layer 5 the confidence "Probabilistic (~96%)". The README called `/intent-check` "round-trip intent verification".
+**Links:** [intent](../intent/2026-10-06-layer-strengths-docs.md)
+
+The hierarchy table's "Confidence" column is now "Strength", and each of Layers 4 and 5 says what proves, what tests and what only searches. At Layer 4, only `/check-regressions` proves, and only the Dafny source of a hard-constraint spec. For soft constraints it only checks that the property-test file still exists and suggests that a person run it. The `/invariant-coverage-scaffold` gate checks that each non-aspirational invariant is referenced by a comment in a test file, not that a test checks the invariant, and `/assurance-probe`'s mutation probe is deterministic mutation testing (AST-derived mutations, Python only in Phase 1), so whether a covering test kills each mutation is tested evidence about that test; a person judges whether a survivor shows a weak test. Layer 5 is search only for spec–intent alignment (`/intent-check`, and the invariant-vs-spec pass of `/audit-invariant-consistency`, whose other two passes are Layer 6), and a proof that a spec achieves its intent is not yet reached for the same reason as Layer 6 (RQ-1). The ~96% is now described as the accuracy Claimcheck reports for the round-trip method on a development benchmark, which measures the search, not the spec. Step 4 of the hierarchy guide's onboarding flow still says `/intent-check` "verifies"; open PR #72 (VA-1.1) rewrites that step, so this change leaves it alone. The research doc keeps the old Layer 5 wording; this change adds VA-1.7 for it. `/rationale` still marks static leaves "Verified (static)" and `/acceptance-oracle-draft` still says it measures whether the spec was the right spec; `/rationale`'s summary table also counts FORMAL leaves as `Verified` while they are only pending byfuglien dispatch, and says the root claim `holds by construction`. All are Class A skill text that VA-1.5 owns, and the docs now say otherwise.
 
 ---
 

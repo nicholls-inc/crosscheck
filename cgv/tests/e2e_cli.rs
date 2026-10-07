@@ -54,7 +54,7 @@ fn valid_checker_json_passes_through_byte_identical() {
     assert_eq!(out.status.code(), Some(1));
     // Text format renders it.
     let out = run(&app, &checker, &tmp.path().join("c.sqlite"), &["--format", "text"]);
-    assert!(String::from_utf8_lossy(&out.stdout).contains("RESULT: 0 errors, 0 warnings. Exit code 1."));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("RESULT: 0 errors, 0 warnings, 0 unverified. Exit code 1."));
     assert_eq!(out.status.code(), Some(1));
 }
 
