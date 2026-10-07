@@ -75,6 +75,11 @@
       "path": "key_popped_across_await -> Rec.s",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_across_async_comp -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
     }
   ],
   "warnings": [

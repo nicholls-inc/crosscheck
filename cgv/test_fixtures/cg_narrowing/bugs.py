@@ -143,3 +143,11 @@ async def key_popped_across_await(d: dict, k: str, other) -> Rec:
         await other
         return Rec(n=1, s=d.get(k))
     return Rec(n=0, s="missing")
+
+
+# Pattern 4: an async comprehension suspends on every item.
+async def key_popped_across_async_comp(d: dict, k: str, it) -> Rec:
+    if k in d:
+        xs = [x async for x in it]
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")

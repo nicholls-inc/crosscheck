@@ -580,7 +580,7 @@ pub fn member_key_of(key: &Expr, container: &Expr) -> Option<String> {
 /// Whether `node` leaves `member_key` facts alone: every call in it is a
 /// `.get(...)` method call (one that cannot remove a key from a dict), and
 /// it has no `del`, no walrus (which can rebind the key) and no suspension
-/// (`await`, `yield`, `async for`, `async with`).
+/// (`await`, `yield`, `async for`, `async with`, an async comprehension).
 struct OnlyGetCalls(bool);
 
 impl<'a> Visitor<'a> for OnlyGetCalls {
@@ -602,6 +602,14 @@ impl<'a> Visitor<'a> for OnlyGetCalls {
             }
             // A suspension hands control to code that may mutate the dict.
             Expr::Named(_) | Expr::Await(_) | Expr::Yield(_) | Expr::YieldFrom(_) => self.0 = false,
+            Expr::ListComp(ast::ExprListComp { generators, .. })
+            | Expr::SetComp(ast::ExprSetComp { generators, .. })
+            | Expr::Generator(ast::ExprGenerator { generators, .. })
+            | Expr::DictComp(ast::ExprDictComp { generators, .. }) => {
+                if generators.iter().any(|g| g.is_async) {
+                    self.0 = false;
+                }
+            }
             _ => {}
         }
         visitor::walk_expr(self, expr);
@@ -1603,6 +1611,11 @@ mod tests {
             "def g() -> d.pop(k):\n            pass\n        use()",
             "await fut\n        use()",
             "yield 1\n        use()",
+            "yield from it\n        use()",
+            "xs = [x async for x in it]\n        use()",
+            "xs = {x: x async for x in it}\n        use()",
+            "xs = (y for x in it for y in x if True for z in x async for w in z)\n        use()",
+            "if [x async for x in it]:\n            pass\n        use()",
             "async with cm:\n            use()",
             "async for x in it:\n            probe.get()",
             "try:\n            async with cm:\n                pass\n        except E:\n            probe.get()",
