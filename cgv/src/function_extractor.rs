@@ -861,7 +861,7 @@ mod tests {
     #[test]
     fn test_object_param_accepts_none() {
         let mut fs = funcs(
-            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None, v: Union[object, int], w: object | int, x: int | str | object, y: typing.Union[int, object], z: \"object | int\", aa: Annotated[object | int, 1], ab: int | str): pass\n",
+            "def f(a: object, b: builtins.object, c: Any, d, e: Payload, g: Name, h: Optional[object], s: \"object\", t: Annotated[object, 1], u: object | None, v: Union[object, int], w: object | int, x: int | str | object, y: typing.Union[int, object], z: \"object | int\", aa: Annotated[object | int, 1], ab: int | str, ac: Union[int, str], ad: Annotated[int, 1], ae: \"int\", af: object | int | str, ag: Union[Union[object, int], str], ah: \" object\", ai: \" object | int \"): pass\n",
         );
         let aliases: std::collections::HashMap<String, Expr> = [("Payload", "object"), ("Name", "str")]
             .into_iter()
@@ -893,6 +893,13 @@ mod tests {
                 ("z", None, Some(true)),
                 ("aa", None, Some(true)),
                 ("ab", None, Some(false)),
+                ("ac", None, Some(false)),
+                ("ad", Some("int"), Some(false)),
+                ("ae", Some("int"), Some(false)),
+                ("af", None, Some(true)),
+                ("ag", None, Some(true)),
+                ("ah", None, Some(true)),
+                ("ai", None, Some(true)),
             ]
         );
     }
