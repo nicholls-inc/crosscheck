@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-06 - A parameter typed `object` accepts None
+
+**Type:** fix
+**Touches:** cgv/src/function_extractor.rs, cgv/test_fixtures/object_param_none/, docs/TASKS.md
+**Why:** CGV reported an error when a caller passed an Optional value to a parameter typed `object`. `None` is an instance of `object`, so the error was false. It was 4 of the 20 triaged non-null errors in the real-codebase evaluation, and one of the four false positives in the labelled benchmark.
+**Links:** [intent](intent/2026-10-06-object-param-accepts-none.md)
+
+A parameter whose annotation names `object` now has the nullability of `Optional[object]`. So does a parameter typed with a union that has an `object` member, such as `Union[object, int]` or `object | int`, since that union is `object`. That check lives on the parameter path, and the shared union walk is unchanged. It gets no non-null precondition, and inside the function its value may be None, so a write of it into a non-null field is an error. `Any` and an unannotated parameter already gave no precondition, and the new fixture pins all three. Data class fields typed `object` stay non-null. Several fixtures use that as a non-null field with no type contract, and the docstring of `annotationAcceptsNull` in `BehaviorModel.lean` states the same rule, so the change to fields is CG-1.12.
+
+---
+
 ## 2026-10-06 - A checker reads an evidence record and says which rules it breaks
 
 **Type:** feature

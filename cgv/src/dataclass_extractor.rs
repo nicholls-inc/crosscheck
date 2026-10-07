@@ -586,7 +586,7 @@ fn dotted_name(expr: &Expr) -> Option<String> {
 }
 
 /// Last segment of a dotted name (`typing.Optional` → `Optional`).
-fn last_segment(expr: &Expr) -> Option<String> {
+pub(crate) fn last_segment(expr: &Expr) -> Option<String> {
     dotted_name(expr).map(|d| d.rsplit('.').next().unwrap_or(&d).to_string())
 }
 
