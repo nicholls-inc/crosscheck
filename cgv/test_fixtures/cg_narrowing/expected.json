@@ -1,0 +1,40 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "try_handler_passes -> Rec.n",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "tag_of -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "title_of -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "lookup -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "other_dict -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_rebound -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ]
+}
