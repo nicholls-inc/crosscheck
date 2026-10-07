@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -625,6 +626,16 @@ func TestLedgerLoadRoot(t *testing.T) {
 			return writeTree(t, files)
 		}
 	}
+	without := func(keys ...string) func(*testing.T, string) string {
+		return func(t *testing.T, _ string) string {
+			files := baseTree()
+			delete(files, "README.md")
+			for _, k := range keys {
+				delete(files, k)
+			}
+			return writeTree(t, files)
+		}
+	}
 	tests := []struct {
 		name     string
 		root     func(t *testing.T, base string) string
@@ -654,6 +665,32 @@ func TestLedgerLoadRoot(t *testing.T) {
 		}, []string{"LL-11"}},
 		{"manifest_not_json", withManifest("name: crosscheck"), []string{"LL-11"}},
 		{"manifest_other_name", withManifest(`{"name":"cloudflare"}`), []string{"LL-11"}},
+		{"manifest_empty_object", withManifest(`{}`), []string{"LL-11"}},
+		{"manifest_is_directory", func(t *testing.T, _ string) string {
+			files := baseTree()
+			delete(files, ".claude-plugin/plugin.json")
+			root := writeTree(t, files)
+			if err := os.MkdirAll(filepath.Join(root, ".claude-plugin", "plugin.json"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return root
+		}, []string{"LL-11"}},
+		{"manifest_name_key_case", withManifest(`{"Name":"crosscheck"}`), []string{"LL-11"}},
+		{"manifest_name_not_string", withManifest(`{"name":5}`), []string{"LL-11"}},
+		{"manifest_name_null", withManifest(`{"name":null}`), []string{"LL-11"}},
+		{"manifest_top_null", withManifest(`null`), []string{"LL-11"}},
+		{"manifest_only", func(t *testing.T, _ string) string {
+			return writeTree(t, map[string]string{".claude-plugin/plugin.json": `{"name":"crosscheck"}`})
+		}, []string{"LL-12"}},
+		{"no_agents", without("agents/byfuglien.md"), []string{"LL-12"}},
+		{"no_skills", without("skills/reason/SKILL.md"), []string{"LL-12"}},
+		{"skill_dir_without_skill_md", func(t *testing.T, _ string) string {
+			files := baseTree()
+			delete(files, "README.md")
+			delete(files, "skills/reason/SKILL.md")
+			files["skills/reason/notes.md"] = "Not a skill."
+			return writeTree(t, files)
+		}, []string{"LL-12"}},
 		{"root_symlink_to_tree", func(t *testing.T, base string) string {
 			files := baseTree()
 			delete(files, "conformance/claims.json")
@@ -700,7 +737,20 @@ func TestLedgerLoadRoot(t *testing.T) {
 				"LL-2":  "[ledger] cannot read conformance/claims.json: ",
 				"LL-10": "[ledger] cannot read conformance/claims.json: plugin root " + root + " does not resolve: ",
 				"LL-11": "[root] plugin root " + root + " is not a Crosscheck plugin tree: ",
+				"LL-12": "[root] plugin root " + root + " is not a Crosscheck plugin tree: it holds ",
 			}
+			reasons := map[string]string{
+				"manifest_empty_object":    `.claude-plugin/plugin.json has no "name" key`,
+				"manifest_is_directory":    "plugin.json: is a directory",
+				"manifest_name_key_case":   `.claude-plugin/plugin.json has no "name" key`,
+				"manifest_name_not_string": `.claude-plugin/plugin.json name is 5, want "crosscheck"`,
+				"manifest_name_null":       `.claude-plugin/plugin.json names "", want "crosscheck"`,
+				"manifest_top_null":        `.claude-plugin/plugin.json has no "name" key`,
+			}
+			if want, ok := reasons[tc.name]; ok && !strings.HasSuffix(r.errors[0], want) {
+				t.Errorf("want the reason %q, got: %q", want, r.errors[0])
+			}
+			const inventory = ", want at least one skill (skills/<name>/SKILL.md) and one agent (agents/<name>.md)"
 			if len(r.errors) != len(tc.wantErrs) {
 				t.Fatalf("want %d errors (%v), got: %v", len(tc.wantErrs), tc.wantErrs, r.errors)
 			}
@@ -710,6 +760,15 @@ func TestLedgerLoadRoot(t *testing.T) {
 				}
 				if rule != "LL-10" && strings.Contains(r.errors[i], "does not resolve") {
 					t.Errorf("error %d: want %s, got an LL-10 error: %q", i, rule, r.errors[i])
+				}
+				if (rule == "LL-12") != strings.HasSuffix(r.errors[i], inventory) {
+					t.Errorf("error %d: want %s, got: %q", i, rule, r.errors[i])
+				}
+				if rule == "LL-12" {
+					want := fmt.Sprintf("%s%d skills and %d agents%s", prefix[rule], len(r.skills), len(r.agents), inventory)
+					if r.errors[i] != want || len(r.skills) > 0 && len(r.agents) > 0 {
+						t.Errorf("error %d: want %q with a zero count, got: %q", i, want, r.errors[i])
+					}
 				}
 			}
 			if !strings.Contains(out, "RESULT: FAIL") {

@@ -75,9 +75,16 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
   symlink to a missing target cannot be read, so it fails CI too. So does a
   plugin root that does not resolve, because the path is wrong or a symlink on
   it dangles: a run that scans nothing cannot pass. A plugin root is a directory
-  whose `.claude-plugin/plugin.json` names `crosscheck`, so any other directory,
-  such as the repository root, fails CI. JSON that parses but breaks
-  the ledger schema fails CI as well:
+  whose `.claude-plugin/plugin.json` has a `name` key, spelt exactly as Claude
+  Code reads it, whose value is `crosscheck`, and that holds at least one skill
+  (`skills/<name>/SKILL.md`) and one agent (`agents/<name>.md`). Any other
+  directory, such as the repository root or a directory that holds only a copy
+  of the manifest, fails CI. Not yet reached: a copied manifest next to one
+  skill and one agent passes, whatever else is missing. The property that
+  blocks it is a check that ties the tree to a released Crosscheck inventory,
+  and the open question is whether one can be written without pinning a count
+  that changes with every release. JSON that parses but breaks the ledger
+  schema fails CI as well:
 
   | Place | Required keys | Optional keys |
   |---|---|---|
