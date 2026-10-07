@@ -196,7 +196,23 @@ impl Project {
                         resolve::dotted_parts(target)
                             .is_some_and(|p| p.last().is_some_and(|l| l == "unique" || l == "verify"))
                     });
-                    if !plain_decorators || class.arguments.as_ref().is_some_and(|a| !a.keywords.is_empty()) {
+                    // A method decorator of an enum body must be the builtin.
+                    let info_m = &index.modules[&m.module];
+                    let decorated = class
+                        .body
+                        .iter()
+                        .any(|s| matches!(s, Stmt::FunctionDef(f) if !f.decorator_list.is_empty()));
+                    let builtins_shadowed = !info_m.star_imports.is_empty()
+                        || resolve::ENUM_METHOD_DECORATORS.iter().any(|d| {
+                            info_m.defs.contains_key(*d)
+                                || info_m.imports.contains_key(*d)
+                                || info_m.rebound.contains(*d)
+                                || info.body_names.contains(*d)
+                        });
+                    if !plain_decorators
+                        || class.arguments.as_ref().is_some_and(|a| !a.keywords.is_empty())
+                        || (decorated && builtins_shadowed)
+                    {
                         info.enum_members = None;
                     }
                     index.classes.insert(info.qualified.clone(), info);
