@@ -15,9 +15,7 @@ body count, and a derived `trivialProof` boolean.
 These signals are downstream metadata used by callers to reason about proof
 strength. The function does not mutate state and makes no IO calls.
 
-## Invariants
-
-### I1 — Non-negative counts
+## I1: Non-negative counts
 
 `proofHintCount` and `emptyLemmaBodyCount` are always non-negative integers.
 
@@ -30,7 +28,7 @@ result.emptyLemmaBodyCount ≥ 0
 
 ---
 
-### I2 — Optional solver time is non-negative
+## I2: Optional solver time is non-negative
 
 `solverTimeMs` is either `null` (no timing data found) or a non-negative integer
 representing milliseconds.
@@ -47,7 +45,7 @@ result is always ≥ 0 when present.
 
 ---
 
-### I3 — Optional resource count is non-negative
+## I3: Optional resource count is non-negative
 
 `resourceCount` is either `null` (no resource count found in output) or a
 non-negative integer.
@@ -60,7 +58,7 @@ result.resourceCount = null  ∨  result.resourceCount ≥ 0
 
 ---
 
-### I4 — Lemma count requires lemma keyword
+## I4: Lemma count requires lemma keyword
 
 If the source string contains no occurrence of the substring `"lemma"`, then
 `emptyLemmaBodyCount` is exactly 0. The empty-lemma regex (`/lemma\s+\w+[^{]*\{\s*\}/g`)
@@ -74,7 +72,7 @@ can only match when `"lemma"` appears in the source.
 
 ---
 
-### I5 — `trivialProof` is false when hints exist
+## I5: `trivialProof` is false when hints exist
 
 `trivialProof` is `true` only when `proofHintCount == 0`. Equivalently, a non-zero
 proof hint count always implies `trivialProof = false`.

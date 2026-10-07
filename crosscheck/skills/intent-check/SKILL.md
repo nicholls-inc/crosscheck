@@ -5,8 +5,9 @@ description: >-
   Portable round-trip informalization over (invariant prose, covering test,
   code diff) — Layer 5 of the assurance hierarchy. Runs a two-LLM pipeline
   (blind back-translator then diff-checker), appends outcomes to a
-  false-positive tracker, emits a content-addressed JSON attestation, and
-  enforces a 30% FP kill criterion. Triggers: "intent check", "round-trip
+  false-positive tracker, writes an advisory JSON record of the run, and
+  enforces a 30% FP kill criterion. Its verdict points at likely problems and
+  is never evidence or a required artefact. Triggers: "intent check", "round-trip
   check", "spec-intent alignment", "verify invariant against test",
   protected-surface diffs touching `docs/invariants/` or property tests.
 argument-hint: "[optional: invariant doc path] [optional: covering test path]"
@@ -16,16 +17,18 @@ argument-hint: "[optional: invariant doc path] [optional: covering test path]"
 
 ## Description
 
-Operationalise Layer 5 (spec-intent alignment) of the assurance hierarchy as a portable, repo-agnostic Claude Code skill. The input is a triple — an **invariant prose description**, a **covering property test**, and the **code diff** the user wants to ship. The output is a structured verdict (match / mismatch + confidence + reason), an appended row in a per-repo false-positive tracker CSV, and a content-hashed JSON attestation that a companion pre-commit hook can check without invoking an LLM.
+Operationalise Layer 5 (spec-intent alignment) of the assurance hierarchy as a portable, repo-agnostic Claude Code skill. The input is a triple — an **invariant prose description**, a **covering property test**, and the **code diff** the user wants to ship. The output is a structured verdict (match / mismatch + confidence + reason), an appended row in a per-repo false-positive tracker CSV, and a content-hashed JSON attestation that records what the pipeline said about which file contents.
+
+**The verdict is advisory.** It is an LLM's judgement, and rule 1 of Crosscheck's vision (`docs/VISION.md` in the Crosscheck repository) says no guarantee rests on the judgement of an LLM. The attestation is a record of an LLM run, not evidence. No gate, hook, CI job or reviewer may require it, require its verdict to be `pass`, or accept it as authority for a change. A `fail` is a prompt to look harder at the invariant, the test and the code. A `pass` does not show that they agree.
 
 The skill is a portable analog of Midspiral's `claimcheck` and an internal Go-binary precursor. It is structurally adversarial by construction: the back-translator is **blind to the original intent prose**, so it cannot tautologically restate it, and the diff-checker is forced to scan for carve-outs and rationale comments before rendering a verdict. These two prompt-level guardrails are the Phase-1 calibration fixes that drive the false-positive rate below the configurable kill criterion (default 30%, see Configuration).
 
-This is a methodology skill. It does not ship a binary — Claude drives the pipeline itself, reading files, invoking the two prompts in the required order, writing the tracker row and the attestation, and running the kill-criterion math before committing. The companion pre-commit hook (described in `references/attestation-schema.md`) is fast and LLM-free: it only checks hashes and verdicts.
+This is a methodology skill. It does not ship a binary — Claude drives the pipeline itself, reading files, invoking the two prompts in the required order, writing the tracker row and the attestation, and running the kill-criterion math.
 
 Cross-references:
 - `references/round-trip-prompt.md` — verbatim two-prompt template for back-translator + diff-checker, including rationale extraction and carve-out taxonomy.
 - `references/fp-tracker-schema.md` — CSV schema, append logic, and the kill-criterion computation.
-- `references/attestation-schema.md` — JSON attestation format, SHA-256 computation, and pre-commit hook pseudocode.
+- `references/attestation-schema.md` — JSON attestation format and SHA-256 computation.
 
 ## Configuration
 
@@ -58,9 +61,9 @@ Compute the rolling false-positive rate over the last `window` days of entries (
   First, derive the repository URL by running `git remote get-url origin` and normalising it to `https://github.com/<owner>/<repo>` (handle both `git@github.com:owner/repo.git` and `https://github.com/owner/repo(.git)` forms); if no remote is configured, fall back to the bare relative path `docs/gates/intent-check-kill-criterion.md` instead of a full URL. Then open the refusal with the gate message, followed by the existing explanation:
 
   > **Action needed: Review the intent-check false-positive tracker**
-  > You are being asked to recalibrate or retire the `/intent-check` round-trip pipeline because its rolling false-positive rate has crossed the kill criterion. Approving (recalibrating) means fixing the prompts or model and letting new classified rows bring the rate back down; declining (retiring) means this check stops gating commits until it is replaced. Full explanation: `<repo-url-or-path>/blob/main/docs/gates/intent-check-kill-criterion.md`.
+  > You are being asked to recalibrate or retire the `/intent-check` round-trip pipeline because its rolling false-positive rate has crossed the kill criterion. Approving (recalibrating) means fixing the prompts or model and letting new classified rows bring the rate back down; declining (retiring) means you stop running this check until it is replaced. Full explanation: `<repo-url-or-path>/blob/main/docs/gates/intent-check-kill-criterion.md`.
   >
-  > The Layer-5 round-trip pipeline's rolling false-positive rate is `<rate>%` over the last `<window>` days (threshold: `<tripped>%`, default 30%). The kill criterion in the assurance hierarchy says this layer's strategy needs rework before it keeps gating commits. Do not re-enable until (a) the prompt or model is revised, or (b) human review has reclassified enough entries to drop the rate below the threshold. See `references/fp-tracker-schema.md` for the exact computation and the Configuration section above for the threshold env vars.
+  > The Layer-5 round-trip pipeline's rolling false-positive rate is `<rate>%` over the last `<window>` days (threshold: `<tripped>%`, default 30%). The kill criterion in the assurance hierarchy says this layer's strategy needs rework before anyone runs it again. Do not re-enable until (a) the prompt or model is revised, or (b) human review has reclassified enough entries to drop the rate below the threshold. See `references/fp-tracker-schema.md` for the exact computation and the Configuration section above for the threshold env vars.
 
   Stop. Do not proceed to Step 1.
 
@@ -72,7 +75,7 @@ Determine the three inputs by inference; ask only when inference fails.
 2. **Covering property test.** Auto-resolve by grepping the test directories for `// Invariant <ID>:` (or the repo's equivalent comment convention) matching the invariant IDs touched by the diff. Cross-check with `git diff --staged --name-only` to prefer tests in the staged set. If no covering test is found after both passes, stop and tell the user — the pipeline is undefined without one.
 3. **Code diff.** Staged changes in the current working tree: `git diff --staged` plus any relevant already-committed changes on the branch. Scope the diff to files implicated by the invariant — not the entire PR.
 
-Ask the user to supply a path inline only when (a) the staged diff is empty (nothing to check), or (b) covering tests exist but none are linked to the invariant ID via comments. In all other cases, the agent resolves the triple from repo state and reports its inferences in the Step 8 summary.
+Ask the user to supply a path inline only when (a) the staged diff is empty (nothing to check), or (b) covering tests exist but none are linked to the invariant ID via comments. In all other cases, the agent resolves the triple from repo state and reports its inferences in the Step 7 summary.
 
 Record the set of **protected files** touched by this run — the union of the invariant doc paths, the covering test paths, and any code files that the invariant doc explicitly protects. This set is later written into the attestation as `protected_files`.
 
@@ -134,7 +137,7 @@ date,invariant_touched,phase_verdict,human_verdict
 
 - `date` — today in `YYYY-MM-DD`.
 - `invariant_touched` — a short label identifying the invariant under test, e.g. `queue.md I2 (6-of-19 field mutation coverage)`. Match the style described in `references/fp-tracker-schema.md`.
-- `phase_verdict` — `pass` if `match == true` **AND** `confidence_pct >= 80`; `fail` otherwise. This must match the `verdict` written to the attestation in Step 6 — low-confidence matches are tracked as `fail` so the kill criterion picks up prompt weakness, and the attestation hook refuses the commit.
+- `phase_verdict` — `pass` if `match == true` **AND** `confidence_pct >= 80`; `fail` otherwise. This must match the `verdict` written to the attestation in Step 6 — low-confidence matches are tracked as `fail` so the kill criterion picks up prompt weakness.
 - `human_verdict` — leave **empty** at skill-run time. A human reviewer fills this in later as `genuine`, `genuine-planted`, `partial`, or `spurious`. The kill-criterion math ignores empty cells (see `references/fp-tracker-schema.md` for the append logic and the rolling-window computation).
 
 The schema is fixed — do not add columns and do not rename columns. Stability across repos is what makes the rows directly concatenatable for cross-repo calibration analysis.
@@ -162,31 +165,18 @@ Write `.assurance/intent-check-attestation.json` with the schema documented in `
 }
 ```
 
-`verdict` mirrors `phase_verdict`: `pass` if `match == true` **and** `confidence_pct >= 80`, otherwise `fail`. Low-confidence matches do not count as clean passes — the attestation says `fail` and the user can override with a documented governance note (use `/protected-surface-amend`).
+`verdict` mirrors `phase_verdict`: `pass` if `match == true` **and** `confidence_pct >= 80`, otherwise `fail`. Low-confidence matches do not count as clean passes.
 
-The attestation must be written **before** the commit that touches the protected files. The companion pre-commit hook (described in `references/attestation-schema.md`) re-reads the protected files, recomputes the hash, and fails the commit if the attestation is absent, stale, or the verdict is not `pass`.
+The attestation is an advisory record. Do not tell the user to commit it, to rerun the skill until it says `pass`, or to wire it into a pre-commit hook, a CI job or a merge rule. Nothing has to wait for it. The content hash lets a reader see whether the files changed after the run, so a reviewer who reads the record knows which contents the verdict was about.
 
-### Step 7: Companion Pre-Commit Hook (draft to disk, do not install)
+Earlier versions of this skill drafted a pre-commit hook that rejected a commit unless this file recorded `pass`. Look for one with `grep -rl intent-check-attestation .pre-commit-config.yaml lefthook.yml .husky .git/hooks/pre-commit 2>/dev/null`. If one is installed, tell the user that it makes an LLM verdict a commit gate and should be removed, through `/protected-surface-amend` if the hook's path is protected. Draft files an earlier run left behind (`ls .assurance/intent-check-hook.draft.* 2>/dev/null`) encode the same gate, so tell the user to delete them rather than apply them.
 
-The skill does not auto-install the hook — installing a hook is a Class A protected-surface decision per `.claude/rules/protected-surfaces.md`, so it must land via `/protected-surface-amend` rather than being silently added. But the skill can do everything *up to* installation: it writes a draft hook script to disk that the user reviews and applies.
-
-Detect the user's pre-commit framework once (mirror `/invariant-coverage-scaffold`'s detection: `.pre-commit-config.yaml` → pre-commit.com; `lefthook.yml` → lefthook; `.husky/` → husky; else `none`). Emit a draft file at one of:
-
-- `.assurance/intent-check-hook.draft.pre-commit.yaml` (for pre-commit.com — a snippet the user merges into their config).
-- `.assurance/intent-check-hook.draft.lefthook.yml` (lefthook).
-- `.assurance/intent-check-hook.draft.husky.sh` (husky — full executable hook script).
-- `.assurance/intent-check-hook.draft.md` (none / unknown — pseudocode reference for a hand-rolled hook).
-
-Each draft contains the < 1 s, no-LLM logic from `references/attestation-schema.md`: scan staged files against the protected-surface patterns; if any match, read `.assurance/intent-check-attestation.json`, recompute the content hash, and reject the commit unless the attestation exists, its verdict is `pass`, and its hash matches.
-
-Report the written draft path. The user reviews and applies via `/protected-surface-amend` (Class A amendment). The skill itself does not modify the user's existing hook configuration.
-
-### Step 8: Report
+### Step 7: Report
 
 Present a single summary block to the user. If `phase_verdict` is `fail`, first derive the repository URL by running `git remote get-url origin` and normalising it to `https://github.com/<owner>/<repo>` (handle both `git@github.com:owner/repo.git` and `https://github.com/owner/repo(.git)` forms); if no remote is configured, fall back to the bare relative path `docs/gates/intent-check-verdict.md` instead of a full URL. Then open the summary with the gate message before the block:
 
-> **Action needed: Choose a fix for the failed intent check**
-> You are being asked to fix the code, fix the test, or amend the invariant because `/intent-check` found a mismatch between them. Approving a code or test fix means resubmitting for a fresh check; choosing to amend the invariant means routing through `/protected-surface-amend` with a governance note. Full explanation: `<repo-url-or-path>/blob/main/docs/gates/intent-check-verdict.md`.
+> **Action needed: Look at the failed intent check**
+> You are being asked to decide what to do about a mismatch between the code, its test and the invariant, because the advisory `/intent-check` pipeline thinks they disagree and its verdict is an LLM's judgement, not evidence. Fixing the code or the test means changing them, amending the invariant means routing through `/protected-surface-amend` with a governance note, and judging the verdict wrong means classifying it `spurious` in the tracker; nothing is blocked whichever you choose. Full explanation: `<repo-url-or-path>/blob/main/docs/gates/intent-check-verdict.md`.
 
 ```
 ## /intent-check verdict: <pass|fail>
@@ -198,14 +188,14 @@ Present a single summary block to the user. If `phase_verdict` is `fail`, first 
 - Reason: <mismatch_reason or "clean match">
 
 Tracker row appended: .assurance/intent-check-fp-tracker.csv
-Attestation written:   .assurance/intent-check-attestation.json
+Attestation written:   .assurance/intent-check-attestation.json (advisory; no gate reads it)
 
 Rolling FP rate (last <window> days): <rate>%  (threshold: <tripped>%, default 30%)
 ```
 
-If `match == false`, tell the user exactly what the back-translator perceived vs. what the invariant prose claimed, so they can decide whether to fix the code, fix the test, or amend the invariant prose via `/protected-surface-amend`.
+If `match == false`, tell the user exactly what the back-translator perceived vs. what the invariant prose claimed, so they can decide whether to fix the code, fix the test, amend the invariant prose via `/protected-surface-amend`, or classify the verdict as `spurious` in the tracker.
 
-### Step 9: What this does NOT catch
+### Step 8: What this does NOT catch
 
 The round-trip pipeline is Layer 5 best-effort. It is probabilistic and has well-characterised blind spots. Surface them in the report so the user knows the coverage boundary:
 
@@ -237,12 +227,12 @@ The 30% FP kill criterion is the operational floor — if more than 30% of `pass
 - Diff-checker output passed semantic validation (no contradictory match/reason, reason >= 20 chars when non-empty).
 - FP-tracker row appended with the exact schema (date, invariant_touched, phase_verdict, human_verdict).
 - Attestation emitted with sorted protected_files, SHA-256 content_hash, verdict, RFC3339 checked_at, and pipeline_output.
-- Draft pre-commit hook written to .assurance/intent-check-hook.draft.<framework> — user reviews and applies via /protected-surface-amend (Class A).
+- Report states that the verdict is advisory and that no gate may require the attestation.
 - "What this does NOT catch" section emitted with the five blind spots enumerated.
 
 ## Decisions for Review (if verdict is fail)
 
-- [ ] Pick remediation: fix the code, fix the test, or amend the invariant prose via /protected-surface-amend.
+- [ ] Decide: fix the code, fix the test, amend the invariant prose via /protected-surface-amend, or classify the verdict as spurious in the FP tracker.
 ```
 
 ## Arguments

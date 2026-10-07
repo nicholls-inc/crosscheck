@@ -70,13 +70,13 @@ Draft these three sections directly from repo state. Do not ask the user.
 **Diff plan** (table):
 - Use `git diff --staged --stat` for the file list and `git diff --staged` for the line ranges and invariant IDs.
 - For Class B: find covering property tests by grepping `// Invariant <ID>:` (or the repo's equivalent comment style) across the test directories. Flag any invariant whose coverage changes.
-- For Class A: identify any downstream attestation/intent-check baseline refresh needed.
+- For Class A: identify any downstream eval or prompt-tuning follow-up needed.
 
 **Coverage impact**:
 - For added Class B invariants: verify they ship with a covering test in the same staged diff (grep the staged test files for `// Invariant <new-ID>:`). If not, flag as `<!-- aspirational -->` candidate.
 - For removed Class B invariants: verify the covering test is also being removed or re-pointed.
 - For weakened/strengthened invariants: verify the test is updated. A weakened invariant whose test still enforces the old stronger contract is a silent regression risk — emit a **BLOCKING:** line in the output (see Step 6).
-- For Class A: state explicitly whether attestation regeneration, intent-check baseline refresh, or prompt-tuning follow-up is required.
+- For Class A: state explicitly whether an eval update or a prompt-tuning follow-up is required. Do not list an `/intent-check` attestation, or any other record of an LLM verdict, as a required follow-up: it is advisory and no gate reads it.
 
 If any of these cannot be derived (e.g., the staged diff is empty in agent mode), this is a genuine error: report it and stop. The amendment cannot be drafted from no evidence.
 
@@ -174,7 +174,7 @@ Before the block itself, derive the repo URL by parsing `git remote get-url orig
 
 ### Test / Coverage Impact
 
-- <Per affected invariant ID: covering test status in this PR. Class A: attestation / intent-check / prompt-tuning follow-ups.>
+- <Per affected invariant ID: covering test status in this PR. Class A: eval / prompt-tuning follow-ups.>
 - <BLOCKING: lines for any silent-regression risks detected in Step 3.>
 
 ### Review Checklist
@@ -186,7 +186,7 @@ Before the block itself, derive the repo URL by parsing `git remote get-url orig
 - [ ] Every added Class B invariant has a covering property test in this PR (or `<!-- aspirational -->` + linked issue).
 - [ ] Every removed Class B invariant has its covering test removed or re-pointed in this PR.
 - [ ] No invariant is being weakened purely to make a failing test pass.
-- [ ] Class A edits: downstream attestation / intent-check baseline refresh is queued.
+- [ ] Class A edits: downstream eval or prompt-tuning follow-ups are queued.
 - [ ] This amendment block appears in the PR body **and** on the relevant invariant doc / governance section.
 - [ ] All `REQUIRES HUMAN VERIFICATION:` markers above have been resolved.
 ```
