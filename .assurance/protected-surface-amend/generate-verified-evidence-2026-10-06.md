@@ -8,6 +8,7 @@
 ### Change Description
 
 1. `crosscheck/skills/generate-verified/SKILL.md`: a new Step 7 commits the verified program to a path the caller names with `evidence:`, and calls the MCP tool `dafny_evidence` to emit an evidence record to `.crosscheck/work/dafny/<spec-id>/evidence.json`. It runs only on that opt-in, only after `dafny_verify` accepted the program, and only on a clean work tree. It writes `.crosscheck/.gitignore` with `*` when git does not already ignore `.crosscheck/`. The Evidence Summary moves from Step 6 to a new Step 8, after Step 7, and reports the record, or why there is none, and, whenever a record is emitted, asks a person to check the drafted statement against the contracts. The front matter and "Arguments" document `evidence:` and `requirement:`.
+2. Same file, Step 7 item 4: when `git add` fails or the commit fails, the step says what state it leaves (`<path>` written but not staged, or staged for the caller, who must commit or unstage it before a later run). Step 7 item 8: after a tool refusal that names a theorem, the skill may correct the names and call once more, and when the corrected set differs it redrafts the statement to cover exactly the passed theorems and says in Step 8 that the set changed. It never edits the program, the spec or a contract to get a record.
 
 ### Rationale
 
@@ -33,6 +34,8 @@ Task ER-1.6, issue #80. ER-1's acceptance asks for one Crosscheck pipeline to em
 | 3 | `crosscheck/skills/generate-verified/SKILL.md` | new Step 7 | added |
 | 4 | `crosscheck/skills/generate-verified/SKILL.md` | new Step 8 (Evidence Summary, moved from Step 6) | record lines and the statement review item |
 | 5 | `crosscheck/skills/generate-verified/SKILL.md` | Arguments | documents the two arguments |
+| 6 | `crosscheck/skills/generate-verified/SKILL.md` | Step 7 item 4 | states the state left when `git add` or `git commit` fails |
+| 7 | `crosscheck/skills/generate-verified/SKILL.md` | Step 7 item 8 | one retry after a theorem-name refusal, with a redrafted statement when the set changes |
 
 ### Test / Coverage Impact
 
