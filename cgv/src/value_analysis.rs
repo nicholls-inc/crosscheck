@@ -3287,6 +3287,7 @@ mod tests {
             ("label_of(h) if h.name else None", None),
             ("label_of(h) if not h.name else None", Some(true)),
             ("None if h.name else label_of(h)", Some(true)),
+            ("None if h.name is None else label_of(h)", None),
             ("h.name and label_of(h)", None),
             ("not h.name or label_of(h)", None),
             ("h.name or label_of(h)", Some(true)),
@@ -3294,20 +3295,29 @@ mod tests {
             assert_eq!(f(&format!("def c(h: H):\n    {code}\n")), want, "{code}");
         }
         // A positional argument that falls into `*a` does not bind the
-        // keyword-only `h`.
+        // keyword-only `h`, and neither does a third positional one.
         let kwonly = format!(
             "{records}def label_of(x, *a, h: H):\n    h.name\n\
              def c(g, h: H):\n    if h.name:\n        label_of(g, h)\n"
         );
         assert_eq!(facts_of(&[("code.py", &kwonly)], "code.label_of").nullable, Some(true));
+        let third = kwonly.replace("label_of(g, h)", "label_of(g, g, h)");
+        assert_eq!(facts_of(&[("code.py", &third)], "code.label_of").nullable, Some(true));
         let kwonly_ok = kwonly.replace("label_of(g, h)", "label_of(g, h=h)");
         assert_eq!(facts_of(&[("code.py", &kwonly_ok)], "code.label_of").nullable, None);
+        let posonly = format!(
+            "{records}def label_of(h: H, /, x):\n    h.name\n\
+             def c(h: H):\n    if h.name:\n        label_of(h, 1)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &posonly)], "code.label_of").nullable, None);
         // A narrowed field of the receiver binds `self`.
         let recv = format!(
-            "{records}class S:\n    def label_of(self):\n        self.name\n\
-             def a(s: H):\n    if s.name:\n        S.label_of(s)\n"
+            "{records}@dataclass\nclass K:\n    name: Optional[str]\n    def label_of(self):\n        self.name\n\
+             def a(k: K):\n    if k.name:\n        k.label_of()\n"
         );
-        assert_eq!(facts_of(&[("code.py", &recv)], "code.S.label_of").nullable, None);
+        assert_eq!(facts_of(&[("code.py", &recv)], "code.K.label_of").nullable, None);
+        let recv_bad = recv.replace("if k.name:", "if k:");
+        assert_eq!(facts_of(&[("code.py", &recv_bad)], "code.K.label_of").nullable, Some(true));
         // A method reference is a use as a value.
         let attr = format!("{method}def c(s: S):\n    cb = s.label_of\n");
         assert_eq!(facts_of(&[("code.py", &attr)], "code.S.label_of").nullable, Some(true));
@@ -3322,6 +3332,13 @@ mod tests {
              def other(h: H):\n    if h.name:\n        label_of(h)\n"
         );
         assert_eq!(facts_of(&[("code.py", &cycle)], "code.label_of").nullable, Some(true));
+        // A chain of calls that starts at a function nothing calls.
+        let chain = format!(
+            "{records}def label_of(h: H):\n    h.name\n\
+             def mid(h: H):\n    if h.name:\n        label_of(h)\n\
+             def start(h: H):\n    if h.name:\n        mid(h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &chain)], "code.label_of").nullable, None);
         // An outside entry into the same recursion shows a caller.
         let entered = format!("{own}def start(h: H):\n    if h.name:\n        label_of(h, 3)\n");
         assert_eq!(facts_of(&[("code.py", &entered)], "code.label_of").nullable, None);

@@ -1561,6 +1561,7 @@ mod tests {
         // in the narrowed branch's own test.
         let no_members = |code: &str| {
             let uses = narrowing_at_uses(code);
+            assert!(!uses.is_empty(), "{code}: no use() reached");
             assert!(
                 uses.iter().all(|u| u.iter().all(|n| !n.contains('['))),
                 "{code}: {uses:?}"
@@ -1585,6 +1586,17 @@ mod tests {
             no_members(&format!(
                 "def f(d, k, j, a, mode):\n    if k in d:\n        {body}\n"
             ));
+        }
+        // A member fact from an earlier test of an `elif` chain, then a call.
+        no_members("def f(d, k):\n    if k not in d:\n        return\n    elif g():\n        return\n    use()\n");
+        no_members("def f(d, k, a):\n    if k not in d:\n        return\n    if a:\n        pass\n    elif g():\n        return\n    use()\n");
+        // A chained comparison says nothing about its first pair.
+        for code in [
+            "def f(d, e, k):\n    if k not in d not in e:\n        return\n    use()\n",
+            "def f(x, y):\n    if x is None is y:\n        return\n    use()\n",
+            "def f(x, y):\n    if x in {'a'} == y:\n        use()\n",
+        ] {
+            assert_eq!(narrowing_at_uses(code), vec![Vec::<String>::new()], "{code}");
         }
         // The negative side of an `or` test with a call.
         no_members("def f(d, k):\n    if k not in d or g():\n        return\n    use()\n");
