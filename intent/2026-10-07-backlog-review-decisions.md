@@ -16,14 +16,14 @@ Every line cited below is on that commit. "Rule N" is design rule N of `docs/VIS
 | #24 | Align AUTO 5's routing grammar | Refine | PB-1 | A deterministic CI check misses bare-slash and agent-to-agent edges | PB-1.19 |
 | #25 | Known-status allowlist for the claims ledger | Refine | PB-1, rule 7 | A mistyped claim status passes the conformance check silently | PB-1.20 |
 | #26 | Reconcile the invariant-heading grammar with the real corpus | Refine | PB-1 | The header and comment patterns disagree, and every real invariant doc fails the canonical form | PB-1.21 |
-| #27 | Ship the rest of ADD | Refine | AD-1 | Its child issues are done (no `known-gap` claim is left in `crosscheck/conformance/claims.json`), and AD-1 cites it as its document | AD-1.1 |
-| #28 | Tighten the trigger criterion for ADD | Refine | Vision, limits | The cost of writing specs is one of the hard limits the vision names (`docs/VISION.md:93`). A stated trigger keeps ADD's cost where it pays | AD-1.5 |
+| #27 | Ship the rest of ADD | Refine | AD-1 | No claim in `crosscheck/conformance/claims.json` is `known-gap` any more, and AD-1 cites it as its document | AD-1.1 |
+| #28 | Tighten the trigger criterion for ADD | Refine | Vision, limits | The cost of writing proofs and models is one of the hard limits the vision names (`docs/VISION.md:93`). A stated trigger keeps ADD's cost where it pays | AD-1.5 |
 | #29 | Surface adversarial-probe routing during audit | Refine | Rule 1 | The choice of modules to probe is made silently. Stating it lets a person decide it | AD-1.6 |
 | #30 | Coverage-gate retrofit pass | Refine | Vision, Tests class | A retrofitted `Invariant` comment claims coverage that nothing checks. The rewrite ties each retrofit to a killed mutant | AD-1.7 |
 | #31 | Pre-flight invariants that change the whole test suite | Refine | Rules 1, 3 | It replaces a surprise at merge time with a measured count from a rerunnable command | AD-1.8 |
 | #32 | Auto-close mechanical findings | Refine | Rule 1 | As written, an LLM's tag would close a finding. The rewrite lets only a deterministic check close one | AD-1.9 |
 | #33 | Commit scaffolding before implementation | Refine | Vision, open question | Committing invariants and failing tests before the code makes any later change to them visible in the diff (`docs/VISION.md:114`) | AD-1.10 |
-| #34 | Admin/governance reclassification of skills | **Drop** | | Done on `main`. Phases 1, 2, 3 and 5, and the Phase 4 items checked, ship. The two small residues move to AD-1.11 | |
+| #34 | Admin/governance reclassification of skills | **Drop** | | Done on `main`. Phases 1 to 5 ship, apart from two residues. The two small residues move to AD-1.11 | |
 | #35 | Field report: governance-skill load | Refine | Vision, "Who reads what" | #34 says it closes #35 "conceptually", but lessons 1, 3, 4 and 6 are not done on `main` | AD-1.11 |
 | #36 | Plugin referential-integrity gap | Refine | PB-1 | No check resolves a slash-reference, and `crosscheck/docs/skills.md` has drifted from `crosscheck/skills/` | PB-1.18 |
 | #37 | `/draft-invariants` should read specs first | **Drop** | | Done on `main`: `crosscheck/skills/draft-invariants/SKILL.md:74` to `:128` | |
@@ -49,7 +49,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #20 → VA-1.9
 
-> **Auditor: never report `settled` for an artefact the auditor could not check.** Serves VA-1 and rule 7: every claim names its strength. `crosscheck/agents/auditor.md` has three verdicts (`:67` to `:68`). On `docs/invariants/*.md`, which carry no frontmatter, three of the five drift criteria "pass *vacuously*, not *cleanly*" (`:118` to `:129`), and the artefact still gets `settled`. `:60` says every audited artefact gets one verdict, and `:241` to `:242` say only flagged artefacts are judged. Together, these two leave "clean" and "never examined" indistinguishable.
+> **Auditor: never report `settled` for an artefact the auditor could not check.** Serves VA-1 and rule 7: every claim names its strength. `crosscheck/agents/auditor.md` has three verdicts (`:67` to `:68`). On `docs/invariants/*.md`, which carry no frontmatter, three of the five drift criteria "pass *vacuously*, not *cleanly*" (`:118` to `:129`), and the artefact still gets `settled`. `:60` says every audited artefact gets one verdict, and `:241` to `:242` say only flagged artefacts are judged. Together, these two leave the verdict unable to tell "clean" from "never examined". `:118` to `:129` disclose the vacuous pass in prose only.
 >
 > Acceptance:
 > - Add a verdict, such as `unaudited`, for an artefact whose criteria cannot be computed. List it in its own rows of the verdict table.
@@ -72,11 +72,11 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #22 → VA-1.10
 
-> **ADD acceptance oracles: no LLM judge as a pass condition.** Serves VA-1 and rule 1. `crosscheck/conformance/acceptance/oracles.go:152` to `:153` makes every Judged oracle (A1 greenfield, A2 bootstrap, A5 drift-stop, A6 completeness, `:56` to `:66`) wait for "the scenario runner + LLM judge". Rule 1 (`docs/VISION.md:48`) says no guarantee rests on an LLM's judgment, so an LLM judge cannot make these oracles pass. CI runs `go test ./...` without `-tags acceptance` (`.github/workflows/ci.yml:44`), so none of the six oracles runs in CI.
+> **ADD acceptance oracles: no LLM judge as a pass condition.** Serves VA-1 and rule 1. `crosscheck/conformance/acceptance/oracles.go:21` and `:33` define a Judged oracle as one whose transcript an LLM judge scores, and `:152` to `:153` makes every Judged oracle (A1 greenfield, A2 bootstrap, A5 drift-stop, A6 completeness, `:56` to `:66`) wait for "the scenario runner + LLM judge". Rule 1 (`docs/VISION.md:48`) says no guarantee rests on an LLM's judgment, so an LLM judge cannot make these oracles pass. CI runs `go test ./...` without `-tags acceptance` (`.github/workflows/ci.yml:44`), so none of the six oracles runs in CI.
 >
 > Acceptance:
 > - Remove "LLM judge" as the pass condition from `oracles.go`, `RATIFY.md` and the oracle files. Split each Judged oracle into the parts a deterministic check decides and the parts a named person judges, which the vision calls `judged` strength. An LLM may draft a transcript or point at a likely failure. Its output is never the verdict.
-> - Mechanise A5 (drift-stop): a deterministic check that fails when a commit in lowry's loop weakens a ratified invariant, built on `ClassifyCommitShape`.
+> - Mechanise A5 (drift-stop): a deterministic check that fails when a commit in lowry's loop weakens a ratified invariant. `ClassifyCommitShape` (`oracles.go:105` to `:127`) reads only the commit subject and the amendment line, so the check must also read the diff of the invariant and test files, with the commit shape as one input.
 > - Run the deterministic acceptance oracles in CI. The mode-selection function is AD-1.4.
 > - Keep the `claims.json` entries for lowry and the auditor true as the oracles move.
 >
@@ -96,7 +96,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #24 → PB-1.19
 
-> **Conformance AUTO 5: read the routing forms that `documented()` accepts, and agent-to-agent edges.** Serves PB-1: deterministic CI. `crosscheck/conformance/main.go:47` to `:48` match only `` `/x` `` and `/crosscheck:x`. `documented()` (`:241` to `:246`) also accepts a bare `/x `. AUTO 5 (`:361` to `:369`) flags every token not in `known`, including skills of other plugins, and it never extracts a bare agent name such as `byfuglien`, `hellebuyck`, `lowry` or `auditor`.
+> **Conformance AUTO 5: read the routing forms that `documented()` accepts, and agent-to-agent edges.** Serves PB-1: deterministic CI. `crosscheck/conformance/main.go:47` to `:48` match only `` `/x` `` and `/crosscheck:x`. `documented()` (`:241` to `:246`) also accepts a bare `/x `. AUTO 5 (`:361` to `:369`) flags every backticked bare `/name` that is not in `known`, so a bare reference to another plugin's skill fails, and it never extracts a bare agent name such as `byfuglien`, `hellebuyck`, `lowry` or `auditor`.
 >
 > Acceptance:
 > - Extract the bare-slash form.
@@ -134,11 +134,11 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #27 → AD-1.1
 
-> **AD-1: review the imported Crosscheck backlog against the vision.** This issue began as the epic that closed the ADD design-vs-shipped gap. Its child issues shipped. `crosscheck/conformance/claims.json` has no `known-gap` claim left: six are `reviewed-disclosed` and one is `reviewed-accurate`. It is now the tracker for roadmap item AD-1. The decisions for #19 to #41 are in `intent/2026-10-07-backlog-review-decisions.md`, and each refined issue has a row in `docs/TASKS.md`. The `tracked_in` links in `claims.json` still point at `nicholls-inc/claude-code-marketplace` issues. That is recorded here, not changed.
+> **AD-1: review the imported Crosscheck backlog against the vision.** This issue began as the epic that closed the ADD design-vs-shipped gap. No claim in `crosscheck/conformance/claims.json` is `known-gap` any more: six are `reviewed-disclosed` and one is `reviewed-accurate`. That says the gaps are disclosed, not that each child issue is closed. It is now the tracker for roadmap item AD-1. The decisions for #19 to #41 are in `intent/2026-10-07-backlog-review-decisions.md`, and each refined issue has a row in `docs/TASKS.md`. The `tracked_in` links in `claims.json` still point at `nicholls-inc/claude-code-marketplace` issues. That is recorded here, not changed.
 
 ### #28 → AD-1.5
 
-> **add-orchestrator: state when ADD pays for itself.** Serves the vision's statement that the cost of writing specs and proofs is a hard limit (`docs/VISION.md:93`). `crosscheck/agents/add-orchestrator.md:11` to `:12` triggers on "drive ADD" and similar phrases, and it states no criterion. `crosscheck/docs/add/orchestrator-improvements.md:63` records the change as improvement 6.
+> **add-orchestrator: state when ADD pays for itself.** Serves the vision's statement that the cost of writing proofs and models is a hard limit (`docs/VISION.md:93`). `crosscheck/agents/add-orchestrator.md:11` to `:12` triggers on "drive ADD" and similar phrases, and it states no criterion. `crosscheck/docs/add/orchestrator-improvements.md:63` records the change as improvement 6.
 >
 > Acceptance:
 > - The preamble names the trigger: a feature with recurring bugs of one class and no behavioural contract.
@@ -149,7 +149,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #29 → AD-1.6
 
-> **add-orchestrator: name the modules to probe before probing, for a person to confirm.** Serves rule 1: humans decide. Today `/spec-adversary` is surfaced only in Step 11 (`crosscheck/agents/add-orchestrator.md:385` to `:389`, `:555`), and the selection is not recorded.
+> **add-orchestrator: name the modules to probe before probing, for a person to confirm.** Serves rule 1: humans decide. Today `/spec-adversary` is surfaced only after the audit, in Step 11, as a closing recommendation of the two coverage-thinnest modules (`crosscheck/agents/add-orchestrator.md:385` to `:389`, `:555`). It is not a confirmed choice made before the probe runs, and the selection is not recorded.
 >
 > Acceptance:
 > - The audit step's output has a `recommended-probes` section naming 1 or 2 modules. Each choice cites a count the run computed (findings per module, a declared risk tag), not an LLM rating.
@@ -185,7 +185,7 @@ Each section gives the text to put in the issue's body in place of the current t
 > **ADD triage: close a finding without a person only when a deterministic check confirms the fix.** Serves rule 1. As written, the issue had an LLM tag each finding `mechanical` or `judgement` and close the mechanical ones itself. That tag is LLM judgment.
 >
 > Acceptance:
-> - A finding may be auto-applied only when a deterministic check confirms the closure, for example "invariant Y has no `Governance:` line", which a grep decides.
+> - A finding may be auto-applied only when a deterministic check confirms the closure, for example "invariant Y has no `Governance:` line", which a grep decides. The checks come from a committed, fixed list, not from one the orchestrator writes at run time.
 > - Every other finding goes to the person, with any LLM tag shown as a suggestion.
 > - The pull request lists the auto-applied closures in one section, and the merge is the human decision.
 > - Affects `add-orchestrator.md`, `audit-spec-coverage`, `audit-invariant-consistency` and `spec-adversary`.
@@ -244,7 +244,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #39, #40, #41 → VA-1.11
 
-> **Reasoning skills: label the certificate as search output, and never as "verified".** Serves VA-1 and rules 1 and 7. `docs/VISION.md:103` names the semi-formal reasoning skills as search tools whose output is never evidence. `crosscheck/skills/reason/SKILL.md:47`, `:68`, `:75` and `:154` call a premise "verified by reading code" and define HIGH confidence as "All premises verified". `trace-execution/SKILL.md:66` and `locate-fault/SKILL.md:41` repeat this. `crosscheck/agents/byfuglien.md` has no rule against reporting a verdict from an incomplete certificate (`:130` to `:155`). `crosscheck/README.md:35` says "Use the byfuglien agent to verify your bug fix". In #40, an interrupted certificate was reported as "verified as correct with high confidence". In #39 and #41, a "HIGH" certificate was wrong.
+> **Reasoning skills: label the certificate as search output, and never as "verified".** Serves VA-1 and rules 1 and 7. `docs/VISION.md:103` names the semi-formal reasoning skills as search tools whose output is never evidence. `crosscheck/skills/reason/SKILL.md:47`, `:68`, `:75` and `:154` call a premise "verified by reading code" and define HIGH confidence as "All premises verified". `trace-execution/SKILL.md:66` and `locate-fault/SKILL.md:41` repeat this. `crosscheck/agents/byfuglien.md` has a certificate-completeness gate that re-executes a skill (`:130` to `:155`), but no rule for a certificate that is still incomplete after re-execution, which is the case in #40. `crosscheck/README.md:35` says "Use the byfuglien agent to verify your bug fix". In #40, an interrupted certificate was reported as "verified as correct with high confidence". In #39 and #41, a "HIGH" certificate was wrong.
 >
 > Acceptance:
 > - These skills and byfuglien describe their output as a search result that points at likely problems.
@@ -267,7 +267,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ## Dropped issues
 
-### #34: done on `main`
+### #34: done on `main`, apart from two residues
 
 Every phase of the reclassification has shipped. Each item below is quoted from `origin/main` at `e5089f7`:
 
@@ -289,7 +289,7 @@ Every phase of the reclassification has shipped. Each item below is quoted from 
   - `crosscheck/skills/spec-adversary/SKILL.md:151`, `crosscheck/skills/assurance-roadmap-check/SKILL.md:111` and `crosscheck/skills/assurance-status/SKILL.md:171` write findings files.
   - `crosscheck/skills/intent-check/SKILL.md:208` has "What this does NOT catch".
 
-Two small residues remain, at `lean-spec/SKILL.md:175` and `assurance-probe/SKILL.md:230`. They move to AD-1.11, together with #35's open lessons. Close #34 with a link to this section.
+Two small residues remain, at `lean-spec/SKILL.md:175` and `assurance-probe/SKILL.md:230`. They move to AD-1.11, together with #35's open lessons. Close #34 with a link to this section, and say in the close comment that the two residues stay open in AD-1.11.
 
 ### #37: done on `main`
 

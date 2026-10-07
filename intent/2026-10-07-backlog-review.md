@@ -13,7 +13,7 @@ Issues #19 to #41 came into this repository with Crosscheck (MR-1). They were wr
 
 The decision table, with 21 Refine and 2 Drop:
 
-- **#34 Drop.** Already done on `main`.
+- **#34 Drop.** Done on `main`, apart from two residues that move to AD-1.11.
 - **#37 Drop.** Already done on `main`.
 - **#27 Refine.** It becomes the tracker for AD-1, and its row is AD-1.1, this task.
 - **The other 20 Refine.** They need 19 new rows, because #39 and #41 share AD-1.13:
