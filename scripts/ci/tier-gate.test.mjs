@@ -2,13 +2,16 @@
 // Each test names the requirement it covers (TG-*, see
 // intent/2026-09-29-deterministic-evidence-spec.md; for TG-1, TG-8 and
 // TG-11, intent/2026-09-30-tier-anchor-spec.md; for TG-12 and TG-13,
-// intent/2026-09-30-citation-rule-spec.md).
+// intent/2026-09-30-citation-rule-spec.md; for TG-17 and TG-18,
+// intent/2026-10-06-changed-files-fail-closed-spec.md).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { evaluate } from './tier-gate.mjs';
 
 const RULES = [
@@ -562,4 +565,82 @@ test('missing rules file fails closed', () => {
   const r = evaluate({ prBody: 'Tier: 1', changedFiles: [], cwd: dir });
   assert.equal(r.pass, false);
   assert.match(out(r), /Could not read the protected-surface glob list/);
+});
+
+// ---- TG-17: CHANGED_FILES_PATH fails closed --------------------------------
+
+const GATE = fileURLToPath(new URL('./tier-gate.mjs', import.meta.url));
+
+function runGate(cwd, changedFilesPath) {
+  const env = { PATH: process.env.PATH, PR_BODY: 'Tier: 1\nIntent: intent/a.md', PR_LABELS: '' };
+  if (changedFilesPath !== undefined) env.CHANGED_FILES_PATH = changedFilesPath;
+  const r = spawnSync(process.execPath, [GATE], { cwd, env, encoding: 'utf8' });
+  return { code: r.status, out: r.stdout + r.stderr };
+}
+
+const tier1Repo = () => repo({ 'intent/a.md': 'x', 'scripts/ci/x.mjs': 'x' });
+
+test('TG-18: an unset CHANGED_FILES_PATH fails and names the variable', () => {
+  const { code, out: o } = runGate(tier1Repo(), undefined);
+  assert.equal(code, 1, o);
+  assert.match(o, /- CHANGED_FILES_PATH is not set\./);
+  assert.match(o, /^\*\*Action needed: declare the correct tier and add missing artefacts\*\*$/m);
+  assert.match(o, /git diff -z --name-only/);
+  assert.doesNotMatch(o, /tier-gate: PASS/);
+});
+
+test('TG-18: an empty CHANGED_FILES_PATH fails and names the variable', () => {
+  const { code, out: o } = runGate(tier1Repo(), '');
+  assert.equal(code, 1, o);
+  assert.match(o, /- CHANGED_FILES_PATH is not set\./);
+  assert.match(o, /^\*\*Action needed: declare the correct tier and add missing artefacts\*\*$/m);
+  assert.match(o, /git diff -z --name-only/);
+  assert.doesNotMatch(o, /tier-gate: PASS/);
+});
+
+test('TG-18: a CHANGED_FILES_PATH naming a missing file fails with the path and no stack trace', () => {
+  const dir = tier1Repo();
+  const missing = join(dir, 'no-such-list');
+  const { code, out: o } = runGate(dir, missing);
+  assert.equal(code, 1, o);
+  assert.ok(o.includes(`- Could not read the changed files from CHANGED_FILES_PATH ("${missing}"): ENOENT.`), o);
+  assert.match(o, /^\*\*Action needed: declare the correct tier and add missing artefacts\*\*$/m);
+  assert.doesNotMatch(o, /^ {4}at /m);
+  assert.doesNotMatch(o, /tier-gate: PASS/);
+});
+
+test('TG-18: a readable CHANGED_FILES_PATH listing an intent file passes at Tier 1', () => {
+  const dir = tier1Repo();
+  const list = join(dir, 'changed-files');
+  writeFileSync(list, 'intent/a.md\0');
+  const { code, out: o } = runGate(dir, list);
+  assert.equal(code, 0, o);
+  assert.match(o, /tier-gate: PASS — Tier 1 artefacts present \(declared: 1, floor: none, base: \(unspecified\)\)\./);
+});
+
+test('TG-18: a readable CHANGED_FILES_PATH listing a protected file keeps the Tier 3 floor', () => {
+  const dir = tier1Repo();
+  const list = join(dir, 'changed-files');
+  writeFileSync(list, 'intent/a.md\0scripts/ci/x.mjs\0');
+  const { code, out: o } = runGate(dir, list);
+  assert.equal(code, 1, o);
+  assert.match(o, /force a floor of Tier 3, but the PR declares Tier 1: scripts\/ci\/x\.mjs/);
+});
+
+test('TG-18: a CHANGED_FILES_PATH naming a directory fails with the path and EISDIR', () => {
+  const dir = tier1Repo();
+  const { code, out: o } = runGate(dir, dir);
+  assert.equal(code, 1, o);
+  assert.ok(o.includes(`- Could not read the changed files from CHANGED_FILES_PATH ("${dir}"): EISDIR.`), o);
+  assert.doesNotMatch(o, /^ {4}at /m);
+  assert.doesNotMatch(o, /tier-gate: PASS/);
+});
+
+test('TG-18: an empty readable CHANGED_FILES_PATH file is an empty diff and passes at Tier 1', () => {
+  const dir = tier1Repo();
+  const list = join(dir, 'changed-files');
+  writeFileSync(list, '');
+  const { code, out: o } = runGate(dir, list);
+  assert.equal(code, 0, o);
+  assert.match(o, /tier-gate: PASS — Tier 1 artefacts present/);
 });

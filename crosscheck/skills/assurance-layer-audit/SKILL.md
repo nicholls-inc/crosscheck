@@ -102,9 +102,10 @@ Apply the following ecosystem rules verbatim.
 
 **Layer 2 — Compilation correctness.**
 - Rust: MIR-level verification (Verus, Kani) provides **partial** coverage — the verifier reasons about MIR, not the final machine code, so the LLVM backend is still in the trusted base. Stronger than Go/Python but not CompCert-grade.
-- Go: **Not addressable.** No verified Go compiler exists; the Go toolchain is part of the trusted computing base.
-- Python / Ruby / JavaScript: **Not addressable.** The interpreter / JIT is part of the trusted base.
-- Java / C# / Kotlin: **Not addressable** for the VM/JIT in the general case.
+- Go: **Not yet reached.** The blocking property is that no verified Go compiler exists, so the Go toolchain is part of the trusted computing base.
+- Python / Ruby / JavaScript: **Not yet reached.** The blocking property is that the interpreter / JIT is part of the trusted base.
+- Java / C# / Kotlin: **Not yet reached** for the VM/JIT in the general case, for the same reason.
+- For each of these, the open question is whether translation validation of each compiled or extracted file can replace trust in the toolchain. Say so in the report.
 - C / C++: CompCert gives a verified C compiler path if the repo actually uses it.
 - Never claim Layer 2 reach without a verified-compilation toolchain actually present in the repo.
 
@@ -122,7 +123,8 @@ Apply the following ecosystem rules verbatim.
 - Available in principle for any language — the check operates on prose invariants, covering tests, and code diffs, not on the language itself.
 
 **Layer 6 — Spec completeness.**
-- Best-effort. Delivered by `/spec-adversary` (candidate-invariant proposals) and `/acceptance-oracle-draft` (mechanically verifiable user-flow scenarios).
+- Search only. Delivered by `/spec-adversary` (candidate-invariant proposals) and `/acceptance-oracle-draft` (mechanically verifiable user-flow scenarios). Their findings point at gaps and are not evidence that none remain.
+- A proof that a spec is complete is not yet reached. The property that blocks it is that no formal requirement is tied to the spec, so there is nothing to prove the spec complete against. The open question is how to write requirements formally and prove that a spec achieves them ([roadmap item RQ-1](https://github.com/nicholls-inc/crosscheck/blob/main/docs/assurance/ROADMAP.md)). Say so in the report.
 - No ecosystem limit beyond the absence of an operational `docs/invariants/` tree — both skills need at least one module invariant doc to anchor against.
 
 ### Step 4.5: VGD-Prerequisite Assessment (Per Module)
@@ -187,11 +189,11 @@ Example shape (the point of the example is the format — derive every value fro
 | Layer | Reach | Tooling | Notes |
 |---|---|---|---|
 | Layer 1 (formally verified pure code) | Restricted to pure functional logic | Dafny 4.x via `crosscheck` | Compiles to Python/Go; no concurrency model |
-| Layer 2 (compilation correctness) | Not addressable | — | Compiler/runtime in trusted base |
+| Layer 2 (compilation correctness) | Not yet reached | — | Compiler/runtime in trusted base; open question: can translation validation of each compiled file replace that trust |
 | Layer 3 (contract graph verification) | Pairwise: partial; end-to-end: aspirational | <ecosystem contract tool, if any> | No general-purpose subgraph verifier |
 | Layer 4 (implementation–spec alignment) | Available once Layer 1 lands | `dafny_verify` in pre-commit / CI | Triggered on touched spec or impl files |
 | Layer 5 (spec–intent alignment) | Probabilistic (~96%) | `/intent-check` (two-LLM round-trip) | Requires populated `docs/invariants/` |
-| Layer 6 (spec completeness) | Best-effort | `/spec-adversary`, `/acceptance-oracle-draft` | Requires at least one module invariant doc |
+| Layer 6 (spec completeness) | Search only; proof not yet reached | `/spec-adversary`, `/acceptance-oracle-draft` | Requires at least one module invariant doc; no formal requirement is tied to the spec (RQ-1) |
 ```
 
 Derive every row from what Steps 2–4 actually found. If the repo already has `.dfy` files, say so. If it has `docs/invariants/` already populated, say so and recommend `/assurance-status` rather than `/assurance-init`. **Cross-reference the per-module assessments from Step 4.5** in the Notes column where a layer's reach is materially constrained by which modules pass which prerequisite (e.g., "Layer 1 reach restricted to modules X, Y per prereq assessment").
@@ -219,7 +221,7 @@ Prioritisation heuristics:
 - Invariant docs before any LLM-backed verification — `/intent-check` and `/spec-adversary` both anchor on them.
 - Coverage gate before Layer 1 kernel work — a verified kernel with no coverage gate drifts silently.
 - Layer 1 kernel work before Layer 5 probabilistic checks — deterministic assurance first, probabilistic assurance second.
-- Layer 6 work last — best-effort skills benefit from every preceding layer.
+- Layer 6 work last — its search skills benefit from every preceding layer.
 - **Per-module routing wins over per-layer routing.** When a Step 4.5 assessment shows that prerequisite #1 fails for a module, do not propose Layer 1 work for that module — name the alternative path (Layers 2–5) explicitly in the gap row's Recommended skill column.
 
 Cap the list at five items. If there are fewer, emit fewer; if more, keep the top five and note how many were dropped.
@@ -295,7 +297,7 @@ Every field MUST be populated from Steps 2–6's findings. Do not invent data th
 - [ ] Per-module prereq table emitted with verdicts for #1–#3 and `hypothesis-only` for #4
 - [ ] Recommended engine combination per module is consistent with the prereq verdicts
 - [ ] Step 5 projection table cross-references Step 4.5 verdicts where layer reach is module-constrained
-- [ ] Every "not addressable" claim names the specific missing tool (e.g., "no verified Go compiler")
+- [ ] Every "not yet reached" claim names the blocking property, such as the specific missing tool ("no verified Go compiler"), and the open question
 - [ ] Rust repos note MIR-level partial Layer 2 reach rather than silent omission
 - [ ] Python / Ruby / Java / C# repos explicitly state Layer 1 is unreachable without a verifier bridge
 - [ ] Gap list capped at 5, ordered by payoff/hour, each row names a concrete next skill

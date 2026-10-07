@@ -6,8 +6,9 @@ description: >-
   Given `docs/invariants/<module>.md` plus the module's code, proposes up to 3
   candidate invariants the spec is failing to document, each annotated with
   evidence, category, confidence, and an accept/reject/defer triage block for
-  human review. Layer 6 (spec completeness) best-effort methodology — iterative,
-  not deterministic. Triggers: "spec adversary", "what is the spec missing",
+  human review. Layer 6 (spec completeness) search methodology — iterative,
+  not deterministic; its findings are not evidence, and a proof of completeness
+  is not yet reached. Triggers: "spec adversary", "what is the spec missing",
   "propose missing invariants", "adversarial invariant review".
 argument-hint: "<module> (matches docs/invariants/<module>.md)"
 ---
@@ -260,7 +261,12 @@ Close the run with an explicit reminder:
 
 ### Step 7: Kill criteria (documented so users know when to stop trusting it)
 
-This skill is Layer 6 best-effort. Track its signal-to-noise ratio:
+This skill is a Layer 6 search tool. A proof that a spec is complete is not
+yet reached. The property that blocks it is that no formal requirement is tied
+to the spec, so there is nothing to prove the spec complete against. The open
+question is how to write requirements formally and prove that a spec achieves
+them ([roadmap item RQ-1](https://github.com/nicholls-inc/crosscheck/blob/main/docs/assurance/ROADMAP.md)).
+Track its signal-to-noise ratio:
 
 - **Signal-to-noise < 1:5 after 4 weeks** (fewer than 1 accepted proposal
   per 5 proposed) → scale back cadence or retire the skill for this module.

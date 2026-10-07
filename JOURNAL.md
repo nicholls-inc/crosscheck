@@ -13,6 +13,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 `scripts/ci/skill-references.mjs` reads the git index, so the pre-commit hook and CI see the same files. It resolves each `/name` against `crosscheck/skills/` and `crosscheck/agents/`, and each `/<plugin>:<name>` of another plugin against `crosscheck/slash-allowlist.txt`, which ships empty. The grammar was tuned on the 123 Markdown files under `crosscheck/`: a `/` after a letter, `.`, `/`, `<` or `*` is a path, URL or closing tag, not a reference. About 150 mentions in archives, dated snapshots, research notes and gh-aw examples name skills that were planned and never built, or GitHub comment commands. Those directories are not read yet, because a historical mention and an instruction look the same in the text. Four live documents named unbuilt skills, and they now write the name without its slash. Three dated records, `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md`, did too. The first draft rewrote them, and the maintainer reverted that, because rewriting a record falsifies it. The check skips those three files instead. The catalogue lost its hand-written categories, trigger phrases and owners, because none of them is in `crosscheck/skills/`. It is one table of names and frontmatter descriptions.
 
+## 2026-10-07 - A human can tell an agent to tick a verification box
+
+**Type:** feat
+**Touches:** .claude/rules/protected-surfaces.md, crosscheck/skills/protected-surface-amend/SKILL.md, crosscheck/skills/assurance-init/SKILL.md, REVIEW.md, docs/gates/protected-surface-amendment.md, docs/TASKS.md
+**Why:** On #108, #70 and #77 the maintainer was asked to tick boxes that a command decides, and the agent declined to tick them when told to, citing the rule that a human resolves a marker. The maintainer repeated the instruction three times in one session.
+**Links:** [intent](intent/2026-10-07-delegated-ticks.md), [spec](intent/2026-10-07-delegated-ticks-spec.md), [plan](intent/2026-10-07-delegated-ticks-plan.md)
+
+A tick on the maintainer's explicit instruction now counts as the human's resolution, and the agent comments who instructed it. The drafting tool ticks the five mechanical items itself, with the command's output under each, so markers are left for judgment. The `/assurance-init` template carries the same text, so plugin users get it. The merge is still the approval. Recomputing the mechanical items in CI is not yet reached (PB-1.39).
+
 ## 2026-10-07 - The manifest generator rejects `implemented_by` and `extern` on what the theorems reach
 
 **Type:** feature
@@ -255,6 +264,15 @@ A parameter whose annotation names `object` now has the nullability of `Optional
 **Links:** [intent](intent/2026-10-06-evidence-record.md), [spec](intent/2026-10-06-evidence-record-spec.md)
 
 A record is a closed JSON object about one commit. Each claim names its strength (`proved`, `tested`, `observed` or `judged`), a basis whose fields depend on the strength, a trusted base of pinned components, a rerun command with its exit code, and a requirement or an explicit `null`. Rules EV-1 to EV-12 are decidable from the record alone, so the ER-1.4 checker needs no network, no LLM and runs no command. The record has no overall verdict, because how strengths combine is an open question of the vision. The checker checks shape, not truth. Rerunning every claim, proving that a judge is a person, recording a proof's axioms and a second independent checker, recording that a person approved a requirement, and pinning the Crosscheck Docker images by digest are not yet reached. The spec's "Concerns flagged" section names the blocking property and the open question for each, together with the null seed, the vacuous rerun for `observed` and `judged` claims, the record that cannot sit in its own commit, and CGV's contract levels.
+
+## 2026-10-06 - The Tier Gate fails closed without its changed-file list
+
+**Type:** fix
+**Touches:** scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/TASKS.md
+**Why:** With `CHANGED_FILES_PATH` unset the gate read an empty list, saw no protected path, and passed a body declaring `Tier: 1` with an intent citation whatever the branch changed. A missing file crashed with a stack trace.
+**Links:** [intent](intent/2026-10-06-changed-files-fail-closed.md), [spec](intent/2026-10-06-changed-files-fail-closed-spec.md), [plan](intent/2026-10-06-changed-files-fail-closed-plan.md)
+
+An unset or empty `CHANGED_FILES_PATH`, or one that names a file the gate cannot read, now fails with the gate's fixed message and an item that names the variable, and for a read error the path and error code. The check sits in `main`, not `evaluate`, because the pre-commit hook imports the gate's functions and builds its own list. An empty readable file is still an empty diff. The gate cannot tell a list the workflow wrote from one written by hand, so a hand-written list that omits a protected path still passes.
 
 ---
 
