@@ -101,6 +101,11 @@ pub struct DataClassField {
     /// pydantic strict validation for this field (`Field(strict=True)`,
     /// `StrictInt`, ...): no numeric coercion.
     pub strict: bool,
+    /// pydantic does not validate the input against the annotation:
+    /// `SkipValidation`, a `PlainValidator` or `WrapValidator` in `Annotated`
+    /// metadata, or a `None` default under an annotation without None, which
+    /// pydantic v1 reads as Optional.
+    pub unvalidated: bool,
     pub source_file: String,
     pub source_line: u32,
 }
@@ -406,6 +411,12 @@ fn transforming_validators(
 }
 
 impl DataClassField {
+    /// Whether pydantic validation enforces the field's recorded contract. Not
+    /// for precision: pydantic counts digits after normalising trailing zeros.
+    pub fn validation_enforces(&self) -> bool {
+        !self.unvalidated && self.decimal_places.is_none() && self.max_digits.is_none()
+    }
+
     /// Drop every requirement (a validator may replace the value first).
     fn clear_requirements(&mut self) {
         self.type_name = None;
@@ -619,6 +630,7 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
             min_value: None,
             choices: info.choices,
             strict: info.strict,
+            unvalidated: info.unvalidated,
             source_file: candidate.source_file.clone(),
             source_line: line,
         };
@@ -631,10 +643,29 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
                     apply_constraint_keywords(&mut field, call);
                 }
             }
+            if field.nullable == Some(false) && default_is_none(value) {
+                field.unvalidated = true;
+            }
         }
         fields.push(field);
     }
     fields
+}
+
+/// A class-body default of `None`: `= None`, `= Field(None)`, `= Field(default=None)`.
+fn default_is_none(value: &Expr) -> bool {
+    match value {
+        Expr::NoneLiteral(_) => true,
+        Expr::Call(call) if is_field_call(&call.func) => {
+            matches!(call.arguments.args.first(), Some(Expr::NoneLiteral(_)))
+                || call
+                    .arguments
+                    .keywords
+                    .iter()
+                    .any(|k| k.arg.as_deref() == Some("default") && matches!(k.value, Expr::NoneLiteral(_)))
+        }
+        _ => false,
+    }
 }
 
 /// What an annotation says about a field.
@@ -647,6 +678,8 @@ struct AnnotationInfo<'a> {
     choices: Option<Vec<String>>,
     /// A `Strict*` type.
     strict: bool,
+    /// `SkipValidation`, or a `PlainValidator` / `WrapValidator` in `Annotated`.
+    unvalidated: bool,
 }
 
 /// Type name and nullability an annotation states (`None` for `ClassVar[...]`).
@@ -664,6 +697,7 @@ fn analyze_annotation(expr: &Expr) -> Option<AnnotationInfo<'_>> {
         constraint_calls: Vec::new(),
         choices: None,
         strict: false,
+        unvalidated: false,
     };
     if walk_annotation(expr, &mut info) {
         Some(info)
@@ -679,6 +713,10 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             let head = last_segment(&sub.value).unwrap_or_default();
             match head.as_str() {
                 "ClassVar" => false,
+                "SkipValidation" => {
+                    info.unvalidated = true;
+                    walk_annotation(&sub.slice, info)
+                }
                 "Optional" => {
                     info.nullable = Some(true);
                     walk_annotation(&sub.slice, info)
@@ -688,6 +726,16 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                         let mut elts = t.elts.iter();
                         let keep = elts.next().is_none_or(|base| walk_annotation(base, info));
                         for meta in elts {
+                            let marker = match meta {
+                                Expr::Call(call) => last_segment(&call.func),
+                                other => last_segment(other),
+                            };
+                            if matches!(
+                                marker.as_deref(),
+                                Some("SkipValidation" | "PlainValidator" | "WrapValidator")
+                            ) {
+                                info.unvalidated = true;
+                            }
                             if let Expr::Call(call) = meta {
                                 if is_field_call(&call.func) {
                                     info.constraint_calls.push(call);
@@ -772,6 +820,7 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
                 constraint_calls: Vec::new(),
                 choices: None,
                 strict: false,
+                unvalidated: false,
             };
             if !walk_annotation(parsed.expr(), &mut inner) {
                 return false;
@@ -779,6 +828,7 @@ fn walk_annotation<'a>(expr: &'a Expr, info: &mut AnnotationInfo<'a>) -> bool {
             info.type_name = inner.type_name;
             info.choices = inner.choices;
             info.strict |= inner.strict;
+            info.unvalidated |= inner.unvalidated;
             info.nullable = match (info.nullable, inner.nullable) {
                 (Some(true), _) | (_, Some(true)) => Some(true),
                 (_, None) => None,
@@ -1076,6 +1126,41 @@ mod tests {
         assert_eq!(field(&cs, "M", "qty").max_value, mu(9_000_000));
         let pct = field(&cs, "M", "pct");
         assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), mu(100_000_000)));
+    }
+
+    #[test]
+    fn test_pydantic_unvalidated_markers() {
+        let cs = classes(
+            "class M(BaseModel):\n    \
+             skipped: SkipValidation[str]\n    \
+             plain: Annotated[str, PlainValidator(f)]\n    \
+             wrapped: Annotated[str, pydantic.WrapValidator(f)]\n    \
+             meta: Annotated[int, SkipValidation]\n    \
+             legacy: str = None\n    \
+             legacy_field: str = Field(None)\n    \
+             legacy_kw: str = Field(default=None, max_length=3)\n    \
+             before: Annotated[str, BeforeValidator(f)]\n    \
+             name: str\n    \
+             maybe: Optional[str] = None\n",
+        );
+        let unvalidated: Vec<(&str, bool)> =
+            cs[0].fields.iter().map(|f| (f.field_name.as_str(), f.unvalidated)).collect();
+        assert_eq!(
+            unvalidated,
+            [
+                ("skipped", true),
+                ("plain", true),
+                ("wrapped", true),
+                ("meta", true),
+                ("legacy", true),
+                ("legacy_field", true),
+                ("legacy_kw", true),
+                ("before", false),
+                ("name", false),
+                ("maybe", false),
+            ]
+        );
+        assert_eq!(field(&cs, "M", "skipped").type_name.as_deref(), Some("str"));
     }
 
     #[test]

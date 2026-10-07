@@ -690,6 +690,9 @@ pub struct ClassInfo {
     /// requirements (each write to it is checked against them), as facts
     /// for reads of the field.
     pub field_facts: HashMap<String, crate::value_analysis::ValueFacts>,
+    /// Fields whose input a pydantic validation call (`Cls.model_validate`)
+    /// still writes as a typed write: validation does not enforce their contract.
+    pub validate_checked: HashSet<String>,
 }
 
 /// An enum-like class: members are class-body constants.
@@ -723,6 +726,7 @@ impl ClassInfo {
             field_nullable: HashMap::new(),
             patterns: HashSet::new(),
             field_facts: HashMap::new(),
+            validate_checked: HashSet::new(),
         }
     }
 

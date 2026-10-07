@@ -237,6 +237,14 @@ impl Project {
                         .collect();
                     c.positional = dc.positional.clone();
                     c.strict = dc.strict;
+                    if dc.kind == dataclass_extractor::DataClassKind::Pydantic {
+                        c.validate_checked = dc
+                            .fields
+                            .iter()
+                            .filter(|f| !f.validation_enforces())
+                            .map(|f| f.field_name.clone())
+                            .collect();
+                    }
                     c.field_facts = dc
                         .fields
                         .iter()
