@@ -32,13 +32,13 @@ No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request
 
 ## Constraints
 - Rule 1 of the vision: a witness counts only when a deterministic run confirms it. An LLM may draft a test, but the test is evidence only once it runs and fails as stated. The rows ask for proofs and runs, not for an LLM's reading.
-- Rule 7: each witness names its strength. The counterexample of CG-1.35 is proved relative to the translated constraints. The tests of CG-1.37 and CG-1.39 are tested, on one input each, against pinned library versions.
+- Rule 7: each witness names its strength in the rows' prose, and CG-1.40 puts it in the output. The counterexample of CG-1.35 is proved relative to the translated constraints. The tests of CG-1.37 and CG-1.39 are tested, on one input each, against pinned library versions.
 - The JSON key `witness` already names the whole data path of a result (`ResultEntry.witness` in `Types.lean`). The new field is `counterexample`, so no reader of the old key breaks.
 - `DiagnosticInfo` is not in `cgv/prover/protected-statements.txt`, and `ResultEntry` appears there only in the statements of `runChecker_exitCode_eq_zero_iff` and `runCheckerPaths_exitCode_eq_zero_iff`, through its `severity` projection. No protected definition reaches either. So adding a defaulted `counterexample` field to `ResultEntry` should leave the manifest unchanged, as long as `severity` keeps its name and type. CG-1.35 should stay off CGV's protected surfaces. The row checks it.
 - Task IDs are never reused. CG-1.35 to CG-1.40 appear in no row on `origin/main` (highest CG-1.32) and in no open pull request's diff (open pull request #105 uses CG-1.33 and CG-1.34), and no branch is named after them.
 
 ## Measured on Django 4.2.30 and pydantic 2.13.5
-Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has no check that runs, so there is nothing to measure there, for the property named in the next section.
+Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has no check that runs, so there is nothing to measure there. The property named in the next section for targets, that nothing which runs rejects a value outside an annotation, holds for a source too: nothing which runs accepts one.
 
 A probe called `Field.clean(value, None)` on Django model fields and validated pydantic fields through `TypeAdapter`. It settles the value for each kind that CG-1.35 and the spec fix.
 
