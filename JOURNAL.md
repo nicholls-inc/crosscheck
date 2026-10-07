@@ -13,6 +13,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 The walk now starts from every constant in a protected statement as well as the three definitions, and scopes by defining module, so private helpers count. The manifest grows from 107 hashed constants to 386, the checker among them, so a change to the checker's definitions now makes a pull request Tier 3. The generator reads the CGV table in `.claude/rules/protected-surfaces.md` and fails if names or files differ, and CGV CI runs when that file changes. `scripts/manifest-selftest.sh` pins each behaviour with a case that fails when it is mutated away. Whether that script is itself a protected surface is TB-1.27.
 
+## 2026-10-07 - Proving CGV's extraction is split into sixteen rows
+
+**Type:** docs
+**Touches:** intent/2026-10-07-prove-extraction.md, intent/2026-10-07-prove-extraction-plan.md, docs/TASKS.md
+**Why:** #16 names three unproved links between Python source and the graph that `runChecker_sound_all` is about, and four approaches to them, but the queue had one row for all of it.
+**Links:** [intent](intent/2026-10-07-prove-extraction.md), [plan](intent/2026-10-07-prove-extraction-plan.md)
+
+TB-1.11 to TB-1.26 follow the issue's recommendation. Link 3 is proved per constraint kind against `BehaviorModel.lean`, then end to end. Link 2 is made strict and pure, then proved, and its IO shell is tested. Link 1 is tested against values observed in generated programs, and certificate checking is piloted on one pattern to measure its cost. Reading the code found that `param_max_digits` is written by the extractor and dropped by `Translation.lean`, so a write with too many integer digits into a `DecimalField` exits 0 (measured on a two-file fixture with binaries built from earlier task branches, not yet re-measured on `main`), and that `buildGraph` drops an edge whose endpoint names no node, which the README's trust table contradicts by saying malformed rows exit 2. TB-1.12 corrects that row. TB-1.13 and TB-1.12 cover them. A proof of link 1 and a proof of completeness stay not yet reached, and the intent names the blocking property and the open question for each.
+
 ---
 
 ## 2026-10-07 - The text report counts a missing guarantee as coverage instead of printing it
