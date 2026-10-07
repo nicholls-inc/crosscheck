@@ -25,7 +25,9 @@ Other panics are not reached by this change. `[k]!` in `ContractGraph/StateSearc
 
 ## Affected users and systems
 - Anyone who writes a CGV Lean test with `graphOf`. Rejected rows now stop the build with the proposition `native_decide` found false.
-- `cgv/prover/ContractGraphTest/Translation.lean` only. Every existing `graphOf` call is accepted, so no other module changes. The `ContractGraph` library, the checker binary and the statement manifest do not change.
+- `cgv/prover/ContractGraphTest/Translation.lean`, where `graphOf` and the new `acceptedGraph` live.
+- `Round3.lean`, `Round5.lean` and `Round6.lean`. A test graph with parameters cannot take the proof from `graphOf`, because `native_decide` cannot prove a proposition about free variables. Each of `microsGraph`, `choicesGraph`, `rangeGraph`, `callSiteGraph` and `originGraph` now translates its rows in a `*Rows` def and takes `accepted : (xRows ..).isOk := by native_decide`, so the proof runs at each concrete call. A new test graph with parameters follows the same shape. Every existing call is accepted, so no guard changes.
+- The `ContractGraph` library, the checker binary and the statement manifest do not change.
 
 ## Constraints
 - No protected surface changes. `native_decide` already appears in `ContractGraphTest` (`NoErrorsSoundness.lean`, `SoundnessDemo.lean`), and the library stays free of it.
