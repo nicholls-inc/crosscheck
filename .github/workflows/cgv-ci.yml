@@ -64,3 +64,46 @@ jobs:
             echo "::error::A protected CGV statement changed. If intended, regenerate cgv/prover/protected-statements.txt (see its header), which makes this a Tier 3 change needing a governance note and a 'Protected-surface change' section in the PR body."
             exit 1
           fi
+
+      # CI-8 in intent/2026-09-29-deterministic-evidence-spec.md: fails if this
+      # toolchain's leanchecker stops rejecting a declaration that skipped the kernel.
+      - name: The kernel replay rejects a declaration that skipped the kernel
+        working-directory: cgv/prover
+        run: |
+          bin="$(lean --print-prefix)/bin"
+          export PATH="$bin:$PATH"
+          scratch="$(mktemp -d)"
+          cd "$scratch"
+          cat > KernelReplayBad.lean <<'LEAN'
+          import Lean
+          open Lean in
+          set_option debug.skipKernelTC true in
+          run_meta addDecl (.thmDecl { name := `bad, levelParams := [], type := mkConst ``False, value := mkConst ``True.intro })
+          theorem uses : 1 = 2 := (bad).elim
+          LEAN
+          printf 'import KernelReplayBad\ntheorem top : 1 = 2 := uses\n' > KernelReplayTop.lean
+          export LEAN_PATH="$scratch"
+          lean KernelReplayBad.lean -o KernelReplayBad.olean
+          lean KernelReplayTop.lean -o KernelReplayTop.olean
+          expect_rejected() {
+            if out=$(leanchecker "$@" 2>&1); then
+              echo "::error::leanchecker $* accepted a theorem of False that skipped the kernel."
+              exit 1
+            fi
+            if ! grep -q "declaration type mismatch, 'bad'" <<<"$out"; then
+              echo "$out"
+              echo "::error::leanchecker $* failed, but not on the declaration that skipped the kernel."
+              exit 1
+            fi
+          }
+          expect_rejected KernelReplayBad
+          expect_rejected --fresh KernelReplayTop
+
+      # CI-7: replays the built environment through the kernel. The fresh replay
+      # covers ContractGraph.Main's import closure, which holds every protected
+      # theorem; the second command covers every ContractGraph.* module.
+      - name: Every declaration re-checks in the Lean kernel
+        working-directory: cgv/prover
+        run: |
+          lake env leanchecker --fresh ContractGraph.Main
+          lake env leanchecker ContractGraph
