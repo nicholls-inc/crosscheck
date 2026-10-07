@@ -6,8 +6,9 @@ description: >-
   acceptance-scenario skeletons (YAML/JSON) plus a runner-script stub. Does NOT run
   the scenarios — that's CI's job. Enforces a strict mechanical-verification-only
   rule: subjective criteria ("UX feels good") must be quantified or rejected.
-  Layer 5 proxy for user-perspective / empirical assurance — measures whether the
-  spec was the right spec. Triggers: "acceptance oracle", "draft scenarios",
+  Layer 5 proxy for user-perspective / empirical assurance — checks user-observable
+  behaviour against scenarios a human approves; whether the spec was the right spec
+  is a human judgment, and a proof of it is not yet reached. Triggers: "acceptance oracle", "draft scenarios",
   "user-observable flows", "acceptance scenarios", "scenario skeletons".
 argument-hint: "[optional: target surface — cli | http | daemon | github | ui, or path]"
 ---

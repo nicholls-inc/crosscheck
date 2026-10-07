@@ -15,6 +15,8 @@
 6. `crosscheck/skills/drt-oracle/SKILL.md`: the Aeneas reference says the Rust route is not yet reached, with a blocking property and an open question.
 7. `crosscheck/skills/acceptance-oracle-draft/SKILL.md`: a flow with no programmatic observable is reported as not yet reached by the oracle, under `## Rejected Flows (not yet reached by this oracle)`. The "Dashboard looks nice" example names the vision's open question for user interfaces.
 8. `crosscheck/skills/intent-check/SKILL.md`: the Step 9 intro calls the pipeline a Layer 5 search tool whose verdict is not evidence.
+9. `crosscheck/skills/rationale/SKILL.md`: a `[STATIC]` leaf is marked `Read (static; LLM reading, not evidence)` in place of `Verified (static)`, and stays open until a deterministic check or a human confirms it. The summary table's columns become evidence in hand, read only, and pending, so FORMAL leaves that are `Pending byfuglien dispatch` are no longer counted as `Verified`. The two sentences that say the root claim "holds by construction" say it is supported by the evidence and not proved, and that a proof the tree covers every requirement is not yet reached (blocking property: an LLM drew the decomposition and no formal requirement ties the leaves to the requirements; open question: RQ-1).
+10. `crosscheck/skills/acceptance-oracle-draft/SKILL.md` (second edit, frontmatter description): "measures whether the spec was the right spec" becomes a check of user-observable behaviour against scenarios a human approves. Whether the spec was the right spec is a human judgment, and a proof of it is not yet reached.
 
 ### Rationale
 
@@ -43,10 +45,13 @@ Task VA-1.5. `docs/VISION.md` says no class of code is outside the vision: a too
 | 6 | `crosscheck/skills/drt-oracle/SKILL.md` | References, Aeneas bullet | reworded |
 | 7 | `crosscheck/skills/acceptance-oracle-draft/SKILL.md` | CRUCIAL RULE, Step 7 | reworded; section heading text changed |
 | 8 | `crosscheck/skills/intent-check/SKILL.md` | Step 9 intro | reworded |
+| 9 | `crosscheck/skills/rationale/SKILL.md` | description, Step 4 `[STATIC]` bullet, Step 5 example checklist and Summary table, Step 6 Evidence Summary and closing sentence | reworded; summary table columns changed |
+| 10 | `crosscheck/skills/acceptance-oracle-draft/SKILL.md` | frontmatter description (in addition to row 7) | reworded |
 
 ### Test / Coverage Impact
 
 - No invariant, test or eval changes. No skill gains or loses a step, an output section, a routing token, a threshold or a kill criterion, so `go run ./crosscheck/conformance crosscheck` is unaffected.
+- `/rationale` reports change in content: static leaves read `Read (static; LLM reading, not evidence)`, the summary table has the columns evidence in hand, read only and pending, and the closing sentence no longer says the root claim holds by construction. No step or section is added. No test, eval or invariant doc cites the old strings.
 - Report content requirements grow, though no step or section is added: `/assurance-layer-audit` now says the Layer 2 open question and the Layer 6 proof status in its report, and its checklist requires every "not yet reached" claim to name the blocking property and the open question. `/acceptance-oracle-draft`'s "Why rejected" column names the blocking property.
 - Output changes a user can see: `/assurance-layer-audit`'s reach table reads "Not yet reached" for Layer 2 and "Search only" for Layer 6, and `/acceptance-oracle-draft`'s rejected-flows heading reads `## Rejected Flows (not yet reached by this oracle)`. A consumer that matched the old heading text in full breaks; `references/scenario-schema.md` cites only `## Rejected Flows`, which is unchanged.
 - No check enforces the new wording. A wording lint for skills and agents is not yet reached; the spec records the blocking property and the open question.
@@ -59,4 +64,6 @@ Task VA-1.5. `docs/VISION.md` says no class of code is outside the vision: a too
 - [x] The diff plan names every changed protected file.
 - [ ] REQUIRES HUMAN VERIFICATION: The blocking properties and open questions proposed for spec-internal contradictions (`audit-invariant-consistency`) and the Aeneas route (`drt-oracle`) are right. Neither is in the vision's class table.
 - [ ] REQUIRES HUMAN VERIFICATION: The keep list in the spec is right: each remaining "best-effort" or "out of scope" hit in `crosscheck/agents` and `crosscheck/skills` means something other than a layer or a class of code.
+- [ ] REQUIRES HUMAN VERIFICATION: The `/rationale` claims are right: a static leaf is an LLM reading and so not evidence (rule 1 of `docs/VISION.md`), the blocking property and open question proposed for a deterministic check of static claims and for tree coverage are right, and the summary table's new columns are the strengths rule 7 asks for.
+- [ ] REQUIRES HUMAN VERIFICATION: A `/rationale` consumer that matched `Verified (static)` or the old `Verified` summary column breaks. `crosscheck/docs/orchestrator-coordination.md` and `crosscheck/docs/specs/rationale-2026-05-11.md` were checked by grep and cite neither string, but they describe the verdict table, so the reviewer confirms.
 - [ ] REQUIRES HUMAN VERIFICATION: No check is weakened. Only prose changes; no deterministic check reads these files.
