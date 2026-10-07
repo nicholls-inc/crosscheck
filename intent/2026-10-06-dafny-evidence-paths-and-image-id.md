@@ -5,7 +5,7 @@ Task: ER-1.8. Governing roadmap item: ER-1. Spec: `intent/2026-10-06-dafny-evide
 ## Problem statement
 Three gaps remain in `dafny_evidence` after ER-1.3 and ER-1.7.
 
-- **Output path.** DE-11 lets a record be written to any new path inside the work tree outside `.git`. That includes `.github/workflows/x.yml`, `.husky/pre-commit` and `.claude/settings.local.json`, where a tool or a hook reads the file as configuration, and a name with no `.json` that no reader treats as a record.
+- **Output path.** DE-11 lets a record be written to any new path inside the work tree outside `.git`. That includes `.github/workflows/x.yml`, `.husky/pre-commit`, `.claude/settings.local.json` and a root file `.mcp.json`, where a tool or a hook reads the file as configuration, and a name with no `.json` that no reader treats as a record.
 - **Include path.** DE-12 accepts an include whose path does not end in `.dfy`. On 2026-10-06 Dafny 4.11.0 verified `include "Lib.txt"` as Dafny source, and parsed `include "Lib.doo"` as source too. So a proof can rest on a file that neither a reviewer nor a `*.dfy` search sees as Dafny.
 - **Rerun image.** DE-9's rerun command names the image by its tag, `crosscheck-dafny:latest`. The trusted base records the image ID, but the command does not use it. Anyone who rebuilds or retags the image runs a different toolchain under the same command, and nothing tells them. Rule 3 of `docs/VISION.md` asks that a result rerun from pinned inputs, and a tag is not a pinned input.
 
@@ -31,7 +31,7 @@ So a rerun that names the ID runs exactly the recorded image or exits 125 before
 - `docs/TASKS.md` marks ER-1.8 `done` with this file as its record.
 
 ## Affected users and systems
-- A caller of `dafny_evidence` that passed an output path under a dot directory or without `.json`, or a file with a non-`.dfy` include, is refused. No tracked spec in this repository does either.
+- A caller of `dafny_evidence` that passed an output path with a part that starts with `.`, or without `.json`, or a file with a non-`.dfy` include, is refused. No tracked spec in this repository does either.
 - An auditor who reruns a record on the machine that wrote it sees no change. On another machine the command fails with exit 125 until they load the author's image.
 - `dafny_verify`, `dafny_compile`, the Lean tools and the evidence record format do not change. The trusted base entries do not change.
 

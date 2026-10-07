@@ -21775,7 +21775,7 @@ function createServer() {
       statement: external_exports.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
       requirement: external_exports.string().nullable().describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
       theorems: external_exports.array(external_exports.string()).describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
-      outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record")
+      outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree, ending in .json, with no directory or file name that starts with a dot; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record")
     },
     async (args) => {
       const result = await dafnyEvidence(args);
