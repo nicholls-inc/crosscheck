@@ -9,11 +9,13 @@ import ContractGraph.Checker
 import ContractGraph.Composition
 import ContractGraph.Translation
 import ContractGraph.Main
+import ContractGraphTest.Translation
 import ContractGraphTest.Round5
 
 namespace ContractGraphTest.Round6
 
 open ContractGraph
+open ContractGraphTest.Translation (graphOf)
 open ContractGraphTest.Round3 (contains errors warnings)
 
 def againRow : ContractRow :=
@@ -24,7 +26,7 @@ def againRow : ContractRow :=
     → `S.e` (`pre` dp, models.py:3); then optionally → `again` (also
     `max(input_precision, 2)`, m.py:20) before `S.e`. -/
 def originGraph (lit pre : Int) (twice : Bool := false) : ContractGraph :=
-  buildGraph
+  graphOf
     (([(1, "five", "function"), (2, "keep", "function"), (3, "S.e", "model")] : List NodeRow) ++
       (if twice then [((4, "again", "function") : NodeRow)] else []))
     ([{ nodeId := 1, constraintType := "precision", decimalPlaces := some 5,
@@ -35,10 +37,10 @@ def originGraph (lit pre : Int) (twice : Bool := false) : ContractGraph :=
       { nodeId := 3, constraintType := "precision", decimalPlaces := some pre,
         role := some "precondition", sourceFile := "models.py", sourceLine := 3 }] ++
      (if twice then [againRow] else []))
-    ([{ id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo }] ++
-     (if twice then [{ id := 2, sourceId := 2, targetId := 4, relationship := .flowsTo },
-                     { id := 3, sourceId := 4, targetId := 3, relationship := .writesTo }]
-      else [{ id := 2, sourceId := 2, targetId := 3, relationship := .writesTo }]))
+    ([{ id := 1, sourceId := 1, targetId := 2, relationship := "flows_to" }] ++
+     (if twice then [{ id := 2, sourceId := 2, targetId := 4, relationship := "flows_to" },
+                     { id := 3, sourceId := 4, targetId := 3, relationship := "writes_to" }]
+      else [{ id := 2, sourceId := 2, targetId := 3, relationship := "writes_to" }]))
 
 def errorAt (g : ContractGraph) : List (List String × String × String × Nat) :=
   (errors (runChecker g)).map fun r =>
