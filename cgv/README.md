@@ -288,7 +288,7 @@ A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` 
 
 ## Output
 
-`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead. Both formats exit with the checker's semantic exit code.
+`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead. Both formats exit with the checker's semantic exit code, except in [baseline mode](#baseline-mode).
 
 The text report prints each error and each warning as a block. A missing guarantee, where a hop's source has no guarantee of the constraint kind that its target requires, is not a finding, so by default the report does not print it. It counts it as an unverified requirement in the `COVERAGE BY MODULE` section, which gives, for each top-level module, the edges checked and the unverified requirements by kind, and in the `RESULT:` line. `--warnings` also prints each unverified requirement as an `UNVERIFIED` block ("no nullability guarantee for the value `f` passes to `T`"). `--no-warnings` hides the warning blocks as well. Every hidden block is still counted. An incomplete run (exit 2) has no coverage section. The JSON output keeps every warning unchanged. The rules are UC-1 to UC-10 in `intent/2026-10-07-cgv-unverified-coverage-spec.md`.
 
@@ -334,6 +334,28 @@ An unverified requirement is not yet reached: the value's source has no guarante
 RESULT: 3 errors, 0 warnings, 2 unverified. Exit code 1.
 ```
 
+### Baseline mode
+
+A whole-project run reports every finding in the project. On a pull request, baseline mode reports only the findings that the change introduces.
+
+- `--write-baseline PATH` writes the findings of the run to a baseline file. The run's output and exit code do not change, except that a site file that cannot be read makes the run print an error and exit 2 before any report. A run that is incomplete or does not produce a checker result writes no file, and removes any file already at PATH.
+- `--baseline PATH` compares the run with a baseline file. Only the findings that are not in the baseline are printed. The ones that are in it are counted on a `BASELINE:` line (text) or under `baseline.existing` (JSON). Baseline findings that the run no longer reports are listed as fixed. The run exits 1 when any error is not in the baseline, 0 when every error is, and 2 when it is incomplete or the baseline file is missing or malformed.
+- `--baseline` and `--write-baseline` cannot name the same file, through any spelling of the path or a symbolic link. The run exits 2 before the checker runs, because overwriting the baseline with the run's new errors would let the next run exit 0. Write the new baseline to another path.
+
+A finding matches a baseline entry when its class, source, target, failing hop, guarantee, requirement, site file and the text of the site's line are equal. The key holds no line number, so an edit above a finding does not make it new. When the run has more findings with one key than the baseline has, every finding with that key is printed as new. A change that removes one finding and adds an equal one, with the same key, is matched and not reported. That case is not yet reached: the blocking property is that the key holds no position, and the open question is whether a finer field can tell such a pair apart without making unrelated edits churn the key. The rules are BL-1 to BL-11 in `intent/2026-10-07-cgv-baseline-mode-spec.md`.
+
+In CI, make the baseline from the pull request's base commit and compare the head with it:
+
+```bash
+git worktree add ../base "$BASE_SHA"
+crosscheck-contracts contracts check ../base/app --write-baseline baseline.json \
+  --lean-checker "$CHECKER" > /dev/null || true
+crosscheck-contracts contracts check app --baseline baseline.json \
+  --lean-checker "$CHECKER" --format text
+```
+
+Pass the same options to both runs. Different options, or another CGV version, can only make more findings new. The first run's exit code is ignored on purpose: a base with findings still gives a baseline. If the first run is incomplete it writes no baseline, and the second run exits 2.
+
 ### Evidence record
 
 `--evidence-record PATH` writes a JSON evidence record to PATH when the run exits 0. It holds one claim, `cgv-data-paths`, with strength `proved`, the theorem `ContractGraph.runChecker_sound_all`, the trusted base with pinned versions, and a command that reruns the check from the root of the project's git work tree. Any other outcome of a run that starts removes the file at PATH and writes none; an invocation the argument parser rejects leaves it untouched.
@@ -349,6 +371,8 @@ The checked path and the `--overrides` file must sit in a git work tree with no 
 | 2 | Extraction, parse or translation failure (including an unreadable database or a malformed contract row), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
 
 `--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.
+
+With `--baseline`, exit 0 means that every error the checker reported was in the baseline, and exit 1 that some error was not (see [Baseline mode](#baseline-mode)). It does not carry the promise below, so `--baseline` cannot be combined with `--evidence-record`.
 
 ### What exit 0 promises
 
