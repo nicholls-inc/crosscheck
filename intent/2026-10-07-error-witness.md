@@ -38,7 +38,7 @@ No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request
 - Task IDs are never reused. CG-1.35 to CG-1.40 appear in no row on `origin/main` (highest CG-1.32) and in no open pull request's diff (open pull request #105 uses CG-1.33 and CG-1.34), and no branch is named after them.
 
 ## Measured on Django 4.2.30 and pydantic 2.13.5
-Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has nothing to measure, as the next section says.
+Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has no check that runs, so there is nothing to measure there, for the property named in the next section.
 
 A probe called `Field.clean(value, None)` on Django model fields and validated pydantic fields through `TypeAdapter`. It settles the value for each kind that CG-1.35 and the spec fix.
 
