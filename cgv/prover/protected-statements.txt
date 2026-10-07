@@ -86,11 +86,17 @@ theorem ContractGraph.runCheckerPaths_exitCode_eq_zero_iff :
 theorem ContractGraph.incompleteWith_exitCode :
   ∀ (g : ContractGraph.ContractGraph) (m : String), Eq (ContractGraph.incompleteWith g m).exitCode 2
 
--- Protected definitions and every ContractGraph definition they reach
+-- Every ContractGraph definition that a protected statement or protected definition reaches
 
 def ContractGraph.ChainFrom :
   Nat → List ContractGraph.Edge → Prop
   value hash 4145587043
+
+inductive ContractGraph.CheckOutput :
+  Type
+
+inductive ContractGraph.CheckResult :
+  Type
 
 inductive ContractGraph.Constraint :
   Type
@@ -101,10 +107,22 @@ inductive ContractGraph.ConstraintKind :
 inductive ContractGraph.ContractGraph :
   Type
 
+inductive ContractGraph.Dedupe :
+  Type
+
 inductive ContractGraph.DepExpr :
   Type
 
+inductive ContractGraph.DiagnosticInfo :
+  Type
+
 inductive ContractGraph.Edge :
+  Type
+
+inductive ContractGraph.ExploreOutcome :
+  Type
+
+inductive ContractGraph.Explored :
   Type
 
 def ContractGraph.IsDataPath :
@@ -114,15 +132,134 @@ def ContractGraph.IsDataPath :
 inductive ContractGraph.Node :
   Type
 
+def ContractGraph.PathState :
+  Type
+  value hash 2915576474
+
 inductive ContractGraph.Relationship :
+  Type
+
+inductive ContractGraph.ResultEntry :
+  Type
+
+inductive ContractGraph.SearchSetup :
+  Type
+
+inductive ContractGraph.Severity :
+  Type
+
+inductive ContractGraph.SiteLocation :
+  Type
+
+inductive ContractGraph.SourceLocation :
+  Type
+
+inductive ContractGraph.StateRec :
+  Type
+
+inductive ContractGraph.StateSetup :
+  Type
+
+inductive ContractGraph.Summary :
   Type
 
 inductive ContractGraph.VerificationLevel :
   Type
 
+def ContractGraph.advance :
+  Option ContractGraph.PathState → ContractGraph.Edge → ContractGraph.PathState
+  value hash 1206331649
+
+def ContractGraph.buildOutIndex :
+  (Nat → Bool) → List ContractGraph.Edge → Std.HashMap Nat (List ContractGraph.Edge)
+  value hash 39242945
+
+def ContractGraph.buildOutIndexed :
+  (Nat → Bool) → List ContractGraph.Edge → Std.HashMap Nat (Array (Prod Nat ContractGraph.Edge))
+  value hash 1894641038
+
+def ContractGraph.buildResultEntry :
+  ContractGraph.DiagnosticInfo →
+  List String →
+    ContractGraph.VerificationLevel → optParam (Option ContractGraph.Node) Option.none → ContractGraph.ResultEntry
+  value hash 3379841479
+
+def ContractGraph.capMessage :
+  ContractGraph.Explored → Nat → ContractGraph.Edge → Nat → ContractGraph.Edge → String
+  value hash 924229754
+
+def ContractGraph.checkAllPaths :
+  ContractGraph.ContractGraph → List (Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult))
+  value hash 2181569109
+
+def ContractGraph.checkChoicesSubset :
+  List String → List String → ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
+  value hash 1874532212
+
+def ContractGraph.checkConstraintPair :
+  ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
+  value hash 3305374557
+
+def ContractGraph.checkEdge :
+  ContractGraph.Node → ContractGraph.Node → ContractGraph.CheckResult
+  value hash 2033843226
+
+def ContractGraph.checkEdgeAll :
+  ContractGraph.Node → ContractGraph.Node → List ContractGraph.CheckResult
+  value hash 1851718002
+
+def ContractGraph.checkEdgeAllFull :
+  ContractGraph.Edge → List ContractGraph.CheckResult
+  value hash 2728517794
+
+def ContractGraph.checkHop :
+  ContractGraph.Edge → List ContractGraph.CheckResult
+  value hash 2633727
+
+def ContractGraph.checkLowerBounds :
+  Int → Int → ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
+  value hash 4291553581
+
+def ContractGraph.checkNullability :
+  Bool → Bool → ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
+  value hash 1200262889
+
+def ContractGraph.checkPath :
+  List ContractGraph.Edge → List ContractGraph.CheckResult
+  value hash 2391890920
+
+def ContractGraph.checkStaticBounds :
+  Int → Int → ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
+  value hash 1126281026
+
+def ContractGraph.checkTypeConsistency :
+  String → String → ContractGraph.Constraint → ContractGraph.Constraint → ContractGraph.CheckResult
+  value hash 1193714715
+
 def ContractGraph.checkedEdges :
   List ContractGraph.Edge → List ContractGraph.Edge
   value hash 608299296
+
+def ContractGraph.closedCheck :
+  (Nat → Bool) → List Nat → List ContractGraph.Edge → Bool
+  value hash 3546718335
+
+def ContractGraph.closedStates :
+  ContractGraph.SearchSetup → ContractGraph.ContractGraph → ContractGraph.Explored → Bool
+  value hash 1790029725
+
+def ContractGraph.collectEntries :
+  List ContractGraph.Edge →
+  List ContractGraph.CheckResult → optParam (Option Nat) Option.none → List ContractGraph.ResultEntry
+  value hash 3935149966
+
+def ContractGraph.collectMissingPostconditionWarnings :
+  ContractGraph.Node → ContractGraph.Node → List ContractGraph.CheckResult
+  value hash 3166476848
+
+def ContractGraph.collectUnresolvedWarnings :
+  ContractGraph.Node → ContractGraph.Node → List ContractGraph.CheckResult
+  value hash 809860047
 
 def ContractGraph.composeContracts :
   ContractGraph.Node → ContractGraph.Node → List ContractGraph.Constraint
@@ -136,21 +273,179 @@ def ContractGraph.constraintImplies :
   ContractGraph.Constraint → ContractGraph.Constraint → Prop
   value hash 564077362
 
+def ContractGraph.continuationFrom :
+  ContractGraph.StateSetup → Nat → Nat → List ContractGraph.Edge
+  value hash 1286756008
+
+def ContractGraph.countContracts :
+  List ContractGraph.Node → Nat
+  value hash 958747917
+
+def ContractGraph.countFrom :
+  (Nat → List ContractGraph.Edge) → (Nat → Bool) → Nat → Nat → Nat → Nat → List Nat → Prod Nat Nat → Prod Nat Nat
+  value hash 3802129286
+
+def ContractGraph.countPaths :
+  ContractGraph.SearchSetup → ContractGraph.ContractGraph → Nat → Nat → Prod Nat Nat
+  value hash 3379482471
+
+def ContractGraph.dedupeStep :
+  List ContractGraph.ResultEntry → ContractGraph.ResultEntry → List ContractGraph.ResultEntry
+  value hash 3652867639
+
+def ContractGraph.defaultMaxPaths :
+  Nat
+  value hash 2767260406
+
+def ContractGraph.defaultMaxPerEdge :
+  Nat
+  value hash 1248835273
+
+def ContractGraph.defaultMaxStates :
+  Nat
+  value hash 2805328821
+
 def ContractGraph.depOrigin :
   ContractGraph.DepExpr → List ContractGraph.Constraint → Int → Prod String Nat
   value hash 2654800636
+
+def ContractGraph.dropWarnings :
+  List ContractGraph.CheckResult → List ContractGraph.CheckResult
+  value hash 1113251327
 
 def ContractGraph.endId :
   Nat → List ContractGraph.Edge → Nat
   value hash 863144750
 
+def ContractGraph.enumeratePaths :
+  ContractGraph.ContractGraph → List (List ContractGraph.Edge)
+  value hash 3844384323
+
 def ContractGraph.evalDepExpr :
   ContractGraph.DepExpr → List (Prod String Int) → Option Int
   value hash 1441277028
 
+def ContractGraph.explore :
+  ContractGraph.StateSetup → ContractGraph.ContractGraph → Nat → Nat → ContractGraph.ExploreOutcome
+  value hash 934937722
+
+def ContractGraph.findingKey :
+  ContractGraph.ResultEntry → String
+  value hash 4201577273
+
+def ContractGraph.foldRaw :
+  {α : Type} →
+  ContractGraph.SearchSetup →
+    ContractGraph.ContractGraph → (α → Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult) → α) → α → α
+  value hash 3102364249
+
+def ContractGraph.formatBound :
+  ContractGraph.Constraint → String
+  value hash 105662840
+
+def ContractGraph.formatBoundValue :
+  ContractGraph.ConstraintKind → Int → optParam Nat 6 → String
+  value hash 678752618
+
+def ContractGraph.formatConstraintKind :
+  ContractGraph.ConstraintKind → String
+  value hash 4089018200
+
+def ContractGraph.formatScaled :
+  Int → Nat → String
+  value hash 1115211208
+
+def ContractGraph.formatVerificationLevel :
+  ContractGraph.VerificationLevel → String
+  value hash 3663531144
+
+def ContractGraph.functionNodes :
+  ContractGraph.ContractGraph → List ContractGraph.Node
+  value hash 2070040639
+
+def ContractGraph.guardedEntries :
+  (Unit → Prod (List ContractGraph.Edge) Nat) → List ContractGraph.CheckResult → List ContractGraph.ResultEntry
+  value hash 1808784769
+
+def ContractGraph.hopPrefix :
+  List ContractGraph.Edge → ContractGraph.DiagnosticInfo → Option Nat → List ContractGraph.Edge
+  value hash 1828160970
+
+def ContractGraph.idSet :
+  List Nat → Std.HashSet Nat
+  value hash 3264176493
+
+def ContractGraph.incompleteOutput :
+  ContractGraph.ContractGraph → Nat → Bool → ContractGraph.CheckOutput
+  value hash 2201159862
+
+def ContractGraph.incompleteWith :
+  ContractGraph.ContractGraph → String → ContractGraph.CheckOutput
+  value hash 2355011955
+
+def ContractGraph.instBEqConstraintKind :
+  BEq ContractGraph.ConstraintKind
+  value hash 410834097
+
 def ContractGraph.instBEqRelationship :
   BEq ContractGraph.Relationship
   value hash 2628927155
+
+def ContractGraph.instDecidableEqConstraint :
+  DecidableEq ContractGraph.Constraint
+  value hash 119907750
+
+def ContractGraph.instDecidableEqConstraintKind :
+  DecidableEq ContractGraph.ConstraintKind
+  value hash 2697571686
+
+def ContractGraph.instDecidableEqDepExpr :
+  DecidableEq ContractGraph.DepExpr
+  value hash 3044348853
+
+def ContractGraph.instDecidableEqEdge :
+  DecidableEq ContractGraph.Edge
+  value hash 3489727632
+
+def ContractGraph.instDecidableEqNode :
+  DecidableEq ContractGraph.Node
+  value hash 111583445
+
+def ContractGraph.instDecidableEqRelationship :
+  DecidableEq ContractGraph.Relationship
+  value hash 1473962147
+
+def ContractGraph.instDecidableEqVerificationLevel :
+  DecidableEq ContractGraph.VerificationLevel
+  value hash 673023917
+
+def ContractGraph.instHashableConstraint :
+  Hashable ContractGraph.Constraint
+  value hash 1335435567
+
+def ContractGraph.instHashableConstraintKind :
+  Hashable ContractGraph.ConstraintKind
+  value hash 12864304
+
+def ContractGraph.instHashableDepExpr :
+  Hashable ContractGraph.DepExpr
+  value hash 4154234151
+
+def ContractGraph.instHashableEdge :
+  Hashable ContractGraph.Edge
+  value hash 1917649860
+
+def ContractGraph.instHashableNode :
+  Hashable ContractGraph.Node
+  value hash 2235234154
+
+def ContractGraph.instHashableRelationship :
+  Hashable ContractGraph.Relationship
+  value hash 2440084321
+
+def ContractGraph.instHashableVerificationLevel :
+  Hashable ContractGraph.VerificationLevel
+  value hash 2362323403
 
 def ContractGraph.instMinVerificationLevel :
   Min ContractGraph.VerificationLevel
@@ -164,9 +459,150 @@ def ContractGraph.instToStringConstraintKind :
   ToString ContractGraph.ConstraintKind
   value hash 2000663779
 
+def ContractGraph.instToStringSeverity :
+  ToString ContractGraph.Severity
+  value hash 2758982902
+
+def ContractGraph.keepOf :
+  Option (Std.HashSet Nat) → Nat → Bool
+  value hash 4092411400
+
+def ContractGraph.lastN :
+  {α : Type} → Nat → List α → List α
+  value hash 892939844
+
+def ContractGraph.memStates :
+  ContractGraph.Explored → ContractGraph.Edge → Bool
+  value hash 3601541863
+
+def ContractGraph.missingPostconditionWarning :
+  ContractGraph.Constraint → String → optParam String "" → ContractGraph.DiagnosticInfo
+  value hash 304137396
+
+def ContractGraph.mkKeepSet :
+  List Nat → List ContractGraph.Edge → Option (Std.HashSet Nat)
+  value hash 1126452706
+
+def ContractGraph.modelDistances :
+  List Nat → List ContractGraph.Edge → Std.HashMap Nat Nat
+  value hash 4136173010
+
+def ContractGraph.modelNodeIds :
+  ContractGraph.ContractGraph → List Nat
+  value hash 4053833610
+
 def ContractGraph.nodeIds :
   Nat → List ContractGraph.Edge → List Nat
   value hash 2214037030
+
+def ContractGraph.normHop :
+  ContractGraph.Edge → ContractGraph.Edge
+  value hash 2716043671
+
+def ContractGraph.pathNamesOf :
+  List ContractGraph.Edge → List String
+  value hash 1125365301
+
+def ContractGraph.pathVerificationLevel :
+  List ContractGraph.Edge → ContractGraph.VerificationLevel
+  value hash 2929546381
+
+def ContractGraph.prefixOf :
+  Array ContractGraph.StateRec → ContractGraph.StateRec → List ContractGraph.Edge
+  value hash 3426194887
+
+def ContractGraph.reachLoop :
+  Std.HashMap Nat (List Nat) → Nat → List Nat → Std.HashSet Nat → Std.HashSet Nat
+  value hash 2804272205
+
+def ContractGraph.reachSet :
+  List Nat → List ContractGraph.Edge → Std.HashSet Nat
+  value hash 4167938709
+
+def ContractGraph.reportStates :
+  ContractGraph.StateSetup → ContractGraph.ContractGraph → ContractGraph.Explored → List ContractGraph.ResultEntry
+  value hash 2874707590
+
+def ContractGraph.reportStatesWith :
+  ContractGraph.StateSetup → ContractGraph.Explored → Array Bool → List ContractGraph.ResultEntry
+  value hash 3862464900
+
+def ContractGraph.reportStep :
+  (Nat → Bool) →
+  List ContractGraph.ResultEntry →
+    Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult) → List ContractGraph.ResultEntry
+  value hash 299715603
+
+def ContractGraph.reportedResults :
+  (Nat → Bool) → Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult) → List ContractGraph.CheckResult
+  value hash 2672217620
+
+def ContractGraph.requirementMatters :
+  ContractGraph.Constraint → Bool
+  value hash 1023931394
+
+def ContractGraph.reverseIndex :
+  List ContractGraph.Edge → Std.HashMap Nat (List Nat)
+  value hash 2816220154
+
+def ContractGraph.runChecker :
+  ContractGraph.ContractGraph →
+  optParam Nat ContractGraph.defaultMaxStates → optParam Nat ContractGraph.defaultMaxPerEdge → ContractGraph.CheckOutput
+  value hash 2779098276
+
+def ContractGraph.runCheckerPaths :
+  ContractGraph.ContractGraph → optParam Nat ContractGraph.defaultMaxPaths → ContractGraph.CheckOutput
+  value hash 2522967413
+
+def ContractGraph.runCheckerWith :
+  ContractGraph.SearchSetup → ContractGraph.ContractGraph → ContractGraph.CheckOutput
+  value hash 339225308
+
+def ContractGraph.runStatesWith :
+  ContractGraph.StateSetup → ContractGraph.ContractGraph → ContractGraph.Explored → ContractGraph.CheckOutput
+  value hash 2428278590
+
+def ContractGraph.sameFinding :
+  ContractGraph.ResultEntry → ContractGraph.ResultEntry → Bool
+  value hash 1660793110
+
+def ContractGraph.searchFold :
+  {α : Type} →
+  (Nat → List ContractGraph.Edge) →
+    (Nat → Bool) →
+      (α → Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult) → α) →
+        Nat → Nat → List Nat → Option ContractGraph.PathState → α → α
+  value hash 14342288
+
+def ContractGraph.searchFrom :
+  (Nat → List ContractGraph.Edge) →
+  (Nat → Bool) →
+    Nat →
+      Nat →
+        List Nat →
+          Option ContractGraph.PathState → List (Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult))
+  value hash 81302413
+
+def ContractGraph.searchRaw :
+  ContractGraph.SearchSetup →
+  ContractGraph.ContractGraph → List (Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult))
+  value hash 3725228636
+
+def ContractGraph.searchSetup :
+  ContractGraph.ContractGraph → ContractGraph.SearchSetup
+  value hash 2202583942
+
+def ContractGraph.stateEntries :
+  ContractGraph.StateSetup → ContractGraph.Explored → ContractGraph.StateRec → Bool → List ContractGraph.ResultEntry
+  value hash 2649124524
+
+def ContractGraph.stateSetup :
+  ContractGraph.ContractGraph → ContractGraph.StateSetup
+  value hash 605861970
+
+def ContractGraph.stepBudget :
+  Nat → Nat
+  value hash 2759393334
 
 def ContractGraph.stepEdge :
   ContractGraph.Edge → ContractGraph.Edge → ContractGraph.Edge
@@ -176,9 +612,39 @@ def ContractGraph.stepwiseSound :
   List ContractGraph.Edge → Prop
   value hash 2321363601
 
+def ContractGraph.suffixHeadSet :
+  ContractGraph.ContractGraph → Std.HashSet Nat
+  value hash 892371599
+
+def ContractGraph.tagHop :
+  String → String → ContractGraph.CheckResult → ContractGraph.CheckResult
+  value hash 3692118270
+
+def ContractGraph.tagLocation :
+  ContractGraph.Edge → ContractGraph.CheckResult → ContractGraph.CheckResult
+  value hash 2462866168
+
 def ContractGraph.typeAccepts :
   String → String → Bool
   value hash 3849918113
+
+def ContractGraph.unresolvedDepWarning :
+  (constraint : ContractGraph.Constraint) →
+  String → optParam String "" → optParam ContractGraph.Constraint constraint → ContractGraph.DiagnosticInfo
+  value hash 891365681
+
+def ContractGraph.viewPath :
+  Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult) →
+  Prod (List ContractGraph.Edge) (List ContractGraph.CheckResult)
+  value hash 4100113289
+
+def ContractGraph.warnFlags :
+  ContractGraph.StateSetup → ContractGraph.Explored → Std.HashSet Nat → Array Bool
+  value hash 533382190
+
+def ContractGraph.warnsWhenMissing :
+  ContractGraph.ConstraintKind → Bool
+  value hash 1213915322
 
 def ContractGraph.weakerOf :
   ContractGraph.VerificationLevel → ContractGraph.VerificationLevel → ContractGraph.VerificationLevel
@@ -188,12 +654,77 @@ def ContractGraph.weakestIn :
   List ContractGraph.Constraint → ContractGraph.VerificationLevel
   value hash 1116630835
 
+def ContractGraph.witnessWithHop :
+  ContractGraph.StateSetup → ContractGraph.Explored → ContractGraph.StateRec → Prod (List ContractGraph.Edge) Nat
+  value hash 1582665956
+
 def ContractGraph.ChainFrom.match_1 :
   (motive : List ContractGraph.Edge → Sort u_1) →
   (x : List ContractGraph.Edge) →
     (Unit → motive List.nil) →
       ((e : ContractGraph.Edge) → (rest : List ContractGraph.Edge) → motive (List.cons e rest)) → motive x
   value hash 566194457
+
+def ContractGraph.CheckOutput.exitCode :
+  ContractGraph.CheckOutput → Nat
+  value hash 431926898
+
+constructor ContractGraph.CheckOutput.mk :
+  ContractGraph.Summary → List ContractGraph.ResultEntry → Nat → ContractGraph.CheckOutput
+
+def ContractGraph.CheckOutput.results :
+  ContractGraph.CheckOutput → List ContractGraph.ResultEntry
+  value hash 2027975829
+
+def ContractGraph.CheckResult.casesOn :
+  {motive : ContractGraph.CheckResult → Sort u} →
+  (t : ContractGraph.CheckResult) →
+    motive ContractGraph.CheckResult.consistent →
+      ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) → motive t
+  value hash 4144080672
+
+constructor ContractGraph.CheckResult.consistent :
+  ContractGraph.CheckResult
+
+constructor ContractGraph.CheckResult.inconsistent :
+  ContractGraph.DiagnosticInfo → ContractGraph.CheckResult
+
+def ContractGraph.CheckResult.isConsistent :
+  ContractGraph.CheckResult → Bool
+  value hash 1350654330
+
+def ContractGraph.CheckResult.isError :
+  ContractGraph.CheckResult → Bool
+  value hash 2515921289
+
+recursor ContractGraph.CheckResult.rec :
+  {motive : ContractGraph.CheckResult → Sort u} →
+  motive ContractGraph.CheckResult.consistent →
+    ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) →
+      (t : ContractGraph.CheckResult) → motive t
+
+def ContractGraph.Constraint.casesOn :
+  {motive : ContractGraph.Constraint → Sort u} →
+  (t : ContractGraph.Constraint) →
+    ((kind : ContractGraph.ConstraintKind) →
+        (staticBound : Option Int) →
+          (depExpr : Option ContractGraph.DepExpr) →
+            (typeName : Option String) →
+              (choicesList : Option (List String)) →
+                (sourceFile : String) →
+                  (sourceLine : Nat) →
+                    (verificationLevel : ContractGraph.VerificationLevel) →
+                      (subject : Option String) →
+                        (scale : Nat) →
+                          (originFile : String) →
+                            (originLine : Nat) →
+                              motive
+                                { kind := kind, staticBound := staticBound, depExpr := depExpr, typeName := typeName,
+                                  choicesList := choicesList, sourceFile := sourceFile, sourceLine := sourceLine,
+                                  verificationLevel := verificationLevel, subject := subject, scale := scale,
+                                  originFile := originFile, originLine := originLine }) →
+      motive t
+  value hash 822092486
 
 def ContractGraph.Constraint.choicesList :
   ContractGraph.Constraint → Option (List String)
@@ -222,6 +753,31 @@ def ContractGraph.Constraint.originFile :
 def ContractGraph.Constraint.originLine :
   ContractGraph.Constraint → Nat
   value hash 2417842272
+
+def ContractGraph.Constraint.originOrOwn :
+  ContractGraph.Constraint → Prod String Nat
+  value hash 3885296167
+
+recursor ContractGraph.Constraint.rec :
+  {motive : ContractGraph.Constraint → Sort u} →
+  ((kind : ContractGraph.ConstraintKind) →
+      (staticBound : Option Int) →
+        (depExpr : Option ContractGraph.DepExpr) →
+          (typeName : Option String) →
+            (choicesList : Option (List String)) →
+              (sourceFile : String) →
+                (sourceLine : Nat) →
+                  (verificationLevel : ContractGraph.VerificationLevel) →
+                    (subject : Option String) →
+                      (scale : Nat) →
+                        (originFile : String) →
+                          (originLine : Nat) →
+                            motive
+                              { kind := kind, staticBound := staticBound, depExpr := depExpr, typeName := typeName,
+                                choicesList := choicesList, sourceFile := sourceFile, sourceLine := sourceLine,
+                                verificationLevel := verificationLevel, subject := subject, scale := scale,
+                                originFile := originFile, originLine := originLine }) →
+    (t : ContractGraph.Constraint) → motive t
 
 def ContractGraph.Constraint.scale :
   ContractGraph.Constraint → Nat
@@ -265,6 +821,10 @@ def ContractGraph.ConstraintKind.casesOn :
 constructor ContractGraph.ConstraintKind.choices :
   ContractGraph.ConstraintKind
 
+def ContractGraph.ConstraintKind.ctorIdx :
+  ContractGraph.ConstraintKind → Nat
+  value hash 483732427
+
 constructor ContractGraph.ConstraintKind.length :
   ContractGraph.ConstraintKind
 
@@ -303,6 +863,25 @@ constructor ContractGraph.ContractGraph.mk :
 def ContractGraph.ContractGraph.nodes :
   ContractGraph.ContractGraph → List ContractGraph.Node
   value hash 405888283
+
+def ContractGraph.Dedupe.arr :
+  ContractGraph.Dedupe → Array ContractGraph.ResultEntry
+  value hash 991439079
+
+def ContractGraph.Dedupe.idx :
+  ContractGraph.Dedupe → Std.HashMap String Nat
+  value hash 1675898196
+
+constructor ContractGraph.Dedupe.mk :
+  Array ContractGraph.ResultEntry → Std.HashMap String Nat → ContractGraph.Dedupe
+
+def ContractGraph.Dedupe.push :
+  ContractGraph.Dedupe → ContractGraph.ResultEntry → ContractGraph.Dedupe
+  value hash 621585989
+
+def ContractGraph.Dedupe.step :
+  ContractGraph.Dedupe → ContractGraph.ResultEntry → ContractGraph.Dedupe
+  value hash 2063853872
 
 constructor ContractGraph.DepExpr.add :
   ContractGraph.DepExpr → ContractGraph.DepExpr → ContractGraph.DepExpr
@@ -356,8 +935,82 @@ recursor ContractGraph.DepExpr.rec :
 constructor ContractGraph.DepExpr.sub :
   ContractGraph.DepExpr → ContractGraph.DepExpr → ContractGraph.DepExpr
 
+def ContractGraph.DiagnosticInfo.hopSource :
+  ContractGraph.DiagnosticInfo → String
+  value hash 1885716867
+
+def ContractGraph.DiagnosticInfo.hopSourceFile :
+  ContractGraph.DiagnosticInfo → String
+  value hash 2768007049
+
+def ContractGraph.DiagnosticInfo.hopSourceLine :
+  ContractGraph.DiagnosticInfo → Nat
+  value hash 339687445
+
+def ContractGraph.DiagnosticInfo.hopTarget :
+  ContractGraph.DiagnosticInfo → String
+  value hash 4160602760
+
+constructor ContractGraph.DiagnosticInfo.mk :
+  ContractGraph.Severity →
+  ContractGraph.Constraint →
+    ContractGraph.Constraint →
+      List String → String → String → String → String → Nat → String → Nat → ContractGraph.DiagnosticInfo
+
+def ContractGraph.DiagnosticInfo.path :
+  ContractGraph.DiagnosticInfo → List String
+  value hash 4037347053
+
+def ContractGraph.DiagnosticInfo.severity :
+  ContractGraph.DiagnosticInfo → ContractGraph.Severity
+  value hash 4219634327
+
+def ContractGraph.DiagnosticInfo.siteFile :
+  ContractGraph.DiagnosticInfo → String
+  value hash 1596097301
+
+def ContractGraph.DiagnosticInfo.siteLine :
+  ContractGraph.DiagnosticInfo → Nat
+  value hash 1928705031
+
+def ContractGraph.DiagnosticInfo.sourceConstraint :
+  ContractGraph.DiagnosticInfo → ContractGraph.Constraint
+  value hash 904062379
+
+def ContractGraph.DiagnosticInfo.suggestion :
+  ContractGraph.DiagnosticInfo → String
+  value hash 4289828847
+
+def ContractGraph.DiagnosticInfo.targetConstraint :
+  ContractGraph.DiagnosticInfo → ContractGraph.Constraint
+  value hash 3946325386
+
+def ContractGraph.Edge.casesOn :
+  {motive : ContractGraph.Edge → Sort u} →
+  (t : ContractGraph.Edge) →
+    ((source target : ContractGraph.Node) →
+        (relationship : ContractGraph.Relationship) →
+          (siteFile : String) →
+            (siteLine : Nat) →
+              motive
+                { source := source, target := target, relationship := relationship, siteFile := siteFile,
+                  siteLine := siteLine }) →
+      motive t
+  value hash 3143437692
+
 constructor ContractGraph.Edge.mk :
   ContractGraph.Node → ContractGraph.Node → ContractGraph.Relationship → String → Nat → ContractGraph.Edge
+
+recursor ContractGraph.Edge.rec :
+  {motive : ContractGraph.Edge → Sort u} →
+  ((source target : ContractGraph.Node) →
+      (relationship : ContractGraph.Relationship) →
+        (siteFile : String) →
+          (siteLine : Nat) →
+            motive
+              { source := source, target := target, relationship := relationship, siteFile := siteFile,
+                siteLine := siteLine }) →
+    (t : ContractGraph.Edge) → motive t
 
 def ContractGraph.Edge.relationship :
   ContractGraph.Edge → ContractGraph.Relationship
@@ -378,6 +1031,63 @@ def ContractGraph.Edge.source :
 def ContractGraph.Edge.target :
   ContractGraph.Edge → ContractGraph.Node
   value hash 3362929239
+
+constructor ContractGraph.ExploreOutcome.capped :
+  ContractGraph.Explored → ContractGraph.Edge → Nat → ContractGraph.Edge → ContractGraph.ExploreOutcome
+
+def ContractGraph.ExploreOutcome.casesOn :
+  {motive : ContractGraph.ExploreOutcome → Sort u} →
+  (t : ContractGraph.ExploreOutcome) →
+    ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.done ex)) →
+      ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.tooMany ex)) →
+        ((ex : ContractGraph.Explored) →
+            (hop : ContractGraph.Edge) →
+              (pred : Nat) →
+                (raw : ContractGraph.Edge) → motive (ContractGraph.ExploreOutcome.capped ex hop pred raw)) →
+          motive t
+  value hash 2115140373
+
+constructor ContractGraph.ExploreOutcome.done :
+  ContractGraph.Explored → ContractGraph.ExploreOutcome
+
+recursor ContractGraph.ExploreOutcome.rec :
+  {motive : ContractGraph.ExploreOutcome → Sort u} →
+  ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.done ex)) →
+    ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.tooMany ex)) →
+      ((ex : ContractGraph.Explored) →
+          (hop : ContractGraph.Edge) →
+            (pred : Nat) → (raw : ContractGraph.Edge) → motive (ContractGraph.ExploreOutcome.capped ex hop pred raw)) →
+        (t : ContractGraph.ExploreOutcome) → motive t
+
+constructor ContractGraph.ExploreOutcome.tooMany :
+  ContractGraph.Explored → ContractGraph.ExploreOutcome
+
+def ContractGraph.Explored.index :
+  ContractGraph.Explored → Std.HashMap ContractGraph.Edge Nat
+  value hash 353608312
+
+constructor ContractGraph.Explored.mk :
+  Array ContractGraph.StateRec → Std.HashMap ContractGraph.Edge Nat → ContractGraph.Explored
+
+def ContractGraph.Explored.recs :
+  ContractGraph.Explored → Array ContractGraph.StateRec
+  value hash 3453144775
+
+def ContractGraph.Node.casesOn :
+  {motive : ContractGraph.Node → Sort u} →
+  (t : ContractGraph.Node) →
+    ((id : Nat) →
+        (name kind : String) →
+          (preconditions postconditions : List ContractGraph.Constraint) →
+            (sourceFile : String) →
+              (sourceLine : Nat) →
+                (isCallSite : Bool) →
+                  motive
+                    { id := id, name := name, kind := kind, preconditions := preconditions,
+                      postconditions := postconditions, sourceFile := sourceFile, sourceLine := sourceLine,
+                      isCallSite := isCallSite }) →
+      motive t
+  value hash 2289274
 
 def ContractGraph.Node.id :
   ContractGraph.Node → Nat
@@ -407,6 +1117,20 @@ def ContractGraph.Node.postconditions :
 def ContractGraph.Node.preconditions :
   ContractGraph.Node → List ContractGraph.Constraint
   value hash 699208937
+
+recursor ContractGraph.Node.rec :
+  {motive : ContractGraph.Node → Sort u} →
+  ((id : Nat) →
+      (name kind : String) →
+        (preconditions postconditions : List ContractGraph.Constraint) →
+          (sourceFile : String) →
+            (sourceLine : Nat) →
+              (isCallSite : Bool) →
+                motive
+                  { id := id, name := name, kind := kind, preconditions := preconditions,
+                    postconditions := postconditions, sourceFile := sourceFile, sourceLine := sourceLine,
+                    isCallSite := isCallSite }) →
+    (t : ContractGraph.Node) → motive t
 
 def ContractGraph.Node.sourceFile :
   ContractGraph.Node → String
@@ -442,6 +1166,179 @@ recursor ContractGraph.Relationship.rec :
 constructor ContractGraph.Relationship.writesTo :
   ContractGraph.Relationship
 
+def ContractGraph.ResultEntry.guaranteeAtFile :
+  ContractGraph.ResultEntry → String
+  value hash 3750165190
+
+def ContractGraph.ResultEntry.guaranteeAtLine :
+  ContractGraph.ResultEntry → Nat
+  value hash 4183177874
+
+def ContractGraph.ResultEntry.guaranteeFile :
+  ContractGraph.ResultEntry → String
+  value hash 214137099
+
+def ContractGraph.ResultEntry.guaranteeLine :
+  ContractGraph.ResultEntry → Nat
+  value hash 4158505127
+
+def ContractGraph.ResultEntry.hop :
+  ContractGraph.ResultEntry → List String
+  value hash 3921044978
+
+constructor ContractGraph.ResultEntry.mk :
+  String →
+  String →
+    ContractGraph.SourceLocation →
+      ContractGraph.SourceLocation →
+        List String →
+          List String →
+            List String →
+              ContractGraph.SiteLocation →
+                String → Nat → String → Nat → String → String → String → String → ContractGraph.ResultEntry
+
+def ContractGraph.ResultEntry.path :
+  ContractGraph.ResultEntry → List String
+  value hash 1467160356
+
+def ContractGraph.ResultEntry.severity :
+  ContractGraph.ResultEntry → String
+  value hash 1839144989
+
+def ContractGraph.ResultEntry.site :
+  ContractGraph.ResultEntry → ContractGraph.SiteLocation
+  value hash 4055892297
+
+def ContractGraph.ResultEntry.source :
+  ContractGraph.ResultEntry → ContractGraph.SourceLocation
+  value hash 1579167668
+
+def ContractGraph.ResultEntry.sourceGuarantee :
+  ContractGraph.ResultEntry → String
+  value hash 2250660969
+
+def ContractGraph.ResultEntry.status :
+  ContractGraph.ResultEntry → String
+  value hash 2414694728
+
+def ContractGraph.ResultEntry.suggestion :
+  ContractGraph.ResultEntry → String
+  value hash 3882625550
+
+def ContractGraph.ResultEntry.target :
+  ContractGraph.ResultEntry → ContractGraph.SourceLocation
+  value hash 1513968730
+
+def ContractGraph.ResultEntry.targetRequirement :
+  ContractGraph.ResultEntry → String
+  value hash 23234078
+
+def ContractGraph.ResultEntry.verificationLevel :
+  ContractGraph.ResultEntry → String
+  value hash 1501053167
+
+def ContractGraph.SearchSetup.fuel :
+  ContractGraph.SearchSetup → Nat
+  value hash 3765714780
+
+def ContractGraph.SearchSetup.idx :
+  ContractGraph.SearchSetup → Std.HashMap Nat (List ContractGraph.Edge)
+  value hash 1424180186
+
+def ContractGraph.SearchSetup.isModel :
+  ContractGraph.SearchSetup → Nat → Bool
+  value hash 1332845841
+
+constructor ContractGraph.SearchSetup.mk :
+  Std.HashMap Nat (List ContractGraph.Edge) → Std.HashSet Nat → Nat → ContractGraph.SearchSetup
+
+def ContractGraph.SearchSetup.models :
+  ContractGraph.SearchSetup → Std.HashSet Nat
+  value hash 3220508563
+
+def ContractGraph.SearchSetup.out :
+  ContractGraph.SearchSetup → Nat → List ContractGraph.Edge
+  value hash 3904469760
+
+def ContractGraph.Severity.casesOn :
+  {motive : ContractGraph.Severity → Sort u} →
+  (t : ContractGraph.Severity) → motive ContractGraph.Severity.error → motive ContractGraph.Severity.warning → motive t
+  value hash 1163415693
+
+constructor ContractGraph.Severity.error :
+  ContractGraph.Severity
+
+recursor ContractGraph.Severity.rec :
+  {motive : ContractGraph.Severity → Sort u} →
+  motive ContractGraph.Severity.error → motive ContractGraph.Severity.warning → (t : ContractGraph.Severity) → motive t
+
+constructor ContractGraph.Severity.warning :
+  ContractGraph.Severity
+
+def ContractGraph.SiteLocation.file :
+  ContractGraph.SiteLocation → String
+  value hash 2245296403
+
+def ContractGraph.SiteLocation.line :
+  ContractGraph.SiteLocation → Nat
+  value hash 1563650820
+
+constructor ContractGraph.SiteLocation.mk :
+  String → Nat → ContractGraph.SiteLocation
+
+def ContractGraph.SourceLocation.file :
+  ContractGraph.SourceLocation → String
+  value hash 2994565084
+
+def ContractGraph.SourceLocation.line :
+  ContractGraph.SourceLocation → Nat
+  value hash 1965684014
+
+constructor ContractGraph.SourceLocation.mk :
+  String → Nat → String → ContractGraph.SourceLocation
+
+def ContractGraph.SourceLocation.name :
+  ContractGraph.SourceLocation → String
+  value hash 1754463152
+
+def ContractGraph.StateRec.hop :
+  ContractGraph.StateRec → ContractGraph.Edge
+  value hash 2450739975
+
+constructor ContractGraph.StateRec.mk :
+  ContractGraph.Edge → Nat → ContractGraph.Edge → ContractGraph.StateRec
+
+def ContractGraph.StateRec.pred :
+  ContractGraph.StateRec → Nat
+  value hash 2030646576
+
+def ContractGraph.StateRec.raw :
+  ContractGraph.StateRec → ContractGraph.Edge
+  value hash 2142325196
+
+def ContractGraph.StateSetup.dist :
+  ContractGraph.StateSetup → Std.HashMap Nat Nat
+  value hash 806271384
+
+constructor ContractGraph.StateSetup.mk :
+  ContractGraph.SearchSetup →
+  Std.HashMap Nat (Array (Prod Nat ContractGraph.Edge)) → Nat → Std.HashMap Nat Nat → ContractGraph.StateSetup
+
+def ContractGraph.StateSetup.numEdges :
+  ContractGraph.StateSetup → Nat
+  value hash 3343444046
+
+def ContractGraph.StateSetup.outI :
+  ContractGraph.StateSetup → Std.HashMap Nat (Array (Prod Nat ContractGraph.Edge))
+  value hash 1169627014
+
+def ContractGraph.StateSetup.setup :
+  ContractGraph.StateSetup → ContractGraph.SearchSetup
+  value hash 1997974422
+
+constructor ContractGraph.Summary.mk :
+  Nat → Nat → Nat → Nat → ContractGraph.Summary
+
 constructor ContractGraph.VerificationLevel.assumed :
   ContractGraph.VerificationLevel
 
@@ -472,6 +1369,29 @@ recursor ContractGraph.VerificationLevel.rec :
 
 constructor ContractGraph.VerificationLevel.tested :
   ContractGraph.VerificationLevel
+
+def ContractGraph.advance.match_1 :
+  (motive : Option ContractGraph.PathState → Sort u_1) →
+  (st : Option ContractGraph.PathState) →
+    (Unit → motive Option.none) →
+      ((u : ContractGraph.Edge) →
+          (rp : List ContractGraph.Edge) →
+            (rr : List ContractGraph.CheckResult) →
+              motive (Option.some { fst := u, snd := { fst := rp, snd := rr } })) →
+        motive st
+  value hash 2602666174
+
+def ContractGraph.buildResultEntry.match_1 :
+  (motive : Option ContractGraph.Node → Sort u_1) →
+  (head : Option ContractGraph.Node) →
+    ((n : ContractGraph.Node) → motive (Option.some n)) → (Unit → motive Option.none) → motive head
+  value hash 4180305422
+
+def ContractGraph.buildResultEntry.match_3 :
+  (motive : ContractGraph.Severity → Sort u_1) →
+  (x : ContractGraph.Severity) →
+    (Unit → motive ContractGraph.Severity.error) → (Unit → motive ContractGraph.Severity.warning) → motive x
+  value hash 2473210914
 
 def ContractGraph.checkConstraintPair._sparseCasesOn_1 :
   {α : Type u} →
@@ -511,6 +1431,19 @@ def ContractGraph.checkConstraintPair.match_8 :
                 (Unit → motive ContractGraph.ConstraintKind.choices) → motive x
   value hash 2757348359
 
+def ContractGraph.checkEdge.match_1 :
+  (motive : ContractGraph.CheckResult → Sort u_1) →
+  (acc : ContractGraph.CheckResult) →
+    ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) →
+      (Unit → motive ContractGraph.CheckResult.consistent) → motive acc
+  value hash 894907061
+
+def ContractGraph.checkEdge.match_3 :
+  (motive : Prod ContractGraph.Constraint ContractGraph.Constraint → Sort u_1) →
+  (x : Prod ContractGraph.Constraint ContractGraph.Constraint) →
+    ((post pre : ContractGraph.Constraint) → motive { fst := post, snd := pre }) → motive x
+  value hash 3425162864
+
 def ContractGraph.checkPath.match_1 :
   (motive : List ContractGraph.Edge → Sort u_1) →
   (path : List ContractGraph.Edge) →
@@ -520,6 +1453,26 @@ def ContractGraph.checkPath.match_1 :
             (remainingEdges : List ContractGraph.Edge) → motive (List.cons edge (List.cons nextEdge remainingEdges))) →
           motive path
   value hash 3818253922
+
+def ContractGraph.collectUnresolvedWarnings._sparseCasesOn_1 :
+  {α : Type u} →
+  {motive : Option α → Sort u_1} →
+    (t : Option α) → ((val : α) → motive (Option.some val)) → (Nat.hasNotBit 2 t.ctorIdx → motive t) → motive t
+  value hash 1385501301
+
+def ContractGraph.collectUnresolvedWarnings._sparseCasesOn_2 :
+  {α : Type u} →
+  {motive : Option α → Sort u_1} →
+    (t : Option α) → motive Option.none → (Nat.hasNotBit 1 t.ctorIdx → motive t) → motive t
+  value hash 1965615200
+
+def ContractGraph.collectUnresolvedWarnings.match_1 :
+  (motive : Option ContractGraph.DepExpr → Option Int → Sort u_1) →
+  (x : Option ContractGraph.DepExpr) →
+    (x_1 : Option Int) →
+      ((val : ContractGraph.DepExpr) → motive (Option.some val) Option.none) →
+        ((x : Option ContractGraph.DepExpr) → (x_2 : Option Int) → motive x x_2) → motive x x_1
+  value hash 2841569143
 
 def ContractGraph.composeContracts.match_1 :
   (motive : Option Int → Sort u_1) →
@@ -532,11 +1485,55 @@ def ContractGraph.composeContracts.match_3 :
     (Unit → motive Option.none) → ((expr : ContractGraph.DepExpr) → motive (Option.some expr)) → motive x
   value hash 792608044
 
+def ContractGraph.continuationFrom._sparseCasesOn_3 :
+  {α : Type u} →
+  {motive : Option α → Sort u_1} →
+    (t : Option α) → ((val : α) → motive (Option.some val)) → (Nat.hasNotBit 2 t.ctorIdx → motive t) → motive t
+  value hash 1385501301
+
+def ContractGraph.continuationFrom._sparseCasesOn_4 :
+  {motive : Nat → Sort u} → (t : Nat) → ((n : Nat) → motive n.succ) → (Nat.hasNotBit 2 t.ctorIdx → motive t) → motive t
+  value hash 1299952503
+
+def ContractGraph.continuationFrom.match_1 :
+  (motive : Option (Prod Nat ContractGraph.Edge) → Sort u_1) →
+  (x : Option (Prod Nat ContractGraph.Edge)) →
+    ((fst : Nat) → (e : ContractGraph.Edge) → motive (Option.some { fst := fst, snd := e })) →
+      (Unit → motive Option.none) → motive x
+  value hash 2537502830
+
+def ContractGraph.continuationFrom.match_3 :
+  (motive : Option Nat → Sort u_1) →
+  (x : Option Nat) → ((d : Nat) → motive (Option.some d.succ)) → ((x : Option Nat) → motive x) → motive x
+  value hash 2651246045
+
+def ContractGraph.continuationFrom.match_7 :
+  (motive : Nat → Nat → Sort u_1) →
+  (x x_1 : Nat) → ((x : Nat) → motive 0 x) → ((fuel v : Nat) → motive fuel.succ v) → motive x x_1
+  value hash 1372243868
+
+def ContractGraph.countFrom.match_1 :
+  (motive : Nat → Nat → List Nat → Prod Nat Nat → Sort u_1) →
+  (x x_1 : Nat) →
+    (x_2 : List Nat) →
+      (x_3 : Prod Nat Nat) →
+        ((x : Nat) → (x_4 : List Nat) → (acc : Prod Nat Nat) → motive 0 x x_4 acc) →
+          ((fuel v : Nat) → (visited : List Nat) → (acc : Prod Nat Nat) → motive fuel.succ v visited acc) →
+            motive x x_1 x_2 x_3
+  value hash 1178577659
+
 def ContractGraph.depOrigin.match_1 :
   (motive : Option ContractGraph.Constraint → Sort u_1) →
   (x : Option ContractGraph.Constraint) →
     ((c : ContractGraph.Constraint) → motive (Option.some c)) → (Unit → motive Option.none) → motive x
   value hash 719588060
+
+def ContractGraph.dropWarnings.match_1 :
+  (motive : ContractGraph.CheckResult → Sort u_1) →
+  (r : ContractGraph.CheckResult) →
+    (Unit → motive ContractGraph.CheckResult.consistent) →
+      ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) → motive r
+  value hash 4238686451
 
 def ContractGraph.evalDepExpr.match_1 :
   (motive : ContractGraph.DepExpr → Sort u_1) →
@@ -549,9 +1546,166 @@ def ContractGraph.evalDepExpr.match_1 :
               ((a b : ContractGraph.DepExpr) → motive (a.sub b)) → motive expr
   value hash 3435311757
 
+def ContractGraph.explore.match_1 :
+  (motive : Prod Nat ContractGraph.Edge → Sort u_1) →
+  (x : Prod Nat ContractGraph.Edge) → ((k : Nat) → (e : ContractGraph.Edge) → motive { fst := k, snd := e }) → motive x
+  value hash 2157958613
+
+def ContractGraph.explore.match_3 :
+  (motive : Option ContractGraph.ExploreOutcome → Sort u_1) →
+  (x : Option ContractGraph.ExploreOutcome) →
+    (Unit → motive Option.none) → ((a : ContractGraph.ExploreOutcome) → motive (Option.some a)) → motive x
+  value hash 3715594283
+
+def ContractGraph.explore.match_5 :
+  (motive : MProd (Std.HashMap ContractGraph.Edge Nat) (MProd (Array Nat) (Array ContractGraph.StateRec)) → Sort u_1) →
+  (x : MProd (Std.HashMap ContractGraph.Edge Nat) (MProd (Array Nat) (Array ContractGraph.StateRec))) →
+    ((index : Std.HashMap ContractGraph.Edge Nat) →
+        (perEdge : Array Nat) → (recs : Array ContractGraph.StateRec) → motive ⟨index, perEdge, recs⟩) →
+      motive x
+  value hash 531991494
+
+def ContractGraph.explore.match_7 :
+  (motive :
+    MProd Nat (MProd (Std.HashMap ContractGraph.Edge Nat) (MProd (Array Nat) (Array ContractGraph.StateRec))) →
+      Sort u_1) →
+  (x : MProd Nat (MProd (Std.HashMap ContractGraph.Edge Nat) (MProd (Array Nat) (Array ContractGraph.StateRec)))) →
+    ((head : Nat) →
+        (index : Std.HashMap ContractGraph.Edge Nat) →
+          (perEdge : Array Nat) → (recs : Array ContractGraph.StateRec) → motive ⟨head, index, perEdge, recs⟩) →
+      motive x
+  value hash 905174232
+
+def ContractGraph.formatBound.match_1 :
+  (motive : Option ContractGraph.DepExpr → Sort u_1) →
+  (x : Option ContractGraph.DepExpr) →
+    ((val : ContractGraph.DepExpr) → motive (Option.some val)) → (Unit → motive Option.none) → motive x
+  value hash 806330377
+
+def ContractGraph.formatBound.match_11 :
+  (motive : ContractGraph.ConstraintKind → Sort u_1) →
+  (x : ContractGraph.ConstraintKind) →
+    (Unit → motive ContractGraph.ConstraintKind.precision) →
+      (Unit → motive ContractGraph.ConstraintKind.length) →
+        (Unit → motive ContractGraph.ConstraintKind.range) →
+          (Unit → motive ContractGraph.ConstraintKind.rangeMin) →
+            (Unit → motive ContractGraph.ConstraintKind.nullability) →
+              (Unit → motive ContractGraph.ConstraintKind.type) →
+                (Unit → motive ContractGraph.ConstraintKind.choices) → motive x
+  value hash 2757348359
+
+def ContractGraph.formatBound.match_3 :
+  (motive : Option Int → Sort u_1) →
+  (x : Option Int) → ((b : Int) → motive (Option.some b)) → (Unit → motive Option.none) → motive x
+  value hash 3390721761
+
+def ContractGraph.formatBound.match_5 :
+  (motive : Option Int → Sort u_1) →
+  (x : Option Int) →
+    (Unit → motive (Option.some 0)) → ((val : Int) → motive (Option.some val)) → (Unit → motive Option.none) → motive x
+  value hash 2181947898
+
+def ContractGraph.formatBound.match_7 :
+  (motive : Option String → Sort u_1) →
+  (x : Option String) → ((t : String) → motive (Option.some t)) → (Unit → motive Option.none) → motive x
+  value hash 1348254134
+
+def ContractGraph.formatBound.match_9 :
+  (motive : Option (List String) → Sort u_1) →
+  (x : Option (List String)) → ((cs : List String) → motive (Option.some cs)) → (Unit → motive Option.none) → motive x
+  value hash 3715991687
+
+def ContractGraph.formatBoundValue._sparseCasesOn_1 :
+  {motive : ContractGraph.ConstraintKind → Sort u} →
+  (t : ContractGraph.ConstraintKind) →
+    motive ContractGraph.ConstraintKind.range →
+      motive ContractGraph.ConstraintKind.rangeMin → (Nat.hasNotBit 72 t.ctorIdx → motive t) → motive t
+  value hash 2375543320
+
+def ContractGraph.formatBoundValue.match_1 :
+  (motive : ContractGraph.ConstraintKind → Sort u_1) →
+  (k : ContractGraph.ConstraintKind) →
+    (Unit → motive ContractGraph.ConstraintKind.range) →
+      (Unit → motive ContractGraph.ConstraintKind.rangeMin) → ((x : ContractGraph.ConstraintKind) → motive x) → motive k
+  value hash 1167897171
+
+def ContractGraph.formatConstraintKind.match_1 :
+  (motive : ContractGraph.ConstraintKind → Sort u_1) →
+  (x : ContractGraph.ConstraintKind) →
+    (Unit → motive ContractGraph.ConstraintKind.precision) →
+      (Unit → motive ContractGraph.ConstraintKind.nullability) →
+        (Unit → motive ContractGraph.ConstraintKind.type) →
+          (Unit → motive ContractGraph.ConstraintKind.range) →
+            (Unit → motive ContractGraph.ConstraintKind.length) →
+              (Unit → motive ContractGraph.ConstraintKind.choices) →
+                (Unit → motive ContractGraph.ConstraintKind.rangeMin) → motive x
+  value hash 3858425261
+
+def ContractGraph.formatVerificationLevel.match_1 :
+  (motive : ContractGraph.VerificationLevel → Sort u_1) →
+  (x : ContractGraph.VerificationLevel) →
+    (Unit → motive ContractGraph.VerificationLevel.proved) →
+      (Unit → motive ContractGraph.VerificationLevel.tested) →
+        (Unit → motive ContractGraph.VerificationLevel.extracted) →
+          (Unit → motive ContractGraph.VerificationLevel.assumed) → motive x
+  value hash 3767758524
+
+def ContractGraph.hopPrefix.match_1 :
+  (motive : Option Nat → Sort u_1) →
+  (x : Option Nat) → ((i : Nat) → motive (Option.some i)) → (Unit → motive Option.none) → motive x
+  value hash 3610645720
+
+def ContractGraph.instBEqConstraintKind.beq :
+  ContractGraph.ConstraintKind → ContractGraph.ConstraintKind → Bool
+  value hash 284875970
+
 def ContractGraph.instBEqRelationship.beq :
   ContractGraph.Relationship → ContractGraph.Relationship → Bool
   value hash 1791651934
+
+def ContractGraph.instDecidableEqConstraint.decEq :
+  (x x_1 : ContractGraph.Constraint) → Decidable (Eq x x_1)
+  value hash 4080369645
+
+def ContractGraph.instDecidableEqDepExpr.decEq :
+  (x x_1 : ContractGraph.DepExpr) → Decidable (Eq x x_1)
+  value hash 905310894
+
+def ContractGraph.instDecidableEqEdge.decEq :
+  (x x_1 : ContractGraph.Edge) → Decidable (Eq x x_1)
+  value hash 3930418624
+
+def ContractGraph.instDecidableEqNode.decEq :
+  (x x_1 : ContractGraph.Node) → Decidable (Eq x x_1)
+  value hash 3223975100
+
+def ContractGraph.instHashableConstraint.hash :
+  ContractGraph.Constraint → UInt64
+  value hash 3425643522
+
+def ContractGraph.instHashableConstraintKind.hash :
+  ContractGraph.ConstraintKind → UInt64
+  value hash 595926449
+
+def ContractGraph.instHashableDepExpr.hash :
+  ContractGraph.DepExpr → UInt64
+  value hash 2613531894
+
+def ContractGraph.instHashableEdge.hash :
+  ContractGraph.Edge → UInt64
+  value hash 1232438246
+
+def ContractGraph.instHashableNode.hash :
+  ContractGraph.Node → UInt64
+  value hash 376296273
+
+def ContractGraph.instHashableRelationship.hash :
+  ContractGraph.Relationship → UInt64
+  value hash 3555502884
+
+def ContractGraph.instHashableVerificationLevel.hash :
+  ContractGraph.VerificationLevel → UInt64
+  value hash 527204146
 
 def ContractGraph.instOrdVerificationLevel._sparseCasesOn_1 :
   {motive : ContractGraph.VerificationLevel → Sort u} →
@@ -577,6 +1731,178 @@ def ContractGraph.instOrdVerificationLevel.match_1 :
                         motive a b
   value hash 688144945
 
+def ContractGraph.keepOf.match_1 :
+  (motive : Option (Std.HashSet Nat) → Nat → Sort u_1) →
+  (x : Option (Std.HashSet Nat)) →
+    (x_1 : Nat) →
+      ((r : Std.HashSet Nat) → (v : Nat) → motive (Option.some r) v) → ((x : Nat) → motive Option.none x) → motive x x_1
+  value hash 3759853317
+
+def ContractGraph.memStates.match_1 :
+  (motive : Option ContractGraph.StateRec → Sort u_1) →
+  (x : Option ContractGraph.StateRec) →
+    ((r : ContractGraph.StateRec) → motive (Option.some r)) → (Unit → motive Option.none) → motive x
+  value hash 3931097498
+
+def ContractGraph.memStates.match_3 :
+  (motive : Option Nat → Sort u_1) →
+  (x : Option Nat) → ((i : Nat) → motive (Option.some i)) → (Unit → motive Option.none) → motive x
+  value hash 3610645720
+
+def ContractGraph.modelDistances.match_1 :
+  (motive : MProd (Std.HashMap Nat Nat) (Array Nat) → Sort u_1) →
+  (r : MProd (Std.HashMap Nat Nat) (Array Nat)) →
+    ((dist : Std.HashMap Nat Nat) → (queue : Array Nat) → motive ⟨dist, queue⟩) → motive r
+  value hash 92709507
+
+def ContractGraph.modelDistances.match_3 :
+  (motive : MProd (Std.HashMap Nat Nat) (MProd Nat (Array Nat)) → Sort u_1) →
+  (r : MProd (Std.HashMap Nat Nat) (MProd Nat (Array Nat))) →
+    ((dist : Std.HashMap Nat Nat) → (head : Nat) → (queue : Array Nat) → motive ⟨dist, head, queue⟩) → motive r
+  value hash 3344257008
+
+def ContractGraph.pathNamesOf._sparseCasesOn_3 :
+  {α : Type u} →
+  {motive : List α → Sort u_1} → (t : List α) → motive List.nil → (Nat.hasNotBit 1 t.ctorIdx → motive t) → motive t
+  value hash 3287480023
+
+def ContractGraph.pathNamesOf.match_1 :
+  (motive : Option ContractGraph.Edge → Sort u_1) →
+  (x : Option ContractGraph.Edge) →
+    ((last : ContractGraph.Edge) → motive (Option.some last)) → (Unit → motive Option.none) → motive x
+  value hash 2171461139
+
+def ContractGraph.pathNamesOf.match_3 :
+  (motive : List ContractGraph.Edge → Sort u_1) →
+  (path : List ContractGraph.Edge) →
+    (Unit → motive List.nil) → ((edges : List ContractGraph.Edge) → motive edges) → motive path
+  value hash 2713225048
+
+def ContractGraph.prefixOf.go :
+  Array ContractGraph.StateRec → Nat → List ContractGraph.Edge → Nat → List ContractGraph.Edge
+  value hash 3362640249
+
+def ContractGraph.reachLoop.match_1 :
+  (motive : Prod (List Nat) (Std.HashSet Nat) → Sort u_1) →
+  (x : Prod (List Nat) (Std.HashSet Nat)) →
+    ((work : List Nat) → (seen : Std.HashSet Nat) → motive { fst := work, snd := seen }) → motive x
+  value hash 3983606981
+
+def ContractGraph.reachLoop.match_3 :
+  (motive : Nat → List Nat → Std.HashSet Nat → Sort u_1) →
+  (x : Nat) →
+    (x_1 : List Nat) →
+      (x_2 : Std.HashSet Nat) →
+        ((x : List Nat) → (seen : Std.HashSet Nat) → motive 0 x seen) →
+          ((x : Nat) → (seen : Std.HashSet Nat) → motive x List.nil seen) →
+            ((fuel v : Nat) → (work : List Nat) → (seen : Std.HashSet Nat) → motive fuel.succ (List.cons v work) seen) →
+              motive x x_1 x_2
+  value hash 1173081849
+
+def ContractGraph.reportStatesWith.match_1 :
+  (motive : Prod ContractGraph.StateRec Nat → Sort u_1) →
+  (x : Prod ContractGraph.StateRec Nat) →
+    ((r : ContractGraph.StateRec) → (i : Nat) → motive { fst := r, snd := i }) → motive x
+  value hash 3874677139
+
+def ContractGraph.requirementMatters._sparseCasesOn_1 :
+  {motive : ContractGraph.ConstraintKind → Sort u} →
+  (t : ContractGraph.ConstraintKind) →
+    motive ContractGraph.ConstraintKind.nullability →
+      motive ContractGraph.ConstraintKind.choices →
+        motive ContractGraph.ConstraintKind.type → (Nat.hasNotBit 38 t.ctorIdx → motive t) → motive t
+  value hash 3738358889
+
+def ContractGraph.requirementMatters.match_1 :
+  (motive : ContractGraph.ConstraintKind → Sort u_1) →
+  (x : ContractGraph.ConstraintKind) →
+    (Unit → motive ContractGraph.ConstraintKind.nullability) →
+      (Unit → motive ContractGraph.ConstraintKind.choices) →
+        (Unit → motive ContractGraph.ConstraintKind.type) → ((x : ContractGraph.ConstraintKind) → motive x) → motive x
+  value hash 2485444621
+
+def ContractGraph.runChecker.match_1 :
+  (motive : ContractGraph.ExploreOutcome → Sort u_1) →
+  (x : ContractGraph.ExploreOutcome) →
+    ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.done ex)) →
+      ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.tooMany ex)) →
+        ((ex : ContractGraph.Explored) →
+            (hop : ContractGraph.Edge) →
+              (pred : Nat) →
+                (raw : ContractGraph.Edge) → motive (ContractGraph.ExploreOutcome.capped ex hop pred raw)) →
+          motive x
+  value hash 650287141
+
+def ContractGraph.searchFold.match_1 :
+  {α : Type} →
+  (motive : Nat → Nat → List Nat → Option ContractGraph.PathState → α → Sort u_1) →
+    (x x_1 : Nat) →
+      (x_2 : List Nat) →
+        (x_3 : Option ContractGraph.PathState) →
+          (x_4 : α) →
+            ((x : Nat) →
+                (x_5 : List Nat) → (x_6 : Option ContractGraph.PathState) → (acc : α) → motive 0 x x_5 x_6 acc) →
+              ((fuel v : Nat) →
+                  (visited : List Nat) →
+                    (st : Option ContractGraph.PathState) → (acc : α) → motive fuel.succ v visited st acc) →
+                motive x x_1 x_2 x_3 x_4
+  value hash 1820655697
+
+def ContractGraph.searchFrom.match_1 :
+  (motive : Nat → Nat → List Nat → Option ContractGraph.PathState → Sort u_1) →
+  (x x_1 : Nat) →
+    (x_2 : List Nat) →
+      (x_3 : Option ContractGraph.PathState) →
+        ((x : Nat) → (x_4 : List Nat) → (x_5 : Option ContractGraph.PathState) → motive 0 x x_4 x_5) →
+          ((fuel v : Nat) →
+              (visited : List Nat) → (st : Option ContractGraph.PathState) → motive fuel.succ v visited st) →
+            motive x x_1 x_2 x_3
+  value hash 2765083514
+
+def ContractGraph.tagHop.match_1 :
+  (motive : ContractGraph.CheckResult → Sort u_1) →
+  (x : ContractGraph.CheckResult) →
+    (Unit → motive ContractGraph.CheckResult.consistent) →
+      ((d : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent d)) → motive x
+  value hash 4238686451
+
+def ContractGraph.tagLocation.match_1 :
+  (motive : ContractGraph.CheckResult → Sort u_1) →
+  (x : ContractGraph.CheckResult) →
+    (Unit → motive ContractGraph.CheckResult.consistent) →
+      ((d : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent d)) → motive x
+  value hash 4238686451
+
+def ContractGraph.warnFlags.match_1 :
+  (motive : MProd (Array Bool) (Array Nat) → Sort u_1) →
+  (r : MProd (Array Bool) (Array Nat)) → ((flags : Array Bool) → (work : Array Nat) → motive ⟨flags, work⟩) → motive r
+  value hash 3316606797
+
+def ContractGraph.warnFlags.match_3 :
+  (motive : Option ContractGraph.StateRec → Sort u_1) →
+  (x : Option ContractGraph.StateRec) →
+    (Unit → motive Option.none) → ((r : ContractGraph.StateRec) → motive (Option.some r)) → motive x
+  value hash 2481133611
+
+def ContractGraph.warnsWhenMissing.match_1 :
+  (motive : ContractGraph.ConstraintKind → Sort u_1) →
+  (x : ContractGraph.ConstraintKind) →
+    (Unit → motive ContractGraph.ConstraintKind.precision) →
+      (Unit → motive ContractGraph.ConstraintKind.length) →
+        (Unit → motive ContractGraph.ConstraintKind.range) →
+          (Unit → motive ContractGraph.ConstraintKind.rangeMin) →
+            (Unit → motive ContractGraph.ConstraintKind.nullability) →
+              (Unit → motive ContractGraph.ConstraintKind.choices) →
+                (Unit → motive ContractGraph.ConstraintKind.type) → motive x
+  value hash 1248468376
+
+def ContractGraph.CheckResult.isConsistent.match_1 :
+  (motive : ContractGraph.CheckResult → Sort u_1) →
+  (x : ContractGraph.CheckResult) →
+    (Unit → motive ContractGraph.CheckResult.consistent) →
+      ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) → motive x
+  value hash 4238686451
+
 def ContractGraph.DepExpr.brecOn.go :
   {motive : ContractGraph.DepExpr → Sort u} →
   (t : ContractGraph.DepExpr) →
@@ -595,6 +1921,230 @@ def ContractGraph.DepExpr.inputNames.match_1 :
               ((a b : ContractGraph.DepExpr) → motive (a.sub b)) → motive x
   value hash 3435311757
 
+def ContractGraph.instDecidableEqConstraint.decEq.match_1 :
+  (motive : ContractGraph.Constraint → ContractGraph.Constraint → Sort u_1) →
+  (x x_1 : ContractGraph.Constraint) →
+    ((a : ContractGraph.ConstraintKind) →
+        (a_1 : Option Int) →
+          (a_2 : Option ContractGraph.DepExpr) →
+            (a_3 : Option String) →
+              (a_4 : Option (List String)) →
+                (a_5 : String) →
+                  (a_6 : Nat) →
+                    (a_7 : ContractGraph.VerificationLevel) →
+                      (a_8 : Option String) →
+                        (a_9 : Nat) →
+                          (a_10 : String) →
+                            (a_11 : Nat) →
+                              (b : ContractGraph.ConstraintKind) →
+                                (b_1 : Option Int) →
+                                  (b_2 : Option ContractGraph.DepExpr) →
+                                    (b_3 : Option String) →
+                                      (b_4 : Option (List String)) →
+                                        (b_5 : String) →
+                                          (b_6 : Nat) →
+                                            (b_7 : ContractGraph.VerificationLevel) →
+                                              (b_8 : Option String) →
+                                                (b_9 : Nat) →
+                                                  (b_10 : String) →
+                                                    (b_11 : Nat) →
+                                                      motive
+                                                        { kind := a, staticBound := a_1, depExpr := a_2,
+                                                          typeName := a_3, choicesList := a_4, sourceFile := a_5,
+                                                          sourceLine := a_6, verificationLevel := a_7, subject := a_8,
+                                                          scale := a_9, originFile := a_10, originLine := a_11 }
+                                                        { kind := b, staticBound := b_1, depExpr := b_2,
+                                                          typeName := b_3, choicesList := b_4, sourceFile := b_5,
+                                                          sourceLine := b_6, verificationLevel := b_7, subject := b_8,
+                                                          scale := b_9, originFile := b_10, originLine := b_11 }) →
+      motive x x_1
+  value hash 3313458773
+
+def ContractGraph.instDecidableEqDepExpr.decEq.match_1 :
+  (motive : ContractGraph.DepExpr → ContractGraph.DepExpr → Sort u_1) →
+  (x x_1 : ContractGraph.DepExpr) →
+    ((a b : Int) → motive (ContractGraph.DepExpr.lit a) (ContractGraph.DepExpr.lit b)) →
+      ((a : Int) → (a_1 : String) → motive (ContractGraph.DepExpr.lit a) (ContractGraph.DepExpr.input a_1)) →
+        ((a : Int) → (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.lit a) (a_1.max a_2)) →
+          ((a : Int) → (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.lit a) (a_1.min a_2)) →
+            ((a : Int) → (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.lit a) (a_1.add a_2)) →
+              ((a : Int) → (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.lit a) (a_1.sub a_2)) →
+                ((a : String) → (a_1 : Int) → motive (ContractGraph.DepExpr.input a) (ContractGraph.DepExpr.lit a_1)) →
+                  ((a b : String) → motive (ContractGraph.DepExpr.input a) (ContractGraph.DepExpr.input b)) →
+                    ((a : String) →
+                        (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.input a) (a_1.max a_2)) →
+                      ((a : String) →
+                          (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.input a) (a_1.min a_2)) →
+                        ((a : String) →
+                            (a_1 a_2 : ContractGraph.DepExpr) → motive (ContractGraph.DepExpr.input a) (a_1.add a_2)) →
+                          ((a : String) →
+                              (a_1 a_2 : ContractGraph.DepExpr) →
+                                motive (ContractGraph.DepExpr.input a) (a_1.sub a_2)) →
+                            ((a a_1 : ContractGraph.DepExpr) →
+                                (a_2 : Int) → motive (a.max a_1) (ContractGraph.DepExpr.lit a_2)) →
+                              ((a a_1 : ContractGraph.DepExpr) →
+                                  (a_2 : String) → motive (a.max a_1) (ContractGraph.DepExpr.input a_2)) →
+                                ((a a_1 b b_1 : ContractGraph.DepExpr) → motive (a.max a_1) (b.max b_1)) →
+                                  ((a a_1 a_2 a_3 : ContractGraph.DepExpr) → motive (a.max a_1) (a_2.min a_3)) →
+                                    ((a a_1 a_2 a_3 : ContractGraph.DepExpr) → motive (a.max a_1) (a_2.add a_3)) →
+                                      ((a a_1 a_2 a_3 : ContractGraph.DepExpr) → motive (a.max a_1) (a_2.sub a_3)) →
+                                        ((a a_1 : ContractGraph.DepExpr) →
+                                            (a_2 : Int) → motive (a.min a_1) (ContractGraph.DepExpr.lit a_2)) →
+                                          ((a a_1 : ContractGraph.DepExpr) →
+                                              (a_2 : String) → motive (a.min a_1) (ContractGraph.DepExpr.input a_2)) →
+                                            ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                motive (a.min a_1) (a_2.max a_3)) →
+                                              ((a a_1 b b_1 : ContractGraph.DepExpr) → motive (a.min a_1) (b.min b_1)) →
+                                                ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                    motive (a.min a_1) (a_2.add a_3)) →
+                                                  ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                      motive (a.min a_1) (a_2.sub a_3)) →
+                                                    ((a a_1 : ContractGraph.DepExpr) →
+                                                        (a_2 : Int) →
+                                                          motive (a.add a_1) (ContractGraph.DepExpr.lit a_2)) →
+                                                      ((a a_1 : ContractGraph.DepExpr) →
+                                                          (a_2 : String) →
+                                                            motive (a.add a_1) (ContractGraph.DepExpr.input a_2)) →
+                                                        ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                            motive (a.add a_1) (a_2.max a_3)) →
+                                                          ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                              motive (a.add a_1) (a_2.min a_3)) →
+                                                            ((a a_1 b b_1 : ContractGraph.DepExpr) →
+                                                                motive (a.add a_1) (b.add b_1)) →
+                                                              ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                                  motive (a.add a_1) (a_2.sub a_3)) →
+                                                                ((a a_1 : ContractGraph.DepExpr) →
+                                                                    (a_2 : Int) →
+                                                                      motive (a.sub a_1)
+                                                                        (ContractGraph.DepExpr.lit a_2)) →
+                                                                  ((a a_1 : ContractGraph.DepExpr) →
+                                                                      (a_2 : String) →
+                                                                        motive (a.sub a_1)
+                                                                          (ContractGraph.DepExpr.input a_2)) →
+                                                                    ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                                        motive (a.sub a_1) (a_2.max a_3)) →
+                                                                      ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                                          motive (a.sub a_1) (a_2.min a_3)) →
+                                                                        ((a a_1 a_2 a_3 : ContractGraph.DepExpr) →
+                                                                            motive (a.sub a_1) (a_2.add a_3)) →
+                                                                          ((a a_1 b b_1 : ContractGraph.DepExpr) →
+                                                                              motive (a.sub a_1) (b.sub b_1)) →
+                                                                            motive x x_1
+  value hash 357274543
+
+def ContractGraph.instDecidableEqEdge.decEq.match_1 :
+  (motive : ContractGraph.Edge → ContractGraph.Edge → Sort u_1) →
+  (x x_1 : ContractGraph.Edge) →
+    ((a a_1 : ContractGraph.Node) →
+        (a_2 : ContractGraph.Relationship) →
+          (a_3 : String) →
+            (a_4 : Nat) →
+              (b b_1 : ContractGraph.Node) →
+                (b_2 : ContractGraph.Relationship) →
+                  (b_3 : String) →
+                    (b_4 : Nat) →
+                      motive { source := a, target := a_1, relationship := a_2, siteFile := a_3, siteLine := a_4 }
+                        { source := b, target := b_1, relationship := b_2, siteFile := b_3, siteLine := b_4 }) →
+      motive x x_1
+  value hash 3640806745
+
+def ContractGraph.instDecidableEqNode.decEq.match_1 :
+  (motive : ContractGraph.Node → ContractGraph.Node → Sort u_1) →
+  (x x_1 : ContractGraph.Node) →
+    ((a : Nat) →
+        (a_1 a_2 : String) →
+          (a_3 a_4 : List ContractGraph.Constraint) →
+            (a_5 : String) →
+              (a_6 : Nat) →
+                (a_7 : Bool) →
+                  (b : Nat) →
+                    (b_1 b_2 : String) →
+                      (b_3 b_4 : List ContractGraph.Constraint) →
+                        (b_5 : String) →
+                          (b_6 : Nat) →
+                            (b_7 : Bool) →
+                              motive
+                                { id := a, name := a_1, kind := a_2, preconditions := a_3, postconditions := a_4,
+                                  sourceFile := a_5, sourceLine := a_6, isCallSite := a_7 }
+                                { id := b, name := b_1, kind := b_2, preconditions := b_3, postconditions := b_4,
+                                  sourceFile := b_5, sourceLine := b_6, isCallSite := b_7 }) →
+      motive x x_1
+  value hash 991859803
+
+def ContractGraph.instHashableConstraint.hash.match_1 :
+  (motive : ContractGraph.Constraint → Sort u_1) →
+  (x : ContractGraph.Constraint) →
+    ((a : ContractGraph.ConstraintKind) →
+        (a_1 : Option Int) →
+          (a_2 : Option ContractGraph.DepExpr) →
+            (a_3 : Option String) →
+              (a_4 : Option (List String)) →
+                (a_5 : String) →
+                  (a_6 : Nat) →
+                    (a_7 : ContractGraph.VerificationLevel) →
+                      (a_8 : Option String) →
+                        (a_9 : Nat) →
+                          (a_10 : String) →
+                            (a_11 : Nat) →
+                              motive
+                                { kind := a, staticBound := a_1, depExpr := a_2, typeName := a_3, choicesList := a_4,
+                                  sourceFile := a_5, sourceLine := a_6, verificationLevel := a_7, subject := a_8,
+                                  scale := a_9, originFile := a_10, originLine := a_11 }) →
+      motive x
+  value hash 2931277952
+
+def ContractGraph.instHashableDepExpr.hash.match_1 :
+  (motive : ContractGraph.DepExpr → Sort u_1) →
+  (x : ContractGraph.DepExpr) →
+    ((a : Int) → motive (ContractGraph.DepExpr.lit a)) →
+      ((a : String) → motive (ContractGraph.DepExpr.input a)) →
+        ((a a_1 : ContractGraph.DepExpr) → motive (a.max a_1)) →
+          ((a a_1 : ContractGraph.DepExpr) → motive (a.min a_1)) →
+            ((a a_1 : ContractGraph.DepExpr) → motive (a.add a_1)) →
+              ((a a_1 : ContractGraph.DepExpr) → motive (a.sub a_1)) → motive x
+  value hash 3435311757
+
+def ContractGraph.instHashableEdge.hash.match_1 :
+  (motive : ContractGraph.Edge → Sort u_1) →
+  (x : ContractGraph.Edge) →
+    ((a a_1 : ContractGraph.Node) →
+        (a_2 : ContractGraph.Relationship) →
+          (a_3 : String) →
+            (a_4 : Nat) →
+              motive { source := a, target := a_1, relationship := a_2, siteFile := a_3, siteLine := a_4 }) →
+      motive x
+  value hash 1130202778
+
+def ContractGraph.instHashableNode.hash.match_1 :
+  (motive : ContractGraph.Node → Sort u_1) →
+  (x : ContractGraph.Node) →
+    ((a : Nat) →
+        (a_1 a_2 : String) →
+          (a_3 a_4 : List ContractGraph.Constraint) →
+            (a_5 : String) →
+              (a_6 : Nat) →
+                (a_7 : Bool) →
+                  motive
+                    { id := a, name := a_1, kind := a_2, preconditions := a_3, postconditions := a_4, sourceFile := a_5,
+                      sourceLine := a_6, isCallSite := a_7 }) →
+      motive x
+  value hash 2489556221
+
+def ContractGraph.instHashableRelationship.hash.match_1 :
+  (motive : ContractGraph.Relationship → Sort u_1) →
+  (x : ContractGraph.Relationship) →
+    (Unit → motive ContractGraph.Relationship.calls) →
+      (Unit → motive ContractGraph.Relationship.writesTo) →
+        (Unit → motive ContractGraph.Relationship.flowsTo) → motive x
+  value hash 534830280
+
+def ContractGraph.instReprCheckResult.repr.match_1 :
+  (motive : ContractGraph.CheckResult → Sort u_1) →
+  (x : ContractGraph.CheckResult) →
+    (Unit → motive ContractGraph.CheckResult.consistent) →
+      ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) → motive x
+  value hash 4238686451
+
 def ContractGraph.instReprConstraintKind.repr.match_1 :
   (motive : ContractGraph.ConstraintKind → Sort u_1) →
   (x : ContractGraph.ConstraintKind) →
@@ -606,3 +2156,29 @@ def ContractGraph.instReprConstraintKind.repr.match_1 :
               (Unit → motive ContractGraph.ConstraintKind.choices) →
                 (Unit → motive ContractGraph.ConstraintKind.rangeMin) → motive x
   value hash 3858425261
+
+def ContractGraph.instReprSeverity.repr.match_1 :
+  (motive : ContractGraph.Severity → Sort u_1) →
+  (x : ContractGraph.Severity) →
+    (Unit → motive ContractGraph.Severity.error) → (Unit → motive ContractGraph.Severity.warning) → motive x
+  value hash 2473210914
+
+def ContractGraph.instReprVerificationLevel.repr.match_1 :
+  (motive : ContractGraph.VerificationLevel → Sort u_1) →
+  (x : ContractGraph.VerificationLevel) →
+    (Unit → motive ContractGraph.VerificationLevel.proved) →
+      (Unit → motive ContractGraph.VerificationLevel.tested) →
+        (Unit → motive ContractGraph.VerificationLevel.extracted) →
+          (Unit → motive ContractGraph.VerificationLevel.assumed) → motive x
+  value hash 3767758524
+
+def ContractGraph.prefixOf.go.match_1 :
+  (motive : Nat → List ContractGraph.Edge → Nat → Sort u_1) →
+  (x : Nat) →
+    (x_1 : List ContractGraph.Edge) →
+      (x_2 : Nat) →
+        ((acc : List ContractGraph.Edge) → (x : Nat) → motive 0 acc x) →
+          ((x : Nat) → (acc : List ContractGraph.Edge) → motive x acc 0) →
+            ((p : Nat) → (acc : List ContractGraph.Edge) → (fuel : Nat) → motive p.succ acc fuel.succ) →
+              motive x x_1 x_2
+  value hash 61110114
