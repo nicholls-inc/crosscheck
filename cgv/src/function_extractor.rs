@@ -567,7 +567,15 @@ pub fn apply_shadows(func: &mut FunctionInfo, shadow: &dyn Fn(&Expr) -> Option<S
     if let Expr::Subscript(sub) = ret {
         if let Expr::Tuple(t) = sub.slice.as_ref() {
             if let Some(first) = t.elts.first() {
-                resolve(&mut func.tuple_element_type, first);
+                // The elements are uniform by their spelling, which is
+                // "unknown" for every union: the answer for the first one
+                // holds for the tuple only when every element gets it.
+                let answer = shadow(first);
+                if t.elts.iter().all(|e| shadow(e) == answer) {
+                    resolve(&mut func.tuple_element_type, first);
+                } else {
+                    func.tuple_element_type = None;
+                }
             }
         }
     }
@@ -853,6 +861,32 @@ mod tests {
                 _ => unreachable!(),
             };
         extract_functions(&stmts, "m.py", "pkg.m")
+    }
+
+    #[test]
+    fn test_shadows_do_not_reach_a_mixed_tuple() {
+        fn head(e: &Expr) -> Option<&str> {
+            match e {
+                Expr::Name(n) => Some(n.id.as_str()),
+                Expr::BinOp(b) => head(&b.left),
+                _ => None,
+            }
+        }
+        // `float` is a project class `units.float`; the other names are not shadowed.
+        let shadow = |e: &Expr| (head(e) == Some("float")).then(|| Shadow::Class("units.float".into()));
+        let mut fs = funcs(
+            "def a() -> float: pass\n\
+             def b() -> tuple[float | None, str | None]: pass\n\
+             def c() -> tuple[float, float]: pass\n",
+        );
+        for f in &mut fs {
+            apply_shadows(f, &shadow);
+        }
+        let got: Vec<(Option<&str>, Option<&str>)> =
+            fs.iter().map(|f| (f.return_type.as_deref(), f.tuple_element_type.as_deref())).collect();
+        assert_eq!(got[0].0, Some("units.float"));
+        assert_eq!(got[2].1, Some("units.float"));
+        assert_eq!(got[1].1, None);
     }
 
     #[test]

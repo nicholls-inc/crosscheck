@@ -1675,8 +1675,8 @@ fn canonical_modules(name: &str) -> Option<&'static [&'static str]> {
 /// The names in an annotation that can give its type, read as
 /// `dataclass_extractor::walk_annotation` reads them: through `Optional`,
 /// unions, `Annotated`, `Final` and similar wrappers, and quoted forward
-/// references, but not into the arguments of a generic (`list[float]`) or
-/// a `Literal`.
+/// references. A generic (`list[float]`) or a `Literal` is not read into: it is
+/// a leaf that names no type, and counts as a member of a union.
 fn type_leaves(expr: &Expr, out: &mut Vec<Expr>) {
     match expr {
         Expr::Name(_) | Expr::Attribute(_) => out.push(expr.clone()),
