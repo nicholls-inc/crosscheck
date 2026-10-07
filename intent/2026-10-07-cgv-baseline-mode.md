@@ -8,7 +8,7 @@ A whole-repository run of `contracts check` on a real codebase reports hundreds 
 In the replay of historical fixes, the findings for a bug disappeared exactly when its fix landed. So findings are stable enough to compare between two commits, and CGV has no way to compare them.
 
 ## Proposed outcome
-- `contracts check --write-baseline PATH` writes the findings of a run to a baseline file. The run's output and exit code do not change.
+- `contracts check --write-baseline PATH` writes the findings of a run to a baseline file. The run's output and exit code do not change, except that a site file the key needs and cannot read makes the run exit 2 (BL-5).
 - `contracts check --baseline PATH` compares the findings of a run with a baseline file. It prints only the findings that are not in the baseline, and counts the ones that are. It also counts and lists the baseline findings that the run no longer reports (fixed).
 - In baseline mode the run exits 1 when any error is not in the baseline, and 0 when every error is. An incomplete run still exits 2.
 - The key that matches a finding with a baseline entry does not contain a line number, so an edit above a finding does not make it new.
