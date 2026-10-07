@@ -36,9 +36,13 @@
 //! other than by a simple assignment; entering a loop drops every name the
 //! loop rebinds, and after a `match` only narrowings from before it that it
 //! does not rebind survive. A `with` body is walked like straight-line code,
-//! except that what it narrowed does not survive it when it holds a marked
-//! exit. A name whose definition set is not known takes the join of every
-//! assignment.
+//! but what it narrowed does not survive it: its context manager may suppress
+//! an exception raised anywhere in it (`contextlib.suppress`, `pytest.raises`).
+//! For the same reason a `with` ends the flow only when its body ends in
+//! `return`, never in `raise` or a call that never returns. An exception
+//! raised by a statement before that `return`, or by its value, is not yet
+//! reached: the extractor does not know which managers suppress. A name whose
+//! definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
 
@@ -59,13 +63,6 @@ pub struct Exits {
 }
 
 impl Exits {
-    /// Whether a statement of `stmt` is marked, so that a context manager
-    /// around it may suppress the exception the marked call raises.
-    fn marks_within(&self, stmt: &Stmt) -> bool {
-        let r = stmt.range();
-        self.calls.iter().chain(&self.matches).any(|&at| r.contains(at.into()))
-    }
-
     fn is_exit_call(&self, stmt: &Stmt) -> bool {
         matches!(stmt, Stmt::Expr(_)) && self.calls.contains(&stmt.start().to_u32())
     }
@@ -356,16 +353,13 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     // `__aenter__` suspends before the body runs.
                     n.apply(&Effects::suspension());
                 }
-                // The body runs once, in order (a context manager that
-                // suppresses an exception is not modelled). A marked exit in
-                // the body may be suppressed, and then control leaves the body
-                // early, so what the body narrowed does not carry past it.
-                let end = walk(&w.body, &n, exits, v, counts);
-                if always_exits(&w.body, &Exits::default()) || exits.marks_within(stmt) {
-                    remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
-                } else {
-                    n = end;
-                }
+                // The manager may suppress an exception raised anywhere in the
+                // body (`with suppress(AttributeError): x.upper()`), and then
+                // control continues after any prefix of it. So what the body
+                // narrowed does not carry past it, and its effects may have run.
+                walk(&w.body, &n, exits, v, counts);
+                remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
+                n.apply(&effects_of_stmt(stmt));
             }
             Stmt::Try(t) => {
                 let after = {
@@ -908,27 +902,44 @@ pub fn match_is_exhaustive(m: &ast::StmtMatch) -> bool {
 
 /// Whether execution can reach the end of a function body (an implicit `return None`).
 pub fn falls_through(body: &[Stmt], exits: &Exits) -> bool {
-    !terminates(body, exits)
+    !terminates(body, exits, Raised::Propagates)
 }
 
-fn terminates(body: &[Stmt], exits: &Exits) -> bool {
-    let terminates = |b: &[Stmt]| terminates(b, exits);
+/// What happens to an exception raised in the body being judged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Raised {
+    /// It leaves the function (unless a `try` there catches it).
+    Propagates,
+    /// It reaches a context manager, whose `__exit__` may suppress it
+    /// (`contextlib.suppress`, `pytest.raises`), and then control continues
+    /// after the `with`.
+    MayBeSuppressed,
+}
+
+fn terminates(body: &[Stmt], exits: &Exits, raised: Raised) -> bool {
+    let terminates = |b: &[Stmt]| terminates(b, exits, raised);
+    let propagates = raised == Raised::Propagates;
     match body.last() {
-        Some(Stmt::Return(_) | Stmt::Raise(_)) => true,
+        Some(Stmt::Return(_)) => true,
+        Some(Stmt::Raise(_)) => propagates,
         Some(s @ Stmt::Expr(_)) => exits.is_exit_call(s),
         Some(Stmt::If(s)) => {
             terminates(&s.body)
                 && s.elif_else_clauses.iter().any(|c| c.test.is_none())
                 && s.elif_else_clauses.iter().all(|c| terminates(&c.body))
         }
+        // Without a `break`, the loop ends only by `return` or an exception.
         Some(Stmt::While(w)) => {
-            matches!(w.test.as_ref(), Expr::BooleanLiteral(b) if b.value)
+            propagates
+                && matches!(w.test.as_ref(), Expr::BooleanLiteral(b) if b.value)
                 && !contains_break(&w.body)
         }
-        // A context manager may suppress the exception a call that never
-        // returns raises (`contextlib.suppress(SystemExit)`), so only the
-        // statements that end the body whatever the manager does count.
-        Some(Stmt::With(w)) => crate::flow::terminates(&w.body, &Exits::default()),
+        // Only a `return` ends a `with` body whatever the manager does. A
+        // statement that raises before it is not yet reached (see the module
+        // documentation).
+        Some(Stmt::With(w)) => {
+            crate::flow::terminates(&w.body, &Exits::default(), Raised::MayBeSuppressed)
+        }
         Some(Stmt::Match(m)) => {
             exits.is_exhaustive(m) && m.cases.iter().all(|c| terminates(&c.body))
         }
@@ -1631,9 +1642,58 @@ mod tests {
         let src = "def f(x, c):\n    with m:\n        if x is None:\n            match c:\n                case E.A:\n                    return 1\n    use()\n";
         let exits = exits_at(src, &[], &["match c:"]);
         assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
-        // Without a marked statement in the body, its narrowing carries on.
-        let src = "def f(x):\n    with m:\n        if x is None:\n            return\n    use()\n";
-        assert_eq!(narrowing_with_exits(src, &Exits::default()), vec![vec!["x".to_string()]]);
+    }
+
+    #[test]
+    fn test_raise_in_a_with_body_may_be_suppressed() {
+        // `with suppress(ValueError): raise ValueError(k)` completes normally.
+        assert!(falls_through(&body("def f(k):\n    with m:\n        raise E(k)\n"), &Exits::default()));
+        let src = "def f(x):\n    with m:\n        if x:\n            return 1\n        else:\n            raise E()\n";
+        assert!(falls_through(&body(src), &Exits::default()));
+        let src = "def f(x):\n    with m:\n        while True:\n            g()\n";
+        assert!(falls_through(&body(src), &Exits::default()));
+        let src = "def f(x):\n    with m:\n        with n:\n            raise E()\n";
+        assert!(falls_through(&body(src), &Exits::default()));
+        // A `return` leaves whatever the manager does.
+        assert!(!falls_through(&body("def f(x):\n    with m:\n        return x\n"), &Exits::default()));
+        let src = "def f(x):\n    with m:\n        if x:\n            return 1\n        else:\n            return 2\n";
+        assert!(!falls_through(&body(src), &Exits::default()));
+        // Outside a `with` the same bodies end the flow.
+        assert!(!falls_through(&body("def f(k):\n    raise E(k)\n"), &Exits::default()));
+        assert!(!falls_through(&body("def f(x):\n    while True:\n        g()\n"), &Exits::default()));
+    }
+
+    #[test]
+    fn test_with_body_narrowing_does_not_survive_it() {
+        let after_with = |inner: &str| {
+            let src = format!("def f(x):\n    with m:\n        {inner}\n        use()\n    use()\n");
+            narrowing_at_uses(&src)
+        };
+        let x = vec!["x".to_string()];
+        let none = Vec::<String>::new();
+        // Inside the body the narrowing holds, after it the manager may have
+        // suppressed the exception that the None case raises.
+        assert_eq!(after_with("assert x is not None"), vec![x.clone(), none.clone()]);
+        assert_eq!(after_with("if x is None:\n            raise E()"), vec![x.clone(), none.clone()]);
+        assert_eq!(after_with("x.upper()"), vec![x.clone(), none.clone()]);
+        // `g()` may raise before the guard runs.
+        assert_eq!(after_with("g()\n        if x is None:\n            return"), vec![x.clone(), none.clone()]);
+        // A narrowing from before the `with` survives it.
+        let src = "def f(x):\n    assert x is not None\n    with m:\n        g()\n    use()\n";
+        assert_eq!(narrowing_at_uses(src), vec![x.clone()]);
+        // But not when the body rebinds the name.
+        let src = "def f(x):\n    assert x is not None\n    with m:\n        x = g()\n    use()\n";
+        assert_eq!(narrowing_at_uses(src), vec![none.clone()]);
+    }
+
+    #[test]
+    fn test_with_body_effects_reach_past_it() {
+        // `d.pop(k)` may have run before a suppressed exception, so `k in d`
+        // no longer holds after the `with`.
+        let src = "def f(d, k):\n    if k in d:\n        with m:\n            d.pop(k)\n            g()\n        probe.get()\n";
+        assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new()]);
+        let src = "def f(d, k):\n    if k in d:\n        with m:\n            pass\n        probe.get()\n";
+        assert_eq!(narrowing_at_uses(src), vec![vec!["d[k]".to_string()]]);
     }
 
     #[test]

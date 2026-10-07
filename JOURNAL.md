@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - A context manager may suppress what a `with` body raises
+
+**Type:** fix
+**Touches:** cgv/src/flow.rs, cgv/test_fixtures/with_suppress/, docs/TASKS.md
+**Why:** `with suppress(ValueError): raise ValueError(k)` at the end of a function, and `with suppress(AssertionError): assert x is not None` before `return x`, return None from a function annotated `-> str`, and CGV exited 0 on both.
+**Links:** [intent](intent/2026-10-07-with-suppress.md)
+
+`flow.rs` now assumes that any context manager may suppress any exception raised in its body, since it cannot tell which managers do. Inside a `with` body, at any depth, only a `return` ends the flow: a `raise`, a call that never returns and a `while True:` loop with no `break` do not. What a `with` body narrows never survives it, and its effects do. This replaces the CG-1.11 rule, which dropped the narrowing only when the body held a marked exit. The public bench corpus holds no `with`, so its result is unchanged. An exception raised before a `with` body's final `return` under a suppressing manager is not yet reached, and so is keeping the narrowing of a manager that never suppresses. CG-1.47 takes both, through a closed list of managers that never suppress.
+
+---
+
 ## 2026-10-07 - Baseline mode reports only the findings that a change introduces
 
 **Type:** feature
