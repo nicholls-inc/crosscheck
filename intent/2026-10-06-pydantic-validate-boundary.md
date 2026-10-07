@@ -17,6 +17,8 @@ Validation enforces a field's contract unless one of these holds. Each was measu
 - The annotation is `SkipValidation[T]`, or has a `PlainValidator` or `WrapValidator` in its `Annotated` metadata. Each of these stores `None` from `model_validate({"label": None})` for a `str` field. A `BeforeValidator` still validates its result and rejects `None`.
 - The field has a `None` default under an annotation without None (`label: str = None`). pydantic v1 reads that as Optional, so `parse_obj({"label": None})` stores `None`.
 
+Measured with pydantic 2.13.5 as enforced, so their entries stay boundaries: `max_length` and `gt` reject `model_validate` input that breaks them. Other constraint kinds are not measured here and rest on the existing "enforced by validation at construction" rule.
+
 `ClassInfo.validate_checked` holds the names of these fields, and the validation call in `special_writes` writes only their entries.
 
 These stay writes for every field:
@@ -43,7 +45,7 @@ Two limits remain, both not yet reached:
 ## Constraints
 - `BehaviorModel.lean` needs no new rule, and in particular none for lax coercion. It already says that pydantic v2 `BaseModel` fields "are enforced by validation at construction". This change relies on that only for the fields where the measurements above confirm it. Lax coercion changes which inputs pass validation, not what is stored, so the change does not need to model it.
 - `pydanticDecimalAccepts` in `BehaviorModel.lean` says validation rejects a value with more fractional or total digits, "the same predicate as Django's DecimalField". The measurement above shows that pydantic drops trailing zeros first, so the rule is false for a value such as `Decimal("1.2300")`. This change does not rely on it, since `decimal_places` and `max_digits` fields keep their writes. Amending the rule is a protected-surface change, so it is a separate row.
-- A `PlainValidator`, `WrapValidator` or `BeforeValidator` in `Annotated` metadata may replace the value, as the decorator forms that `transforming_validators` handles may. The decorator forms clear the field's requirements, and the `Annotated` forms do not. That gap is the same for a constructor call, and it is a separate row.
+- A `PlainValidator`, `WrapValidator` or `BeforeValidator` in `Annotated` metadata may replace the value, as the decorator forms that `transforming_validators` handles may (`mode="before"`, `"wrap"` and `"plain"`; a plain-mode `field_validator` stores `None` in a `str` field, measured with pydantic 2.13.5). The decorator forms clear the field's requirements, and the `Annotated` forms do not. That gap is the same for a constructor call, and it is a separate row.
 - Validators that run after field validation (`field_validator(..., mode="after")`, `model_validator(mode="after")`) can store a value that breaks the annotation, since pydantic does not validate their result again. That gap is the same for a constructor call and for `model_validate`, and this change does not widen it.
 - `Model.model_construct(f=v)` (v1 `Model.construct`) skips validation, so it stores an invalid value. CGV records no write for it today, so `model_construct(label=None)` into a non-null field reports nothing. That false negative is a separate row.
 - The tier is 2: a behavioural change to the extractor, with no protected path.

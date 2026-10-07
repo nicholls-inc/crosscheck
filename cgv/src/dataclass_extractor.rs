@@ -356,7 +356,7 @@ struct PreValidated {
 
 /// Validators of class `name` and its project-local bases that run before
 /// (or around) field validation: `field_validator(..., mode="before" |
-/// "wrap")`, v1 `validator(..., pre=True)`, and for every field
+/// "wrap" | "plain")`, v1 `validator(..., pre=True)`, and for every field
 /// `model_validator(mode="before" | "wrap")` / `root_validator(pre=True)`.
 fn transforming_validators(
     name: &str,
@@ -382,7 +382,7 @@ fn transforming_validators(
                         _ => None,
                     }
                 });
-                let transforms = matches!(mode.as_deref(), Some("before" | "wrap"))
+                let transforms = matches!(mode.as_deref(), Some("before" | "wrap" | "plain"))
                     || keyword_is(call, "pre", true);
                 if !transforms {
                     continue;
@@ -1141,7 +1141,11 @@ mod tests {
              legacy_kw: str = Field(default=None, max_length=3)\n    \
              before: Annotated[str, BeforeValidator(f)]\n    \
              name: str\n    \
-             maybe: Optional[str] = None\n",
+             maybe: Optional[str] = None\n    \
+             d_plain: str = 'x'\n    \
+             d_field: str = Field(default='x')\n    \
+             d_required: str = Field(...)\n    \
+             quoted: 'SkipValidation[str]'\n",
         );
         let unvalidated: Vec<(&str, bool)> =
             cs[0].fields.iter().map(|f| (f.field_name.as_str(), f.unvalidated)).collect();
@@ -1158,6 +1162,10 @@ mod tests {
                 ("before", false),
                 ("name", false),
                 ("maybe", false),
+                ("d_plain", false),
+                ("d_field", false),
+                ("d_required", false),
+                ("quoted", true),
             ]
         );
         assert_eq!(field(&cs, "M", "skipped").type_name.as_deref(), Some("str"));
@@ -1267,7 +1275,8 @@ mod tests {
              class B(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @validator('x', pre=True)\n    def r(cls, v):\n        return v\n\
              class C(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @field_validator('x')\n    def r(cls, v):\n        return v\n\
              class D(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @model_validator(mode='before')\n    def r(cls, v):\n        return v\n\
-             class E(A):\n    pass\n",
+             class E(A):\n    pass\n\
+             class F(BaseModel):\n    x: Decimal = Field(decimal_places=2)\n    @field_validator('x', mode='plain')\n    def r(cls, v):\n        return v\n",
         );
         assert_eq!(field(&cs, "A", "x").decimal_places, None);
         assert_eq!(field(&cs, "A", "x").nullable, None);
@@ -1276,6 +1285,7 @@ mod tests {
         assert_eq!(field(&cs, "C", "x").decimal_places, Some(2), "after-validators do not");
         assert_eq!(field(&cs, "D", "x").decimal_places, None);
         assert_eq!(field(&cs, "E", "x").decimal_places, None, "inherited validator");
+        assert_eq!(field(&cs, "F", "x").decimal_places, None, "plain replaces validation");
     }
 
     /// String annotations are parsed: `"User | None"`, `"Optional[int]"`.

@@ -2066,6 +2066,7 @@ mod tests {
                 "from pydantic import BaseModel, Field, SkipValidation, PlainValidator, WrapValidator, BeforeValidator\n\
                  class Inv(BaseModel):\n    \
                  total: Decimal = Field(decimal_places=2)\n    \
+                 digits: Decimal = Field(max_digits=4)\n    \
                  flag: bool\n    \
                  skipped: SkipValidation[str]\n    \
                  plain: Annotated[str, PlainValidator(f)]\n    \
@@ -2077,21 +2078,28 @@ mod tests {
                 "code.py",
                 "from records import Inv\n\
                  def four(x):\n    return x\n\
-                 def v(x):\n    return Inv.model_validate({'total': four(x), 'flag': four(x), 'skipped': four(x), 'plain': four(x), 'wrapped': four(x), 'before': four(x), 'legacy': four(x)})\n\
+                 def v(x):\n    return Inv.model_validate({'total': four(x), 'digits': four(x), 'flag': four(x), 'skipped': four(x), 'plain': four(x), 'wrapped': four(x), 'before': four(x), 'legacy': four(x)})\n\
                  def j(raw):\n    return Inv.model_validate_json(raw)\n\
                  def p(x):\n    return Inv.parse_obj({'flag': four(x)})\n\
-                 def k(x):\n    return Inv(total=four(x), flag=four(x))\n",
+                 def k(x):\n    return Inv(total=four(x), flag=four(x))\n\
+                 def s(x):\n    return Inv.model_validate_strings({'skipped': four(x)})\n\
+                 def w(x):\n    return Inv.model_validate_json({'plain': four(x)})\n\
+                 def r(x):\n    return Inv.parse_raw({'wrapped': four(x)})\n",
             ),
         ]);
         let s = site_summary(&d);
         for want in [
             "code.four@5 -writes_to-> records.Inv.total",
+            "code.four@5 -writes_to-> records.Inv.digits",
             "code.four@5 -writes_to-> records.Inv.skipped",
             "code.four@5 -writes_to-> records.Inv.plain",
             "code.four@5 -writes_to-> records.Inv.wrapped",
             "code.four@5 -writes_to-> records.Inv.legacy",
             "code.four@11 -writes_to-> records.Inv.total",
             "code.four@11 -writes_to-> records.Inv.flag",
+            "code.four@13 -writes_to-> records.Inv.skipped",
+            "code.four@15 -writes_to-> records.Inv.plain",
+            "code.four@17 -writes_to-> records.Inv.wrapped",
         ] {
             assert!(s.contains(&want.to_string()), "missing {want} in {s:#?}");
         }
