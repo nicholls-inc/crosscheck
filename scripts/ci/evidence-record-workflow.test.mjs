@@ -30,7 +30,7 @@ function stepScript() {
     if (indent !== -1 && indent <= stepIndent) break;
     const m = lines[i].match(/^(\s*)run:\s*(.*)$/);
     if (!m) continue;
-    if (m[2] !== '|') return m[2];
+    if (!/^\|[+-]?$/.test(m[2])) return m[2];
     const body = [];
     for (let j = i + 1; j < lines.length; j += 1) {
       const bodyIndent = lines[j].search(/\S/);
@@ -98,7 +98,8 @@ test('EC-1: no step or job condition, swallowed failure, path filter or expressi
   // Keys are matched where a YAML key can start (line start, after `- `, or in a
   // flow mapping), so step names and `run:` scripts that mention them are fine.
   const KEY_START = String.raw`(^\s*(-\s+)?|[{,]\s*)`;
-  const key = (names) => new RegExp(`${KEY_START}["']?(${names})["']?\\s*:(\\s|$)`, 'm');
+  // A quoted key may take its value with no space (`{"if":false}`); a bare key needs one.
+  const key = (names) => new RegExp(`${KEY_START}(["'](${names})["']\\s*:|(${names})\\s*:(\\s|$))`, 'm');
   assert.doesNotMatch(text, key('if'), 'no `if:` on the job or any step');
   assert.doesNotMatch(text, /continue-on-error/, 'no `continue-on-error`');
   assert.doesNotMatch(text, key('paths|paths-ignore|branches|branches-ignore|tags|tags-ignore'), 'no filter');
