@@ -15,6 +15,7 @@ interface DockerOptions {
   cpus?: string;
   timeoutMs?: number;
   network?: string;
+  readOnly?: boolean;
 }
 
 export function getDockerImage(): string {
@@ -43,7 +44,7 @@ function runDocker(
     `--memory=${memory}`,
     `--cpus=${cpus}`,
     "-v",
-    `${tempDir}:/work`,
+    opts.readOnly ? `${tempDir}:/work:ro` : `${tempDir}:/work`,
     image,
     ...args,
   ];
@@ -90,11 +91,28 @@ function runDocker(
   });
 }
 
+export function dockerImageId(image: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const proc = spawn("docker", ["image", "inspect", "--format", "{{.Id}}", image]);
+    let stdout = "";
+    proc.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    proc.on("close", (code) => {
+      const id = stdout.trim();
+      resolve(code === 0 && id !== "" ? id : null);
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
+
 export async function runDafny(
   tempDir: string,
-  args: string[]
+  args: string[],
+  { image = getDockerImage(), readOnly = false }: { image?: string; readOnly?: boolean } = {}
 ): Promise<DockerResult> {
-  return runDocker(getDockerImage(), tempDir, args, {
+  return runDocker(image, tempDir, args, {
+    readOnly,
     memory: "512m",
     cpus: "1",
     timeoutMs: DEFAULT_TIMEOUT_MS,

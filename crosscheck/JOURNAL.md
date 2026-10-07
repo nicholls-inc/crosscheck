@@ -4,6 +4,21 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-06 — The MCP tool `dafny_evidence` emits an evidence record, and no skill calls it yet
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/docker.ts, mcp-server/src/index.ts, mcp-server/dist/index.js, README.md, ../CLAUDE.md, ../docs/TASKS.md
+**Why:** ER-1's acceptance asks for one Crosscheck pipeline to emit an evidence record. `dafny_verify` returned success on a source string, with no commit, no trusted base and no rerun command.
+**Links:** [intent](../intent/2026-10-06-dafny-evidence-record.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md), #80, #81
+
+The new MCP tool `dafny_evidence` takes a committed `.dfy` file in a clean work tree and the theorems that prove a statement. It runs `dafny verify` and `dafny audit` with the work tree mounted, and emits a record with one `proved` claim, or refuses. The audit is the load-bearing part: a probe showed that a bodiless `lemma {:axiom}` passes `dafny verify` with exit 0, and that `dafny audit` reports it but also exits 0, so the tool and the rerun command both require a line that is exactly "Dafny auditor completed with 0 findings". The trusted base names the Dafny version the image reports, the Z3 in that release, and the local image ID. The rerun command names the image tag, not a digest, so a later rebuild can change what it runs. Nothing checks that the statement matches the contracts, and the record does not say whether a person reviewed it.
+
+Review decisions on the same PR tightened it, under one rule: the record must be true of what was checked, so a gap that is cheap to close is closed rather than documented. Theorem names must be fully qualified, as the `proved` row of the evidence record spec's basis table asks, and the tool reads them from Dafny's own verification log rather than matching the source, which also retires the lexical check. An include that leaves the tracked files refuses (DE-12). The image ID is read before the runs and every run uses it, and HEAD and the tree are checked again afterwards (DE-13). `outputPath` stays inside the work tree (DE-11). Neither Dafny run in the rerun command is in a pipe, so the audit's exit code counts (DE-9). The round 3 review then showed that `dafny verify` checks no proof in an included file and that `dafny audit` reports only the files it is named, so a theorem resting on an included false lemma or `{:axiom}` passed both. The tool now verifies with `--verify-included-files`, audits every included file, mounts the tree read-only, and overwrites only an earlier evidence record. Round 4 found that `git status` hides an edit to a file flagged `assume-unchanged` or `skip-worktree`, so the clean-tree check now reads `git ls-files -v` as well, and the record is written to a temporary file and renamed into place after the output path is checked again.
+
+The Dafny pipeline as a user runs it does not emit a record yet. The MCP tool does, when something calls it, but no skill calls it, because the skills are protected surfaces. So the ER-1.3 row now reads "The MCP server emits an evidence record for a Dafny run (`dafny_evidence`)", and ER-1.6 carries ER-1's goal: one Crosscheck pipeline, `/generate-verified`, emits a record by calling `dafny_evidence` (#80). The maintainer's convergence round made the audit match exact, and filed the remaining review items as ER-1.6 to ER-1.10: the wiring, Docker hardening, tighter `outputPath`, include and rerun-image rules, tests that run the evidence record checker and real Dafny outside the e2e suite, and a decision on mounting a `git archive` copy. The last round's low findings became ER-1.11 (the `requirement` description and duplicate theorem names), ER-1.12 (an include's `..` through a linked directory) and ER-1.13 (an inherited `GIT_DIR`, and conversion filters that `git status` hides). DE-3 and DE-12 now say those gaps are not yet reached.
+
+---
+
 ## 2026-10-06 — The research doc and the reference workflows say "not yet reached"
 
 **Type:** docs
