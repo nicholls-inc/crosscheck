@@ -228,4 +228,4 @@ Skill-specific deviations (e.g. a different findings cap, a custom triage path) 
 
 - **Tamper-resistance for cross-trust orchestrator handoffs.** The marker scheme is coordination-only by design. If a future use case requires actual tamper-resistance (e.g. a remote agent invoking a skill), the marker would need to be signed by a trust anchor outside the shared filesystem. Not currently in scope.
 - **Cross-repo orchestration.** All paths above are repo-relative. If an orchestrator drives skills across multiple repos in a single session, the `.assurance/add-session-<id>/` directory needs a canonical host repo. Punt until the use case appears.
-- **Garbage collection.** `.crosscheck/work/` grows monotonically. A future `/crosscheck-gc` skill could prune entries older than N days or whose source files no longer exist. Not required for the initial refactor.
+- **Garbage collection.** `.crosscheck/work/` grows monotonically. A future `crosscheck-gc` skill could prune entries older than N days or whose source files no longer exist. Not required for the initial refactor.

@@ -1,0 +1,12 @@
+# Skills of other plugins that Crosscheck's Markdown may name as /<plugin>:<name>.
+#
+# scripts/ci/skill-references.mjs reads this file from the git index. A
+# reference with no plugin, or with the plugin crosscheck, resolves against
+# crosscheck/skills/ and crosscheck/agents/ and never reads this file.
+#
+# Format: one <plugin>:<name> per line, both lower case, such as
+# other-plugin:some-skill. Blank lines and lines that start with # are ignored.
+# A line of any other form is a finding, and so is a crosscheck:<name> line,
+# because it would let a name with no skill or agent pass.
+#
+# Task PB-1.19 makes the conformance check (AUTO 5) read this same file.

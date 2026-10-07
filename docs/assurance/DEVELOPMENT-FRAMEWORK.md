@@ -157,8 +157,13 @@ branch requires no status checks:
   request sets to `done` any row other than the one its `Task:` line names
   (`docs/gates/task-queue-check.md`).
 - `semantic-pr.yml` checks that the PR title is a conventional commit.
+- `skill-references.yml` fails when a `/name` or `/<plugin>:<name>` in
+  Crosscheck's Markdown names no skill or agent, or no allowlisted skill of
+  another plugin, and when `crosscheck/docs/skills.md` differs from the
+  catalogue generated from `crosscheck/skills/`
+  (`docs/gates/skill-references.md`).
 
-Two of these checks also run before the commit, as the roadmap's dual-track
+Three of these checks also run before the commit, as the roadmap's dual-track
 principle asks. `npm install` at the repository root installs
 `.husky/pre-commit`, which runs `node scripts/ci/pre-commit.mjs` on the
 commit as staged. It runs only the rules that need no PR body:
@@ -166,12 +171,15 @@ commit as staged. It runs only the rules that need no PR body:
   branch changes must be named in a governance note that the branch changes
   (the tier gate's governance-note rule);
 - when the commit stages `docs/TASKS.md` or `docs/assurance/ROADMAP.md`, the
-  queue must pass the task queue check's rules, except the `Task:` line rule.
+  queue must pass the task queue check's rules, except the `Task:` line rule;
+- when the commit stages a Markdown file under `crosscheck/` or
+  `crosscheck/slash-allowlist.txt`, the skill references check must pass.
 
 Each failure prints the command that fixes it. The hook never fetches and
 reads `origin/main` as last fetched. `git commit --no-verify` skips it, so CI
 stays the check that every pull request passes through
-(PC-1 to PC-8 in `intent/2026-10-06-pre-commit-hooks-spec.md`).
+(PC-1 to PC-8 in `intent/2026-10-06-pre-commit-hooks-spec.md`, and SR-8 in
+`intent/2026-10-07-slash-references-spec.md`).
 
 ### 6. Maintain — incidents and evals
 

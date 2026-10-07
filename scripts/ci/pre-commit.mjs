@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // pre-commit.mjs runs the checks that need no PR body when a commit is made.
 //
-// Requirement IDs (PC-*) refer to intent/2026-10-06-pre-commit-hooks-spec.md.
+// Requirement IDs (PC-*) refer to intent/2026-10-06-pre-commit-hooks-spec.md,
+// and SR-8 to intent/2026-10-07-slash-references-spec.md.
 // The hook (.husky/pre-commit) runs it from the repository root.
 //
 // Inputs (env):
@@ -18,10 +19,12 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { globToRegExp, isGovernanceNotePath, loadProtectedGlobs, unnamedProtectedFiles } from './tier-gate.mjs';
 import { checkRows, parseItemIds, parseQueue } from './task-queue.mjs';
+import { CannotRead as IndexUnreadable, checkIndex } from './skill-references.mjs';
 
 const DEFAULT_RULES_PATH = '.claude/rules/protected-surfaces.md';
 const TASKS_PATH = 'docs/TASKS.md';
 const ROADMAP_PATH = 'docs/assurance/ROADMAP.md';
+const SLASH_ALLOWLIST_PATH = 'crosscheck/slash-allowlist.txt';
 const RERUN = 'node scripts/ci/pre-commit.mjs';
 
 // PC-5. The fix for any unreadable input that has no more specific one.
@@ -100,7 +103,16 @@ function checkTaskQueue() {
   return { problems: checkRows({ rows, itemIds }), fix };
 }
 
-// PC-3, PC-4, PC-6. A check runs only when its `applies` is true.
+// SR-8.
+function checkSkillReferences() {
+  try {
+    return checkIndex();
+  } catch (err) {
+    throw err instanceof IndexUnreadable ? new CannotRead(err.message, err.fix) : err;
+  }
+}
+
+// PC-3, PC-4, PC-6, SR-8. A check runs only when its `applies` is true.
 export const CHECKS = [
   {
     name: 'governance notes',
@@ -113,6 +125,13 @@ export const CHECKS = [
     doc: 'task-queue-check.md',
     applies: (staged) => staged.includes(TASKS_PATH) || staged.includes(ROADMAP_PATH),
     run: checkTaskQueue,
+  },
+  {
+    name: 'skill references',
+    doc: 'skill-references.md',
+    applies: (staged) =>
+      staged.some((path) => (path.startsWith('crosscheck/') && path.endsWith('.md')) || path === SLASH_ALLOWLIST_PATH),
+    run: checkSkillReferences,
   },
 ];
 

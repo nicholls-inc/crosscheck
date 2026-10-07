@@ -20,7 +20,7 @@ ADD applies to three situations, and the governance that is *appropriate* differ
 
 1. **A spec is present** (user-supplied path, or a discovered spec) → **`add` / spec-consult**. Consume the written spec as the contract. **Do not cold-elicit what the spec already answers** — this is the #149/#150 failure the greenfield run hit: `/draft-invariants` interviewing against a spec that already held the answers produced a referential-integrity failure. Drafted invariant docs are tagged `add-mode: add`.
 2. **Existing code, no spec** → **`bootstrap` / legacy-derive**. Derive invariants from the code, tests, and error handling — not from a cold interview. Drafted docs are tagged `add-mode: bootstrap`. (`ngst`'s `secrets` module is the worked example: invariants drafted from the existing loader caught the `_FILE`-wins contradiction.)
-3. **Empty or near-empty repo, no spec** → **greenfield / intent-elicit**. Capture intent first, then derive a spec, then re-enter at case 1. The dedicated greenfield skills (ADR-004 S2.1–S2.4: `/intent-elicit`, `/spec-derive`, `/intent-check-prose`, `/spec-adversary-prose`) are not yet built; until they ship, `/assurance-init` seeds the skeleton and the operator supplies intent.
+3. **Empty or near-empty repo, no spec** → **greenfield / intent-elicit**. Capture intent first, then derive a spec, then re-enter at case 1. The dedicated greenfield skills (ADR-004 S2.1–S2.4: `intent-elicit`, `spec-derive`, `intent-check-prose`, `spec-adversary-prose`) are not yet built; until they ship, `/assurance-init` seeds the skeleton and the operator supplies intent.
 
 ## How skills honour the tag
 

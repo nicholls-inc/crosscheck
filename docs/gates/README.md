@@ -24,5 +24,6 @@ The table below inventories all eighteen gates: which explainer covers it, where
 | 16 | [tier-layer-gate.md](tier-layer-gate.md) | new tier-gate CI job (`.github/workflows/`) | Failed CI check message | Declare the correct `Tier: N` and supply the artefact the tier requires, or reduce the diff's scope |
 | 17 | [task-queue-check.md](task-queue-check.md) | task-queue CI job (`.github/workflows/task-queue.yml`) | Failed CI check message | Fix the queue row, or add the `Task:` line that names the task this pull request completes |
 | 18 | [incident-eval-check.md](incident-eval-check.md) | incident-eval CI job (`.github/workflows/incident-eval-check.yml`), after the merge | Failed CI check message on the merged pull request | Add the eval and the candidate invariant in a follow-up pull request, or leave the incident without them |
+| 19 | [skill-references.md](skill-references.md) | skill references CI job (`.github/workflows/skill-references.yml`) and `.husky/pre-commit` | Failed CI check or blocked commit message | Fix the slash-reference or regenerate the skill catalogue, or allowlist another plugin's skill |
 
 Anyone unsure how to respond to a gate, or who thinks a gate is miscalibrated, should raise it with the Crosscheck maintainers via a GitHub issue on this repository.

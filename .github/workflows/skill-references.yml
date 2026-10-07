@@ -1,0 +1,22 @@
+name: Skill References
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  skill-references:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Check slash-references and the skill catalogue
+        run: node scripts/ci/skill-references.mjs

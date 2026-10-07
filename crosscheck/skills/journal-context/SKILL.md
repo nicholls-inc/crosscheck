@@ -27,7 +27,7 @@ The seven invariants that pin behaviour — walk shape, ordering, determinism, r
 - When auditing a PR, to surface what the journals already say about the area the diff touches.
 - When orienting on an unfamiliar part of the tree.
 
-Not for: linting journal entries (a separate `/journal-lint` skill is the right home for that, when it exists), authoring new entries (those are hand-written in the PR that introduces them), or cross-repo orchestration (one repo per invocation; concatenate at the caller if needed).
+Not for: linting journal entries (a separate `journal-lint` skill is the right home for that, when it exists), authoring new entries (those are hand-written in the PR that introduces them), or cross-repo orchestration (one repo per invocation; concatenate at the caller if needed).
 
 ## Instructions
 

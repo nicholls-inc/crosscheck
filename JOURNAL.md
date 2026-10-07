@@ -4,6 +4,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - Every slash-reference in Crosscheck's live Markdown resolves, and the skill catalogue is generated
+
+**Type:** feature
+**Touches:** scripts/ci/skill-references.mjs, scripts/ci/skill-references.test.mjs, scripts/ci/fixtures/skill-references/, scripts/ci/pre-commit.mjs, .github/workflows/skill-references.yml, crosscheck/slash-allowlist.txt, crosscheck/docs/skills.md, docs/gates/skill-references.md, docs/TASKS.md
+**Why:** No check resolved `/name` outside five conformance doc files and agent bodies, so `journal-context` named a `/journal-lint` that does not exist, and the catalogue said 29 skills while there were 30 (#36).
+**Links:** [intent](intent/2026-10-07-slash-references.md), [spec](intent/2026-10-07-slash-references-spec.md), [plan](intent/2026-10-07-slash-references-plan.md)
+
+`scripts/ci/skill-references.mjs` reads the git index, so the pre-commit hook and CI see the same files. It resolves each `/name` against `crosscheck/skills/` and `crosscheck/agents/`, and each `/<plugin>:<name>` of another plugin against `crosscheck/slash-allowlist.txt`, which ships empty. The grammar was tuned on the 123 Markdown files under `crosscheck/`: a `/` after a letter, `.`, `/`, `<` or `*` is a path, URL or closing tag, not a reference. About 150 mentions in archives, dated snapshots, research notes and gh-aw examples name skills that were planned and never built, or GitHub comment commands. Those directories are not read yet, because a historical mention and an instruction look the same in the text. Four live documents named unbuilt skills, and they now write the name without its slash. Three dated records, `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md`, did too. The first draft rewrote them, and the maintainer reverted that, because rewriting a record falsifies it. The check skips those three files instead. The catalogue lost its hand-written categories, trigger phrases and owners, because none of them is in `crosscheck/skills/`. It is one table of names and frontmatter descriptions.
+
 ## 2026-10-07 - A human can tell an agent to tick a verification box
 
 **Type:** feat
