@@ -1,3 +1,4 @@
+pub mod baseline;
 pub mod body_analyzer;
 pub mod bounds;
 pub mod dataclass_extractor;
@@ -5,6 +6,8 @@ pub mod db;
 pub mod defaults;
 pub mod docstring_parser;
 pub mod edge_discovery;
+pub mod evidence;
+pub mod exits;
 pub mod extractor;
 pub mod flow;
 pub mod function_extractor;

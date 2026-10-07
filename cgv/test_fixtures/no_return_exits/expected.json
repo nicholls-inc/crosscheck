@@ -1,0 +1,47 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "color_partial -> color_partial.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "color_partial.<return>"
+    },
+    {
+      "path": "perm_name -> perm_name.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "perm_name.<return>"
+    },
+    {
+      "path": "color_optional -> color_optional.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "color_optional.<return>"
+    },
+    {
+      "path": "color_rebound -> color_rebound.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "color_rebound.<return>"
+    },
+    {
+      "path": "report_logged -> Report.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Report.label"
+    },
+    {
+      "path": "label_unawaited -> label_unawaited.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "label_unawaited.<return>"
+    },
+    {
+      "path": "label_shadowed -> label_shadowed.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "label_shadowed.<return>"
+    }
+  ]
+}

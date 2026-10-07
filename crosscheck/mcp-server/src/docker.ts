@@ -15,7 +15,18 @@ interface DockerOptions {
   cpus?: string;
   timeoutMs?: number;
   network?: string;
+  readOnly?: boolean;
+  sandboxed?: boolean;
 }
+
+// Spec DE-6: no capabilities, no privilege gain, at most 512 processes and threads, and not root.
+// The rerun command of an evidence record (DE-9) passes the same flags.
+export const SANDBOX_FLAGS = [
+  "--cap-drop=ALL",
+  "--security-opt=no-new-privileges",
+  "--pids-limit=512",
+  "--user=65534:65534",
+];
 
 export function getDockerImage(): string {
   return process.env.DAFNY_DOCKER_IMAGE || "crosscheck-dafny:latest";
@@ -42,8 +53,9 @@ function runDocker(
     `--network=${network}`,
     `--memory=${memory}`,
     `--cpus=${cpus}`,
+    ...(opts.sandboxed ? SANDBOX_FLAGS : []),
     "-v",
-    `${tempDir}:/work`,
+    opts.readOnly ? `${tempDir}:/work:ro` : `${tempDir}:/work`,
     image,
     ...args,
   ];
@@ -90,11 +102,33 @@ function runDocker(
   });
 }
 
+export function dockerImageId(image: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const proc = spawn("docker", ["image", "inspect", "--format", "{{.Id}}", image]);
+    let stdout = "";
+    proc.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    proc.on("close", (code) => {
+      const id = stdout.trim();
+      resolve(code === 0 && id !== "" ? id : null);
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
+
 export async function runDafny(
   tempDir: string,
-  args: string[]
+  args: string[],
+  {
+    image = getDockerImage(),
+    readOnly = false,
+    sandboxed = false,
+  }: { image?: string; readOnly?: boolean; sandboxed?: boolean } = {}
 ): Promise<DockerResult> {
-  return runDocker(getDockerImage(), tempDir, args, {
+  return runDocker(image, tempDir, args, {
+    readOnly,
+    sandboxed,
     memory: "512m",
     cpus: "1",
     timeoutMs: DEFAULT_TIMEOUT_MS,

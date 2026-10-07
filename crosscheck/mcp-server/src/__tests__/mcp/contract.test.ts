@@ -85,6 +85,31 @@ describe("MCP Contract", () => {
       expect(schema.required).toContain("target");
     });
 
+    it("dafny_evidence schema requires all fields but outputPath", async () => {
+      const { tools } = await client.listTools();
+      const evidence = tools.find((t) => t.name === "dafny_evidence");
+
+      expect(evidence).toBeDefined();
+      const schema = evidence!.inputSchema;
+      const properties = schema.properties as Record<string, { type?: string | string[] }>;
+      expect(Object.keys(properties).sort()).toEqual([
+        "file",
+        "outputPath",
+        "repoPath",
+        "requirement",
+        "statement",
+        "theorems",
+      ]);
+      expect(properties.theorems.type).toBe("array");
+      expect([...(schema.required ?? [])].sort()).toEqual([
+        "file",
+        "repoPath",
+        "requirement",
+        "statement",
+        "theorems",
+      ]);
+    });
+
     it("dafny_cleanup schema has no required properties", async () => {
       const { tools } = await client.listTools();
       const cleanup = tools.find((t) => t.name === "dafny_cleanup");
