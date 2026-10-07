@@ -19,7 +19,7 @@
 //! Names are resolved through `resolve`; a call or class that does not
 //! resolve to something extracted gives no edge.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, BoolOp, Expr, Stmt};
@@ -32,7 +32,7 @@ use crate::flow::{self, FlowVisitor, FunctionFlow, Narrowed};
 use crate::function_extractor::{self, FunctionInfo, ParamKind};
 use crate::resolve::{ClassInfo, ProjectIndex};
 use crate::source::LineIndex;
-use crate::value_analysis::{facts_rows, Alt, Callee, Ctx, Scope, SplatValue, ValueFacts};
+use crate::value_analysis::{facts_rows, Alt, CallerGuards, Callee, Ctx, Scope, SplatValue, ValueFacts};
 
 /// A call expression: the key of its call-site node.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -123,7 +123,8 @@ pub fn discover_project_edges(project: &Project) -> Vec<DiscoveredEdge> {
 /// Discover every edge and call-site node of the project.
 pub fn discover(project: &Project) -> Discovered {
     let forwards = kw_forwards(&project.index, &project.summaries);
-    let dict_forwarders: std::collections::HashSet<String> = forwards
+    let guards = caller_guards(project);
+    let dict_forwarders: HashSet<String> = forwards
         .keys()
         .filter(|k| k.ends_with(')'))
         .cloned()
@@ -137,7 +138,8 @@ pub fn discover(project: &Project) -> Discovered {
     for func in &project.index.functions {
         let flow = FunctionFlow::of_info(func);
         let scope = Scope::new(&project.index, &project.summaries, Some(func), &flow)
-            .with_dict_forwarders(&dict_forwarders);
+            .with_dict_forwarders(&dict_forwarders)
+            .with_caller_guards(&guards);
         let doc = project
             .docstrings
             .get(&func.qualified_name)
@@ -329,6 +331,256 @@ fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
         }
     }
     targets
+}
+
+/// The caller guards of every function whose callers the project shows
+/// (see `CallerGuards`). A function qualifies when it has a resolved call,
+/// every call by its name resolves to it, its name is used nowhere but as
+/// a call (nor imported under another name), it has no decorator, it is
+/// not a dunder method, and a method's class has only project classes and
+/// `object` as bases, transitively.
+pub fn caller_guards(project: &Project) -> CallerGuards {
+    let index = &project.index;
+    let mut names = NameUses::default();
+    for m in &project.modules {
+        names.file = m.relative_path.clone();
+        for s in &m.stmts {
+            names.visit_stmt(s);
+        }
+    }
+    let mut guards = CallerGuards::new();
+    let mut resolved = HashMap::new();
+    for func in &index.functions {
+        let flow = FunctionFlow::of_info(func);
+        let scope = Scope::new(index, &project.summaries, Some(func), &flow);
+        let mut collector = GuardCollector {
+            scope: &scope,
+            file: &func.source_file,
+            guards: &mut guards,
+            resolved: &mut resolved,
+        };
+        flow::walk_block(&func.body, &flow.entry, &mut collector);
+    }
+    guards.retain(|q, _| {
+        let Some(f) = index.function(q) else { return false };
+        let short = f.name.rsplit('.').next().unwrap_or_default();
+        let sites = &resolved[q];
+        let all_calls_seen = names
+            .calls
+            .get(short)
+            .is_none_or(|calls| calls.is_subset(sites));
+        let dunder = short.starts_with("__") && short.ends_with("__");
+        let bases_known = match &f.class_name {
+            Some(c) => project_bases_only(index, &crate::resolve::qualify(&f.module, c), &mut HashSet::new()),
+            None => true,
+        };
+        all_calls_seen && !names.escaping.contains(short) && f.decorators.is_empty() && !dunder && bases_known
+    });
+    guards
+}
+
+/// Whether every base of class `class_q`, transitively, is a project class or `object`.
+fn project_bases_only(index: &ProjectIndex, class_q: &str, seen: &mut HashSet<String>) -> bool {
+    if !seen.insert(class_q.to_string()) {
+        return true;
+    }
+    let Some(class) = index.class(class_q) else { return false };
+    class.bases.iter().all(|b| {
+        matches!(b, Expr::Name(n) if n.id.as_str() == "object")
+            || matches!(index.resolve_expr(&class.module, b), Some(crate::resolve::Symbol::Class(q))
+                if project_bases_only(index, &q, seen))
+    })
+}
+
+/// How names are used across the project's modules.
+#[derive(Default)]
+struct NameUses {
+    file: String,
+    /// Names read other than as the called expression of a call (`f`, `obj.f`),
+    /// and names imported under another name.
+    escaping: HashSet<String>,
+    /// Calls by the called name (`f(...)`, `obj.f(...)`): `(file, offset)`.
+    calls: HashMap<String, HashSet<(String, u32)>>,
+}
+
+impl<'a> Visitor<'a> for NameUses {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::ImportFrom(i) = stmt {
+            for a in i.names.iter().filter(|a| a.asname.is_some()) {
+                self.escaping.insert(a.name.to_string());
+            }
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Call(c) => {
+                let called = match c.func.as_ref() {
+                    Expr::Name(n) => Some(n.id.as_str()),
+                    Expr::Attribute(a) => {
+                        self.visit_expr(&a.value);
+                        Some(a.attr.as_str())
+                    }
+                    other => {
+                        self.visit_expr(other);
+                        None
+                    }
+                };
+                if let Some(name) = called {
+                    let site = (self.file.clone(), c.range().start().to_u32());
+                    self.calls.entry(name.to_string()).or_default().insert(site);
+                }
+                visitor::walk_arguments(self, &c.arguments);
+            }
+            Expr::Name(n) if matches!(n.ctx, ast::ExprContext::Load) => {
+                self.escaping.insert(n.id.to_string());
+            }
+            Expr::Attribute(a) if matches!(a.ctx, ast::ExprContext::Load) => {
+                self.escaping.insert(a.attr.to_string());
+                visitor::walk_expr(self, expr);
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
+/// Collects, per resolved call of a project function, the fields of each
+/// argument the call narrows (see `CallerGuards`).
+struct GuardCollector<'s, 'a> {
+    scope: &'s Scope<'a>,
+    file: &'s str,
+    guards: &'s mut CallerGuards,
+    /// The calls resolved to each function: `(file, offset)`.
+    resolved: &'s mut HashMap<String, HashSet<(String, u32)>>,
+}
+
+impl<'e> FlowVisitor<'e> for GuardCollector<'_, '_> {
+    fn simple(&mut self, stmt: &'e Stmt, narrowed: &Narrowed) {
+        struct Top<'c, 's, 'a>(&'c mut GuardCollector<'s, 'a>, Ctx);
+        impl<'e> Visitor<'e> for Top<'_, '_, '_> {
+            fn visit_expr(&mut self, expr: &'e Expr) {
+                let ctx = self.1.clone();
+                self.0.scan(expr, &ctx);
+            }
+        }
+        Top(self, Ctx::new(narrowed)).visit_stmt(stmt);
+    }
+
+    fn header(&mut self, expr: &'e Expr, narrowed: &Narrowed) {
+        self.scan(expr, &Ctx::new(narrowed));
+    }
+}
+
+impl GuardCollector<'_, '_> {
+    /// Every call in `expr`, outside lambdas and comprehensions (whose
+    /// names are not the function's).
+    fn scan(&mut self, expr: &Expr, ctx: &Ctx) {
+        match expr {
+            Expr::Call(call) => {
+                self.record(call, ctx);
+                self.scan(&call.func, ctx);
+                for arg in call.arguments.args.iter() {
+                    self.scan(arg, ctx);
+                }
+                for kw in call.arguments.keywords.iter() {
+                    self.scan(&kw.value, ctx);
+                }
+            }
+            Expr::If(i) => {
+                self.scan(&i.test, ctx);
+                self.scan(&i.body, &ctx.narrow(flow::positive(&i.test)));
+                self.scan(&i.orelse, &ctx.narrow(flow::negative(&i.test)));
+            }
+            Expr::BoolOp(b) => {
+                let mut c = ctx.clone();
+                for v in &b.values {
+                    self.scan(v, &c);
+                    c = match b.op {
+                        BoolOp::And => c.narrow(flow::positive(v)),
+                        BoolOp::Or => c.narrow(flow::negative(v)),
+                    };
+                }
+            }
+            Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::Generator(_) | Expr::DictComp(_) => {}
+            _ => {
+                let mut children = Children(Vec::new());
+                visitor::walk_expr(&mut children, expr);
+                for child in children.0 {
+                    self.scan(child, ctx);
+                }
+            }
+        }
+    }
+
+    fn record(&mut self, call: &ast::ExprCall, ctx: &Ctx) {
+        for callee in self.scope.callees(&call.func, ctx) {
+            let Callee::Function { qualified, implicit } = callee else { continue };
+            let Some(f) = self.scope.index.function(&qualified) else { continue };
+            let site = (self.file.to_string(), call.range().start().to_u32());
+            self.resolved.entry(qualified.clone()).or_default().insert(site);
+            let here = call_guards(f, implicit, call, ctx);
+            match self.guards.entry(qualified) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(here);
+                }
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    for (param, fields) in e.get_mut() {
+                        fields.retain(|f| here.get(param).is_some_and(|h| h.contains(f)));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// For one call of `f`, each parameter's narrowed argument fields: the
+/// fields `a.f` narrowed here for an argument that is a name `a`.
+fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ctx) -> HashMap<String, HashSet<String>> {
+    let mut out: HashMap<String, HashSet<String>> =
+        f.params.iter().map(|p| (p.name.clone(), HashSet::new())).collect();
+    let splatted = call.arguments.args.iter().any(|a| matches!(a, Expr::Starred(_)))
+        || call.arguments.keywords.iter().any(|k| k.arg.is_none());
+    if splatted {
+        return out;
+    }
+    let narrowed_fields = |arg: &Expr| -> HashSet<String> {
+        let Expr::Name(n) = arg else { return HashSet::new() };
+        let prefix = format!("{}.", n.id);
+        ctx.narrowed
+            .names()
+            .filter_map(|x| x.strip_prefix(&prefix))
+            .filter(|field| !field.contains(['.', '[']))
+            .map(str::to_string)
+            .collect()
+    };
+    let mut bind = |param: &str, arg: &Expr| {
+        if let Some(fields) = out.get_mut(param) {
+            *fields = narrowed_fields(arg);
+        }
+    };
+    if implicit == 1 {
+        if let (Some(p), Expr::Attribute(a)) = (f.params.first(), call.func.as_ref()) {
+            bind(&p.name, &a.value);
+        }
+    }
+    let params = f.params.get(implicit..).unwrap_or_default();
+    let positional = params
+        .iter()
+        .take_while(|p| matches!(p.kind, ParamKind::PositionalOnly | ParamKind::Normal));
+    for (p, arg) in positional.zip(call.arguments.args.iter()) {
+        bind(&p.name, arg);
+    }
+    for kw in call.arguments.keywords.iter() {
+        let Some(name) = &kw.arg else { continue };
+        if params
+            .iter()
+            .any(|p| p.name == name.as_str() && matches!(p.kind, ParamKind::Normal | ParamKind::KeywordOnly))
+        {
+            bind(name.as_str(), &kw.value);
+        }
+    }
+    out
 }
 
 #[derive(Clone)]

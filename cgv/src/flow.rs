@@ -7,19 +7,30 @@
 //!   (also `if not x: ...`), when the `if` has no `elif` / `else`;
 //! - inside `if x is not None:` / `if x:` bodies, and in the `else` branch
 //!   of `if x is None:` / `if not x:`; conjunctions narrow every conjunct;
-//! - after `assert x is not None` / `assert x`.
+//! - after `assert x is not None` / `assert x`;
+//! - inside `if x in {"a", "b"}:` (a set, list or tuple display of string,
+//!   bytes, number or bool literals), and after `if x not in (...): return`.
+//!
+//! Membership: `k in d` (a name or string literal `k`, a name or `obj.f`
+//! `d`) narrows like a test and records `member_key(d, k)` among the names,
+//! so `d.get(k)` there is `d[k]`. The fact is dropped when `d` or `k` is
+//! rebound, and after any statement or header expression that calls
+//! anything other than `.get`, since a call may remove the key.
 //!
 //! Reaching definitions: after a simple assignment `x = v` the value of `x`
 //! is that assignment's; after an `if`, the definitions of every branch that
 //! falls through (each with whether `x` is non-None on that path). So
-//! `v = d.get(k); if v is None: v = "x"` leaves `v` non-None.
+//! `v = d.get(k); if v is None: v = "x"` leaves `v` non-None. After a `try`,
+//! the join of the body followed by `else` and of each handler that falls
+//! through; a handler starts from the state before the `try` without the
+//! names the `try` binds, and a `finally` starts from the join of that
+//! state and the fall-through join.
 //!
 //! A narrowing (and the definition set) is dropped when the name is rebound
 //! other than by a simple assignment; entering a loop drops every name the
-//! loop rebinds, and after `try` / `match` blocks only narrowings from
-//! before the block that the block does not rebind survive. A `with` body is
-//! walked like straight-line code. A name
-//! whose definition set is not known takes the join of every assignment.
+//! loop rebinds, and after a `match` only narrowings from before it that it
+//! does not rebind survive. A `with` body is walked like straight-line code.
+//! A name whose definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
 
@@ -92,6 +103,7 @@ impl Narrowed {
         self.names.remove(name);
         self.defs.remove(name);
         self.forget_attributes(name);
+        self.forget_members_of(name);
     }
 
     /// `name` now holds the value of `def`.
@@ -99,6 +111,24 @@ impl Narrowed {
         self.names.remove(name);
         self.defs.insert(name.to_string(), vec![(def, false)]);
         self.forget_attributes(name);
+        self.forget_members_of(name);
+    }
+
+    /// Drop every `member_key` fact whose container is `name` (or an
+    /// attribute of it) or whose key is `name`.
+    fn forget_members_of(&mut self, name: &str) {
+        let prefix = format!("{name}.");
+        self.names.retain(|n| match n.split_once('[') {
+            Some((container, key)) => {
+                container != name && !container.starts_with(&prefix) && key.strip_suffix(']') != Some(name)
+            }
+            None => true,
+        });
+    }
+
+    /// Drop every `member_key` fact (a call may mutate any dict).
+    pub fn forget_members(&mut self) {
+        self.names.retain(|n| !n.contains('['));
     }
 
     /// A rebound variable's attributes (`obj.f`) no longer hold values
@@ -183,6 +213,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::If(s) => {
                 v.header(&s.test, &n);
                 n.extend(dereferenced(&s.test));
+                forget_members_after(&mut n, &s.test);
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
                 body_n.extend(positive(&s.test));
@@ -198,6 +229,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     let end = match &clause.test {
                         Some(test) => {
                             v.header(test, &clause_n);
+                            if !only_get_calls(test) {
+                                n.forget_members();
+                                negated.retain(|x| !x.contains('['));
+                                clause_n.forget_members();
+                            }
                             let mut bn = clause_n.clone();
                             bn.extend(positive(test));
                             let end = walk(&clause.body, &bn, v, counts);
@@ -229,10 +265,14 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::Assert(a) => {
                 v.simple(stmt, &n);
                 n.extend(positive(&a.test));
+                if !only_get_calls_in_stmt(stmt) {
+                    n.forget_members();
+                }
             }
             Stmt::For(f) => {
                 v.header(&f.iter, &n);
                 n.extend(dereferenced(&f.iter));
+                forget_members_after(&mut n, &f.iter);
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 walk(&f.body, &n, v, counts);
                 walk(&f.orelse, &n, v, counts);
@@ -240,6 +280,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::While(w) => {
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 v.header(&w.test, &n);
+                forget_members_after(&mut n, &w.test);
                 let mut body_n = n.clone();
                 body_n.extend(positive(&w.test));
                 walk(&w.body, &body_n, v, counts);
@@ -249,6 +290,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 for item in &w.items {
                     v.header(&item.context_expr, &n);
                     n.extend(dereferenced(&item.context_expr));
+                    forget_members_after(&mut n, &item.context_expr);
                     if let Some(target) = &item.optional_vars {
                         remove_all(&mut n, bound_names_in_expr(target));
                     }
@@ -268,18 +310,32 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     remove_all(&mut a, bound_names(std::slice::from_ref(stmt)));
                     a
                 };
-                walk(&t.body, &n, v, counts);
+                let body_end = walk(&t.body, &n, v, counts);
+                let else_end = walk(&t.orelse, &body_end, v, counts);
+                let mut ends = Vec::new();
+                if !always_exits(&t.body) && !always_exits(&t.orelse) {
+                    ends.push(else_end);
+                }
                 for handler in &t.handlers {
                     let ast::ExceptHandler::ExceptHandler(h) = handler;
-                    walk(&h.body, &after, v, counts);
+                    let end = walk(&h.body, &after, v, counts);
+                    if !always_exits(&h.body) {
+                        ends.push(end);
+                    }
                 }
-                walk(&t.orelse, &after, v, counts);
-                walk(&t.finalbody, &after, v, counts);
-                n = after;
+                let joined = Narrowed::join(&ends).unwrap_or_else(|| after.clone());
+                n = if t.finalbody.is_empty() {
+                    joined
+                } else {
+                    // `finally` also runs on exceptional paths, from `after`.
+                    let start = Narrowed::join(&[joined, after]).unwrap_or_default();
+                    walk(&t.finalbody, &start, v, counts)
+                };
             }
             Stmt::Match(m) => {
                 v.header(&m.subject, &n);
                 n.extend(dereferenced(&m.subject));
+                forget_members_after(&mut n, &m.subject);
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 for case in &m.cases {
                     walk(&case.body, &n, v, counts);
@@ -294,6 +350,9 @@ fn walk<'a, V: FlowVisitor<'a>>(
             _ => {
                 v.simple(stmt, &n);
                 n.extend(stmt_dereferences(stmt));
+                if !only_get_calls_in_stmt(stmt) {
+                    n.forget_members();
+                }
                 let simple: Vec<String> = match stmt {
                     Stmt::Assign(a) => simple_assign_targets(a)
                         .or_else(|| simple_attr_targets(a))
@@ -466,6 +525,58 @@ fn stmt_dereferences(stmt: &Stmt) -> Vec<String> {
     out
 }
 
+/// The fact `key in container` (see `positive`), kept among the narrowed
+/// names: `[` cannot occur in an identifier, so it names no variable.
+/// `container` is a name or `obj.f`; `key` a name or a rendered string literal.
+pub fn member_key(container: &str, key: &str) -> String {
+    format!("{container}[{key}]")
+}
+
+/// `member_key` of `key in container` expressions, when both have that form.
+pub fn member_key_of(key: &Expr, container: &Expr) -> Option<String> {
+    let container = match container {
+        Expr::Name(n) => n.id.to_string(),
+        other => attr_name(other)?,
+    };
+    let key = match key {
+        Expr::Name(n) => n.id.to_string(),
+        Expr::StringLiteral(s) => format!("{:?}", s.value.to_str()),
+        _ => return None,
+    };
+    Some(member_key(&container, &key))
+}
+
+/// Whether every call in `node` is a `.get(...)` method call (one that
+/// cannot remove a key from a dict).
+struct OnlyGetCalls(bool);
+
+impl<'a> Visitor<'a> for OnlyGetCalls {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Call(c) = expr {
+            self.0 &= matches!(c.func.as_ref(), Expr::Attribute(a) if a.attr.as_str() == "get");
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
+fn only_get_calls(expr: &Expr) -> bool {
+    let mut v = OnlyGetCalls(true);
+    v.visit_expr(expr);
+    v.0
+}
+
+fn only_get_calls_in_stmt(stmt: &Stmt) -> bool {
+    let mut v = OnlyGetCalls(true);
+    v.visit_stmt(stmt);
+    v.0
+}
+
+fn forget_members_after(n: &mut Narrowed, header: &Expr) {
+    if !only_get_calls(header) {
+        n.forget_members();
+    }
+}
+
 fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
     for name in names {
         n.remove(&name);
@@ -473,29 +584,73 @@ fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
 }
 
 /// Names known non-None when `test` is true (attributes of variables as
-/// `obj.f`, see `attr_name`).
+/// `obj.f`, see `attr_name`), and `member_key` facts.
 pub fn positive(test: &Expr) -> Vec<String> {
-    match test {
+    let mut out: Vec<String> = match test {
         Expr::Name(n) => vec![n.id.to_string()],
         Expr::Attribute(_) => attr_name(test).into_iter().collect(),
-        Expr::Compare(c) => none_comparison(c, CmpOp::IsNot).into_iter().collect(),
+        Expr::Compare(c) => none_comparison(c, CmpOp::IsNot)
+            .into_iter()
+            .chain(membership(c, CmpOp::In))
+            .collect(),
         Expr::BoolOp(b) if matches!(b.op, BoolOp::And) => {
             b.values.iter().flat_map(positive).collect()
         }
         Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => negative(&u.operand),
         _ => Vec::new(),
-    }
+    };
+    without_members_if_called(&mut out, test);
+    out
 }
 
-/// Names known non-None when `test` is false.
+/// Names known non-None when `test` is false, and `member_key` facts.
 pub fn negative(test: &Expr) -> Vec<String> {
-    match test {
-        Expr::Compare(c) => none_comparison(c, CmpOp::Is).into_iter().collect(),
+    let mut out: Vec<String> = match test {
+        Expr::Compare(c) => none_comparison(c, CmpOp::Is)
+            .into_iter()
+            .chain(membership(c, CmpOp::NotIn))
+            .collect(),
         Expr::BoolOp(b) if matches!(b.op, BoolOp::Or) => {
             b.values.iter().flat_map(negative).collect()
         }
         Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => positive(&u.operand),
         _ => Vec::new(),
+    };
+    without_members_if_called(&mut out, test);
+    out
+}
+
+/// A call in the test may remove the key again.
+fn without_members_if_called(out: &mut Vec<String>, test: &Expr) {
+    if !only_get_calls(test) {
+        out.retain(|n| !n.contains('['));
+    }
+}
+
+/// `x <op> <display of non-None literals>`: `x`, which equals one of them.
+/// `k <op> d`: the `member_key` of `k in d`.
+fn membership(c: &ast::ExprCompare, op: CmpOp) -> Option<String> {
+    if c.ops.len() != 1 || c.ops[0] != op {
+        return None;
+    }
+    let elts = match &c.comparators[0] {
+        Expr::Set(s) => &s.elts,
+        Expr::List(l) => &l.elts,
+        Expr::Tuple(t) => &t.elts,
+        container => return member_key_of(&c.left, container),
+    };
+    let literal = |e: &Expr| {
+        matches!(
+            e,
+            Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::NumberLiteral(_) | Expr::BooleanLiteral(_)
+        )
+    };
+    if elts.is_empty() || !elts.iter().all(literal) {
+        return None;
+    }
+    match c.left.as_ref() {
+        Expr::Name(n) => Some(n.id.to_string()),
+        left => attr_name(left),
     }
 }
 
@@ -1276,6 +1431,77 @@ mod tests {
             "def f(x, xs):\n    if x is None:\n        log()\n    use()\n    assert x\n    for i in xs:\n        use()\n        x = h(i)\n",
         );
         assert_eq!(uses, vec![Vec::<String>::new(), vec![]]);
+    }
+
+    /// After a `try`: the join of the body (with `else`) and each handler
+    /// that falls through; a `finally` starts from that joined with the
+    /// state before the `try`.
+    #[test]
+    fn test_try_joins_fall_through_paths() {
+        let at = |handler: &str| {
+            narrowing_at_uses(&format!(
+                "def f(x):\n    try:\n        assert x\n    except E:\n        {handler}\n    use()\n"
+            ))
+        };
+        assert_eq!(at("return"), vec![vec!["x".to_string()]]);
+        assert_eq!(at("assert x"), vec![vec!["x".to_string()]]);
+        assert_eq!(at("pass"), vec![Vec::<String>::new()]);
+        let uses = narrowing_at_uses(
+            "def f(x, y):\n    try:\n        pass\n    except E:\n        return\n    else:\n        assert x\n    use()\n",
+        );
+        assert_eq!(uses, vec![vec!["x".to_string()]]);
+        let uses = narrowing_at_uses(
+            "def f(x, y):\n    try:\n        assert x\n    except E:\n        return\n    finally:\n        use()\n        assert y\n    use()\n",
+        );
+        assert_eq!(uses, vec![vec![], vec!["y".to_string()]]);
+    }
+
+    #[test]
+    fn test_literal_membership_narrows() {
+        let uses = narrowing_at_uses(
+            "def f(a, b, c, d, o):\n    if a in {'x', 'y'}:\n        use()\n    if b not in ('x', 1):\n        return\n    use()\n    if c in {'x', None}:\n        use()\n    if o.f in [True, b'z']:\n        use()\n    if d in []:\n        use()\n",
+        );
+        assert_eq!(
+            uses,
+            vec![
+                vec!["a".to_string()],
+                vec!["b".into()],
+                vec!["b".into()],
+                // The test dereferences `o`.
+                vec!["b".into(), "o".into(), "o.f".into()],
+                vec!["b".into(), "o".into()],
+            ]
+        );
+    }
+
+    #[test]
+    fn test_member_facts() {
+        let uses = narrowing_at_uses(
+            "def f(d, k, e, j, o):\n    if k in d:\n        v = d.get(k)\n        use()\n        use()\n    if k not in d:\n        return\n    use()\n    if 'a' in o.m:\n        use()\n    if k in d and g():\n        use()\n",
+        );
+        assert_eq!(
+            uses,
+            vec![
+                // `d.get` dereferences `d`; the call `use()` drops `d[k]`.
+                vec!["d".to_string(), "d[k]".into()],
+                vec!["d".into()],
+                vec!["d[k]".into()],
+                vec!["o".into(), "o.m[\"a\"]".into()],
+                vec!["o".into()],
+            ]
+        );
+        for rebind in ["d = e", "k = j", "for d in e:\n            pass"] {
+            let uses = narrowing_at_uses(&format!(
+                "def f(d, k, e, j):\n    if k in d:\n        {rebind}\n        use()\n"
+            ));
+            assert_eq!(uses, vec![Vec::<String>::new()], "{rebind}");
+        }
+        let uses = narrowing_at_uses(
+            "def f(o, k, p):\n    if k in o.m:\n        o = p\n        use()\n",
+        );
+        assert_eq!(uses, vec![Vec::<String>::new()]);
+        let uses = narrowing_at_uses("def f(d, k):\n    if k in d:\n        if g():\n            use()\n");
+        assert_eq!(uses, vec![Vec::<String>::new()]);
     }
 
     #[test]
