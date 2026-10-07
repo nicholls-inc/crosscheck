@@ -39,7 +39,7 @@ Task ER-1.6, issue #80. ER-1's acceptance asks for one Crosscheck pipeline to em
 
 ### Test / Coverage Impact
 
-- A `SKILL.md` has no unit tests. Step 7 was followed by hand on a scratch repository against the real Dafny image, through the MCP server built from this branch. The record passed `scripts/check-evidence-record.mjs`, and its rerun command exited 0.
+- A `SKILL.md` has no unit tests. Step 7 was followed by hand on a scratch repository against the real Dafny image, through the MCP server built from this branch, as it stood before Step 7 item 4's git-failure reports and item 8's retry and redraft were added. Diff Plan rows 6 and 7 were not run by hand. The record passed `scripts/check-evidence-record.mjs`, and its rerun command exited 0.
 - A run without `evidence:` behaves as before, except for one line in the Evidence Summary.
 - No invariant, eval or `dafny_evidence` rule changes.
 
