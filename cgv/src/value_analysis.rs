@@ -3384,6 +3384,12 @@ mod tests {
         assert_eq!(facts_of(&aliased, "code.label_of").nullable, Some(true));
         let decorated = format!("{records}@trace\ndef label_of(h: H):\n    h.name\n{guarded}");
         assert_eq!(facts_of(&[("code.py", &decorated)], "code.label_of").nullable, Some(true));
+        // The body of an async function or a generator runs after the call.
+        for def in ["async def", "def"] {
+            let body = if def == "def" { "yield\n    h.name" } else { "h.name" };
+            let lazy = format!("{records}{def} label_of(h: H):\n    {body}\n{guarded}");
+            assert_eq!(facts_of(&[("code.py", &lazy)], "code.label_of").nullable, Some(true), "{def}");
+        }
         let rebound = format!("{records}def label_of(h: H):\n    h = H(name=None)\n    h.name\n{guarded}");
         assert_eq!(facts_of(&[("code.py", &rebound)], "code.label_of").nullable, Some(true));
         let method = format!(

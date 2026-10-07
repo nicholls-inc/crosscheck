@@ -337,7 +337,7 @@ fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
 /// (see `CallerGuards`). A function qualifies when it has a resolved call,
 /// every call by its name resolves to it, its name is used nowhere but as
 /// a call (nor imported under another name, nor named by a string in
-/// `getattr`), it has no decorator, it is not a dunder method, and a
+/// `getattr`), it has no decorator, it is not async or a generator, it is not a dunder method, and a
 /// method's class has only project classes and `object` as bases,
 /// transitively. No function qualifies when the project looks a name up
 /// from a computed string (`getattr(o, name)`), and none in a module that
@@ -395,6 +395,11 @@ pub fn caller_guards(project: &Project) -> CallerGuards {
             && !looked_up
             && !names.escaping.contains(short)
             && f.decorators.is_empty()
+            // The body of an async function or a generator runs after the
+            // call, when the caller may have written the field the guard
+            // narrowed.
+            && !f.is_async
+            && !f.is_generator
             && !dunder
             && bases_known
     });

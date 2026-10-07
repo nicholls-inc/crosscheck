@@ -334,8 +334,10 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             Stmt::While(w) => {
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
-                v.header(&w.test, &n);
+                // The test runs again after every iteration, so it sees what
+                // the loop's own effects leave, not the state before the loop.
                 n.apply(&effects_of_stmt(stmt));
+                v.header(&w.test, &n);
                 let mut body_n = n.clone();
                 body_n.extend(positive(&w.test));
                 walk(&w.body, &body_n, exits, v, counts);

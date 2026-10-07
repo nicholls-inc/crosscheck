@@ -236,3 +236,23 @@ def call_writers(h: Holder) -> None:
         name_after_clear(h)
         name_after_forget(h)
         name_after_alias(h)
+
+
+# Pattern 4: a `while` test runs again after the body, which removes the key.
+def key_popped_in_while_test(d: dict, k: str) -> None:
+    if k in d:
+        while Rec(n=8, s=d.get(k)):
+            d.pop(k)
+
+
+# Pattern 2: the body of an async callee runs after the call, when the caller
+# has already cleared `h.name`, so no caller guard holds.
+async def lazy_label(h: Holder) -> Rec:
+    return Rec(n=9, s=h.name)
+
+
+async def call_lazy(h: Holder) -> None:
+    if h.name:
+        pending = lazy_label(h)
+        h.name = None
+        await pending

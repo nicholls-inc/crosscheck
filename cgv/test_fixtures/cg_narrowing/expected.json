@@ -140,6 +140,16 @@
       "path": "key_popped_before_nested_conditional_else -> Rec.s",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_while_test -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "lazy_label -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
     }
   ],
   "warnings": [
