@@ -350,18 +350,25 @@ pub fn caller_guards(project: &Project) -> CallerGuards {
     }
     let mut guards = CallerGuards::new();
     let mut resolved = HashMap::new();
+    let mut callers: HashMap<String, HashSet<String>> = HashMap::new();
     for func in &index.functions {
         let flow = FunctionFlow::of_info(func);
         let scope = Scope::new(index, &project.summaries, Some(func), &flow);
         let mut collector = GuardCollector {
             scope: &scope,
             file: &func.source_file,
+            caller: &func.qualified_name,
             guards: &mut guards,
             resolved: &mut resolved,
+            callers: &mut callers,
         };
         flow::walk_block(&func.body, &flow.entry, &mut collector);
     }
+    let entered = entered_functions(&callers);
     guards.retain(|q, _| {
+        if !entered.contains(q) {
+            return false;
+        }
         let Some(f) = index.function(q) else { return false };
         let short = f.name.rsplit('.').next().unwrap_or_default();
         let sites = &resolved[q];
@@ -377,6 +384,31 @@ pub fn caller_guards(project: &Project) -> CallerGuards {
         all_calls_seen && !names.escaping.contains(short) && f.decorators.is_empty() && !dunder && bases_known
     });
     guards
+}
+
+/// The functions entered by a call chain that starts at a function nothing
+/// calls: a function called only by itself, or only from a cycle of project
+/// functions that nothing outside calls, has no caller the project shows, so
+/// the guards at its recursive calls prove nothing about its entry.
+fn entered_functions(callers: &HashMap<String, HashSet<String>>) -> HashSet<String> {
+    let mut entered: HashSet<String> = HashSet::new();
+    loop {
+        let before = entered.len();
+        for (callee, from) in callers {
+            if entered.contains(callee) {
+                continue;
+            }
+            let grounded = from
+                .iter()
+                .any(|c| c != callee && (entered.contains(c) || !callers.contains_key(c)));
+            if grounded {
+                entered.insert(callee.clone());
+            }
+        }
+        if entered.len() == before {
+            return entered;
+        }
+    }
 }
 
 /// Whether every base of class `class_q`, transitively, is a project class or `object`.
@@ -450,9 +482,13 @@ impl<'a> Visitor<'a> for NameUses {
 struct GuardCollector<'s, 'a> {
     scope: &'s Scope<'a>,
     file: &'s str,
+    /// The function being scanned.
+    caller: &'s str,
     guards: &'s mut CallerGuards,
     /// The calls resolved to each function: `(file, offset)`.
     resolved: &'s mut HashMap<String, HashSet<(String, u32)>>,
+    /// The functions whose bodies call each function.
+    callers: &'s mut HashMap<String, HashSet<String>>,
 }
 
 impl<'e> FlowVisitor<'e> for GuardCollector<'_, '_> {
@@ -519,6 +555,7 @@ impl GuardCollector<'_, '_> {
             let Some(f) = self.scope.index.function(&qualified) else { continue };
             let site = (self.file.to_string(), call.range().start().to_u32());
             self.resolved.entry(qualified.clone()).or_default().insert(site);
+            self.callers.entry(qualified.clone()).or_default().insert(self.caller.to_string());
             let here = call_guards(f, implicit, call, ctx);
             match self.guards.entry(qualified) {
                 std::collections::hash_map::Entry::Vacant(e) => {

@@ -35,6 +35,49 @@
       "path": "key_rebound -> Rec.s",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "key_deleted -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_try -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_match -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_walrus -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "render -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "label_of -> Rec.s",
+      "contains": "'label_of' has no nullability postcondition"
+    },
+    {
+      "path": "key_in -> Rec.s",
+      "contains": "'key_in' has no nullability postcondition"
+    },
+    {
+      "path": "literal_key_in -> Rec.s",
+      "contains": "'literal_key_in' has no nullability postcondition"
+    },
+    {
+      "path": "key_not_in -> Rec.s",
+      "contains": "'key_not_in' has no nullability postcondition"
     }
   ]
 }

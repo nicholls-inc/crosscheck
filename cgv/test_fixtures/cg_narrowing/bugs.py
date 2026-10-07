@@ -67,3 +67,49 @@ def key_rebound(d: dict, k: str, j: str) -> Rec:
         k = j
         return Rec(n=1, s=d.get(k))
     return Rec(n=0, s="missing")
+
+
+# Pattern 4: the key is deleted after the check.
+def key_deleted(d: dict, k: str) -> Rec:
+    if k in d:
+        del d[k]
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: a handler runs after the body removed the key.
+def key_popped_in_try(d: dict, k: str) -> Rec:
+    if k in d:
+        try:
+            d.pop(k)
+            check()
+        except ValueError:
+            return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: a case body removes the key.
+def key_popped_in_match(d: dict, k: str, mode: int) -> Rec:
+    if k in d:
+        match mode:
+            case 1:
+                d.pop(k)
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: a walrus in a nested test rebinds the key.
+def key_walrus(d: dict, k: str, j: str) -> Rec:
+    if k in d:
+        if (k := j):
+            pass
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 2: the only caller is the function itself.
+def render(h: Holder, depth: int) -> Rec:
+    if depth:
+        if h.name:
+            render(h, depth - 1)
+    return Rec(n=4, s=h.name)

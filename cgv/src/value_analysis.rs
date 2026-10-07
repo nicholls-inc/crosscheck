@@ -3282,6 +3282,49 @@ mod tests {
              def a(h: H, xs):\n    if h.name:\n        label_of(*xs, h)\n"
         );
         assert_eq!(facts_of(&[("code.py", &starred)], "code.label_of").nullable, Some(true));
+        // Guards through a conditional expression and boolean operators.
+        for (code, want) in [
+            ("label_of(h) if h.name else None", None),
+            ("label_of(h) if not h.name else None", Some(true)),
+            ("None if h.name else label_of(h)", Some(true)),
+            ("h.name and label_of(h)", None),
+            ("not h.name or label_of(h)", None),
+            ("h.name or label_of(h)", Some(true)),
+        ] {
+            assert_eq!(f(&format!("def c(h: H):\n    {code}\n")), want, "{code}");
+        }
+        // A positional argument that falls into `*a` does not bind the
+        // keyword-only `h`.
+        let kwonly = format!(
+            "{records}def label_of(x, *a, h: H):\n    h.name\n\
+             def c(g, h: H):\n    if h.name:\n        label_of(g, h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &kwonly)], "code.label_of").nullable, Some(true));
+        let kwonly_ok = kwonly.replace("label_of(g, h)", "label_of(g, h=h)");
+        assert_eq!(facts_of(&[("code.py", &kwonly_ok)], "code.label_of").nullable, None);
+        // A narrowed field of the receiver binds `self`.
+        let recv = format!(
+            "{records}class S:\n    def label_of(self):\n        self.name\n\
+             def a(s: H):\n    if s.name:\n        S.label_of(s)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &recv)], "code.S.label_of").nullable, None);
+        // A method reference is a use as a value.
+        let attr = format!("{method}def c(s: S):\n    cb = s.label_of\n");
+        assert_eq!(facts_of(&[("code.py", &attr)], "code.S.label_of").nullable, Some(true));
+        // Only a function's own recursion, or a cycle nothing else enters,
+        // shows no caller.
+        let own = format!(
+            "{records}def label_of(h: H, n: int):\n    if n:\n        if h.name:\n            label_of(h, n - 1)\n    h.name\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &own)], "code.label_of").nullable, Some(true));
+        let cycle = format!(
+            "{records}def label_of(h: H):\n    if h.name:\n        other(h)\n    h.name\n\
+             def other(h: H):\n    if h.name:\n        label_of(h)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &cycle)], "code.label_of").nullable, Some(true));
+        // An outside entry into the same recursion shows a caller.
+        let entered = format!("{own}def start(h: H):\n    if h.name:\n        label_of(h, 3)\n");
+        assert_eq!(facts_of(&[("code.py", &entered)], "code.label_of").nullable, None);
     }
 
     /// Round 7: class constants read through `self` / `cls` take every

@@ -310,6 +310,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 let after = {
                     let mut a = n.clone();
                     remove_all(&mut a, bound_names(std::slice::from_ref(stmt)));
+                    // A handler (and `finally`) can run after any prefix of the
+                    // body, so a call there may already have removed a key.
+                    if !only_get_calls_in_stmts(&t.body) {
+                        a.forget_members();
+                    }
                     a
                 };
                 let body_end = walk(&t.body, &n, v, counts);
@@ -337,7 +342,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::Match(m) => {
                 v.header(&m.subject, &n);
                 n.extend(dereferenced(&m.subject));
-                forget_members_after(&mut n, &m.subject);
+                // The cases run on a clone, so a call in a guard or a body
+                // never reaches `n`: drop the facts for the whole statement.
+                if !only_get_calls_in_stmt(stmt) {
+                    n.forget_members();
+                }
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 for case in &m.cases {
                     walk(&case.body, &n, v, counts);
@@ -548,17 +557,34 @@ pub fn member_key_of(key: &Expr, container: &Expr) -> Option<String> {
     Some(member_key(&container, &key))
 }
 
-/// Whether every call in `node` is a `.get(...)` method call (one that
-/// cannot remove a key from a dict).
+/// Whether `node` leaves `member_key` facts alone: every call in it is a
+/// `.get(...)` method call (one that cannot remove a key from a dict), and
+/// it has no `del` and no walrus (which can rebind the key).
 struct OnlyGetCalls(bool);
 
 impl<'a> Visitor<'a> for OnlyGetCalls {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if matches!(stmt, Stmt::Delete(_)) {
+            self.0 = false;
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
     fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Call(c) = expr {
-            self.0 &= matches!(c.func.as_ref(), Expr::Attribute(a) if a.attr.as_str() == "get");
+        match expr {
+            Expr::Call(c) => {
+                self.0 &=
+                    matches!(c.func.as_ref(), Expr::Attribute(a) if a.attr.as_str() == "get");
+            }
+            Expr::Named(_) => self.0 = false,
+            _ => {}
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+fn only_get_calls_in_stmts(stmts: &[Stmt]) -> bool {
+    stmts.iter().all(only_get_calls_in_stmt)
 }
 
 fn only_get_calls(expr: &Expr) -> bool {
@@ -1463,6 +1489,16 @@ mod tests {
             "def f(x, y):\n    try:\n        assert x\n    except E:\n        return\n    finally:\n        use()\n        assert y\n    use()\n",
         );
         assert_eq!(uses, vec![vec![], vec!["y".to_string()]]);
+        // A body that always exits, a handler that falls through.
+        let uses = narrowing_at_uses(
+            "def f(x):\n    try:\n        return 1\n    except E:\n        assert x\n    use()\n",
+        );
+        assert_eq!(uses, vec![vec!["x".to_string()]]);
+        // A body that falls through, a handler that exits, and a nested try.
+        let uses = narrowing_at_uses(
+            "def f(x):\n    try:\n        try:\n            assert x\n        except E:\n            return\n    except F:\n        return\n    use()\n",
+        );
+        assert_eq!(uses, vec![vec!["x".to_string()]]);
     }
 
     #[test]
@@ -1511,6 +1547,33 @@ mod tests {
         assert_eq!(uses, vec![Vec::<String>::new()]);
         let uses = narrowing_at_uses("def f(d, k):\n    if k in d:\n        if g():\n            use()\n");
         assert_eq!(uses, vec![Vec::<String>::new()]);
+        // Statements that can remove or rebind the key without a plain call
+        // in the narrowed branch's own test.
+        let no_members = |code: &str| {
+            let uses = narrowing_at_uses(code);
+            assert!(
+                uses.iter().all(|u| u.iter().all(|n| !n.contains('['))),
+                "{code}: {uses:?}"
+            );
+        };
+        for body in [
+            "del d[k]\n        use()",
+            "if (k := j):\n            pass\n        use()",
+            "match mode:\n            case 1:\n                d.pop(k)\n        use()",
+            "match mode:\n            case 1 if g():\n                pass\n        use()",
+            "try:\n            d.pop(k)\n            h()\n        except E:\n            use()",
+            "assert g()\n        use()",
+            "with g():\n            use()",
+            "match g():\n            case 1:\n                pass\n        use()",
+            "if a:\n            pass\n        elif g():\n            use()",
+        ] {
+            no_members(&format!(
+                "def f(d, k, j, a, mode):\n    if k in d:\n        {body}\n"
+            ));
+        }
+        // The negative side of an `or` test with a call.
+        no_members("def f(d, k):\n    if k not in d or g():\n        return\n    use()\n");
+        no_members("def f(d, k, a):\n    if a:\n        return\n    elif k not in d or g():\n        return\n    use()\n");
         // A call in one iteration may remove the key before the next.
         for lp in ["for x in e:", "while x:"] {
             let uses = narrowing_at_uses(&format!(
