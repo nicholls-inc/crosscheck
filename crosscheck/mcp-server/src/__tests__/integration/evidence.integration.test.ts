@@ -685,9 +685,20 @@ describe("dafnyEvidence against a real git repository", () => {
       ]);
     });
 
-    it("accepts a UTF-8 byte-order mark", async () => {
+    it("accepts a UTF-8 byte-order mark and still scans the text after it", async () => {
       await commitFiles({ "proofs/Abs.dfy": `\uFEFFinclude "Lib.dfy"\n${SOURCE}`, "proofs/Lib.dfy": "" });
       expect((await dafnyEvidence(input)).errors).toEqual([]);
+      await commitFiles({ "proofs/Abs.dfy": `\uFEFFinclude "Missing.dfy"\n${SOURCE}` });
+      await refusesBeforeDafny([
+        'include "Missing.dfy" in proofs/Abs.dfy is outside the tracked files: not committed: proofs/Missing.dfy',
+      ]);
+    });
+
+    it("applies the path allowlist to an include inside an included file", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `include "Mid.dfy"\n${SOURCE}`, "proofs/Mid.dfy": 'include "L%69b.dfy"\n' });
+      await refusesBeforeDafny([
+        'include "L%69b.dfy" in proofs/Mid.dfy is outside the tracked files: the path has characters outside A-Z a-z 0-9 _ . / -, which Dafny may decode before it opens the file',
+      ]);
     });
 
     it("refuses a backslash in an include path with the outside-the-tree reason", async () => {
