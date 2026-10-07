@@ -1,0 +1,47 @@
+{
+  "program": {
+    "name": "proved",
+    "file": "Abs.dfy",
+    "sources": {
+      "Abs.dfy": "function Abs(x: int): int { if x < 0 then -x else x }\nlemma AbsNonneg(x: int) ensures Abs(x) >= 0 {}\n"
+    },
+    "theorems": [
+      "AbsNonneg"
+    ]
+  },
+  "imageId": "sha256:ccd363af0c7fdba1a7766568daf1ded858f93708eac6bb7f01b7d1ee725d8f1c",
+  "runs": [
+    {
+      "args": [
+        "verify",
+        "/work/Abs.dfy",
+        "--verify-included-files",
+        "--log-format",
+        "csv;LogFileName=/dev/stdout"
+      ],
+      "exitCode": 0,
+      "stdout": "\nDafny program verifier finished with 1 verified, 0 errors\nTestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed\nAbsNonneg (correctness),Passed,00:00:00.2244905,3871,0\nResults File: /dev/stdout\n",
+      "stderr": "",
+      "timedOut": false
+    },
+    {
+      "args": [
+        "audit",
+        "/work/Abs.dfy"
+      ],
+      "exitCode": 0,
+      "stdout": "Dafny auditor completed with 0 findings\n\nDafny program verifier did not attempt verification\n",
+      "stderr": "",
+      "timedOut": false
+    },
+    {
+      "args": [
+        "--version"
+      ],
+      "exitCode": 0,
+      "stdout": "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2\n",
+      "stderr": "",
+      "timedOut": false
+    }
+  ]
+}

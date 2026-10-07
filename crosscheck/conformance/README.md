@@ -19,8 +19,10 @@ Build a standalone binary:
     go build -o conformance ./crosscheck/conformance
     ./conformance crosscheck
 
-Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim, or a
-`present_artifact` ledger check that disagrees with the filesystem).
+Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim or
+claim with an unknown status, or a `present_artifact` ledger check that
+disagrees with the filesystem, or a `claims.json` that cannot be read or
+parsed, or a plugin root that is not a Crosscheck plugin tree).
 
 > Run commands assume the repo-root Go workspace (`go.work`), which lets the
 > nested module resolve when invoked from the repo root. From inside this
@@ -62,7 +64,67 @@ Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim, or a
   `tracked_in` link to its tracking issue (the ADD epic
   [#217](https://github.com/nicholls-inc/claude-code-marketplace/issues/217) and
   its children); a known-gap with no link also fails CI, so a "known" gap can
-  never be tracked nowhere.
+  never be tracked nowhere. `status` must be exactly one of `unreviewed`,
+  `known-gap`, `reviewed-disclosed` or `reviewed-accurate`. Any other value,
+  including an empty or missing one, fails CI, so a typo such as
+  `reviewed-disclsed` cannot pass as a reviewed claim.
+
+  A missing `claims.json` is an empty ledger. A `claims.json` that cannot be
+  read, or is not valid JSON, fails CI, so a syntax error cannot pass as a
+  ledger with no claims. A `claims.json` or `conformance` directory that is a
+  symlink to a missing target cannot be read, so it fails CI too. So does a
+  plugin root that does not resolve, because the path is wrong or a symlink on
+  it dangles: a run that scans nothing cannot pass. A plugin root is a directory
+  whose `.claude-plugin/plugin.json` has a `name` key, spelt exactly as Claude
+  Code reads it, whose value is `crosscheck`, and that holds at least one skill
+  (`skills/<name>/SKILL.md`) and one agent (`agents/<name>.md`). Any other
+  directory, such as the repository root or a directory that holds only a copy
+  of the manifest, fails CI. Not yet reached: a copied manifest next to one
+  skill and one agent passes, whatever else is missing. The property that
+  blocks it is a check that ties the tree to a released Crosscheck inventory,
+  and the open question is whether one can be written without pinning a count
+  that changes with every release. JSON that parses but breaks the ledger
+  schema fails CI as well:
+
+  | Place | Required keys | Optional keys |
+  |---|---|---|
+  | top level | `version` (the number `1`), `narrative_claims` (an array) | `description` (a string) |
+  | claim | `id`, `source`, `claim`, `reality` (non-blank strings), `status` (a string), `check` (an object) | `tracked_in` (a string) |
+  | `check` of type `manual` | `type` | none |
+  | `check` of type `present_artifact` | `type`, `path` (a non-blank string) | `expect_present` (`true` or `false`, default `true`) |
+
+  Any other `check.type`, such as `present_artfact`, fails, so a misspelt type
+  cannot pass as a check that never runs. Keys match exactly, including case, so
+  a misspelt `tracked-in` or `expect-present` fails instead of being dropped. A
+  key that appears twice in one object fails, so no copy of a key can hide from
+  the check. No value may be `null`. Two claims whose `id`s match once
+  surrounding white space is trimmed and case is folded fail, so `C1`, `c1` and
+  `C1 ` cannot name three different claims.
+
+  The file must be UTF-8 and hold one JSON value with nothing after it but
+  whitespace. An empty file, a truncated one, a byte-order mark and data after
+  the value each fail with a message written by the checker rather than by
+  `encoding/json`, so a Go upgrade cannot change it. The byte-order mark and
+  the data after the value name the byte; the empty and truncated messages do
+  not. A `check.type` that is not a string fails as `must be a string`. A required
+  text field of only white space and format characters, such as a zero-width
+  space, is blank. No string may hold U+FFFD or an unpaired surrogate escape,
+  which `encoding/json` would turn into U+FFFD without saying so.
+
+  Not yet reached: what the other text fields say. `source` need not name a
+  real file, `tracked_in` need not name a real issue, and `check.path` may point
+  outside the plugin root. The property that blocks them is a check of each
+  field against the tree and the tracker, and the open question is which of
+  them can be checked without a network call. Two `id`s that differ only by a
+  look-alike letter from another script are distinct. What blocks it is a rule
+  for which characters an `id` may hold, and the open question is whether that
+  is an allowlist or a Unicode confusables check (PB-1.45). Two `id`s that differ
+  only by a format character, such as `C1` and `C1` plus U+200B, are distinct
+  (PB-1.49). Text that no reader
+  sees but that is neither white space nor a format character, such as U+3164
+  HANGUL FILLER, is not blank. The property that blocks it is a definition of
+  visible text, and the open question is whether Unicode's
+  Default_Ignorable_Code_Point property is it.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
@@ -96,4 +158,5 @@ jobs:
 
 Add a claim to `claims.json` whenever the docs assert something about the plugin
 that the filesystem doesn't already prove. New claims start `status:"unreviewed"`
-(fails CI) until a human triages them to `reviewed-*` or `known-gap`.
+(fails CI) until a human triages them to `reviewed-disclosed`,
+`reviewed-accurate` or `known-gap`.

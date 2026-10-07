@@ -17,16 +17,77 @@
 // ledger entry with status 'unreviewed' is promoted to an ERROR (forces
 // triage), and a 'present_artifact' auto-check that disagrees with reality is
 // likewise promoted to an ERROR.
+//
+// A ledger claim's status must be one of these four, matched exactly:
+//
+//	unreviewed         - new and not yet triaged; an ERROR until triaged
+//	known-gap          - the claim does not hold yet; needs a tracked_in link
+//	reviewed-disclosed - reviewed, and the docs disclose where reality differs
+//	reviewed-accurate  - reviewed, and the claim holds as written
+//
+// Any other status, including an empty one, is an ERROR, so a typo such as
+// 'reviewed-disclsed' cannot pass as a reviewed claim.
+//
+// A missing claims.json is an empty ledger. A claims.json that cannot be read,
+// including a symlink to a missing target, or does not parse as the ledger
+// schema, is an ERROR. The schema (ledgerSchema, claimSchema, checkSchemas):
+//
+//	top level - version (the number 1) and narrative_claims (an array) are
+//	            required; description (a string) is optional
+//	claim     - id, source, claim and reality (non-blank strings), status (a
+//	            string) and check (an object) are required; tracked_in (a
+//	            string) is optional
+//	check     - type is manual or present_artifact; manual takes no other key;
+//	            present_artifact requires path (a non-blank string) and takes
+//	            an optional expect_present (true or false, default true)
+//
+// The file must be UTF-8 holding one JSON value and nothing after it but
+// whitespace, and the checker reports each fault in its own words. Keys match
+// exactly, including case. A key the schema does not name, a key that appears
+// twice in one object, a null anywhere, a non-string check.type, and a string
+// holding U+FFFD or an unpaired surrogate escape are ERRORs. So are two claims
+// whose ids match once surrounding white space is trimmed and case is folded
+// (sameID), because every ledger message names a claim by its id. A required
+// string of only white space and format characters (such as U+200B) is blank. A
+// claims.json or a conformance directory that is a symlink to a missing target
+// is an ERROR, and so is a plugin root that does not resolve, because it is
+// missing or a symlink on its path dangles. A plugin root is a directory whose
+// .claude-plugin/plugin.json has a "name" key, spelt exactly, whose value is
+// crosscheck, and that holds at least one skill (skills/<name>/SKILL.md) and
+// one agent (agents/<name>.md). Any other directory is an ERROR.
+//
+// Not yet reached: a copied manifest next to one skill and one agent passes,
+// whatever else is missing. The property that blocks it is a check that ties
+// the tree to a released Crosscheck inventory; the open question is whether
+// one can be written without pinning a count that changes with every release.
+//
+// Not yet reached: what the other text fields say. source and tracked_in need
+// not name a real file or issue, and check.path may point outside the plugin
+// root. The property that blocks it is a check of each field against the tree
+// and the tracker; the open question is which of them can be checked without a
+// network call. Two ids that differ only by a look-alike letter from another
+// script are distinct; what blocks it is a rule for which characters an id may
+// hold (PB-1.45). Two ids that differ only by a format character such as U+200B
+// are distinct (PB-1.49). Text no reader sees that is neither white space nor a format
+// character, such as U+3164, is not blank; the property that blocks it is a
+// definition of visible text, and the open question is whether
+// Default_Ignorable_Code_Point is it.
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // docFiles is the user-facing documentation set scanned for references. Files
@@ -37,6 +98,14 @@ var docFiles = []string{
 	"docs/agents.md",
 	"docs/assurance-hierarchy.md",
 	"docs/research/assurance-hierarchy.md",
+}
+
+// knownStatus is the ledger status allowlist the header comment documents.
+var knownStatus = map[string]bool{
+	"unreviewed":         true,
+	"known-gap":          true,
+	"reviewed-disclosed": true,
+	"reviewed-accurate":  true,
 }
 
 // reqKeys are the frontmatter keys every skill and agent must declare.
@@ -272,6 +341,9 @@ func analyze(root string) result {
 	var r result
 	r.skills = discoverSkills(root)
 	r.agents = discoverAgents(root)
+	if err := checkPluginRoot(root, len(r.skills), len(r.agents)); err != nil {
+		r.errors = append(r.errors, "[root] "+err.Error())
+	}
 	docText, present := scanDocs(root)
 	r.presentDocs = present
 	r.refTokens = referencedTokens(docText)
@@ -395,8 +467,17 @@ func analyze(root string) result {
 	}
 
 	// ---- LEDGER: narrative claims ----
-	r.ledger = loadLedger(root)
+	ledger, err := loadLedger(root)
+	if err != nil {
+		r.errors = append(r.errors, "[ledger] "+err.Error())
+	}
+	r.ledger = ledger
 	for _, c := range r.ledger {
+		if !knownStatus[c.Status] {
+			r.errors = append(r.errors, fmt.Sprintf(
+				"[ledger] claim %s has unknown status %q (want one of unreviewed|known-gap|reviewed-disclosed|reviewed-accurate)",
+				c.ID, c.Status))
+		}
 		if c.Status == "unreviewed" {
 			r.errors = append(r.errors, fmt.Sprintf(
 				"[ledger] claim %s is UNREVIEWED — triage required", c.ID))
@@ -422,6 +503,42 @@ func analyze(root string) result {
 	return r
 }
 
+// checkPluginRoot reports a root directory whose .claude-plugin/plugin.json
+// cannot be read, does not decode, or does not name crosscheck (LL-11), or
+// that holds no skill or no agent (LL-12). A root that is not a directory to
+// os.Stat passes here, because the ledger read reports it.
+func checkPluginRoot(root string, skills, agents int) error {
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return nil
+	}
+	notTree := "plugin root " + root + " is not a Crosscheck plugin tree: "
+	data, err := os.ReadFile(filepath.Join(root, ".claude-plugin", "plugin.json"))
+	if err != nil {
+		return fmt.Errorf("%s%w", notTree, err)
+	}
+	// A map, not a struct: json.Unmarshal folds a struct field's key case, and
+	// Claude Code rejects a manifest whose only name key is "Name".
+	var manifest map[string]json.RawMessage
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return fmt.Errorf("%s.claude-plugin/plugin.json: %w", notTree, err)
+	}
+	raw, ok := manifest["name"]
+	if !ok {
+		return fmt.Errorf("%s.claude-plugin/plugin.json has no \"name\" key", notTree)
+	}
+	var name string
+	if err := json.Unmarshal(raw, &name); err != nil {
+		return fmt.Errorf("%s.claude-plugin/plugin.json name is %s, want \"crosscheck\"", notTree, raw)
+	}
+	if name != "crosscheck" {
+		return fmt.Errorf("%s.claude-plugin/plugin.json names %q, want \"crosscheck\"", notTree, name)
+	}
+	if skills == 0 || agents == 0 {
+		return fmt.Errorf("%sit holds %d skills and %d agents, want at least one skill (skills/<name>/SKILL.md) and one agent (agents/<name>.md)", notTree, skills, agents)
+	}
+	return nil
+}
+
 // readMCPSource concatenates every .ts and .js file under mcp-server/, or ""
 // if the directory does not exist.
 func readMCPSource(root string) string {
@@ -442,17 +559,343 @@ func readMCPSource(root string) string {
 	return sb.String()
 }
 
-// loadLedger reads conformance/claims.json, or returns nil if absent/unreadable.
-func loadLedger(root string) []claim {
-	data := readFile(filepath.Join(root, "conformance", "claims.json"))
-	if data == "" {
-		return nil
+// loadLedger reads conformance/claims.json. A missing file is an empty ledger;
+// a file that cannot be read, cannot be parsed, or breaks the ledger schema
+// (checkLedgerSchema) is an error, so a broken ledger fails
+// the run instead of passing with zero claims. A symlink to a missing target,
+// at claims.json or at conformance, cannot be read, and neither can a ledger
+// under a root that does not resolve.
+func loadLedger(root string) ([]claim, error) {
+	dir := filepath.Join(root, "conformance")
+	path := filepath.Join(dir, "claims.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		for _, p := range []string{path, dir} {
+			if danglingSymlink(p) {
+				return nil, fmt.Errorf("cannot read conformance/claims.json: %s is a symbolic link to a missing target: %w", p, err)
+			}
+		}
+		if _, serr := os.Stat(root); serr != nil {
+			return nil, fmt.Errorf("cannot read conformance/claims.json: plugin root %s does not resolve: %w", root, serr)
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot read conformance/claims.json: %w", err)
+	}
+	if err := checkLedgerSchema(data); err != nil {
+		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
 	var lf ledgerFile
-	if err := json.Unmarshal([]byte(data), &lf); err != nil {
-		return nil
+	if err := json.Unmarshal(data, &lf); err != nil {
+		return nil, fmt.Errorf("cannot parse conformance/claims.json: %w", err)
 	}
-	return lf.NarrativeClaims
+	return lf.NarrativeClaims, nil
+}
+
+// field is one key of the ledger schema: whether an object must carry it, and
+// the kind its value must have.
+type field struct {
+	required bool
+	kind     kind
+}
+
+// schema maps each key an object may carry to its field. Key names match
+// exactly, because json.Unmarshal matches them without regard to case and
+// drops any key it cannot place.
+type schema map[string]field
+
+// kind returns "" for a value of the right kind, or the fault. A null never
+// reaches a kind: checkFields rejects it first.
+type kind func(raw json.RawMessage) string
+
+// text decodes a JSON string. encoding/json turns an unpaired surrogate escape
+// into U+FFFD without an error, so any U+FFFD is a fault: the decoded text
+// would not be what the file says.
+func text(raw json.RawMessage) (string, string) {
+	var s string
+	if json.Unmarshal(raw, &s) != nil {
+		return "", "must be a string"
+	}
+	if strings.ContainsRune(s, utf8.RuneError) {
+		return "", "must not contain U+FFFD or an unpaired surrogate"
+	}
+	return s, ""
+}
+
+// invisible reports white space and format characters such as U+200B.
+func invisible(r rune) bool {
+	return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r)
+}
+
+func nonBlank(raw json.RawMessage) string {
+	s, fault := text(raw)
+	switch {
+	case fault == "must be a string":
+		return "must be a non-blank string"
+	case fault != "":
+		return fault
+	case strings.TrimFunc(s, invisible) == "":
+		return "must be a non-blank string"
+	}
+	return ""
+}
+
+func anyString(raw json.RawMessage) string {
+	_, fault := text(raw)
+	return fault
+}
+
+func array(raw json.RawMessage) string {
+	if !bytes.HasPrefix(raw, []byte("[")) {
+		return "must be an array"
+	}
+	return ""
+}
+
+func boolean(raw json.RawMessage) string {
+	var b bool
+	if json.Unmarshal(raw, &b) != nil {
+		return "must be true or false"
+	}
+	return ""
+}
+
+// versionOne accepts only the number 1 written as 1, the one ledger version.
+func versionOne(raw json.RawMessage) string {
+	if string(raw) != "1" {
+		return "must be 1, got " + string(raw)
+	}
+	return ""
+}
+
+// nested is the kind of an object that checkLedgerSchema walks itself.
+func nested(json.RawMessage) string { return "" }
+
+var (
+	ledgerSchema = schema{
+		"version":          {true, versionOne},
+		"description":      {false, anyString},
+		"narrative_claims": {true, array},
+	}
+	claimSchema = schema{
+		"id":         {true, nonBlank},
+		"source":     {true, nonBlank},
+		"claim":      {true, nonBlank},
+		"reality":    {true, nonBlank},
+		"status":     {true, anyString},
+		"check":      {true, nested},
+		"tracked_in": {false, anyString},
+	}
+	// checkSchemas holds one schema per check.type. A type not listed here is
+	// an error, so a misspelt type cannot pass as a check that never runs.
+	checkSchemas = map[string]schema{
+		"manual": {
+			"type": {true, nonBlank},
+		},
+		"present_artifact": {
+			"type":           {true, nonBlank},
+			"path":           {true, nonBlank},
+			"expect_present": {false, boolean},
+		},
+	}
+)
+
+// checkLedgerSchema rejects a file that is not one UTF-8 JSON value
+// (checkJSONText), and JSON that is not a ledger: an object that repeats a
+// key, a key the schema does not name, a required key that is absent, a null,
+// or a value of the wrong kind. It runs before json.Unmarshal, which would
+// drop a repeated key, fold case and read null as a zero value.
+func checkLedgerSchema(data []byte) error {
+	if err := checkJSONText(data); err != nil {
+		return err
+	}
+	top, err := readObject(data, "the ledger")
+	if err != nil {
+		return err
+	}
+	if err := checkFields("the ledger", top, ledgerSchema, ""); err != nil {
+		return err
+	}
+	var claims []json.RawMessage
+	if err := json.Unmarshal(top["narrative_claims"], &claims); err != nil {
+		return fmt.Errorf("narrative_claims: %w", err)
+	}
+	ids := make([]string, 0, len(claims))
+	for i, c := range claims {
+		where := fmt.Sprintf("narrative_claims[%d]", i)
+		fields, err := readObject(c, where)
+		if err != nil {
+			return err
+		}
+		if err := checkFields(where, fields, claimSchema, ""); err != nil {
+			return err
+		}
+		if err := checkCheck(where+".check", fields["check"]); err != nil {
+			return err
+		}
+		var id string
+		// checkFields has already required a non-blank string id, so this cannot fail.
+		_ = json.Unmarshal(fields["id"], &id)
+		for j, prev := range ids {
+			if sameID(prev, id) {
+				return fmt.Errorf("%s.id %q repeats narrative_claims[%d].id %q", where, id, j, prev)
+			}
+		}
+		ids = append(ids, id)
+	}
+	return nil
+}
+
+// sameID reports whether two claim ids would read as one claim in a log line:
+// equal once surrounding white space is trimmed and case is folded.
+func sameID(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
+// checkCheck checks a claim's check against the schema its type names.
+func checkCheck(where string, raw json.RawMessage) error {
+	fields, err := readObject(raw, where)
+	if err != nil {
+		return err
+	}
+	typ, ok := fields["type"]
+	if !ok {
+		return fmt.Errorf("%s.type is missing", where)
+	}
+	if string(typ) == "null" {
+		return fmt.Errorf("%s.type is null", where)
+	}
+	name, fault := text(typ)
+	if fault != "" {
+		return fmt.Errorf("%s.type %s", where, fault)
+	}
+	sch, ok := checkSchemas[name]
+	if !ok {
+		return fmt.Errorf("%s.type is %s, want one of manual|present_artifact", where, typ)
+	}
+	return checkFields(where, fields, sch, fmt.Sprintf(" for type %q", name))
+}
+
+// checkJSONText rejects a file that is not UTF-8 holding exactly one JSON value,
+// in the checker's own words, so a Go upgrade cannot change the message. The
+// UTF-8, syntax and trailing-data faults name a byte.
+func checkJSONText(data []byte) error {
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		if r == utf8.RuneError && size == 1 {
+			return fmt.Errorf("the ledger is not valid UTF-8 at byte %d", i)
+		}
+		i += size
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var v json.RawMessage
+	err := dec.Decode(&v)
+	var syntax *json.SyntaxError
+	switch {
+	case errors.Is(err, io.EOF):
+		return errors.New("the ledger is empty")
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return errors.New("the ledger ends before its top-level value is complete")
+	case errors.As(err, &syntax):
+		return fmt.Errorf("the ledger is not valid JSON at byte %d", max(syntax.Offset-1, 0))
+	case err != nil:
+		return errors.New("the ledger is not valid JSON")
+	}
+	end := dec.InputOffset()
+	rest := data[end:]
+	if gap := len(rest) - len(bytes.TrimLeft(rest, " \t\r\n")); gap < len(rest) {
+		return fmt.Errorf("the ledger has data after its top-level value at byte %d", end+int64(gap))
+	}
+	return nil
+}
+
+// readObject decodes data as one JSON object and returns its keys, failing on
+// null, on any other non-object value, and on a key that appears twice. It
+// reads every copy of every key, which json.Unmarshal into a map does not.
+func readObject(data []byte, where string) (map[string]json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", where, err)
+	}
+	if tok == nil {
+		return nil, fmt.Errorf("%s is null", where)
+	}
+	if tok != json.Delim('{') {
+		return nil, fmt.Errorf("%s is not an object", where)
+	}
+	fields := map[string]json.RawMessage{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", where, err)
+		}
+		key, ok := tok.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s: unexpected token %v", where, tok)
+		}
+		if _, dup := fields[key]; dup {
+			return nil, fmt.Errorf("%s has duplicate key %q", where, key)
+		}
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return nil, fmt.Errorf("%s: %w", where, err)
+		}
+		fields[key] = v
+	}
+	return fields, nil
+}
+
+// checkFields checks one object's keys against sch: unknown keys, then missing
+// keys, then each present key for null and kind, each pass in sorted order.
+// suffix follows an unknown-key fault, to name the check type that decides it.
+func checkFields(where string, fields map[string]json.RawMessage, sch schema, suffix string) error {
+	path := func(k string) string {
+		if where == "the ledger" {
+			return k
+		}
+		return where + "." + k
+	}
+	keys := sortedKeys(fields)
+	for _, k := range keys {
+		if _, ok := sch[k]; !ok {
+			return fmt.Errorf("%s has unknown key %q%s", where, k, suffix)
+		}
+	}
+	for _, k := range sortedKeys(sch) {
+		if _, ok := fields[k]; sch[k].required && !ok {
+			return fmt.Errorf("%s is missing", path(k))
+		}
+	}
+	for _, k := range keys {
+		if string(fields[k]) == "null" {
+			return fmt.Errorf("%s is null", path(k))
+		}
+		if fault := sch[k].kind(fields[k]); fault != "" {
+			return fmt.Errorf("%s %s", path(k), fault)
+		}
+	}
+	return nil
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// danglingSymlink reports whether path exists as a directory entry but not
+// once its symbolic links are followed.
+func danglingSymlink(path string) bool {
+	if _, err := os.Lstat(path); err != nil {
+		return false
+	}
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // report renders the human-readable oracle report from a result.
