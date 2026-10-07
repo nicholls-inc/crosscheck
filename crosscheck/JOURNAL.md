@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — `npm test` replays real Dafny output through `dafny_evidence`
+
+**Type:** test
+**Touches:** mcp-server/src/__tests__/fixtures/, mcp-server/src/__tests__/integration/evidence.dafny-output.integration.test.ts, mcp-server/src/__tests__/e2e/dafny-output.e2e.test.ts, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** `npm test` covered DE-5 to DE-8 only with Dafny output typed by hand, and no test ran the evidence record checker on a record the tool wrote.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-real-output-tests.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+Eight Dafny programs, from a proved lemma to an included `{:axiom}`, were run through `dafny_evidence` against the real image, and every Dafny run's arguments, exit code and output are committed as fixtures. The integration test replays them and refuses a run whose arguments differ, so a change to how the tool calls Dafny forces a new recording. The fixtures show two things the hand-written logs did not: a lemma that rests on an unproved include, and one with an `assume`, both appear as `Passed` in the verification log, so only verify's exit code refuses them. The e2e test rewrites the fixtures under `RECORD_DAFNY_FIXTURES=1` and otherwise fails when the image's output drifts from them. The rerun command still runs only in the e2e suite.
+
+---
+
 ## 2026-10-07 — `dafny_evidence` reruns by image ID, and narrows its output and include paths
 
 **Type:** feature

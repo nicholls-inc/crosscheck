@@ -1,0 +1,50 @@
+{
+  "program": {
+    "name": "include-proved",
+    "file": "Abs.dfy",
+    "sources": {
+      "Abs.dfy": "include \"Lib.dfy\"\nlemma T() ensures 2 == 2 { Ok(); }\n",
+      "Lib.dfy": "lemma Ok() ensures 1 == 1 {}\n"
+    },
+    "theorems": [
+      "T",
+      "Ok"
+    ]
+  },
+  "imageId": "sha256:ccd363af0c7fdba1a7766568daf1ded858f93708eac6bb7f01b7d1ee725d8f1c",
+  "runs": [
+    {
+      "args": [
+        "verify",
+        "/work/Abs.dfy",
+        "--verify-included-files",
+        "--log-format",
+        "csv;LogFileName=/dev/stdout"
+      ],
+      "exitCode": 0,
+      "stdout": "\nDafny program verifier finished with 2 verified, 0 errors\nTestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed\nOk (correctness),Passed,00:00:00.2128380,2961,0\nT (correctness),Passed,00:00:00.0094915,2979,0\nResults File: /dev/stdout\n",
+      "stderr": "",
+      "timedOut": false
+    },
+    {
+      "args": [
+        "audit",
+        "/work/Abs.dfy",
+        "/work/Lib.dfy"
+      ],
+      "exitCode": 0,
+      "stdout": "Dafny auditor completed with 0 findings\n\nDafny program verifier did not attempt verification\n",
+      "stderr": "",
+      "timedOut": false
+    },
+    {
+      "args": [
+        "--version"
+      ],
+      "exitCode": 0,
+      "stdout": "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2\n",
+      "stderr": "",
+      "timedOut": false
+    }
+  ]
+}
