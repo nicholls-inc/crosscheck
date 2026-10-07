@@ -61,7 +61,7 @@ Python project (.py files)
 | Lean kernel | Absolute — accepts or rejects the proof |
 | Checker + proofs | Proved — soundness theorems are machine-checked |
 | Theorem statements | Tracked — the kernel proves each theorem only as stated, so CI compares the statements (and the definitions reachable from `constraintImplies`, `IsDataPath` and `stepwiseSound`) with the committed manifest `prover/protected-statements.txt`; a change fails CI unless the manifest changes with it, which is a reviewed protected-surface change. CI also fails if a protected theorem or definition depends on `sorry` or on any axiom other than `propext`, `Classical.choice` and `Quot.sound` |
-| Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
+| Translation | Not proved — no theorems yet. `translateRows` translates every row or rejects the database (exit 2), so no row is dropped. It rejects an unknown `constraint_type`, `verification_level`, `contract_role` or `relationship`, a node kind other than `model`, `function` or `field`, two rows with one id, an edge or contract row that names a missing node, a per-edge contract row whose edge is missing, has no `source_override`, starts at another node or is not a postcondition, a row with neither the value its kind reads nor a `dependent_expr`, and a malformed `dependent_expr`, `param_choices` or decimal bound. The SQL reads that produce the rows (`readNodes`, `readContracts`, `readEdges`) are not tested yet; TB-1.21 tests them |
 | Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
 
@@ -270,11 +270,11 @@ A value derived from the parameter of a single-parameter function gets a depende
 
 **Checking.** Each hop of a path compares the source's guarantees with the target's requirements of the same kind, after composing dependent bounds along the path. Errors are reported once per finding with the shortest path, the failing hop and the write or call site. A hop where the target has a requirement but the source has no guarantee of that kind gives a warning, when the requirement could reject a value.
 
-**Trust:** the Python data class semantics in `BehaviorModel.lean` are trusted-not-proved like the Django ones. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is the annotation, which Python does not enforce at runtime; the claim is relative to a type-correct program. pydantic enforces its constraints on construction. `Cls.model_validate(...)`, `model_validate_json`, `model_validate_strings` and the v1 `parse_obj` and `parse_raw` take untyped input and reject an invalid value with a `ValidationError`, so they are a validation boundary: an entry for a field whose contract validation enforces is not a write. An entry stays a write for a field with `decimal_places` or `max_digits` (pydantic counts digits after it drops trailing zeros, so it stores `Decimal("1.2300")` in a `decimal_places=2` field), for `SkipValidation[T]` or a `PlainValidator` or `WrapValidator` in `Annotated` metadata (each can store a value validation would reject), and for a `None` default under an annotation without None (pydantic v1 reads it as Optional). A typed constructor call `Cls(f=v)` is a write for every field. Return annotations are not trusted: they are checked at every `return` of the function, and callers rely on them only as that checked guarantee. Parameter annotations are the requirements of the function; a value that the extractor cannot show meets one gives a warning.
+**Trust:** the Python data class semantics in `BehaviorModel.lean` are trusted-not-proved like the Django ones. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is the annotation, which Python does not enforce at runtime; the claim is relative to a type-correct program. pydantic enforces its constraints on construction. `Cls.model_validate(...)`, `model_validate_json`, `model_validate_strings` and the v1 `parse_obj` and `parse_raw` take untyped input and reject an invalid value with a `ValidationError`, so they are a validation boundary: an entry for a field whose contract validation enforces is not a write. An entry stays a write for a field with `decimal_places` or `max_digits` (pydantic counts digits after it drops trailing zeros, so it stores `Decimal("1.2300")` in a `decimal_places=2` field), for `SkipValidation[T]` or a `PlainValidator` or `WrapValidator` in `Annotated` metadata (each can store a value validation would reject), and for a `None` default under an annotation without None (pydantic v1 reads it as Optional). A typed constructor call `Cls(f=v)` is a write for every field. Return annotations are not trusted: they are checked at every `return` of the function, and callers rely on them only as that checked guarantee, with these exceptions. Three assumptions are trusted unchecked, because they decide where a body ends: a project function annotated `NoReturn` or `Never` never returns (it has no return contract, so CGV does not check its `return`s), a parameter annotated with a project enum holds one of its members (a `match` that names every member ends the flow), and `sys.exit`, `os._exit`, `os.abort`, `typing.assert_never`, `typing_extensions.assert_never` and the builtins `exit` and `quit` never return. A call inside a `with` body is not yet reached: it is not treated as an exit, because a context manager may suppress what it raises; the blocking property is that the extractor does not know which context managers propagate exceptions, and the open question is whether to recognise a closed list of them (CG-1.24 covers the narrowing that such a suppression drops). A violated assumption can hide a non-null error, so the claim holds for a type-correct program, as for dataclass fields. Not yet reached: a method that a subclass or a class-body assignment overrides, a nested function that rebinds the subject through `nonlocal`, and a star import that rebinds `sys`; each can make a call or a `match` look like an exit when it is not. The blocking property is that the resolver searches readable base classes depth-first and skips unreadable ones, `rebound` does not record an assignment through a class name, `bound_names` does not look inside nested functions, and the resolver cannot tell what a star import exports; the open question is whether the resolver should report an uncertain resolution so that callers can refuse it (CG-1.21, CG-1.22, CG-1.25 and CG-1.27). Parameter annotations are the requirements of the function; a value that the extractor cannot show meets one gives a warning.
 
 **Not covered:** a tuple return is one value (no per-element contracts); `@property` access and nested functions are not followed; values built inside comprehensions are unknown (`sum()`, `max()` and `min()` of a generator excepted); a dependent bound is only produced for single-parameter functions; a function's result is the join of its return values, so a return branch that certainly violates a requirement combined with a branch of unknown bounds only warns; `functools.partial` objects and calls on `Protocol`-typed receivers are not followed (a Protocol method's declaration stands for every implementation: its annotation, no bounds); lower bounds on string length (`min_length`) are not checked; an annotation naming a type imported from a package outside the project, other than the standard library and the modelled or widely used frameworks (Django, pydantic, attrs, SQLAlchemy, FastAPI, ...), says nothing about None (it may alias an `Optional` type, as `opentelemetry.util.types.Attributes` does), so it gives no non-null contract; a module-level dict of literals is a constant only when the project never mutates it by name (`X[k] = v`, `X.update(...)`), mutation through another reference is not seen; pydantic field aliases; DRF `ModelSerializer` writes; `max_digits` overflow of the integer part is not claimed; a method called between an attribute write and the save is assumed not to reassign the attribute; a return annotation of `float` or `int` is not a type requirement (`int` and `bool` values are acceptable there), and an annotation name that looks like a type variable (`T`, `TModel`, `T_co`) has no return contract. Writes the project cannot see are not checked: a framework calling a dict or `**kw` forwarder that the project also calls (only the project's calls are checked), raw SQL, fixtures. Checking is flow-sensitive for None but not path-sensitive, and some facts are over-approximated; each of the following can produce a false positive:
 
-- `isinstance` guards, and conditions that make a branch infeasible (for example an exhaustive enum or status handled with a fallback `return None`, or a function that falls off the end only for values its callers never pass);
+- `isinstance` guards, and conditions that make a branch infeasible (for example an exhaustive `match` over a member list the extractor cannot read, a method called through an instance that never returns, or a function that falls off the end only for values its callers never pass; a call of a `NoReturn` function, `sys.exit` or a `match` over every member of a project enum is understood: see Trust above);
 - `.get(k)` is nullable even when the key is always present (a payload built with it, a request that always carries it), and so is `.get(x)` on an object of unknown type with a `get` method (it is read as `dict.get`);
 - values validated elsewhere (a manifest or schema checked before the write, a caller that always passes a value to a `None`-default parameter) are only as known as the code at the write shows;
 - decorators that inject arguments are modelled only when the decorator is defined in the project; exceptions suppressed by a context manager are not modelled;
@@ -288,33 +288,73 @@ A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` 
 
 ## Output
 
-`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead; `--no-warnings` then hides WARNING blocks from the body (they're still counted in the final `RESULT:` line). Both formats exit with the checker's semantic exit code.
+`contracts check` writes JSON to stdout by default (the Lean checker's own output, passed through unchanged). Pass `--format text` for a human-readable report instead. Both formats exit with the checker's semantic exit code, except in [baseline mode](#baseline-mode).
+
+The text report prints each error and each warning as a block. A missing guarantee, where a hop's source has no guarantee of the constraint kind that its target requires, is not a finding, so by default the report does not print it. It counts it as an unverified requirement in the `COVERAGE BY MODULE` section, which gives, for each top-level module, the edges checked and the unverified requirements by kind, and in the `RESULT:` line. `--warnings` also prints each unverified requirement as an `UNVERIFIED` block ("no nullability guarantee for the value `f` passes to `T`"). `--no-warnings` hides the warning blocks as well. Every hidden block is still counted. An incomplete run (exit 2) has no coverage section. The JSON output keeps every warning unchanged. The rules are UC-1 to UC-10 in `intent/2026-10-07-cgv-unverified-coverage-spec.md`.
 
 ```
 $ ./target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
     --lean-checker ./prover/.lake/build/bin/contract-graph-checker --format text
-CONTRACTS CHECKED: 12
-EDGES CHECKED: 3
-STATES CHECKED: 2
+CONTRACTS CHECKED: 18
+EDGES CHECKED: 7
+STATES CHECKED: 8
 
-ERROR  utils.py:27 → models.py:5
+ERROR  utils.py:6 → models.py:5
        compute_offpeak guarantees precision ≤ 4
        EnergyRecord.energy requires precision ≤ 3
        Path: compute_offpeak → split_energy → EnergyRecord.energy
        Failing hop: split_energy → EnergyRecord.energy
+       At: utils.py:27
        Path verification level: ASSUMED
        Note: invisible to pairwise checking.
        Suggestion: Source guarantees ≤ 4, target requires ≤ 3. Either tighten the source or widen the target.
 
-WARNING  utils.py:27 → utils.py:27
+WARNING  utils.py:16 → models.py:5
        split_energy guarantees precision (dependent)
-       EnergyRecord.energy requires precision (dependent)
+       EnergyRecord.energy requires precision ≤ 3
        Path: split_energy → EnergyRecord.energy
+       At: utils.py:27
        Path verification level: EXTRACTED
        Suggestion: Dependent expression on split_energy could not be resolved. Check that upstream postconditions provide the required input bindings.
 
-RESULT: 1 error, 1 warning. Exit code 1.
+COVERAGE BY MODULE
+  utils: 7 edges checked, 0 requirements unverified
+
+RESULT: 1 error, 1 warning, 0 unverified. Exit code 1.
 ```
+
+On `test_fixtures/r6_alternatives/` the coverage section reads:
+
+```
+COVERAGE BY MODULE
+  bug: 12 edges checked, 2 requirements unverified (precision 1, range_min 1)
+  ok: 12 edges checked, 0 requirements unverified
+An unverified requirement is not yet reached: the value's source has no guarantee of the kind the target requires, so the requirement passes vacuously. Open question: which guarantee the extractor could infer for such a value, or which annotation it should ask for. Pass --warnings to list them.
+
+RESULT: 3 errors, 0 warnings, 2 unverified. Exit code 1.
+```
+
+### Baseline mode
+
+A whole-project run reports every finding in the project. On a pull request, baseline mode reports only the findings that the change introduces.
+
+- `--write-baseline PATH` writes the findings of the run to a baseline file. The run's output and exit code do not change, except that a site file that cannot be read makes the run print an error and exit 2 before any report. A run that is incomplete or does not produce a checker result writes no file, and removes any file already at PATH.
+- `--baseline PATH` compares the run with a baseline file. Only the findings that are not in the baseline are printed. The ones that are in it are counted on a `BASELINE:` line (text) or under `baseline.existing` (JSON). Baseline findings that the run no longer reports are listed as fixed. The run exits 1 when any error is not in the baseline, 0 when every error is, and 2 when it is incomplete or the baseline file is missing or malformed.
+- `--baseline` and `--write-baseline` cannot name the same file, through any spelling of the path or a symbolic link. The run exits 2 before the checker runs, because overwriting the baseline with the run's new errors would let the next run exit 0. Write the new baseline to another path.
+
+A finding matches a baseline entry when its class, source, target, failing hop, guarantee, requirement, site file and the text of the site's line are equal. The key holds no line number, so an edit above a finding does not make it new. When the run has more findings with one key than the baseline has, every finding with that key is printed as new. A change that removes one finding and adds an equal one, with the same key, is matched and not reported. That case is not yet reached: the blocking property is that the key holds no position, and the open question is whether a finer field can tell such a pair apart without making unrelated edits churn the key. The rules are BL-1 to BL-11 in `intent/2026-10-07-cgv-baseline-mode-spec.md`.
+
+In CI, make the baseline from the pull request's base commit and compare the head with it:
+
+```bash
+git worktree add ../base "$BASE_SHA"
+crosscheck-contracts contracts check ../base/app --write-baseline baseline.json \
+  --lean-checker "$CHECKER" > /dev/null || true
+crosscheck-contracts contracts check app --baseline baseline.json \
+  --lean-checker "$CHECKER" --format text
+```
+
+Pass the same options to both runs. Different options, or another CGV version, can only make more findings new. The first run's exit code is ignored on purpose: a base with findings still gives a baseline. If the first run is incomplete it writes no baseline, and the second run exits 2.
 
 ### Evidence record
 
@@ -328,9 +368,11 @@ The checked path and the `--overrides` file must sit in a git work tree with no 
 |------|---------|
 | 0 | Every data path (function → model node) that the extractor discovered is consistent; see [What exit 0 promises](#what-exit-0-promises) |
 | 1 | One or more inconsistencies found |
-| 2 | Extraction, parse or translation failure (including an unreadable database or a malformed contract row), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
+| 2 | Extraction, parse or translation failure (including an unreadable database or a row that translation rejects, see [Trust model](#trust-model)), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
 
 `--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.
+
+With `--baseline`, exit 0 means that every error the checker reported was in the baseline, and exit 1 that some error was not (see [Baseline mode](#baseline-mode)). It does not carry the promise below, so `--baseline` cannot be combined with `--evidence-record`.
 
 ### What exit 0 promises
 
@@ -340,4 +382,4 @@ The checked path and the `--overrides` file must sit in a git work tree with no 
 - **Writes outside the project's code are not yet reached.** This covers writes that Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a DRF serializer's `save()`), raw SQL, and fixtures. The property that blocks them is that the write happens in framework code or in the database, which the extractor does not read. The open question is how small a model of each framework's write paths can be and still be trusted.
 - **Only paths that end at a model node.** A data path runs from a function node to a model node. A `flows_to` edge into a callee that never reaches a model node is not yet reached. The blocking property is that the theorem's notion of a data path (`IsDataPath`) requires the path to end at a model node, so it says nothing about a hop that has no route to one. The open question is how a callee's contract should be modelled when the callee has no model node.
 - **Relative to the translated constraints, not to Django or pydantic.** Translation from the database to Lean is not proved, and `BehaviorModel.lean` is trusted, not proved. No theorem links the checked constraints to it. For dataclass, attrs, `NamedTuple` and `TypedDict` fields the contract is an annotation that Python does not enforce, so the claim holds for a type-correct program. A program that is not type-correct is not yet reached: the blocking property is that CGV does not read the type checker's verdict, and the open question is whether it should require one.
-- **A missing guarantee is a warning, not an error.** When a hop's target has a requirement that could reject a value and the source has no guarantee of that kind, CGV warns and still exits 0. The theorem's "stepwise sound" (`stepwiseSound`) is vacuously true for such a hop: it compares only guarantees and requirements of the same kind, so it proves nothing about the requirement that has no guarantee. That is why `runChecker_sound_all` can hold for runs that exit 0 with warnings. That every such case produces a warning is the checker's behaviour and is not proved. A warning names a requirement that CGV could not show, so read a run that exits 0 with warnings as having unknown paths, not consistent ones. `RESULT:` in the text report counts the warnings.
+- **A missing guarantee is a warning, not an error.** When a hop's target has a requirement that could reject a value and the source has no guarantee of that kind, CGV warns and still exits 0. The theorem's "stepwise sound" (`stepwiseSound`) is vacuously true for such a hop: it compares only guarantees and requirements of the same kind, so it proves nothing about the requirement that has no guarantee. That is why `runChecker_sound_all` can hold for runs that exit 0 with warnings. That every such case produces a warning is the checker's behaviour and is not proved. A warning names a requirement that CGV could not show, so read a run that exits 0 with warnings as having unknown paths, not consistent ones. The text report does not print these warnings by default, but counts them as unverified requirements in its coverage section and its `RESULT:` line (see [Output](#output)).
