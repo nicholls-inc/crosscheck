@@ -289,13 +289,8 @@ fn library_name(index: &ProjectIndex, class: &ClassInfo, expr: &Expr) -> Option<
         return None;
     }
     // A nested class's bases are read in the enclosing class bodies.
-    let mut outer = class.name.as_str();
-    while let Some((o, _)) = outer.rsplit_once('.') {
-        let q = crate::resolve::qualify(&class.module, o);
-        if index.classes.get(&q).is_none_or(|c| c.body_names.contains(head)) {
-            return None;
-        }
-        outer = o;
+    if index.enclosing_body_binds(class, head) {
+        return None;
     }
     let (root, mut path) = match module.imports.get(head) {
         Some(Import::Symbol { module: m, name }) => (m.clone(), vec![m.clone(), name.clone()]),
@@ -839,6 +834,10 @@ mod tests {
         let exit = [
             "class K(Base):\n    pass\n",
             "class K(Left, object):\n    pass\n",
+            // Names bound inside a method, a lambda or a nested class stay local to it.
+            "class K(Base):\n    def g(self):\n        (s := 1)\n        match 1:\n            case s:\n                pass\n",
+            "class K(Base):\n    h = lambda: (s := 1)\n",
+            "class K(Base):\n    class Inner:\n        type s = int\n",
             // The override comes after the class that has `s` in the MRO.
             "class Other:\n    @staticmethod\n    def s(m):\n        return m\n\nclass K(Base, Other):\n    pass\n",
         ];
@@ -854,6 +853,14 @@ mod tests {
             "class K(Base):\n    s = staticmethod(print)\n",
             "class K(Base):\n    if X:\n        def s(m):\n            return m\n",
             "class K(Base):\n    from lib import s\n",
+            // Bound by a `case` capture, a walrus, a `type` statement or a default.
+            "class K(Base):\n    match 1:\n        case s:\n            pass\n",
+            "class K(Base):\n    match [1]:\n        case [*s]:\n            pass\n",
+            "class K(Base):\n    match {}:\n        case {**s}:\n            pass\n",
+            "class K(Base):\n    match 1:\n        case int() as s:\n            pass\n",
+            "class K(Base):\n    (s := print)\n",
+            "class K(Base):\n    def g(self, a=(s := print)):\n        pass\n",
+            "class K(Base):\n    type s = int\n",
             // The MRO puts the override first (depth-first search would not).
             "class Right(Base):\n    @staticmethod\n    def s(m):\n        return m\n\nclass K(Left, Right):\n    pass\n",
             // Bound twice in the class that defines it.
@@ -862,9 +869,28 @@ mod tests {
             "class Right(Left):\n    pass\n\nclass K(Left, Right):\n    pass\n",
             // `object` that the module binds is not the builtin.
             "object = Mixin\n\nclass K(Base, object):\n    pass\n",
+            "from lib import object\n\nclass K(Base, object):\n    pass\n",
+            "from lib import *\n\nclass K(Base, object):\n    pass\n",
+            // A class that is its own base, or a cycle.
+            "class K(K):\n    pass\n",
+            "class K(Right, Base):\n    pass\n\nclass Right(K):\n    pass\n",
         ];
         for class in not_exit {
             assert_eq!(calls(&format!("{base}{class}{call}"), "f"), Vec::<String>::new(), "{class}");
+        }
+    }
+
+    #[test]
+    fn test_method_through_a_nested_class_reads_its_bases_in_the_enclosing_body() {
+        let src = |outer_body: &str| {
+            format!("from typing import NoReturn\nfrom lib import Other\n\nclass Base:\n    @staticmethod\n    def s(m) -> NoReturn:\n        raise E(m)\n\nclass Outer:\n{outer_body}    class K(Base):\n        pass\n\ndef f(x):\n    Outer.K.s(x)\n")
+        };
+        for body in ["", "    y = 1\n"] {
+            assert_eq!(calls(&src(body), "f"), ["Outer.K.s(x)"], "{body}");
+        }
+        // The enclosing body rebinds `Base`.
+        for body in ["    Base = Other\n", "    from lib import Base\n", "    def Base():\n        pass\n"] {
+            assert_eq!(calls(&src(body), "f"), Vec::<String>::new(), "{body}");
         }
     }
 
@@ -878,6 +904,11 @@ mod tests {
             "from django.db import models\n\nclass E(models.TextChoices):\n    A = 'a', 'A'\n",
             "import django.db.models\n\nclass E(django.db.models.IntegerChoices):\n    A = 1, 'A'\n",
             "from django.db.models.enums import TextChoices\n\nclass E(str, TextChoices):\n    A = 'a', 'A'\n",
+            "from django.db.models.enums import IntegerChoices\n\nclass E(IntegerChoices):\n    A = 1, 'A'\n",
+            "from django.db.models.enums import Choices\n\nclass E(Choices):\n    A = 1\n",
+            "from django.db.models import Choices\n\nclass E(Choices):\n    A = 1\n",
+            "import builtins\nfrom enum import Enum\n\nclass E(builtins.str, Enum):\n    A = 'a'\n",
+            "from enum import Enum\n\nclass E(int, Enum):\n    A = 1\n",
         ];
         for class in exhaustive {
             assert_eq!(marked(&[("code.py", &format!("{class}{f}"))], "f").1, ["match e:"], "{class}");
@@ -928,6 +959,8 @@ mod tests {
             ("from lib import member as property\n", "@property"),
             ("def staticmethod(fn):\n    return 3\n", "@staticmethod"),
             ("from lib import *\n", "@classmethod"),
+            ("property = lambda fn: 3\n", "@property"),
+            ("staticmethod = print\nif X:\n    classmethod = print\n", "@classmethod"),
         ];
         for (head, deco) in not_exhaustive {
             assert_eq!(marked(&[("code.py", &class(head, deco))], "f").1, Vec::<String>::new(), "{head}{deco}");

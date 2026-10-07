@@ -14,7 +14,8 @@
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::visitor::{walk_expr, walk_pattern, walk_stmt, Visitor};
+use ruff_python_ast::{Expr, Pattern, Stmt};
 
 use crate::dataclass_extractor::DataClassKind;
 use crate::function_extractor::FunctionInfo;
@@ -1004,7 +1005,69 @@ fn body_bindings(body: &[Stmt]) -> Vec<String> {
     }
     let mut out = Vec::new();
     walk(body, &mut out);
+    let mut scope = ScopeBinders { out: &mut out };
+    scope.visit_body(body);
     out
+}
+
+/// The names a class body binds that `body_bindings`' statement walk does
+/// not read: `case` captures (`case s:`, `case [*s]`, `case {**s}`,
+/// `case X() as s`), walrus targets (`(s := ...)`), and `type s = ...`. It
+/// does not enter a `def`, a `class` or a `lambda` body, whose names are
+/// local to it, but reads what those evaluate in the class scope (decorators,
+/// defaults, base classes).
+struct ScopeBinders<'o> {
+    out: &'o mut Vec<String>,
+}
+
+impl<'a> Visitor<'a> for ScopeBinders<'_> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(f) => {
+                f.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                self.visit_parameters(&f.parameters);
+            }
+            Stmt::ClassDef(c) => {
+                c.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                if let Some(args) = &c.arguments {
+                    self.visit_arguments(args);
+                }
+            }
+            Stmt::TypeAlias(t) => {
+                if let Expr::Name(n) = t.name.as_ref() {
+                    self.out.push(n.id.to_string());
+                }
+            }
+            _ => walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Lambda(l) => {
+                if let Some(parameters) = &l.parameters {
+                    self.visit_parameters(parameters);
+                }
+            }
+            Expr::Named(n) => {
+                if let Expr::Name(target) = n.target.as_ref() {
+                    self.out.push(target.id.to_string());
+                }
+                walk_expr(self, expr);
+            }
+            _ => walk_expr(self, expr),
+        }
+    }
+
+    fn visit_pattern(&mut self, pattern: &'a Pattern) {
+        match pattern {
+            Pattern::MatchAs(p) => self.out.extend(p.name.iter().map(|n| n.to_string())),
+            Pattern::MatchStar(p) => self.out.extend(p.name.iter().map(|n| n.to_string())),
+            Pattern::MatchMapping(p) => self.out.extend(p.rest.iter().map(|n| n.to_string())),
+            _ => {}
+        }
+        walk_pattern(self, pattern);
+    }
 }
 
 /// Attributes assigned as `<first param>.attr = ...` in the methods of a class body.
@@ -1565,6 +1628,22 @@ impl ProjectIndex {
         None
     }
 
+    /// Whether the name `head`, read in the bases of `class`, may be bound by
+    /// the body of a class that encloses it. A nested class's bases are read
+    /// there, not at module level, so such a name cannot be looked up in the
+    /// module. True also when an enclosing class is not in the index.
+    pub fn enclosing_body_binds(&self, class: &ClassInfo, head: &str) -> bool {
+        let mut outer = class.name.as_str();
+        while let Some((o, _)) = outer.rsplit_once('.') {
+            let q = qualify(&class.module, o);
+            if self.classes.get(&q).is_none_or(|c| c.body_names.contains(head)) {
+                return true;
+            }
+            outer = o;
+        }
+        false
+    }
+
     /// The C3 linearisation of `class_q`, when every base is a project class
     /// or the builtin `object`.
     fn mro(&self, class_q: &str, depth: usize) -> Option<Vec<String>> {
@@ -1575,6 +1654,9 @@ impl ProjectIndex {
         let module = self.modules.get(&class.module)?;
         let mut bases = Vec::new();
         for base in &class.bases {
+            if dotted_parts(base).is_none_or(|p| self.enclosing_body_binds(class, &p[0])) {
+                return None;
+            }
             match self.resolve_expr(&class.module, base) {
                 Some(Symbol::Class(bq)) if bq != class_q => bases.push(bq),
                 _ if matches!(base, Expr::Name(n) if n.id.as_str() == "object")
