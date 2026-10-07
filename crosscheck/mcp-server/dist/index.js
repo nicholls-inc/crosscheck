@@ -21356,14 +21356,17 @@ async function dafnyCleanup() {
 import { execFile } from "node:child_process";
 import { lstat, readFile as readFile2, realpath, rename, unlink, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolvePath, sep } from "node:path";
+var PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
 var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
 function validateEvidenceInput(input) {
   const errors = [];
   if (!isAbsolute(input.repoPath)) errors.push(`repoPath must be absolute: ${input.repoPath}`);
   const segments = input.file.split("/");
-  if (isAbsolute(input.file) || input.file.includes("\\") || segments.some((s) => s === ".." || s === "." || s === "") || !input.file.endsWith(".dfy")) {
-    errors.push(`file must be a relative path to a .dfy file with no "." or ".." segment: ${input.file}`);
+  if (isAbsolute(input.file) || input.file.includes("\\") || segments.some((s) => s === ".." || s === "." || s === "") || !input.file.endsWith(".dfy") || !PLAIN_PATH.test(input.file)) {
+    errors.push(
+      `file must be a relative path to a .dfy file with no "." or ".." segment, made of A-Z a-z 0-9 _ . / - : ${input.file}`
+    );
   }
   if (input.statement.trim() === "") errors.push("statement is blank");
   if (input.requirement !== null && input.requirement.trim() === "") {
@@ -21447,7 +21450,6 @@ async function untrackedReason(root, path) {
   return null;
 }
 var INCLUDE = /\binclude\b(?:\s+"([^"]*)")?/g;
-var PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
 async function readScannedSource(root, path) {
   const bytes = await readFile2(resolvePath(root, path));
   if (bytes.includes(0)) throw new Error(`${path} is not UTF-8 text (it has a NUL byte, as UTF-16 and UTF-32 text does)`);

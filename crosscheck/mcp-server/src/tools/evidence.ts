@@ -40,6 +40,11 @@ export interface EvidenceOutput {
   writtenTo: string | null;
 }
 
+// Dafny decodes a source file by its byte-order mark and percent-decodes a path, on the command line as
+// well as in an include, so the scan reads only text it decodes the same way: no NUL byte (which
+// UTF-16 and UTF-32 text always has), and `file` and every include path made of plain path characters.
+const PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
+
 const NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 const AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
 
@@ -51,9 +56,12 @@ export function validateEvidenceInput(input: EvidenceInput): string[] {
     isAbsolute(input.file) ||
     input.file.includes("\\") ||
     segments.some((s) => s === ".." || s === "." || s === "") ||
-    !input.file.endsWith(".dfy")
+    !input.file.endsWith(".dfy") ||
+    !PLAIN_PATH.test(input.file)
   ) {
-    errors.push(`file must be a relative path to a .dfy file with no "." or ".." segment: ${input.file}`);
+    errors.push(
+      `file must be a relative path to a .dfy file with no "." or ".." segment, made of A-Z a-z 0-9 _ . / - : ${input.file}`
+    );
   }
   if (input.statement.trim() === "") errors.push("statement is blank");
   if (input.requirement !== null && input.requirement.trim() === "") {
@@ -173,11 +181,6 @@ async function untrackedReason(root: string, path: string): Promise<string | nul
 // also reads `include @"x.dfy"` and `include /* c */ "x.dfy"`, so an `include` followed by anything
 // else is refused rather than skipped.
 const INCLUDE = /\binclude\b(?:\s+"([^"]*)")?/g;
-
-// Dafny decodes a source file by its byte-order mark and percent-decodes an include path, so the scan
-// reads only text it decodes the same way: no NUL byte (which UTF-16 and UTF-32 text always has), and an include path of
-// plain path characters.
-const PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
 
 async function readScannedSource(root: string, path: string): Promise<string> {
   const bytes = await readFile(resolvePath(root, path));

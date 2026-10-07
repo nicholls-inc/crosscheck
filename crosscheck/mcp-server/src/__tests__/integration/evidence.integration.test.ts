@@ -167,12 +167,14 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(result.errors).toEqual(["not committed: proofs/Missing.dfy"]);
   });
 
-  it("treats file as a literal path, not a glob (DE-4)", async () => {
+  it("refuses a glob as the file before git is asked about it (DE-1, DE-4)", async () => {
     await writeFile(join(repo, "proofs", "Glob.dfy"), SOURCE);
     git(repo, "add", ".");
     git(repo, "commit", "-q", "-m", "second");
     const result = await dafnyEvidence({ ...input, file: "proofs/*.dfy" });
-    expect(result.errors).toEqual(["not committed: proofs/*.dfy"]);
+    expect(result.errors).toEqual([
+      'file must be a relative path to a .dfy file with no "." or ".." segment, made of A-Z a-z 0-9 _ . / - : proofs/*.dfy',
+    ]);
     expect(runDafny).not.toHaveBeenCalled();
   });
 

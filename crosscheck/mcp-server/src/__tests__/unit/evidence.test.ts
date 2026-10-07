@@ -33,6 +33,8 @@ describe("validateEvidenceInput (DE-1)", () => {
     ["dot segment", { file: "./Abs.dfy" }],
     ["empty segment", { file: "proofs//Abs.dfy" }],
     ["backslash", { file: "proofs\\Abs.dfy" }],
+    ["percent escape, which Dafny decodes", { file: "proofs/A%41.dfy" }],
+    ["space", { file: "proofs/A bc.dfy" }],
     ["wrong extension", { file: "proofs/Abs.lean" }],
     ["blank statement", { statement: " \n" }],
     ["blank requirement", { requirement: "  " }],
