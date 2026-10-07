@@ -22,6 +22,8 @@ The generator walks from the constants in each protected theorem's statement and
 
 The walk now starts from every constant in a protected statement as well as the three definitions, and scopes by defining module, so private helpers count. The manifest grows from 107 hashed constants to 386, the checker among them, so a change to the checker's definitions now makes a pull request Tier 3. The generator reads the CGV table in `.claude/rules/protected-surfaces.md` and fails if names or files differ, and CGV CI runs when that file changes. `scripts/manifest-selftest.sh` pins each behaviour with a case that fails when it is mutated away. Whether that script is itself a protected surface is TB-1.27.
 
+---
+
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
 **Type:** fix
@@ -112,6 +114,17 @@ Twenty-one issues are refined and two are dropped. #37 is already done on `main`
 **Links:** [intent](intent/2026-10-07-kernel-replay.md), [plan](intent/2026-10-07-kernel-replay-plan.md)
 
 The pinned toolchain ships `leanchecker`, so no dependency was added. `leanchecker --fresh ContractGraph.Main` replays the whole import closure of `ContractGraph.Main` (the Lean library, `leansqlite` and the `ContractGraph` modules) into an empty environment, and `leanchecker ContractGraph` replays every `ContractGraph.*` module. Locally the first took 48 to 57 s and the second 3.5 s. A self-test step compiles a bad module and a module that imports it outside the Lake package, and fails unless both modes reject them with the kernel's type mismatch, so a toolchain whose `leanchecker` changes cannot pass silently. The self-test sets `PATH` to the pinned toolchain's `bin`: run from a scratch directory, `leanchecker` otherwise asked elan's default toolchain for its sysroot and failed on an incompatible `Init.olean`. The replay skips constants whose kernel safety is `unsafe` or `partial`, and a safe theorem that uses one fails with an unknown constant. It uses the kernel that built the files, so a second, independent checker stays not yet reached: it needs an export of the proofs that a second checker reads, and the open question is which checker to use. The tier gate's evidence line for `cgv/**` does not name the replay yet (TB-1.5).
+
+---
+
+## 2026-10-06 - Only a whole `Fixes-Incident:` line is an incident reference
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/tier-layer-gate.md, intent/2026-09-30-incident-eval-range-spec.md, docs/TASKS.md
+**Why:** The check matched its trigger anywhere in a line. The run for #62 failed after the merge with the incident id `<id>` and a backtick, because the body quoted the trigger and a commit wrapped a sentence onto it.
+**Links:** [intent](intent/2026-10-06-incident-line.md), [spec](intent/2026-10-06-incident-line-spec.md), [plan](intent/2026-10-06-incident-line-plan.md)
+
+A line now counts only when it holds the trigger and one id, optionally indented, with nothing else on it. That is the anchor the tier gate uses for `Tier:` and the queue check for `Task:`, with one extra condition: no second word after the id, because wrapped commit prose can start a line with the trigger. The body is matched one line at a time, so an empty trigger line no longer takes the next line's first word. Replaying #62 against the remote now prints the skip line. A reference written as a sentence is now skipped silently; the `incident` label still forces the check. A trigger line in a fenced code block and a placeholder id still count. The spec records all three as not yet reached.
 
 ---
 

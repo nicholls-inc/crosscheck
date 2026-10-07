@@ -169,11 +169,56 @@ test('IE-5: trailing punctuation is dropped from an id read from a commit', () =
   assert.equal(result.stdout, failureOutput([noEval('INC-7'), noInvariant('INC-7')]));
 });
 
-test('IE-5: the body is matched as one text, so an incident line with no value takes the next line', () => {
+test('IE-5: the body is matched one line at a time, so an incident line with no value does not take the next line', () => {
   const { checkout, head } = mergedPr({ branchMessages: ['fix: plain change'] });
   const result = run(checkout, head, { PR_BODY: 'Fixes-Incident:\nINC-4' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, SKIPPED);
+});
+
+const PR_62_BODY_LINE =
+  '- Trigger: the `incident` label, or the text `Fixes-Incident: <id>` in any case, anywhere in a line of the PR body or a commit message.';
+const PR_62_COMMIT_LINE = 'Fixes-Incident: line, needs an eval and a candidate invariant, exits 2 when';
+
+test('IE-9: the body line of #62, which quotes the trigger, is not a reference', () => {
+  const { checkout, head } = mergedPr({ branchMessages: ['fix: plain change'] });
+  const result = run(checkout, head, { PR_BODY: `## Change\n\n${PR_62_BODY_LINE}\n` });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, SKIPPED);
+});
+
+test('IE-9: the commit line of #62, prose wrapped to start with the trigger, is not a reference', () => {
+  const { checkout, head } = mergedPr({
+    branchMessages: [`docs: state the trigger\n\nThe check starts from the incident label or a\n${PR_62_COMMIT_LINE}\nit cannot read the commits.\n\nTask: PB-1.8`],
+  });
+  const result = run(checkout, head);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, SKIPPED);
+});
+
+test('IE-9: a list or quote marker before the trigger makes the line not a reference', () => {
+  for (const marker of ['- ', '* ', '+ ', '> ']) {
+    const { checkout, head } = mergedPr({ branchMessages: [`fix: a\n\n${marker}Fixes-Incident: INC-7`] });
+    const result = run(checkout, head, { PR_BODY: `${marker}Fixes-Incident: INC-8` });
+    assert.equal(result.status, 0, `${marker}: ${result.stderr}`);
+    assert.equal(result.stdout, SKIPPED, marker);
+  }
+});
+
+test('IE-9: an indented trigger line with trailing spaces, and a body with CRLF line ends, are references', () => {
+  const { checkout, head } = mergedPr({ branchMessages: ['fix: plain change'] });
+  for (const body of ['Why\n\n  Fixes-Incident: INC-8  \n', 'Why\r\n\r\nFixes-Incident: INC-8\r\n']) {
+    const result = run(checkout, head, { PR_BODY: body });
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, failureOutput([noEval('INC-8'), noInvariant('INC-8')]), JSON.stringify(body));
+  }
+});
+
+test('IE-9: a quoted trigger earlier in the body does not hide a whole trigger line after it', () => {
+  const { checkout, head } = mergedPr({ branchMessages: ['fix: plain change'] });
+  const result = run(checkout, head, { PR_BODY: `${PR_62_BODY_LINE}\n\nFixes-Incident: INC-5\n` });
   assert.equal(result.status, 1, result.stderr);
-  assert.equal(result.stdout, failureOutput([noEval('INC-4'), noInvariant('INC-4')]));
+  assert.equal(result.stdout, failureOutput([noEval('INC-5'), noInvariant('INC-5')]));
 });
 
 test('IE-1: a commit message over 1 MiB is read', () => {

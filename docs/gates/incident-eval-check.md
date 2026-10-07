@@ -16,9 +16,9 @@ The workflow runs on `pull_request` `closed`, and only when the pull request was
 On every merged pull request, the check first reads the pull request's commits, from `refs/pull/<number>/head`, in the range `origin/<base>..<head>`. It then applies when either of these holds:
 
 - the pull request has the `incident` label, in any case;
-- its body, or one of its commit messages, contains `Fixes-Incident: <id>`, in any case. The id is the first word after the colon, with one trailing `.`, `,` or `;` dropped. The body is read first, and the first match wins.
+- a line of its body, or of one of its commit messages, holds only `Fixes-Incident:`, in any case, and one id, optionally indented. The id has one trailing `.`, `,` or `;` dropped. The body is read first, and the first match wins.
 
-The text is matched anywhere in a line, so a description that only quotes it also counts. Write the trigger without its colon when you mean to talk about it.
+The line is matched whole. The trigger in the middle of a line, after a list or quote marker, or followed by more than one word does not count, so a description that only quotes it does not fire the check.
 
 ## What it needs
 

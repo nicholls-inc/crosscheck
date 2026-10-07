@@ -2,6 +2,8 @@
 
 Intent: `intent/2026-09-30-incident-eval-range.md`. Governing roadmap item: PB-1.
 
+IE-5 and IE-6 are revised, and IE-9 added, by `intent/2026-10-06-incident-line-spec.md`: only a whole `Fixes-Incident:` line is an incident reference, and the PR body is matched one line at a time.
+
 IE-2 and IE-6 are revised, and IE-8 added, by `intent/2026-10-06-incident-eval-surfaces-spec.md`: a GitHub rebase merge writes new commit SHAs, so it does not leave an empty range.
 
 - **IE-1.** `scripts/ci/incident-eval-check.mjs` reads three inputs from the environment: `PR_NUMBER`, `BASE_REF` and `HEAD_SHA`. It fetches `refs/pull/<PR_NUMBER>/head` from `origin` and reads the message of every commit in `origin/<BASE_REF>..<HEAD_SHA>`. It reads them after a squash merge whose head branch was deleted, and reads up to 256 MiB of `git log` output, not Node's 1 MiB default. Output past that limit exits 2 (IE-2), with Node's `ENOBUFS` error in place of git's.
