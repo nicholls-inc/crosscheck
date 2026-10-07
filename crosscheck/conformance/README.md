@@ -82,9 +82,12 @@ parsed).
   So a misspelt `tracked-in` or `expect-present` fails instead of being
   dropped. Not yet reached: which keys a claim must carry, the value of
   `version`, the value of `check.type` (an unknown type runs no auto-check),
-  and duplicate keys (the last one wins). The property that blocks them is a
-  list of required fields and allowed values, and the open question is which
-  of them the real ledger can meet today (PB-1.40).
+  and duplicate keys. A duplicated scalar key keeps its last value, and a
+  duplicated `check` object is merged, while the key check reads only the last
+  copy, so an unknown key in an earlier copy is dropped unreported. The
+  property that blocks them is a list of required fields and allowed values and
+  a decoder that sees every key, and the open question is which of them the
+  real ledger can meet today (PB-1.40).
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 

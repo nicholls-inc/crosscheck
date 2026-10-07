@@ -493,7 +493,7 @@ func TestLedgerLoad(t *testing.T) {
 		{"claim_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},null]}`), parseErr + "narrative_claims[1] is null", 0},
 		{"check_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":null}]}`), parseErr + "narrative_claims[0].check is null", 0},
 		{"check_not_object", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":"manual"}]}`), parseErr, 0},
-		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"zeta":1,"bogus":1}`), parseErr + `the ledger has unknown key "bogus"`, 0},
+		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"k5":1,"k9":1,"k3":1,"k8":1,"k1":1,"k7":1,"k2":1,"k6":1,"k4":1}`), parseErr + `the ledger has unknown key "k1"`, 0},
 		{"unknown_claim_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"known-gap","tracked-in":"#1"}]}`), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
 		{"unknown_check_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":{"type":"present_artifact","path":"README.md","expect-present":false}}]}`), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
 		{"key_case_mismatch", writeLedger(`{"Narrative_Claims":[]}`), parseErr + `the ledger has unknown key "Narrative_Claims"`, 0},
