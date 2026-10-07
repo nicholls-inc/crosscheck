@@ -73,7 +73,9 @@ parsed).
   read, or is not valid JSON for the ledger types, fails CI, so a syntax error
   cannot pass as a ledger with no claims. A `claims.json` or `conformance`
   directory that is a symlink to a missing target cannot be read, so it fails
-  CI too. JSON that parses but has the wrong shape fails CI as well. The top
+  CI too. So does a plugin root that does not resolve, because the path is
+  wrong or a symlink on it dangles: a run that scans nothing cannot pass. JSON
+  that parses but has the wrong shape fails CI as well. The top
   level, each claim and each `check` must be objects, `narrative_claims` must be
   present and not `null`, and every key must be one the ledger names
   (`version`, `description` and `narrative_claims` at the top; `id`, `source`,

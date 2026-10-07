@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -501,6 +503,11 @@ func TestLedgerLoad(t *testing.T) {
 			`{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","tracked_in":"",` +
 			`"check":{"type":"present_artifact","path":"README.md","expect_present":true}}]}`), "", 1},
 	}
+	wrapsNotExist := map[string]bool{
+		"dangling_symlink":         true,
+		"dangling_symlink_chain":   true,
+		"dangling_conformance_dir": true,
+	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			files := baseTree()
@@ -530,6 +537,72 @@ func TestLedgerLoad(t *testing.T) {
 			}
 			if !strings.Contains(out, "RESULT: FAIL") {
 				t.Errorf("want RESULT: FAIL, got:\n%s", out)
+			}
+			if wrapsNotExist[tc.name] {
+				if _, err := loadLedger(root); !errors.Is(err, fs.ErrNotExist) {
+					t.Errorf("want an error that wraps fs.ErrNotExist, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestLedgerLoadRoot covers a plugin root that does not resolve: the ledger
+// read reports a missing file, but no ledger exists to be missing.
+func TestLedgerLoadRoot(t *testing.T) {
+	const readErr = "[ledger] cannot read conformance/claims.json: plugin root "
+	symlink := func(t *testing.T, target, path string) {
+		if err := os.Symlink(target, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name       string
+		root       func(t *testing.T, base string) string
+		wantPrefix string
+	}{
+		{"missing_root", func(_ *testing.T, base string) string {
+			return filepath.Join(base, "missing")
+		}, readErr},
+		{"dangling_root", func(t *testing.T, base string) string {
+			root := filepath.Join(base, "root")
+			symlink(t, "missing", root)
+			return root
+		}, readErr},
+		{"dangling_ancestor", func(t *testing.T, base string) string {
+			symlink(t, "missing", filepath.Join(base, "repo"))
+			return filepath.Join(base, "repo", "crosscheck")
+		}, readErr},
+		{"empty_root", func(_ *testing.T, base string) string {
+			return base
+		}, ""},
+		{"root_symlink_to_tree", func(t *testing.T, base string) string {
+			files := baseTree()
+			delete(files, "conformance/claims.json")
+			root := filepath.Join(base, "root")
+			symlink(t, writeTree(t, files), root)
+			return root
+		}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tc.root(t, t.TempDir())
+			r := analyze(root)
+			out := report(r)
+			if tc.wantPrefix == "" {
+				if len(r.errors) != 0 || !strings.Contains(out, "RESULT: PASS") {
+					t.Errorf("want a pass with no errors, got: %v", r.errors)
+				}
+				return
+			}
+			if len(r.errors) != 1 || !strings.HasPrefix(r.errors[0], tc.wantPrefix) {
+				t.Errorf("want one error starting %q, got: %v", tc.wantPrefix, r.errors)
+			}
+			if !strings.Contains(out, "RESULT: FAIL") {
+				t.Errorf("want RESULT: FAIL, got:\n%s", out)
+			}
+			if _, err := loadLedger(root); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("want an error that wraps fs.ErrNotExist, got: %v", err)
 			}
 		})
 	}
