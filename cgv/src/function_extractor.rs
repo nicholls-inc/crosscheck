@@ -568,7 +568,7 @@ pub fn apply_shadows(func: &mut FunctionInfo, shadow: &dyn Fn(&Expr) -> Option<S
         if let Expr::Tuple(t) = sub.slice.as_ref() {
             if let Some(first) = t.elts.first() {
                 // The elements are uniform by their spelling, which is
-                // "unknown" for every union: the answer for the first one
+                // "unknown" for every union and quoted element: the answer for the first one
                 // holds for the tuple only when every element gets it.
                 let answer = shadow(first);
                 if t.elts.iter().all(|e| shadow(e) == answer) {
