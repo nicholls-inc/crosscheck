@@ -16,7 +16,17 @@ interface DockerOptions {
   timeoutMs?: number;
   network?: string;
   readOnly?: boolean;
+  sandboxed?: boolean;
 }
+
+// Spec DE-6: no capabilities, no privilege gain, at most 512 processes and threads, and not root.
+// The rerun command of an evidence record (DE-9) passes the same flags.
+export const SANDBOX_FLAGS = [
+  "--cap-drop=ALL",
+  "--security-opt=no-new-privileges",
+  "--pids-limit=512",
+  "--user=65534:65534",
+];
 
 export function getDockerImage(): string {
   return process.env.DAFNY_DOCKER_IMAGE || "crosscheck-dafny:latest";
@@ -43,6 +53,7 @@ function runDocker(
     `--network=${network}`,
     `--memory=${memory}`,
     `--cpus=${cpus}`,
+    ...(opts.sandboxed ? SANDBOX_FLAGS : []),
     "-v",
     opts.readOnly ? `${tempDir}:/work:ro` : `${tempDir}:/work`,
     image,
@@ -109,10 +120,15 @@ export function dockerImageId(image: string): Promise<string | null> {
 export async function runDafny(
   tempDir: string,
   args: string[],
-  { image = getDockerImage(), readOnly = false }: { image?: string; readOnly?: boolean } = {}
+  {
+    image = getDockerImage(),
+    readOnly = false,
+    sandboxed = false,
+  }: { image?: string; readOnly?: boolean; sandboxed?: boolean } = {}
 ): Promise<DockerResult> {
   return runDocker(image, tempDir, args, {
     readOnly,
+    sandboxed,
     memory: "512m",
     cpus: "1",
     timeoutMs: DEFAULT_TIMEOUT_MS,

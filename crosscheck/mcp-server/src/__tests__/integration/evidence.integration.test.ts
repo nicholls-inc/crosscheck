@@ -10,7 +10,8 @@ vi.mock("node:fs/promises", async (original) => {
   return { ...real, rename: vi.fn(real.rename) };
 });
 
-vi.mock("../../docker.js", () => ({
+vi.mock("../../docker.js", async (importOriginal) => ({
+  SANDBOX_FLAGS: (await importOriginal<typeof import("../../docker.js")>()).SANDBOX_FLAGS,
   getDockerImage: vi.fn(() => "crosscheck-dafny:latest"),
   dockerImageId: vi.fn(),
   runDafny: vi.fn(),
@@ -98,7 +99,7 @@ describe("dafnyEvidence against a real git repository", () => {
             { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
             { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
           ],
-          rerun: { command: rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"]), exit_code: 0 },
+          rerun: { command: rerunCommand("sha256:feed", ["proofs/Abs.dfy"]), exit_code: 0 },
         },
       ],
     };
@@ -112,12 +113,95 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(await readFile(join(repo, "out", "record.json"), "utf-8")).toBe(
       JSON.stringify(expected, null, 2) + "\n"
     );
-    const run = { image: "sha256:feed", readOnly: true };
+    const run = { image: "sha256:feed", readOnly: true, sandboxed: true };
+    const mounted = vi.mocked(runDafny).mock.calls[0][0];
     expect(vi.mocked(runDafny).mock.calls).toEqual([
-      [repo, ["verify", "/work/proofs/Abs.dfy", "--verify-included-files", "--log-format", LOG_FORMAT], run],
-      [repo, ["audit", "/work/proofs/Abs.dfy"], run],
-      [repo, ["--version"], run],
+      [mounted, ["verify", "/work/proofs/Abs.dfy", "--verify-included-files", "--log-format", LOG_FORMAT], run],
+      [mounted, ["audit", "/work/proofs/Abs.dfy"], run],
+      [mounted, ["--version"], run],
     ]);
+  });
+
+  describe("Dafny reads a copy of the blobs at commit (DE-14)", () => {
+    async function snapshot(dir: string): Promise<Record<string, string>> {
+      const seen: Record<string, string> = {};
+      const walk = async (rel: string) => {
+        const mode = ((await lstat(join(dir, rel))).mode & 0o777).toString(8);
+        seen[rel === "" ? "." : rel] = mode;
+        for (const entry of await readdir(join(dir, rel), { withFileTypes: true })) {
+          const path = rel === "" ? entry.name : `${rel}/${entry.name}`;
+          if (entry.isDirectory()) await walk(path);
+          else seen[path] = `${((await lstat(join(dir, path))).mode & 0o777).toString(8)} ${await readFile(join(dir, path), "utf-8")}`;
+        }
+      };
+      await walk("");
+      return seen;
+    }
+
+    it("mounts only the file and its includes, readable by others under any umask, and removes the copy", async () => {
+      await commitFiles({
+        "proofs/Abs.dfy": `include "lib/A.dfy"\n${SOURCE}`,
+        "proofs/lib/A.dfy": "lemma A() ensures true {}\n",
+        "proofs/Other.dfy": "lemma {:axiom} Other() ensures false\n",
+      });
+      let seen: Record<string, string> = {};
+      vi.mocked(runDafny).mockImplementation(async (dir, args) => {
+        if (args[0] === "verify") seen = await snapshot(dir);
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const umask = process.umask(0o077);
+      const result = await dafnyEvidence(input).finally(() => process.umask(umask));
+      expect(result.errors).toEqual([]);
+      expect(seen).toEqual({
+        ".": "755",
+        proofs: "755",
+        "proofs/Abs.dfy": `644 include "lib/A.dfy"\n${SOURCE}`,
+        "proofs/lib": "755",
+        "proofs/lib/A.dfy": "644 lemma A() ensures true {}\n",
+      });
+      const mounted = vi.mocked(runDafny).mock.calls[0][0];
+      expect(mounted.startsWith(join(tmpdir(), "dafny-"))).toBe(true);
+      expect(await lstat(mounted).catch(() => null)).toBeNull();
+    });
+
+    it("removes the copy when Dafny refuses", async () => {
+      stubDafny({ verify: { exitCode: 4, stdout: "error", stderr: "", timedOut: false } });
+      const result = await dafnyEvidence(input);
+      expect(result.success).toBe(false);
+      expect(await lstat(vi.mocked(runDafny).mock.calls[0][0]).catch(() => null)).toBeNull();
+    });
+
+    it("is not changed by an edit made and reverted while Dafny runs", async () => {
+      let read = "";
+      vi.mocked(runDafny).mockImplementation(async (dir, args) => {
+        if (args[0] === "verify") {
+          await writeFile(join(repo, "proofs", "Abs.dfy"), "lemma {:axiom} Evil() ensures false\n");
+          read = await readFile(join(dir, "proofs", "Abs.dfy"), "utf-8");
+          await writeFile(join(repo, "proofs", "Abs.dfy"), SOURCE);
+        }
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const result = await dafnyEvidence(input);
+      expect(result.errors).toEqual([]);
+      expect(read).toBe(SOURCE);
+    });
+
+    it("copies the blob's bytes, not a work tree that a .gitattributes conversion makes differ", async () => {
+      await commitFiles({
+        ".gitattributes": "*.dfy text eol=crlf\n",
+        "proofs/Abs.dfy": SOURCE.replace(/\n/g, "\r\n"),
+      });
+      expect(git(repo, "status", "--porcelain")).toBe("");
+      expect(await readFile(join(repo, "proofs", "Abs.dfy"), "utf-8")).toBe(SOURCE.replace(/\n/g, "\r\n"));
+      let read = "";
+      vi.mocked(runDafny).mockImplementation(async (dir, args) => {
+        if (args[0] === "verify") read = await readFile(join(dir, "proofs", "Abs.dfy"), "utf-8");
+        return args[0] === "--version" ? ok("4.11.0\n") : args[0] === "audit" ? ok(AUDIT_CLEAN) : ok(VERIFY_LOG);
+      });
+      const result = await dafnyEvidence(input);
+      expect(result.errors).toEqual([]);
+      expect(read).toBe(SOURCE);
+    });
   });
 
   it("writes the same bytes on a second run (DE-11)", async () => {
@@ -185,6 +269,79 @@ describe("dafnyEvidence against a real git repository", () => {
     const result = await dafnyEvidence({ ...input, file: "proofs/Link.dfy" });
     expect(result.errors).toEqual(["proofs/Link.dfy is a symbolic link; pass the file it points to"]);
     expect(runDafny).not.toHaveBeenCalled();
+  });
+
+  it("records a requirement that names a tracked file (DE-4)", async () => {
+    await mkdir(join(repo, "docs"));
+    await writeFile(join(repo, "docs", "req.md"), "# Abs\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "-q", "-m", "req");
+    const result = await dafnyEvidence({ ...input, requirement: " docs/req.md#abs " });
+    expect(result.errors).toEqual([]);
+    expect(result.record?.claims[0].requirement).toBe("docs/req.md#abs");
+  });
+
+  it.each([
+    ["a missing file", async () => undefined, "docs/none.md#abs", "requirement: not committed: docs/none.md"],
+    ["free text", async () => undefined, "see the ticket", "requirement: not committed: see the ticket"],
+    [
+      "an ignored file",
+      async (r: string) => {
+        await mkdir(join(r, "out"));
+        await writeFile(join(r, "out", "req.md"), "");
+      },
+      "out/req.md",
+      "requirement: not committed: out/req.md",
+    ],
+    [
+      "a tracked symbolic link",
+      async (r: string) => {
+        await symlink("proofs/Abs.dfy", join(r, "req.md"));
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "link");
+      },
+      "req.md",
+      "requirement: req.md is a symbolic link; pass the file it points to",
+    ],
+    [
+      "a file reached through a linked directory",
+      async (r: string) => {
+        await symlink("proofs", join(r, "linked"));
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "link");
+      },
+      "linked/Abs.dfy",
+      "requirement: not committed: linked/Abs.dfy",
+    ],
+    [
+      "a tracked directory",
+      async () => undefined,
+      "proofs",
+      "requirement: proofs is not a regular file",
+    ],
+    [
+      "a glob that matches a tracked file",
+      async (r: string) => {
+        await mkdir(join(r, "docs"));
+        await writeFile(join(r, "docs", "req.md"), "# Abs\n");
+        git(r, "add", ".");
+        git(r, "commit", "-q", "-m", "req");
+      },
+      "docs/*.md",
+      "requirement: not committed: docs/*.md",
+    ],
+    [
+      "pathspec magic that matches a tracked file",
+      async () => undefined,
+      ":(top)proofs/Abs.dfy",
+      "requirement: not committed: :(top)proofs/Abs.dfy",
+    ],
+  ])("refuses a requirement that names %s before any Dafny run (DE-4)", async (_label, setup, requirement, error) => {
+    await setup(repo);
+    const result = await dafnyEvidence({ ...input, requirement });
+    expect(result).toEqual({ success: false, errors: [error], record: null, writtenTo: null });
+    expect(runDafny).not.toHaveBeenCalled();
+    expect(dockerImageId).not.toHaveBeenCalled();
   });
 
   it("still sees an untracked file when status.showUntrackedFiles is no (DE-3)", async () => {
@@ -501,9 +658,19 @@ describe("dafnyEvidence against a real git repository", () => {
       await refusesBeforeDafny(".", `is not inside the work tree ${repo}`);
     });
 
-    it("refuses a path inside .git, in any case", async () => {
-      await refusesBeforeDafny(".git/hooks/pre-commit", "is inside .git");
-      await refusesBeforeDafny("sub/.Git/config", "is inside .git");
+    it("refuses a path that does not end in .json, in that case", async () => {
+      await refusesBeforeDafny("out/record.txt", "does not end in .json");
+      await refusesBeforeDafny("out/record.JSON", "does not end in .json");
+    });
+
+    it("refuses a path with a part whose name starts with a dot, directory or file, .git in any case included", async () => {
+      const DOT_DIR = 'has a part whose name starts with ".": ';
+      await refusesBeforeDafny(".github/workflows/x.json", `${DOT_DIR}.github`);
+      await refusesBeforeDafny("sub/.cache/x.json", `${DOT_DIR}.cache`);
+      await refusesBeforeDafny(".git/x.json", `${DOT_DIR}.git`);
+      await refusesBeforeDafny("sub/.Git/config.json", `${DOT_DIR}.Git`);
+      await refusesBeforeDafny(".mcp.json", `${DOT_DIR}.mcp.json`);
+      await refusesBeforeDafny("sub/.rec.json", `${DOT_DIR}.rec.json`);
     });
 
     it("refuses a missing directory before running Dafny", async () => {
@@ -529,9 +696,9 @@ describe("dafnyEvidence against a real git repository", () => {
 
     const NOT_A_RECORD = "names an existing file that is not an evidence record";
 
-    it("refuses to overwrite the verified file, under any spelling", async () => {
-      await refusesBeforeDafny("proofs/Abs.dfy", NOT_A_RECORD);
-      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", NOT_A_RECORD);
+    it("refuses the verified file by its extension, under any spelling", async () => {
+      await refusesBeforeDafny("proofs/Abs.dfy", "does not end in .json");
+      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", "does not end in .json");
     });
 
     it("refuses to overwrite a hard link to the verified file", async () => {
@@ -545,17 +712,17 @@ describe("dafnyEvidence against a real git repository", () => {
         "proofs/Abs.dfy": `include "Lib.dfy"\n${SOURCE}`,
         "proofs/Lib.dfy": "lemma Lib() ensures true {}\n",
       });
-      await refusesBeforeDafny("proofs/Lib.dfy", NOT_A_RECORD);
+      await refusesBeforeDafny("proofs/Lib.dfy", "does not end in .json");
     });
 
     it("refuses to overwrite any other tracked or ignored file, or a directory", async () => {
       await commitFiles({ "docs/SKILL.md": "# skill\n", "docs/other.json": '{"format": "x"}\n' });
-      await mkdir(join(repo, "out", "dir"), { recursive: true });
-      await writeFile(join(repo, "out", ".env"), "TOKEN=1\n");
-      await refusesBeforeDafny("docs/SKILL.md", NOT_A_RECORD);
+      await mkdir(join(repo, "out", "dir.json"), { recursive: true });
+      await writeFile(join(repo, "out", "env.json"), '{"token": 1}\n');
+      await refusesBeforeDafny("docs/SKILL.md", "does not end in .json");
       await refusesBeforeDafny("docs/other.json", NOT_A_RECORD);
-      await refusesBeforeDafny("out/.env", NOT_A_RECORD);
-      await refusesBeforeDafny("out/dir", NOT_A_RECORD);
+      await refusesBeforeDafny("out/env.json", NOT_A_RECORD);
+      await refusesBeforeDafny("out/dir.json", NOT_A_RECORD);
     });
 
     it("refuses a FIFO without reading it", async () => {
@@ -597,7 +764,7 @@ describe("dafnyEvidence against a real git repository", () => {
         "/work/proofs/lib/B.dfy",
       ]);
       expect(result.record?.claims[0].rerun.command).toBe(
-        rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy", "proofs/lib/A.dfy", "proofs/lib/B.dfy"])
+        rerunCommand("sha256:feed", ["proofs/Abs.dfy", "proofs/lib/A.dfy", "proofs/lib/B.dfy"])
       );
     });
 
@@ -646,9 +813,16 @@ describe("dafnyEvidence against a real git repository", () => {
     });
 
     it("refuses an include that names a tracked directory", async () => {
-      await commitFiles({ "proofs/Abs.dfy": `include "lib"\n${SOURCE}`, "proofs/lib/A.dfy": "" });
+      await commitFiles({ "proofs/Abs.dfy": `include "lib.dfy"\n${SOURCE}`, "proofs/lib.dfy/A.dfy": "" });
       await refusesBeforeDafny([
-        'include "lib" in proofs/Abs.dfy is outside the tracked files: proofs/lib is not a regular file',
+        'include "lib.dfy" in proofs/Abs.dfy is outside the tracked files: proofs/lib.dfy is not a regular file',
+      ]);
+    });
+
+    it("refuses a tracked include that does not end in .dfy", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `include "Lib.txt"\n${SOURCE}`, "proofs/Lib.txt": "lemma {:axiom} Lib()\n" });
+      await refusesBeforeDafny([
+        'include "Lib.txt" in proofs/Abs.dfy is outside the tracked files: the path does not end in .dfy',
       ]);
     });
 

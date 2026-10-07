@@ -7,6 +7,7 @@ import {
   auditClean,
   buildRecord,
   claimId,
+  requirementPath,
   rerunCommand,
   shellQuote,
   unverifiedTheorems,
@@ -39,6 +40,16 @@ describe("validateEvidenceInput (DE-1)", () => {
     ["wrong extension", { file: "proofs/Abs.lean" }],
     ["blank statement", { statement: " \n" }],
     ["blank requirement", { requirement: "  " }],
+    ["absolute requirement", { requirement: "/etc/passwd" }],
+    ["requirement outside the tree", { requirement: "../other/req.md" }],
+    ["requirement with a dot segment", { requirement: "docs/./req.md" }],
+    ["requirement with an empty segment", { requirement: "docs//req.md" }],
+    ["requirement naming a directory", { requirement: "docs/" }],
+    ["requirement with a backslash", { requirement: "docs\\req.md" }],
+    ["requirement with only an anchor", { requirement: "#abs" }],
+    ["requirement with an empty anchor", { requirement: "docs/req.md#" }],
+    ["theorem named twice", { theorems: ["AbsNonneg", "AbsNonneg"] }],
+    ["theorem named three times", { theorems: ["AbsNonneg", "M.L", "AbsNonneg", "AbsNonneg"] }],
     ["no theorems", { theorems: [] }],
     ["bad theorem name", { theorems: ["Abs Nonneg"] }],
     ["trailing dot", { theorems: ["M."] }],
@@ -50,6 +61,29 @@ describe("validateEvidenceInput (DE-1)", () => {
     expect(
       validateEvidenceInput({ ...good, repoPath: "x", statement: "", theorems: [] })
     ).toHaveLength(3);
+  });
+
+  it("names each refused requirement and repeated theorem", () => {
+    expect(validateEvidenceInput({ ...good, requirement: "../req.md", theorems: ["A", "B", "A", "B", "C"] })).toEqual([
+      'requirement must be a relative path with no "." or ".." segment, optionally followed by #<anchor>: ../req.md',
+      "theorem named more than once: A",
+      "theorem named more than once: B",
+    ]);
+  });
+
+  it.each([["docs/req.md"], [" docs/req.md#abs "], ["req.md#a#b"], ["docs/req v2.md#Section 1"], ["docs/req.md#a/../b"]])(
+    "accepts the requirement %j",
+    (requirement) => {
+      expect(validateEvidenceInput({ ...good, requirement })).toEqual([]);
+    }
+  );
+
+  it.each([
+    ["docs/req.md", "docs/req.md"],
+    [" docs/req.md#abs ", "docs/req.md"],
+    ["req.md#a#b", "req.md"],
+  ])("reads the path of the requirement %j", (requirement, path) => {
+    expect(requirementPath(requirement)).toBe(path);
   });
 
   it("accepts primes, question marks and qualifiers in names", () => {
@@ -98,16 +132,16 @@ describe("unverifiedTheorems (DE-5)", () => {
 describe("rerunCommand (DE-9)", () => {
   it("is the exact command for a plain path", () => {
     expect(rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"])).toBe(
-      `docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
-        `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
+      `docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+        `out=$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
         `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`
     );
   });
 
   it("verifies the first file with its includes and audits every file", () => {
     expect(rerunCommand("img", ["proofs/Abs.dfy", "proofs/Lib.dfy"])).toBe(
-      `docker run --rm --network=none -v "$PWD":/work:ro 'img' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
-        `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'img' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
+      `docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'img' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+        `out=$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'img' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
         `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`
     );
   });
@@ -203,12 +237,16 @@ describe("buildRecord (DE-8, DE-10)", () => {
             { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
           ],
           rerun: {
-            command: rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy", "proofs/Lib.dfy"]),
+            command:
+              `docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'sha256:feed' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
+              `out=$(docker run --rm --network=none --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512 --user=65534:65534 -v "$PWD":/work:ro 'sha256:feed' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
+              `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`,
             exit_code: 0,
           },
         },
       ],
     });
+    expect(record.claims[0].rerun.command).not.toContain("crosscheck-dafny:latest");
     expect(Object.keys(record.claims[0])).toEqual([
       "id",
       "statement",

@@ -39,14 +39,14 @@ export function createServer(): McpServer {
       requirement: z
         .string()
         .nullable()
-        .describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
+        .describe("Path of the tracked file that holds the requirement the claim traces to, relative to the work tree's top level with / separators, optionally followed by #anchor; or null when the claim traces to no requirement. The anchor is not checked"),
       theorems: z
         .array(z.string())
-        .describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
+        .describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, each once, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
       outputPath: z
         .string()
         .optional()
-        .describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record"),
+        .describe("Where to write the record, inside the work tree, ending in .json, with no directory or file name that starts with a dot; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record"),
     },
     async (args) => {
       const result = await dafnyEvidence(args);

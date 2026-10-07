@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-vi.mock("../../docker.js", () => ({
+vi.mock("../../docker.js", async (importOriginal) => ({
+  SANDBOX_FLAGS: (await importOriginal<typeof import("../../docker.js")>()).SANDBOX_FLAGS,
   getDockerImage: vi.fn(() => "crosscheck-dafny:latest"),
   getLeanDockerImage: vi.fn(() => "crosscheck-lean:latest"),
   dockerImageId: vi.fn(async () => "sha256:feed"),
@@ -39,6 +40,8 @@ describe("dafny_evidence over MCP", () => {
     git("config", "user.email", "t@example.com");
     git("config", "user.name", "t");
     await writeFile(join(repo, "Abs.dfy"), "lemma AbsNonneg(x: int) ensures x * x >= 0 {}\n");
+    await mkdir(join(repo, "docs"));
+    await writeFile(join(repo, "docs", "req.md"), "# Abs\n");
     git("add", ".");
     git("commit", "-q", "-m", "init");
     commit = git("rev-parse", "HEAD");
@@ -93,7 +96,7 @@ describe("dafny_evidence over MCP", () => {
               { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
               { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
             ],
-            rerun: { command: rerunCommand("crosscheck-dafny:latest", ["Abs.dfy"]), exit_code: 0 },
+            rerun: { command: rerunCommand("sha256:feed", ["Abs.dfy"]), exit_code: 0 },
           },
         ],
       },
