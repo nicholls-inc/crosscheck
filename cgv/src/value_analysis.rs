@@ -3260,6 +3260,9 @@ mod tests {
         assert_eq!(f(&format!("{guarded}def c(h: H, o):\n    if h.name:\n        o.label_of(h)\n")), Some(true));
         assert_eq!(f(&format!("{guarded}def c(h: H, kw):\n    if h.name:\n        label_of(**kw)\n")), Some(true));
         assert_eq!(f(""), Some(true));
+        let src = format!("{records}def label_of(h: H):\n    h.name\n{guarded}");
+        let aliased = [("code.py", src.as_str()), ("other.py", "from code import label_of as lo\nHANDLERS = [lo]\n")];
+        assert_eq!(facts_of(&aliased, "code.label_of").nullable, Some(true));
         let decorated = format!("{records}@trace\ndef label_of(h: H):\n    h.name\n{guarded}");
         assert_eq!(facts_of(&[("code.py", &decorated)], "code.label_of").nullable, Some(true));
         let rebound = format!("{records}def label_of(h: H):\n    h = H(name=None)\n    h.name\n{guarded}");
