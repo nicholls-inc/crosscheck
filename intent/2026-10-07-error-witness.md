@@ -15,7 +15,7 @@ Row CG-1.6 asks one pull request for all of it. The work splits into four pieces
 The error kinds weigh differently than issue #8 suggests. Of the 237 errors in that evaluation, 190 were nullability, 44 were type, 2 were length and 1 was precision. Issue #8 says to start with the four numeric and string kinds. They hold 3 of the 237 errors, but 2 of the 3 reachable bugs, and their counterexample comes from data the checker already has. So the first row computes the value for those kinds, and for `choices` and `nullability`, where it is just as direct. Type errors get their own row, after CG-1.7 changes the type check.
 
 ## Proposed outcome
-`docs/TASKS.md` replaces row CG-1.6 with five rows, in the order the evidence builds:
+`docs/TASKS.md` replaces row CG-1.6 with five rows, in the order the evidence builds, and adds CG-1.40, which holds the hardening items of this pull request's own review:
 
 - **CG-1.35.** The Lean checker computes a counterexample for each error of kind `length`, `precision`, `range`, `range_min`, `choices` and `nullability`, and proves it is admitted by the source constraint and rejected by the target. The checker's JSON carries it as `counterexample`, and `--format text` prints it. The rules are WT-1 to WT-12 in `intent/2026-10-07-error-witness-spec.md`.
 - **CG-1.36.** The same for `type`, after CG-1.7. Its intent picks a value for each type name, since Django and pydantic convert some values (measured below).
@@ -23,7 +23,7 @@ The error kinds weigh differently than issue #8 suggests. Of the 237 errors in t
 - **CG-1.38.** The extractor records the guard conditions that enclose a None-producing line, and the report prints them with the nullability error.
 - **CG-1.39.** A generated test that drives the path from its head and expects the sink to fail, for the first shape the evaluation found real: a field of one model written into a field of another, starting with a head that takes the source instance as an argument.
 
-No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request also commits the spec of CG-1.35, so that the row's format is fixed before its code. Apart from that spec it does nothing else. It sets no row to `done`. Issue #8 stays open until the last of the five rows is done.
+No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request also commits the spec of CG-1.35, so that the row's format is fixed before its code. Apart from that spec it does nothing else. It sets no row to `done`. Issue #8 stays open until the last of the five rows CG-1.35 to CG-1.39 is done.
 
 ## Affected users and systems
 - Anyone who reads a CGV error and has to decide whether it is real.
@@ -35,10 +35,10 @@ No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request
 - Rule 7: each witness names its strength. The counterexample of CG-1.35 is proved relative to the translated constraints. The tests of CG-1.37 and CG-1.39 are tested, on one input each, against pinned library versions.
 - The JSON key `witness` already names the whole data path of a result (`ResultEntry.witness` in `Types.lean`). The new field is `counterexample`, so no reader of the old key breaks.
 - `DiagnosticInfo` is not in `cgv/prover/protected-statements.txt`, and `ResultEntry` appears there only in the statements of `runChecker_exitCode_eq_zero_iff` and `runCheckerPaths_exitCode_eq_zero_iff`, through its `severity` projection. No protected definition reaches either. So adding a defaulted `counterexample` field to `ResultEntry` should leave the manifest unchanged, as long as `severity` keeps its name and type. CG-1.35 should stay off CGV's protected surfaces. The row checks it.
-- Task IDs are never reused. CG-1.35 to CG-1.39 appear in no row on `origin/main` (highest CG-1.32) and in no open pull request's diff (open pull request #105 uses CG-1.33 and CG-1.34), and no branch is named after them.
+- Task IDs are never reused. CG-1.35 to CG-1.40 appear in no row on `origin/main` (highest CG-1.32) and in no open pull request's diff (open pull request #105 uses CG-1.33 and CG-1.34), and no branch is named after them.
 
 ## Measured on Django 4.2.30 and pydantic 2.13.5
-Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic and data class sources that were not measured.
+Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has nothing to measure, as the next section says.
 
 A probe called `Field.clean(value, None)` on Django model fields and validated pydantic fields through `TypeAdapter`. It settles the value for each kind that CG-1.35 and the spec fix.
 
