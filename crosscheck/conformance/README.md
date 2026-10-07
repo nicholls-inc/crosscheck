@@ -21,7 +21,8 @@ Build a standalone binary:
 
 Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim or
 claim with an unknown status, or a `present_artifact` ledger check that
-disagrees with the filesystem).
+disagrees with the filesystem, or a `claims.json` that cannot be read or
+parsed).
 
 > Run commands assume the repo-root Go workspace (`go.work`), which lets the
 > nested module resolve when invoked from the repo root. From inside this
@@ -66,7 +67,10 @@ disagrees with the filesystem).
   never be tracked nowhere. `status` must be exactly one of `unreviewed`,
   `known-gap`, `reviewed-disclosed` or `reviewed-accurate`. Any other value,
   including an empty or missing one, fails CI, so a typo such as
-  `reviewed-disclsed` cannot pass as a reviewed claim.
+  `reviewed-disclsed` cannot pass as a reviewed claim. A missing `claims.json` is an
+  empty ledger. A `claims.json` that cannot be read, or does not parse as the
+  ledger shape, fails CI, so a syntax error cannot pass as a ledger with no
+  claims.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
