@@ -64,7 +64,7 @@ export const EVIDENCE_CLASSES = [
     workflow: 'CI workflow, conformance job (go vet, go test, go run . ..)',
   },
   {
-    re: /^(scripts\/ci\/|\.claude\/hooks\/protected-surface-guard\.mjs$)/,
+    re: /^(scripts\/ci\/|\.claude\/hooks\/protected-surface-guard\.mjs$|\.husky\/pre-commit$)/,
     kind: 'checked',
     workflow: 'Tier Gate workflow (node --test scripts/ci/*.test.mjs)',
   },
@@ -107,7 +107,7 @@ function splitList(raw, separator) {
     .filter((s) => s.length > 0);
 }
 
-function globToRegExp(glob) {
+export function globToRegExp(glob) {
   const parts = glob.split('/').map((part) => {
     if (part === '**') return '.*';
     const escaped = part.replace(/[.+^${}()|[\]\\]/g, '\\$&');
@@ -116,7 +116,7 @@ function globToRegExp(glob) {
   return new RegExp(`^${parts.join('/')}$`, 's');
 }
 
-function loadProtectedGlobs(rulesPath) {
+export function loadProtectedGlobs(rulesPath) {
   if (!existsSync(rulesPath)) {
     return { globs: [], missing: true };
   }
@@ -160,12 +160,17 @@ function parseDeclaredTier(prBody, prLabels) {
   return { tier };
 }
 
-function isGovernanceNotePath(path) {
+export function isGovernanceNotePath(path) {
   return (
     path.endsWith('.md') &&
     (/^\.assurance\/protected-surface-amend\/[^/]+\.md$/.test(path) ||
       /^\.assurance\/add-session-[^/]+\/.+\.md$/.test(path))
   );
+}
+
+// TG-5. A path is named when the note text contains it as a substring.
+export function unnamedProtectedFiles(protectedMatches, noteText) {
+  return protectedMatches.filter((f) => !noteText.includes(f));
 }
 
 function hasProtectedSurfaceChangeSection(prBody) {
@@ -319,7 +324,7 @@ export function evaluate({
     if (protectedMatches.length > 0) {
       const notes = [...changedAndPresent].filter(isGovernanceNotePath);
       const noteText = notes.map((f) => readFileSync(join(cwd, f), 'utf8')).join('\n');
-      const unnamed = protectedMatches.filter((f) => !noteText.includes(f));
+      const unnamed = unnamedProtectedFiles(protectedMatches, noteText);
       if (notes.length === 0 || unnamed.length > 0) {
         missing.push(
           `Tier 3 requires a governance note changed in this pull request, under .assurance/protected-surface-amend/ or .assurance/add-session-*/, naming each changed protected file. Notes from earlier changes do not count. Not named: ${(unnamed.length > 0 ? unnamed : protectedMatches).join(', ')}`

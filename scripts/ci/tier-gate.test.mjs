@@ -485,6 +485,17 @@ test('TG-8: a pass whose changed files hit every class reports one line per clas
   ]);
 });
 
+test('TG-8: a change to .husky/pre-commit is reported against the Tier Gate workflow', () => {
+  const r = run(repo({ 'intent/old.md': 'x', '.husky/pre-commit': 'x' }), {
+    body: 'Tier: 1\nIntent: intent/old.md',
+    changed: ['.husky/pre-commit'],
+  });
+  assert.equal(r.pass, true);
+  assert.deepEqual(reportRows(r), [
+    '- Tier Gate workflow (node --test scripts/ci/*.test.mjs): 1 file(s), e.g. .husky/pre-commit',
+  ]);
+});
+
 test('TG-8: a change under a path no workflow checks is never reported as needing no evidence', () => {
   const r = run(repo({ 'intent/old.md': 'x', 'crosscheck/scripts/build.sh': 'x' }), {
     body: 'Tier: 1\nIntent: intent/old.md',

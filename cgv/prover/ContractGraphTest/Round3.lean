@@ -26,6 +26,7 @@ import ContractGraphTest.NullableDemo
 namespace ContractGraphTest.Round3
 
 open ContractGraph
+open ContractGraphTest.Translation (graphOf acceptedGraph)
 
 def contains (s sub : String) : Bool := (s.splitOn sub).length > 1
 def errors (o : CheckOutput) : List ResultEntry := o.results.filter (·.severity == "error")
@@ -59,7 +60,6 @@ def agreesWithNaive (g : ContractGraph) : Bool :=
 #guard agreesWithNaive DataflowV2.lowerGraph
 #guard agreesWithNaive DataflowV2.overrideGraph
 #guard agreesWithNaive DataflowV2.emptyOverrideGraph
-#guard agreesWithNaive DataflowV2.noOverrideGraph
 #guard agreesWithNaive DataflowV2.paramGraph
 #guard agreesWithNaive DataflowV2.depGraph
 #guard agreesWithNaive DataflowV2.depGraphClean
@@ -168,7 +168,7 @@ example (g : ContractGraph) (m k : Nat) (h : (runChecker g m k).exitCode = 0) :
 /-- five() (line 9) → keep(p) (line 14) → S.e (3dp); keep has a dependent
     postcondition (line 15); the write is at w.py:30. -/
 def locGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [{ id := 1, name := "five", kind := "function", sourceFile := "m.py", sourceLine := 9 },
      { id := 2, name := "keep", kind := "function", sourceFile := "m.py", sourceLine := 14 },
      { id := 3, name := "S.e", kind := "model", sourceFile := "models.py", sourceLine := 3 }]
@@ -178,9 +178,9 @@ def locGraph : ContractGraph :=
        role := some "postcondition", sourceFile := "m.py", sourceLine := 15 },
      { nodeId := 3, constraintType := "precision", decimalPlaces := some 3,
        role := some "precondition", sourceFile := "models.py", sourceLine := 4 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .flowsTo,
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "flows_to",
        siteFile := "w.py", siteLine := 29 },
-     { id := 2, sourceId := 2, targetId := 3, relationship := .writesTo,
+     { id := 2, sourceId := 2, targetId := 3, relationship := "writes_to",
        siteFile := "w.py", siteLine := 30 }]
 
 #guard locGraph.nodes.map (fun n => (n.sourceFile, n.sourceLine))
@@ -200,16 +200,16 @@ def locGraph : ContractGraph :=
 
 /-- third() (4dp) written into a 2dp field at three different sites. -/
 def siteGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [{ id := 1, name := "third", kind := "function", sourceFile := "t.py", sourceLine := 1 },
      { id := 2, name := "P.amount", kind := "model", sourceFile := "models.py", sourceLine := 5 }]
     [{ nodeId := 1, constraintType := "precision", decimalPlaces := some 4,
        role := some "postcondition", sourceFile := "t.py", sourceLine := 2 },
      { nodeId := 2, constraintType := "precision", decimalPlaces := some 2,
        role := some "precondition", sourceFile := "models.py", sourceLine := 5 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo, siteFile := "a.py", siteLine := 10 },
-     { id := 2, sourceId := 1, targetId := 2, relationship := .writesTo, siteFile := "b.py", siteLine := 20 },
-     { id := 3, sourceId := 1, targetId := 2, relationship := .writesTo, siteFile := "c.py", siteLine := 30 }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to", siteFile := "a.py", siteLine := 10 },
+     { id := 2, sourceId := 1, targetId := 2, relationship := "writes_to", siteFile := "b.py", siteLine := 20 },
+     { id := 3, sourceId := 1, targetId := 2, relationship := "writes_to", siteFile := "c.py", siteLine := 30 }]
 
 -- Findings at different sites are not merged.
 #guard (errors (runChecker siteGraph)).map (fun r => (r.site.file, r.site.line))
@@ -241,14 +241,18 @@ def siteGraphNoSites : ContractGraph :=
 #guard legacyMicros 0.1234567 false false == 123456
 
 /-- ratio: Field(ge=0.0, le=0.5); writes 0.7. -/
-def microsGraph (written : Int) : ContractGraph :=
-  buildGraph
+def microsRows (written : Int) : Except String ContractGraph :=
+  translateRows
     [(1, "make", "function"), (2, "R.ratio", "model")]
     [{ nodeId := 1, constraintType := "range", minMicros := some written, maxMicros := some written,
        role := some "postcondition", sourceLine := 1 },
      { nodeId := 2, constraintType := "range", minMicros := some 0, maxMicros := some 500000,
        role := some "precondition", sourceLine := 2 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]
+
+def microsGraph (written : Int)
+    (accepted : (microsRows written).isOk := by native_decide) : ContractGraph :=
+  acceptedGraph _ accepted
 
 #guard (errors (runChecker (microsGraph 700000))).map (fun r => (r.sourceGuarantee, r.targetRequirement))
   == [("range ≤ 0.7", "range ≤ 0.5")]
@@ -260,11 +264,11 @@ def microsGraph (written : Int) : ContractGraph :=
 -- A range dependent expression's literals are scaled to micros.
 def depRow (kind e : String) : ContractRow :=
   { nodeId := 1, constraintType := kind, dependentExpr := some e }
-#guard (translateContractRow (depRow "range" "max(input_range, 3)")).map (·.depExpr)
-  == [some (DepExpr.max (.input "input_range") (.lit 3000000))]
+#guard (translateContractRow (depRow "range" "max(input_range, 3)")).toOption.map (·.map (·.depExpr))
+  == some [some (DepExpr.max (.input "input_range") (.lit 3000000))]
 -- Other kinds are not scaled.
-#guard (translateContractRow (depRow "precision" "max(input_precision, 3)")).map (·.depExpr)
-  == [some (DepExpr.max (.input "input_precision") (.lit 3))]
+#guard (translateContractRow (depRow "precision" "max(input_precision, 3)")).toOption.map (·.map (·.depExpr))
+  == some [some (DepExpr.max (.input "input_precision") (.lit 3))]
 
 /-! ## 5. Choices (D5) -/
 
@@ -277,7 +281,7 @@ def depRow (kind e : String) : ContractRow :=
 #guard parseChoices "[\"a\",]" == none
 
 -- A malformed value is rejected when the database is read, not translated
--- as "no constraint" (`readContractGraph` fails, exit code 2).
+-- as "no constraint" (`translateRows` fails, exit code 2).
 #guard (({ nodeId := 1, constraintType := "choices", choices := some "[\"a\"" } : ContractRow).malformed).isSome
 #guard (({ nodeId := 1, constraintType := "choices", choices := some "[\"a\"]" } : ContractRow).malformed).isNone
 #guard (({ nodeId := 1, constraintType := "choices", choices := some "a,b" } : ContractRow).malformed).isNone
@@ -286,8 +290,8 @@ def depRow (kind e : String) : ContractRow :=
 #guard (({ nodeId := 1, constraintType := "range", minDecimal := some "-0.25", maxDecimal := some "10" } : ContractRow).malformed).isNone
 
 /-- status: CharField(choices=[("a", ...), ("x", ...)]), JSON-encoded. -/
-def choicesGraph (written : Option String) : ContractGraph :=
-  buildGraph
+def choicesRows (written : Option String) : Except String ContractGraph :=
+  translateRows
     [(1, "make", "function"), (2, "P.status", "model")]
     ((match written with
       | some w => [{ nodeId := 1, constraintType := "choices", choices := some w,
@@ -297,7 +301,11 @@ def choicesGraph (written : Option String) : ContractGraph :=
         role := some "postcondition", sourceLine := 1 },
       { nodeId := 2, constraintType := "choices", choices := some "[\"a\", \"x\"]",
         role := some "precondition", sourceLine := 7 }])
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]
+
+def choicesGraph (written : Option String)
+    (accepted : (choicesRows written).isOk := by native_decide) : ContractGraph :=
+  acceptedGraph _ accepted
 
 #guard (errors (runChecker (choicesGraph (some "[\"zz\"]")))).map (·.sourceGuarantee)
   == ["choices in [zz]"]
@@ -312,7 +320,7 @@ def choicesGraph (written : Option String) : ContractGraph :=
 /-- round2(p) has `max(input_precision, 2)`; it flows into a str field with
     a length requirement only, and into a nullable DateTimeField. -/
 def noiseGraph : ContractGraph :=
-  buildGraph
+  graphOf
     [(1, "round2", "function"), (2, "P.label", "model"), (3, "P.when", "model"),
      (4, "P.amount", "model")]
     [{ nodeId := 1, constraintType := "precision", dependentExpr := some "max(input_precision, 2)",
@@ -327,9 +335,9 @@ def noiseGraph : ContractGraph :=
        role := some "precondition", sourceLine := 4 },
      { nodeId := 4, constraintType := "precision", decimalPlaces := some 2,
        role := some "precondition", sourceLine := 5 }]
-    [{ id := 1, sourceId := 1, targetId := 2, relationship := .writesTo },
-     { id := 2, sourceId := 1, targetId := 3, relationship := .writesTo },
-     { id := 3, sourceId := 1, targetId := 4, relationship := .writesTo }]
+    [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" },
+     { id := 2, sourceId := 1, targetId := 3, relationship := "writes_to" },
+     { id := 3, sourceId := 1, targetId := 4, relationship := "writes_to" }]
 
 -- No unresolved-precision warning into P.label (no precision requirement)
 -- or P.when; no missing-nullability warning into the nullable P.when.

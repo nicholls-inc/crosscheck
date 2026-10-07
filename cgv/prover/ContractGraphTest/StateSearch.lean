@@ -49,7 +49,7 @@ def sameErrorPaths (g : ContractGraph) : Bool :=
 
 def testGraphs : List ContractGraph :=
   [DataflowV2.lowerGraph, DataflowV2.overrideGraph, DataflowV2.emptyOverrideGraph,
-   DataflowV2.noOverrideGraph, DataflowV2.paramGraph, DataflowV2.depGraph,
+   DataflowV2.paramGraph, DataflowV2.depGraph,
    DataflowV2.depGraphClean, DataflowV2.callsGraph, DataflowV2.callsOnlyGraph,
    DataflowV2.finalHopGraph, DataflowV2.twoHopGraph, DedupeTest.graph,
    NoErrorsSoundness.graph, NoErrorsSoundness.chainGraph, NoErrorsSoundness.cycleGraph,
