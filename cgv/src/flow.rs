@@ -13,9 +13,15 @@
 //!
 //! Membership: `k in d` (a name or string literal `k`, a name or `obj.f`
 //! `d`) narrows like a test and records `member_key(d, k)` among the names,
-//! so `d.get(k)` there is `d[k]`. The fact is dropped when `d` or `k` is
-//! rebound, and after any statement or header expression that calls
-//! anything other than `.get`, since a call may remove the key.
+//! so `d.get(k)` there is `d[k]` when `d` is known to be a dict (see
+//! `value_analysis`). The fact is dropped when `d` or `k` is rebound, and
+//! after any statement, header expression or operand (see `Effects`) that
+//! calls anything other than a `.get` on `d` itself, since a call may remove
+//! the key.
+//!
+//! Parameters: a parameter is untouched until a statement may hand its
+//! object to other code (passes it, calls a method on it, stores it); a
+//! caller's guard on `p.f` holds only while `p` is untouched.
 //!
 //! Reaching definitions: after a simple assignment `x = v` the value of `x`
 //! is that assignment's; after an `if`, the definitions of every branch that
@@ -59,6 +65,10 @@ pub struct Narrowed {
     /// Reaching definitions of locals, each with whether the value is known
     /// non-None on its path. A name absent here may have any of its values.
     defs: HashMap<String, Vec<(Def, bool)>>,
+    /// Parameters whose objects no code has been handed on any path here
+    /// (see `Effects::reached`): their fields still hold the values the
+    /// caller passed.
+    untouched: HashSet<String>,
 }
 
 impl Narrowed {
@@ -126,9 +136,20 @@ impl Narrowed {
         });
     }
 
-    /// Drop every `member_key` fact (a call may mutate any dict).
-    pub fn forget_members(&mut self) {
-        self.names.retain(|n| !n.contains('['));
+    /// Whether no code has been handed parameter `name`'s object on any
+    /// path to here.
+    pub fn untouched(&self, name: &str) -> bool {
+        self.untouched.contains(name)
+    }
+
+    /// The state after evaluating a node with effects `e`.
+    pub fn apply(&mut self, e: &Effects) {
+        self.names.retain(|n| e.keeps_member(n));
+        if e.suspends {
+            self.untouched.clear();
+        } else {
+            self.untouched.retain(|p| !e.reached.contains(p));
+        }
     }
 
     /// A rebound variable's attributes (`obj.f`) no longer hold values
@@ -153,6 +174,7 @@ impl Narrowed {
         let mut n = Narrowed::new();
         for p in params {
             n.defs.insert(p.to_string(), vec![(Def::Param, false)]);
+            n.untouched.insert(p.to_string());
         }
         n
     }
@@ -163,6 +185,7 @@ impl Narrowed {
         let mut out = first.clone();
         for b in rest {
             out.names.retain(|n| b.names.contains(n));
+            out.untouched.retain(|n| b.untouched.contains(n));
             out.defs.retain(|name, defs| {
                 let Some(other) = b.defs.get(name) else {
                     return false;
@@ -213,7 +236,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::If(s) => {
                 v.header(&s.test, &n);
                 n.extend(dereferenced(&s.test));
-                forget_members_after(&mut n, &s.test);
+                n.apply(&effects(&s.test));
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
                 body_n.extend(positive(&s.test));
@@ -229,11 +252,10 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     let end = match &clause.test {
                         Some(test) => {
                             v.header(test, &clause_n);
-                            if !only_get_calls(test) {
-                                n.forget_members();
-                                negated.retain(|x| !x.contains('['));
-                                clause_n.forget_members();
-                            }
+                            let e = effects(test);
+                            n.apply(&e);
+                            negated.retain(|x| e.keeps_member(x));
+                            clause_n.apply(&e);
                             let mut bn = clause_n.clone();
                             bn.extend(positive(test));
                             let end = walk(&clause.body, &bn, v, counts);
@@ -265,15 +287,13 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::Assert(a) => {
                 v.simple(stmt, &n);
                 n.extend(positive(&a.test));
-                if !only_get_calls_in_stmt(stmt) {
-                    n.forget_members();
-                }
+                n.apply(&effects_of_stmt(stmt));
             }
             Stmt::For(f) => {
                 v.header(&f.iter, &n);
                 n.extend(dereferenced(&f.iter));
-                forget_members_after(&mut n, &f.iter);
-                forget_members_in_loop(&mut n, stmt);
+                // A call in a later iteration may already have run.
+                n.apply(&effects_of_stmt(stmt));
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 walk(&f.body, &n, v, counts);
                 walk(&f.orelse, &n, v, counts);
@@ -281,8 +301,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::While(w) => {
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 v.header(&w.test, &n);
-                forget_members_after(&mut n, &w.test);
-                forget_members_in_loop(&mut n, stmt);
+                n.apply(&effects_of_stmt(stmt));
                 let mut body_n = n.clone();
                 body_n.extend(positive(&w.test));
                 walk(&w.body, &body_n, v, counts);
@@ -292,14 +311,14 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 for item in &w.items {
                     v.header(&item.context_expr, &n);
                     n.extend(dereferenced(&item.context_expr));
-                    forget_members_after(&mut n, &item.context_expr);
+                    n.apply(&effects(&item.context_expr));
                     if let Some(target) = &item.optional_vars {
                         remove_all(&mut n, bound_names_in_expr(target));
                     }
                 }
                 if w.is_async {
                     // `__aenter__` suspends before the body runs.
-                    n.forget_members();
+                    n.apply(&Effects::suspension());
                 }
                 // The body runs once, in order (a context manager that
                 // suppresses an exception is not modelled).
@@ -318,9 +337,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     // body, so a call there may already have removed a key.
                     // A handler or `else` that mutates and then exits never
                     // reaches the join, but a `finally` still runs after it.
-                    if !only_get_calls_in_stmt(stmt) {
-                        a.forget_members();
-                    }
+                    a.apply(&effects_of_stmt(stmt));
                     a
                 };
                 let body_end = walk(&t.body, &n, v, counts);
@@ -350,40 +367,34 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.extend(dereferenced(&m.subject));
                 // The cases run on a clone, so a call in a guard or a body
                 // never reaches `n`: drop the facts for the whole statement.
-                if !only_get_calls_in_stmt(stmt) {
-                    n.forget_members();
-                }
+                n.apply(&effects_of_stmt(stmt));
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 for case in &m.cases {
                     walk(&case.body, &n, v, counts);
                 }
             }
             Stmt::FunctionDef(f) => {
-                // Decorators and defaults run at the definition (the body does not).
-                let mut v = OnlyGetCalls(true);
+                // Decorators and defaults run at the definition (the body
+                // does not), but the body may capture a parameter's object.
+                let mut v = Effects::new();
                 f.decorator_list.iter().for_each(|d| v.visit_decorator(d));
                 v.visit_parameters(&f.parameters);
                 if let Some(r) = &f.returns {
                     v.visit_expr(r);
                 }
-                if !v.0 {
-                    n.forget_members();
-                }
+                v.reached.extend(effects_of_stmt(stmt).reached);
+                n.apply(&v);
                 n.remove(f.name.as_str());
             }
             Stmt::ClassDef(c) => {
                 // The class body, its bases and decorators run at the definition.
-                if !only_get_calls_in_stmt(stmt) {
-                    n.forget_members();
-                }
+                n.apply(&effects_of_stmt(stmt));
                 n.remove(c.name.as_str());
             }
             _ => {
                 v.simple(stmt, &n);
                 n.extend(stmt_dereferences(stmt));
-                if !only_get_calls_in_stmt(stmt) {
-                    n.forget_members();
-                }
+                n.apply(&effects_of_stmt(stmt));
                 let simple: Vec<String> = match stmt {
                     Stmt::Assign(a) => simple_assign_targets(a)
                         .or_else(|| simple_attr_targets(a))
@@ -577,18 +588,68 @@ pub fn member_key_of(key: &Expr, container: &Expr) -> Option<String> {
     Some(member_key(&container, &key))
 }
 
-/// Whether `node` leaves `member_key` facts alone: every call in it is a
-/// `.get(...)` method call (one that cannot remove a key from a dict), and
-/// it has no `del`, no walrus (which can rebind the key) and no suspension
-/// (`await`, `yield`, `async for`, `async with`, an async comprehension).
-struct OnlyGetCalls(bool);
+/// What evaluating a node may do to the facts the walk keeps.
+#[derive(Debug, Default)]
+pub struct Effects {
+    /// It may remove a key from any dict: it has a call other than a `.get`
+    /// on a name or `obj.f`, a `del`, a walrus (which can rebind the key) or
+    /// a suspension.
+    mutates: bool,
+    /// The receivers of its `.get` calls. Only a dict's own `.get` is known
+    /// not to mutate, so a fact about any other container is dropped.
+    gets: HashSet<String>,
+    /// Names whose objects it may hand to other code: a name read other than
+    /// as `x.f` or in an `is` test (an argument, a receiver `x.m(...)`, a
+    /// value stored or returned, an operand that runs `x`'s dunders).
+    pub reached: HashSet<String>,
+    /// It suspends (`await`, `yield`, `async for`, `async with`, an async
+    /// comprehension): other code may then run on any object.
+    suspends: bool,
+}
 
-impl<'a> Visitor<'a> for OnlyGetCalls {
+impl Effects {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn suspension() -> Self {
+        Self::new().suspended()
+    }
+
+    fn suspended(mut self) -> Self {
+        self.mutates = true;
+        self.suspends = true;
+        self
+    }
+
+    /// Whether the fact `n` (a name or a `member_key`) survives.
+    pub fn keeps_member(&self, n: &str) -> bool {
+        match n.split_once('[') {
+            None => true,
+            Some((container, _)) => !self.mutates && self.gets.iter().all(|g| g == container),
+        }
+    }
+
+    fn reach_root(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Name(n) => {
+                self.reached.insert(n.id.to_string());
+            }
+            Expr::Attribute(a) => self.reach_root(&a.value),
+            _ => {}
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for Effects {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::Delete(_) => self.0 = false,
-            Stmt::For(f) if f.is_async => self.0 = false,
-            Stmt::With(w) if w.is_async => self.0 = false,
+            Stmt::Delete(d) => {
+                self.mutates = true;
+                d.targets.iter().for_each(|t| self.reach_root(t));
+            }
+            Stmt::For(f) if f.is_async => *self = std::mem::take(self).suspended(),
+            Stmt::With(w) if w.is_async => *self = std::mem::take(self).suspended(),
             _ => {}
         }
         visitor::walk_stmt(self, stmt);
@@ -597,17 +658,48 @@ impl<'a> Visitor<'a> for OnlyGetCalls {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Call(c) => {
-                self.0 &=
-                    matches!(c.func.as_ref(), Expr::Attribute(a) if a.attr.as_str() == "get");
+                if let Expr::Attribute(a) = c.func.as_ref() {
+                    self.reach_root(&a.value);
+                }
+                let get_on = match c.func.as_ref() {
+                    Expr::Attribute(a) if a.attr.as_str() == "get" => match a.value.as_ref() {
+                        Expr::Name(n) => Some(n.id.to_string()),
+                        other => attr_name(other),
+                    },
+                    _ => None,
+                };
+                match get_on {
+                    Some(r) => {
+                        self.gets.insert(r);
+                    }
+                    None => self.mutates = true,
+                }
             }
-            // A suspension hands control to code that may mutate the dict.
-            Expr::Named(_) | Expr::Await(_) | Expr::Yield(_) | Expr::YieldFrom(_) => self.0 = false,
+            Expr::Name(n) if matches!(n.ctx, ExprContext::Load) => {
+                self.reached.insert(n.id.to_string());
+            }
+            // `x.f` reads a field of `x` and hands `x` to nothing.
+            Expr::Attribute(a) if matches!(a.value.as_ref(), Expr::Name(_)) => return,
+            // An identity test runs no code of its operands.
+            Expr::Compare(c) if c.ops.iter().all(|op| matches!(op, CmpOp::Is | CmpOp::IsNot)) => {
+                for e in std::iter::once(c.left.as_ref()).chain(c.comparators.iter()) {
+                    if !matches!(e, Expr::Name(_)) {
+                        self.visit_expr(e);
+                    }
+                }
+                return;
+            }
+            Expr::Named(_) => self.mutates = true,
+            // A suspension hands control to code that may mutate any object.
+            Expr::Await(_) | Expr::Yield(_) | Expr::YieldFrom(_) => {
+                *self = std::mem::take(self).suspended();
+            }
             Expr::ListComp(ast::ExprListComp { generators, .. })
             | Expr::SetComp(ast::ExprSetComp { generators, .. })
             | Expr::Generator(ast::ExprGenerator { generators, .. })
             | Expr::DictComp(ast::ExprDictComp { generators, .. }) => {
                 if generators.iter().any(|g| g.is_async) {
-                    self.0 = false;
+                    *self = std::mem::take(self).suspended();
                 }
             }
             _ => {}
@@ -616,30 +708,18 @@ impl<'a> Visitor<'a> for OnlyGetCalls {
     }
 }
 
-
-fn only_get_calls(expr: &Expr) -> bool {
-    let mut v = OnlyGetCalls(true);
+/// The effects of evaluating `expr`.
+pub fn effects(expr: &Expr) -> Effects {
+    let mut v = Effects::new();
     v.visit_expr(expr);
-    v.0
+    v
 }
 
-fn only_get_calls_in_stmt(stmt: &Stmt) -> bool {
-    let mut v = OnlyGetCalls(true);
+/// The effects of running `stmt` (with every nested block).
+pub fn effects_of_stmt(stmt: &Stmt) -> Effects {
+    let mut v = Effects::new();
     v.visit_stmt(stmt);
-    v.0
-}
-
-/// A call in a later iteration may remove a key the loop's entry state holds.
-fn forget_members_in_loop(n: &mut Narrowed, stmt: &Stmt) {
-    if !only_get_calls_in_stmt(stmt) {
-        n.forget_members();
-    }
-}
-
-fn forget_members_after(n: &mut Narrowed, header: &Expr) {
-    if !only_get_calls(header) {
-        n.forget_members();
-    }
+    v
 }
 
 fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
@@ -687,9 +767,8 @@ pub fn negative(test: &Expr) -> Vec<String> {
 
 /// A call in the test may remove the key again.
 fn without_members_if_called(out: &mut Vec<String>, test: &Expr) {
-    if !only_get_calls(test) {
-        out.retain(|n| !n.contains('['));
-    }
+    let e = effects(test);
+    out.retain(|n| e.keeps_member(n));
 }
 
 /// `x <op> <display of non-None literals>`: `x`, which equals one of them.
@@ -1645,6 +1724,14 @@ mod tests {
         // The negative side of an `or` test with a call.
         no_members("def f(d, k):\n    if k not in d or g():\n        return\n    use()\n");
         no_members("def f(d, k, a):\n    if a:\n        return\n    elif k not in d or g():\n        return\n    use()\n");
+        // Only the dict's own `.get` is known to leave its keys alone.
+        let after_get = |receiver: &str| {
+            narrowing_at_uses(&format!(
+                "def f(d, e, k, j):\n    if k in d:\n        {receiver}.get(j)\n        probe.get()\n"
+            ))
+        };
+        assert_eq!(after_get("d"), vec![vec!["d".to_string(), "d[k]".into()]]);
+        assert_eq!(after_get("e"), vec![vec!["e".to_string()]]);
         // A call in one iteration may remove the key before the next.
         for lp in ["for x in e:", "while x:"] {
             let uses = narrowing_at_uses(&format!(

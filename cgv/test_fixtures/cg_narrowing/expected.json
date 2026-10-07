@@ -80,6 +80,51 @@
       "path": "key_popped_across_async_comp -> Rec.s",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "key_in_non_dict -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_after_other_get -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_and -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_conditional -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_popped_in_comprehension -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "key_checked_in_filter -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "name_after_clear -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "name_after_forget -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "name_after_alias -> Rec.s",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
     }
   ],
   "warnings": [
@@ -98,6 +143,10 @@
     {
       "path": "key_not_in -> Rec.s",
       "contains": "'key_not_in' has no nullability postcondition"
+    },
+    {
+      "path": "label_then_clear -> Rec.s",
+      "contains": "'label_then_clear' has no nullability postcondition"
     }
   ]
 }

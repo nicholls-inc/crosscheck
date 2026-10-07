@@ -17,6 +17,13 @@ class Rec:
 class Holder:
     name: Optional[str]
 
+    def forget(self) -> None:
+        self.name = None
+
+
+def clear(h: Holder) -> None:
+    h.name = None
+
 
 def lookup(raw: dict, k: str) -> Optional[str]:
     return raw.get(k)

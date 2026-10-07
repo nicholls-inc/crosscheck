@@ -1,4 +1,4 @@
-from records import Holder, Rec, lookup
+from records import Holder, Rec, clear, lookup
 
 
 # Pattern 1: the handler falls through without rebinding, so `v` may still
@@ -151,3 +151,68 @@ async def key_popped_across_async_comp(d: dict, k: str, it) -> Rec:
         xs = [x async for x in it]
         return Rec(n=1, s=d.get(k))
     return Rec(n=0, s="missing")
+
+
+# Pattern 4: `o` is not known to be a dict, so `o.get(k)` need not be `o[k]`.
+def key_in_non_dict(o, k: str) -> Rec:
+    if k in o:
+        return Rec(n=1, s=o.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: another object's `.get` may remove the key (a cache over `d`).
+def key_after_other_get(d: dict, cache, k: str) -> Rec:
+    if k in d:
+        cache.get(k)
+        return Rec(n=1, s=d.get(k))
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: the key is removed inside the expression, after the test.
+def key_popped_in_and(d: dict, k: str) -> Rec:
+    if k in d:
+        return Rec(n=1, s=str(d.pop(k)) and d.get(k))
+    return Rec(n=0, s="missing")
+
+
+def key_popped_in_conditional(d: dict, k: str) -> Rec:
+    if k in d:
+        return Rec(n=1, s=d.get(k) if d.pop(k) else "x")
+    return Rec(n=0, s="missing")
+
+
+# Pattern 4: a filter removes the key before the element is built.
+def key_popped_in_comprehension(d: dict, k: str, ks: list) -> list:
+    if k in d:
+        return [Rec(n=1, s=d.get(k)) for _ in ks if d.pop(k)]
+    return []
+
+
+# Pattern 4: a filter's `k in d` is not carried to the element.
+def key_checked_in_filter(d: dict, ks: list) -> list:
+    return [Rec(n=1, s=d.get(k)) for k in ks if k in d if d.pop(k)]
+
+
+# Pattern 2: the callee hands `h` to code that may write `h.name` before
+# the read: a call with `h`, a method of `h`, a call after `h` is aliased.
+def name_after_clear(h: Holder) -> Rec:
+    clear(h)
+    return Rec(n=5, s=h.name)
+
+
+def name_after_forget(h: Holder) -> Rec:
+    h.forget()
+    return Rec(n=6, s=h.name)
+
+
+def name_after_alias(h: Holder) -> Rec:
+    q = h
+    clear(q)
+    return Rec(n=7, s=h.name)
+
+
+def call_writers(h: Holder) -> None:
+    if h.name:
+        name_after_clear(h)
+        name_after_forget(h)
+        name_after_alias(h)

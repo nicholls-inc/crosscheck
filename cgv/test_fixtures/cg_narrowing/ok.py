@@ -1,6 +1,6 @@
 from typing import Optional
 
-from records import Holder, Rec, lookup
+from records import Holder, Rec, clear, lookup
 
 
 # Pattern 1: reassignment after an early return, with the conversion in a
@@ -94,3 +94,15 @@ def key_not_in(d: dict, k: str) -> Rec:
     if k not in d:
         return Rec(n=0, s="missing")
     return Rec(n=1, s=d.get(k))
+
+
+# Pattern 2: the read comes before the call that may write the field.
+def label_then_clear(h: Holder) -> Rec:
+    r = Rec(n=1, s=h.name)
+    clear(h)
+    return r
+
+
+def guarded_then_clear(h: Holder) -> None:
+    if h.name:
+        label_then_clear(h)

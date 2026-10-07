@@ -22,7 +22,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, BoolOp, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
 use serde::Deserialize;
 
@@ -336,9 +336,13 @@ fn splat_targets(func: &FunctionInfo, kw: &str, scope: &Scope) -> Vec<Forward> {
 /// The caller guards of every function whose callers the project shows
 /// (see `CallerGuards`). A function qualifies when it has a resolved call,
 /// every call by its name resolves to it, its name is used nowhere but as
-/// a call (nor imported under another name), it has no decorator, it is
-/// not a dunder method, and a method's class has only project classes and
-/// `object` as bases, transitively.
+/// a call (nor imported under another name, nor named by a string in
+/// `getattr`), it has no decorator, it is not a dunder method, and a
+/// method's class has only project classes and `object` as bases,
+/// transitively. No function qualifies when the project looks a name up
+/// from a computed string (`getattr(o, name)`), and none in a module that
+/// calls `globals()` / `locals()` / `vars()` or imports into one that does:
+/// such a lookup can reach it by a call the project does not show.
 pub fn caller_guards(project: &Project) -> CallerGuards {
     let index = &project.index;
     let mut names = NameUses::default();
@@ -381,7 +385,18 @@ pub fn caller_guards(project: &Project) -> CallerGuards {
             Some(c) => project_bases_only(index, &crate::resolve::qualify(&f.module, c), &mut HashSet::new()),
             None => true,
         };
-        all_calls_seen && !names.escaping.contains(short) && f.decorators.is_empty() && !dunder && bases_known
+        let looked_up = names.dynamic
+            || names.lookup_files.contains(&f.source_file)
+            || names
+                .lookup_files
+                .iter()
+                .any(|file| names.imported.get(file).is_some_and(|i| i.contains(short) || i.contains("*")));
+        all_calls_seen
+            && !looked_up
+            && !names.escaping.contains(short)
+            && f.decorators.is_empty()
+            && !dunder
+            && bases_known
     });
     guards
 }
@@ -433,6 +448,27 @@ struct NameUses {
     escaping: HashSet<String>,
     /// Calls by the called name (`f(...)`, `obj.f(...)`): `(file, offset)`.
     calls: HashMap<String, HashSet<(String, u32)>>,
+    /// A name is looked up from a computed string (`getattr(o, name)`,
+    /// `vars(o)`, `operator.attrgetter(name)`): it may be any function.
+    dynamic: bool,
+    /// Files that look names up in their own namespace (`globals()`,
+    /// `locals()`, `vars()`).
+    lookup_files: HashSet<String>,
+    /// Per file, the names it imports with `from m import ...` (`*` included).
+    imported: HashMap<String, HashSet<String>>,
+}
+
+impl NameUses {
+    /// A lookup of attribute names by string: the literal names escape,
+    /// and a computed one could be any name.
+    fn lookup(&mut self, names: &[Expr]) {
+        for n in names {
+            match n {
+                Expr::StringLiteral(s) => self.escaping.extend(s.value.to_str().split('.').map(str::to_string)),
+                _ => self.dynamic = true,
+            }
+        }
+    }
 }
 
 impl<'a> Visitor<'a> for NameUses {
@@ -441,6 +477,8 @@ impl<'a> Visitor<'a> for NameUses {
             for a in i.names.iter().filter(|a| a.asname.is_some()) {
                 self.escaping.insert(a.name.to_string());
             }
+            let imported = self.imported.entry(self.file.clone()).or_default();
+            imported.extend(i.names.iter().map(|a| a.name.to_string()));
         }
         visitor::walk_stmt(self, stmt);
     }
@@ -448,6 +486,22 @@ impl<'a> Visitor<'a> for NameUses {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Call(c) => {
+                let args = &c.arguments.args;
+                let callee = match c.func.as_ref() {
+                    Expr::Name(n) => Some(n.id.as_str()),
+                    Expr::Attribute(a) => Some(a.attr.as_str()),
+                    _ => None,
+                };
+                match (callee, &args[..]) {
+                    (Some("getattr"), [_, name, ..]) => self.lookup(std::slice::from_ref(name)),
+                    (Some("attrgetter"), names) => self.lookup(names),
+                    (Some("methodcaller"), [name, ..]) => self.lookup(std::slice::from_ref(name)),
+                    (Some("globals" | "locals" | "vars"), []) => {
+                        self.lookup_files.insert(self.file.clone());
+                    }
+                    (Some("vars"), [_, ..]) => self.dynamic = true,
+                    _ => {}
+                }
                 let called = match c.func.as_ref() {
                     Expr::Name(n) => Some(n.id.as_str()),
                     Expr::Attribute(a) => {
@@ -525,17 +579,14 @@ impl GuardCollector<'_, '_> {
             }
             Expr::If(i) => {
                 self.scan(&i.test, ctx);
-                self.scan(&i.body, &ctx.narrow(flow::positive(&i.test)));
-                self.scan(&i.orelse, &ctx.narrow(flow::negative(&i.test)));
+                self.scan(&i.body, &ctx.branch(&i.test, true));
+                self.scan(&i.orelse, &ctx.branch(&i.test, false));
             }
             Expr::BoolOp(b) => {
                 let mut c = ctx.clone();
                 for v in &b.values {
                     self.scan(v, &c);
-                    c = match b.op {
-                        BoolOp::And => c.narrow(flow::positive(v)),
-                        BoolOp::Or => c.narrow(flow::negative(v)),
-                    };
+                    c = c.after_operand(v, b.op);
                 }
             }
             Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::Generator(_) | Expr::DictComp(_) => {}
@@ -742,7 +793,7 @@ impl<'a, 's> FlowVisitor<'a> for EdgeWalker<'a, 's> {
             Stmt::Assert(a) => {
                 self.scan(&a.test, &ctx);
                 if let Some(msg) = &a.msg {
-                    self.scan(msg, &ctx.narrow(flow::negative(&a.test)));
+                    self.scan(msg, &ctx.branch(&a.test, false));
                 }
             }
             Stmt::Delete(d) => {
@@ -828,17 +879,14 @@ impl<'a, 's> EdgeWalker<'a, 's> {
             }
             Expr::If(i) => {
                 self.scan(&i.test, ctx);
-                self.scan(&i.body, &ctx.narrow(flow::positive(&i.test)));
-                self.scan(&i.orelse, &ctx.narrow(flow::negative(&i.test)));
+                self.scan(&i.body, &ctx.branch(&i.test, true));
+                self.scan(&i.orelse, &ctx.branch(&i.test, false));
             }
             Expr::BoolOp(b) => {
                 let mut c = ctx.clone();
                 for v in &b.values {
                     self.scan(v, &c);
-                    c = match b.op {
-                        BoolOp::And => c.narrow(flow::positive(v)),
-                        BoolOp::Or => c.narrow(flow::negative(v)),
-                    };
+                    c = c.after_operand(v, b.op);
                 }
             }
             Expr::Lambda(l) => {
