@@ -688,6 +688,7 @@ describe("dafnyEvidence against a real git repository", () => {
     it("accepts a UTF-8 byte-order mark and still scans the text after it", async () => {
       await commitFiles({ "proofs/Abs.dfy": `\uFEFFinclude "Lib.dfy"\n${SOURCE}`, "proofs/Lib.dfy": "" });
       expect((await dafnyEvidence(input)).errors).toEqual([]);
+      vi.mocked(runDafny).mockClear();
       await commitFiles({ "proofs/Abs.dfy": `\uFEFFinclude "Missing.dfy"\n${SOURCE}` });
       await refusesBeforeDafny([
         'include "Missing.dfy" in proofs/Abs.dfy is outside the tracked files: not committed: proofs/Missing.dfy',
