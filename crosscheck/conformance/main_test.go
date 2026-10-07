@@ -334,7 +334,7 @@ func TestPresentArtifactLedger(t *testing.T) {
 			if tc.expect != nil && !*tc.expect {
 				expectField = "false"
 			}
-			ledgerJSON := `{"version":1,"narrative_claims":[{"id":"C","claim":"c","reality":"r",` +
+			ledgerJSON := `{"version":1,"narrative_claims":[{"id":"C","source":"s","claim":"c","reality":"r",` +
 				`"status":"known-gap","check":{"type":"present_artifact","path":"` + tc.path + `"`
 			if tc.expect != nil {
 				ledgerJSON += `,"expect_present":` + expectField
@@ -354,7 +354,7 @@ func TestPresentArtifactLedger(t *testing.T) {
 func TestUnreviewedLedgerFails(t *testing.T) {
 	files := baseTree()
 	files["conformance/claims.json"] = `{"version":1,"narrative_claims":[` +
-		`{"id":"C-NEW","claim":"c","reality":"r","status":"unreviewed","check":{"type":"manual"}}]}`
+		`{"id":"C-NEW","source":"s","claim":"c","reality":"r","status":"unreviewed","check":{"type":"manual"}}]}`
 	r := analyze(writeTree(t, files))
 	if !hasMatch(r.errors, "[ledger] claim C-NEW is UNREVIEWED") {
 		t.Errorf("expected UNREVIEWED ledger error, got: %v", r.errors)
@@ -365,7 +365,7 @@ func TestKnownGapNeedsTracking(t *testing.T) {
 	// A known-gap with no tracked_in link fails CI.
 	files := baseTree()
 	files["conformance/claims.json"] = `{"version":1,"narrative_claims":[` +
-		`{"id":"C-GAP","claim":"c","reality":"r","status":"known-gap","check":{"type":"manual"}}]}`
+		`{"id":"C-GAP","source":"s","claim":"c","reality":"r","status":"known-gap","check":{"type":"manual"}}]}`
 	r := analyze(writeTree(t, files))
 	if !hasMatch(r.errors, "claim C-GAP is a known-gap with no tracked_in link") {
 		t.Errorf("expected known-gap-without-tracking error, got: %v", r.errors)
@@ -373,7 +373,7 @@ func TestKnownGapNeedsTracking(t *testing.T) {
 
 	// The same gap with a tracked_in link is clean.
 	files["conformance/claims.json"] = `{"version":1,"narrative_claims":[` +
-		`{"id":"C-GAP","claim":"c","reality":"r","status":"known-gap",` +
+		`{"id":"C-GAP","source":"s","claim":"c","reality":"r","status":"known-gap",` +
 		`"tracked_in":"https://github.com/nicholls-inc/claude-code-marketplace/issues/217","check":{"type":"manual"}}]}`
 	r = analyze(writeTree(t, files))
 	if hasMatch(r.errors, "no tracked_in link") {
@@ -389,7 +389,7 @@ func TestLedgerStatusAllowlist(t *testing.T) {
 	}{
 		{"typo", `"status":"reviewed-disclsed",`, `[ledger] claim C has unknown status "reviewed-disclsed"`},
 		{"empty", `"status":"",`, `[ledger] claim C has unknown status ""`},
-		{"missing", ``, `[ledger] claim C has unknown status ""`},
+		{"missing", ``, `[ledger] cannot parse conformance/claims.json: narrative_claims[0].status is missing`},
 		{"padded", `"status":" reviewed-accurate",`, `[ledger] claim C has unknown status " reviewed-accurate"`},
 		{"unreviewed", `"status":"unreviewed",`, ""},
 		{"known_gap", `"status":"known-gap",`, ""},
@@ -399,7 +399,7 @@ func TestLedgerStatusAllowlist(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			files := baseTree()
-			files["conformance/claims.json"] = `{"version":1,"narrative_claims":[{"id":"C","claim":"c","reality":"r",` +
+			files["conformance/claims.json"] = `{"version":1,"narrative_claims":[{"id":"C","source":"s","claim":"c","reality":"r",` +
 				tc.status + `"tracked_in":"#25","check":{"type":"manual"}}]}`
 			r := analyze(writeTree(t, files))
 			if tc.wantError != "" {
@@ -425,6 +425,16 @@ func TestLedgerLoad(t *testing.T) {
 			}
 		}
 	}
+	// okClaim meets every LL-9 rule. ledger wraps claims in a valid top level,
+	// and claimWith builds a claim from its keys, so each case changes one thing.
+	const okClaim = `{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`
+	ledger := func(claims ...string) func(t *testing.T, path string) {
+		return writeLedger(`{"version":1,"narrative_claims":[` + strings.Join(claims, ",") + `]}`)
+	}
+	claimWith := func(keys string) string {
+		return `{` + keys + `}`
+	}
+	const base = `"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate"`
 	symlink := func(target string) func(t *testing.T, path string) {
 		return func(t *testing.T, path string) {
 			if err := os.Symlink(target, path); err != nil {
@@ -458,12 +468,14 @@ func TestLedgerLoad(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, readErr, 0},
-		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr, 0},
-		{"empty", writeLedger(``), parseErr, 0},
-		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr, 0},
-		// The first claim decodes, the second has a type error: json.Unmarshal
-		// returns the decoded claim and the error, and the ledger must still be empty.
-		{"partial_decode", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},{"id":5}]}`), parseErr, 0},
+		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr + "the ledger: unexpected EOF", 0},
+		{"empty", writeLedger(``), parseErr + "the ledger: EOF", 0},
+		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr + "narrative_claims: json: cannot unmarshal object", 0},
+		// A ledger that breaks the schema is rejected before json.Unmarshal runs,
+		// so a first claim that would decode cannot leak out ahead of a second
+		// claim with a type error: the schema error names the fault and the
+		// ledger stays empty.
+		{"partial_decode", writeLedger(`{"version":1,"narrative_claims":[{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}},{"id":5,"source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}]}`), parseErr + "narrative_claims[1].id must be a non-blank string", 0},
 		{"dangling_symlink", symlink("missing.json"), readErr, 0},
 		{"dangling_symlink_chain", func(t *testing.T, path string) {
 			symlink("missing.json")(t, filepath.Join(filepath.Dir(path), "hop.json"))
@@ -484,24 +496,73 @@ func TestLedgerLoad(t *testing.T) {
 			symlink(filepath.Base(dir)+"-real")(t, dir)
 		}, "", 0},
 		{"symlink_to_ledger", func(t *testing.T, path string) {
-			writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"}]}`)(t, filepath.Join(filepath.Dir(path), "real.json"))
+			ledger(okClaim)(t, filepath.Join(filepath.Dir(path), "real.json"))
 			symlink("real.json")(t, path)
 		}, "", 1},
 		{"top_null", writeLedger(`null`), parseErr + "the ledger is null", 0},
-		{"top_array", writeLedger(`[]`), parseErr, 0},
+		{"top_array", writeLedger(`[]`), parseErr + "the ledger is not an object", 0},
 		{"top_empty_object", writeLedger(`{}`), parseErr + "narrative_claims is missing", 0},
 		{"claims_missing", writeLedger(`{"version":1}`), parseErr + "narrative_claims is missing", 0},
 		{"claims_null", writeLedger(`{"version":1,"narrative_claims":null}`), parseErr + "narrative_claims is null", 0},
-		{"claim_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},null]}`), parseErr + "narrative_claims[1] is null", 0},
-		{"check_null", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":null}]}`), parseErr + "narrative_claims[0].check is null", 0},
-		{"check_not_object", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":"manual"}]}`), parseErr, 0},
+		{"claim_null", ledger(okClaim, `null`), parseErr + "narrative_claims[1] is null", 0},
+		{"check_null", ledger(claimWith(base + `,"check":null`)), parseErr + "narrative_claims[0].check is null", 0},
+		{"check_not_object", ledger(claimWith(base + `,"check":"manual"`)), parseErr + "narrative_claims[0].check is not an object", 0},
 		{"unknown_top_key", writeLedger(`{"version":1,"narrative_claims":[],"k5":1,"k9":1,"k3":1,"k8":1,"k1":1,"k7":1,"k2":1,"k6":1,"k4":1}`), parseErr + `the ledger has unknown key "k1"`, 0},
-		{"unknown_claim_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"known-gap","tracked-in":"#1"}]}`), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
-		{"unknown_check_key", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate","check":{"type":"present_artifact","path":"README.md","expect-present":false}}]}`), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
+		{"unknown_claim_key", ledger(claimWith(base + `,"tracked-in":"#1","check":{"type":"manual"}`)), parseErr + `narrative_claims[0] has unknown key "tracked-in"`, 0},
+		{"unknown_check_key", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","expect-present":false}`)), parseErr + `narrative_claims[0].check has unknown key "expect-present"`, 0},
 		{"key_case_mismatch", writeLedger(`{"Narrative_Claims":[]}`), parseErr + `the ledger has unknown key "Narrative_Claims"`, 0},
 		{"every_schema_key", writeLedger(`{"version":1,"description":"d","narrative_claims":[` +
 			`{"id":"C1","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","tracked_in":"",` +
 			`"check":{"type":"present_artifact","path":"README.md","expect_present":true}}]}`), "", 1},
+		{"required_keys_only", writeLedger(`{"version":1,"narrative_claims":[` + okClaim + `]}`), "", 1},
+		{"no_claims", writeLedger(`{"version":1,"narrative_claims":[]}`), "", 0},
+		{"present_artifact_default_expect", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md"}`)), "", 1},
+		{"tracked_in_empty", ledger(claimWith(base + `,"tracked_in":"","check":{"type":"manual"}`)), "", 1},
+		{"description_empty", writeLedger(`{"version":1,"description":"","narrative_claims":[]}`), "", 0},
+		{"version_missing", writeLedger(`{"narrative_claims":[]}`), parseErr + "version is missing", 0},
+		{"version_wrong", writeLedger(`{"version":7,"narrative_claims":[]}`), parseErr + "version must be 1, got 7", 0},
+		{"version_float", writeLedger(`{"version":1.0,"narrative_claims":[]}`), parseErr + "version must be 1, got 1.0", 0},
+		{"version_string", writeLedger(`{"version":"1","narrative_claims":[]}`), parseErr + `version must be 1, got "1"`, 0},
+		{"version_null", writeLedger(`{"version":null,"narrative_claims":[]}`), parseErr + "version is null", 0},
+		{"description_not_string", writeLedger(`{"version":1,"description":1,"narrative_claims":[]}`), parseErr + "description must be a string", 0},
+		{"description_null", writeLedger(`{"version":1,"description":null,"narrative_claims":[]}`), parseErr + "description is null", 0},
+		{"claim_empty_object", ledger(`{}`), parseErr + "narrative_claims[0].check is missing", 0},
+		{"claim_no_id", ledger(`{"source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].id is missing", 0},
+		{"claim_no_source", ledger(`{"id":"C1","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].source is missing", 0},
+		{"claim_no_claim", ledger(`{"id":"C1","source":"s","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].claim is missing", 0},
+		{"claim_no_reality", ledger(`{"id":"C1","source":"s","claim":"c","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].reality is missing", 0},
+		{"claim_no_status", ledger(`{"id":"C1","source":"s","claim":"c","reality":"r","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].status is missing", 0},
+		{"claim_no_check", ledger(claimWith(base)), parseErr + "narrative_claims[0].check is missing", 0},
+		{"second_claim_no_id", ledger(okClaim, `{"source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[1].id is missing", 0},
+		{"id_blank", ledger(`{"id":" \t","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].id must be a non-blank string", 0},
+		{"source_empty", ledger(`{"id":"C1","source":"","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].source must be a non-blank string", 0},
+		{"claim_text_blank", ledger(`{"id":"C1","source":"s","claim":" ","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].claim must be a non-blank string", 0},
+		{"reality_blank", ledger(`{"id":"C1","source":"s","claim":"c","reality":"","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].reality must be a non-blank string", 0},
+		{"id_null", ledger(`{"id":null,"source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].id is null", 0},
+		{"status_null", ledger(`{"id":"C1","source":"s","claim":"c","reality":"r","status":null,"check":{"type":"manual"}}`), parseErr + "narrative_claims[0].status is null", 0},
+		{"tracked_in_null", ledger(claimWith(base + `,"tracked_in":null,"check":{"type":"manual"}`)), parseErr + "narrative_claims[0].tracked_in is null", 0},
+		{"check_type_missing", ledger(claimWith(base + `,"check":{}`)), parseErr + "narrative_claims[0].check.type is missing", 0},
+		{"check_type_null", ledger(claimWith(base + `,"check":{"type":null}`)), parseErr + "narrative_claims[0].check.type is null", 0},
+		{"check_type_typo", ledger(claimWith(base + `,"check":{"type":"present_artfact","path":"nope.md"}`)), parseErr + `narrative_claims[0].check.type is "present_artfact", want one of manual|present_artifact`, 0},
+		{"check_type_case", ledger(claimWith(base + `,"check":{"type":"Manual"}`)), parseErr + `narrative_claims[0].check.type is "Manual", want one of manual|present_artifact`, 0},
+		{"manual_with_path", ledger(claimWith(base + `,"check":{"type":"manual","path":"README.md"}`)), parseErr + `narrative_claims[0].check has unknown key "path" for type "manual"`, 0},
+		{"manual_with_expect", ledger(claimWith(base + `,"check":{"type":"manual","expect_present":false}`)), parseErr + `narrative_claims[0].check has unknown key "expect_present" for type "manual"`, 0},
+		{"present_artifact_no_path", ledger(claimWith(base + `,"check":{"type":"present_artifact","expect_present":false}`)), parseErr + "narrative_claims[0].check.path is missing", 0},
+		{"present_artifact_blank_path", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":" "}`)), parseErr + "narrative_claims[0].check.path must be a non-blank string", 0},
+		{"present_artifact_null_path", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":null}`)), parseErr + "narrative_claims[0].check.path is null", 0},
+		{"expect_present_null", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","expect_present":null}`)), parseErr + "narrative_claims[0].check.expect_present is null", 0},
+		{"id_not_string", ledger(`{"id":5,"source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + "narrative_claims[0].id must be a non-blank string", 0},
+		{"status_not_string", ledger(`{"id":"C1","source":"s","claim":"c","reality":"r","status":1,"check":{"type":"manual"}}`), parseErr + "narrative_claims[0].status must be a string", 0},
+		{"tracked_in_not_string", ledger(claimWith(base + `,"tracked_in":17,"check":{"type":"manual"}`)), parseErr + "narrative_claims[0].tracked_in must be a string", 0},
+		{"expect_present_not_bool", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","expect_present":"false"}`)), parseErr + "narrative_claims[0].check.expect_present must be true or false", 0},
+		{"trailing_data", writeLedger(`{"version":1,"narrative_claims":[]} {}`), parseErr + "invalid character '{' after top-level value", 0},
+		{"dup_top_scalar", writeLedger(`{"version":2,"version":1,"narrative_claims":[]}`), parseErr + `the ledger has duplicate key "version"`, 0},
+		{"dup_claims_array", writeLedger(`{"version":1,"narrative_claims":[` + okClaim + `,` + okClaim + `],"narrative_claims":[{"id":"C2"}]}`), parseErr + `the ledger has duplicate key "narrative_claims"`, 0},
+		{"dup_claim_key", ledger(claimWith(base + `,"status":"unreviewed","check":{"type":"manual"}`)), parseErr + `narrative_claims[0] has duplicate key "status"`, 0},
+		{"dup_check_object", ledger(claimWith(base + `,"check":{"bogus":1},"check":{"type":"manual"}`)), parseErr + `narrative_claims[0] has duplicate key "check"`, 0},
+		{"dup_check_key", ledger(claimWith(base + `,"check":{"type":"present_artifact","path":"README.md","path":"nope.md"}`)), parseErr + `narrative_claims[0].check has duplicate key "path"`, 0},
+		{"dup_key_escaped", ledger(`{"id":"C1","\u0069d":"C2","source":"s","claim":"c","reality":"r","status":"reviewed-accurate","check":{"type":"manual"}}`), parseErr + `narrative_claims[0] has duplicate key "id"`, 0},
+		{"dup_second_claim", ledger(okClaim, claimWith(base+`,"id":"C2","check":{"type":"manual"}`)), parseErr + `narrative_claims[1] has duplicate key "id"`, 0},
 	}
 	wrapsNotExist := map[string]bool{
 		"dangling_symlink":         true,

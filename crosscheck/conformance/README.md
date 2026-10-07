@@ -70,26 +70,32 @@ parsed).
   `reviewed-disclsed` cannot pass as a reviewed claim.
 
   A missing `claims.json` is an empty ledger. A `claims.json` that cannot be
-  read, or is not valid JSON for the ledger types, fails CI, so a syntax error
-  cannot pass as a ledger with no claims. A `claims.json` or `conformance`
-  directory that is a symlink to a missing target cannot be read, so it fails
-  CI too. So does a plugin root that does not resolve, because the path is
-  wrong or a symlink on it dangles: a run that scans nothing cannot pass. JSON
-  that parses but has the wrong shape fails CI as well. The top
-  level, each claim and each `check` must be objects, `narrative_claims` must be
-  present and not `null`, and every key must be one the ledger names
-  (`version`, `description` and `narrative_claims` at the top; `id`, `source`,
-  `claim`, `reality`, `status`, `check` and `tracked_in` in a claim; `type`,
-  `path` and `expect_present` in a `check`), matched exactly, including case.
-  So a misspelt `tracked-in` or `expect-present` fails instead of being
-  dropped. Not yet reached: which keys a claim must carry, the value of
-  `version`, the value of `check.type` (an unknown type runs no auto-check),
-  and duplicate keys. A duplicated scalar key keeps its last value, and a
-  duplicated `check` object is merged, while the key check reads only the last
-  copy, so an unknown key in an earlier copy is dropped unreported. The
-  property that blocks them is a list of required fields and allowed values and
-  a decoder that sees every key, and the open question is which of them the
-  real ledger can meet today (PB-1.40).
+  read, or is not valid JSON, fails CI, so a syntax error cannot pass as a
+  ledger with no claims. A `claims.json` or `conformance` directory that is a
+  symlink to a missing target cannot be read, so it fails CI too. So does a
+  plugin root that does not resolve, because the path is wrong or a symlink on
+  it dangles: a run that scans nothing cannot pass. JSON that parses but breaks
+  the ledger schema fails CI as well:
+
+  | Place | Required keys | Optional keys |
+  |---|---|---|
+  | top level | `version` (the number `1`), `narrative_claims` (an array) | `description` (a string) |
+  | claim | `id`, `source`, `claim`, `reality` (non-blank strings), `status` (a string), `check` (an object) | `tracked_in` (a string) |
+  | `check` of type `manual` | `type` | none |
+  | `check` of type `present_artifact` | `type`, `path` (a non-blank string) | `expect_present` (`true` or `false`, default `true`) |
+
+  Any other `check.type`, such as `present_artfact`, fails, so a misspelt type
+  cannot pass as a check that never runs. Keys match exactly, including case, so
+  a misspelt `tracked-in` or `expect-present` fails instead of being dropped. A
+  key that appears twice in one object fails, so no copy of a key can hide from
+  the check. No value may be `null`.
+
+  Not yet reached: what the text fields say. Two claims may share an `id`,
+  `source` need not name a real file, `tracked_in` need not name a real issue,
+  and `check.path` may point outside the plugin root. The property that blocks
+  them is a check of each field against the tree and the tracker, and the open
+  question is which of them can be checked without a network call. Unique claim
+  IDs are queued as PB-1.42.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
