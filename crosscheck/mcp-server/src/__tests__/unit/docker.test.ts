@@ -70,6 +70,21 @@ describe("runDafny", () => {
     ]);
   });
 
+  it.each([
+    [{ image: "sha256:feed" }, "sha256:feed", "/tmp/workdir:/work"],
+    [{ readOnly: true }, "crosscheck-dafny:latest", "/tmp/workdir:/work:ro"],
+  ])("mounts read-only only when asked (%j)", async (options, image, mount) => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+
+    const promise = runDafny("/tmp/workdir", ["verify"], options);
+    mockProc.emit("close", 0);
+    await promise;
+
+    const args = vi.mocked(spawn).mock.lastCall![1] as string[];
+    expect(args.slice(6)).toEqual([mount, image, "verify"]);
+  });
+
   it("collects stdout and stderr", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);

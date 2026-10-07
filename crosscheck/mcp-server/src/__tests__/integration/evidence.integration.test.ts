@@ -302,7 +302,7 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(runDafny).not.toHaveBeenCalled();
   });
 
-  it("returns the record but fails when the write fails, leaving the old record and no temp file (DE-11)", async () => {
+  it("returns the record but fails when the write fails, leaving the old record in place (DE-11)", async () => {
     const old = '{"format": "evidence-record/1"}\n';
     await mkdir(join(repo, "out"));
     await writeFile(join(repo, "out", "taken.json"), old);
