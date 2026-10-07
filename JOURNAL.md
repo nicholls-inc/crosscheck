@@ -4,6 +4,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - A human can tell an agent to tick a verification box
+
+**Type:** feat
+**Touches:** .claude/rules/protected-surfaces.md, crosscheck/skills/protected-surface-amend/SKILL.md, crosscheck/skills/assurance-init/SKILL.md, REVIEW.md, docs/gates/protected-surface-amendment.md, docs/TASKS.md
+**Why:** On #108, #70 and #77 the maintainer was asked to tick boxes that a command decides, and the agent declined to tick them when told to, citing the rule that a human resolves a marker. The maintainer repeated the instruction three times in one session.
+**Links:** [intent](intent/2026-10-07-delegated-ticks.md), [spec](intent/2026-10-07-delegated-ticks-spec.md), [plan](intent/2026-10-07-delegated-ticks-plan.md)
+
+A tick on the maintainer's explicit instruction now counts as the human's resolution, and the agent comments who instructed it. The drafting tool ticks the five mechanical items itself, with the command's output under each, so markers are left for judgment. The `/assurance-init` template carries the same text, so plugin users get it. The merge is still the approval. Recomputing the mechanical items in CI is not yet reached (PB-1.39).
+
 ## 2026-10-07 - The manifest generator rejects `implemented_by` and `extern` on what the theorems reach
 
 **Type:** feature

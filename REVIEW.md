@@ -40,7 +40,11 @@ Two questions, both answered explicitly in the review:
    `.claude/rules/protected-surfaces.md`. If any path matches, the PR must carry the
    governance-note block (`## Protected-Surface Amendment`) naming that file, and the
    reviewer must resolve every `REQUIRES HUMAN VERIFICATION` marker in it before
-   approving.
+   approving. A command decides the mechanical checklist items, so the block
+   arrives with them ticked and the command's output under each; check that the
+   output is there and says what the item claims. Only the judgment items are
+   markers. The maintainer may tell an agent to tick them, and the agent
+   comments who instructed it.
 2. **Does the declared tier match the diff?** Apply
    `docs/assurance/TIER-LAYER-MAP.md`: confirm the `Tier: N` line or `tier:N` label is
    present, that the artefacts that tier requires are committed, and that a protected
