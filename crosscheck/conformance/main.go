@@ -738,8 +738,8 @@ func checkCheck(where string, raw json.RawMessage) error {
 }
 
 // checkJSONText rejects a file that is not UTF-8 holding exactly one JSON value,
-// in the checker's own words, so a Go upgrade cannot change the message and
-// every fault names a byte.
+// in the checker's own words, so a Go upgrade cannot change the message. The
+// UTF-8, syntax and trailing-data faults name a byte.
 func checkJSONText(data []byte) error {
 	for i := 0; i < len(data); {
 		r, size := utf8.DecodeRune(data[i:])

@@ -97,8 +97,7 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
   the value each fail with a message written by the checker rather than by
   `encoding/json`, so a Go upgrade cannot change it. The byte-order mark and
   the data after the value name the byte; the empty and truncated messages do
-  not. A
-  `check.type` that is not a string fails as `must be a string`. A required
+  not. A `check.type` that is not a string fails as `must be a string`. A required
   text field of only white space and format characters, such as a zero-width
   space, is blank. No string may hold U+FFFD or an unpaired surrogate escape,
   which `encoding/json` would turn into U+FFFD without saying so.
