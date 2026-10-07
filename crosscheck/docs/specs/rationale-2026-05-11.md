@@ -108,7 +108,7 @@ The shape is borrowed wholesale from the Goal Structuring Notation tradition: th
 
 **Deferred.** No completeness handling is added in this snapshot. The skill relies on the agent's tree-building judgement; field evidence is the right calibration for whether the gap matters in practice. If invocations start producing sound-but-incomplete trees with non-obvious missing branches, two options are on the shelf:
 
-- *Sibling skill `rationale-adversary`*, mirroring `/spec-adversary` at the rationale-tree level. Cost: a new skill and the surface area that comes with it.
+- *Sibling skill `/rationale-adversary`*, mirroring `/spec-adversary` at the rationale-tree level. Cost: a new skill and the surface area that comes with it.
 - *In-skill completeness pass inside `/rationale`* — after the tree is discharged, generate 2–3 candidate branches that might be missing and ask the user to accept, reject, or defer each. Cost: lower; lives inside `/rationale`'s already-abductive framing.
 
 Trigger to revisit: field reports of `/rationale` invocations where the agent built a sound tree but the user noticed (or was bitten by) a missing branch.

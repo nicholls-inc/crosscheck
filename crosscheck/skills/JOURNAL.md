@@ -17,7 +17,7 @@ The implementation is a bash script (`scripts/walk.sh`) under 100 lines. The inv
 
 What's deliberately out for v1:
 
-- **`journal-lint`** for content-shape checks (date / type / why / links integrity, orphan `Supersedes:` links, contradictions between recent entries). Named in v2 `§3.4` as later enforcement; not needed until journals grow large enough that contradictions become plausible.
+- **`/journal-lint`** for content-shape checks (date / type / why / links integrity, orphan `Supersedes:` links, contradictions between recent entries). Named in v2 `§3.4` as later enforcement; not needed until journals grow large enough that contradictions become plausible.
 - **Pre-commit warning** when a touched directory's `JOURNAL.md` wasn't also edited. v2 `§3.4` layer 3; build when usage shows where drift creeps in.
 - **Bidirectional coverage gate** wiring `# Invariant Ix:` test comments to the invariant doc. The convention is already in place; mechanical enforcement is not wired in this repo. If the gap starts mattering in practice, [`/invariant-coverage-scaffold`](invariant-coverage-scaffold/SKILL.md) is the on-shelf path.
 

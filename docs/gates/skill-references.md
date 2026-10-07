@@ -27,7 +27,7 @@ To fix a finding, do one of these:
 
 ## What the check does not catch
 
-- Files under `crosscheck/docs/add/.retrospective/`, `crosscheck/.assurance/`, `crosscheck/docs/research/`, `crosscheck/docs/reports/` and `crosscheck/docs/examples/workflows/` are not read. They are archives, dated snapshots, research notes and GitHub workflow examples, and they name skills that were planned and never built, or GitHub comment commands. Checking them is not yet reached: a historical mention and an instruction look the same in the text, and how a document should mark the difference is open.
+- Files under `crosscheck/docs/add/.retrospective/`, `crosscheck/.assurance/`, `crosscheck/docs/research/`, `crosscheck/docs/reports/` and `crosscheck/docs/examples/workflows/` are not read, and neither are the dated records `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md`. They are archives, dated snapshots, journals, research notes and GitHub workflow examples, and they name skills that were planned and never built, or GitHub comment commands. Rewriting a record to pass the check would falsify it. Checking them is not yet reached: a historical mention and an instruction look the same in the text, and how a document should mark the difference is open.
 - A reference with an upper-case letter, or one that follows a letter, `.`, `/` or `-` (for example `x/name`), is not read as a reference. The spec lists the full grammar (SR-3 in `intent/2026-10-07-slash-references-spec.md`).
 - A bare agent name, such as `byfuglien`, without a slash. Task PB-1.19 adds that to conformance AUTO 5.
 

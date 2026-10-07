@@ -85,3 +85,9 @@ The delimiter is fixed shape because downstream consumers — agents loading con
 - **No filtering by date, type, or relevance.** The skill emits every journal file it walks past in full. A consumer that wants only recent entries, or only entries of a specific type, filters the output itself.
 - **No cross-repo composition.** A single invocation walks within one git repository's tree. Multi-repo orchestration (monorepos with submodules, sibling repos checked out under a shared parent) is out of scope for v1; the working shape if that need arises is to invoke the skill once per repo and concatenate, not to teach the walk to cross repo boundaries.
 - **Not a context loader.** The skill emits text. Putting that text into an agent's context window is the caller's job; the skill does not call agent APIs, write to a context cache, or otherwise manage the lifecycle of how its output is consumed.
+
+## Governance
+
+This doc is a Class B protected surface (`.claude/rules/protected-surfaces.md`). Each amendment is listed here.
+
+- **2026-10-07, PB-1.18.** The two mentions of the unbuilt `journal-lint` skill lose their slash, so the slash-reference check does not read them as an instruction to run it. Wording only: no invariant, covering test or carve-out changes meaning. Governance note: `.assurance/protected-surface-amend/slash-references-2026-10-07.md`. Authority: harry-nicholls, the maintainer; the merge is the approval.

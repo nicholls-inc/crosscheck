@@ -15,7 +15,7 @@ One record per reference: `{ path, line, plugin, name, text }`. The checker buil
 1. Write the governance note `.assurance/protected-surface-amend/slash-references-2026-10-07.md`, naming every protected file below.
 2. Add `scripts/ci/skill-references.test.mjs` and the fixture `scripts/ci/fixtures/skill-references/`. Run the tests and see them fail, because the checker does not exist.
 3. Add `scripts/ci/skill-references.mjs` (SR-1 to SR-7) and `crosscheck/slash-allowlist.txt`. Run the tests until they pass.
-4. Run the checker on this repository. Fix each live reference that does not resolve in the text (spec, "Live text that named unbuilt skills"). Run `node scripts/ci/skill-references.mjs --write` to generate `crosscheck/docs/skills.md`.
+4. Run the checker on this repository. Fix each live reference that does not resolve in the text (spec, "Live text that named unbuilt skills"). Leave the three dated records of SR-2 as written. Run `node scripts/ci/skill-references.mjs --write` to generate `crosscheck/docs/skills.md`.
 5. Add the check to `scripts/ci/pre-commit.mjs` (SR-8), copy the new script in `pre-commit.test.mjs`, and add its case.
 6. Add `.github/workflows/skill-references.yml` (SR-9).
 7. Add the explainer `docs/gates/skill-references.md`, its row in `docs/gates/README.md`, and the workflow in stage 5 of `docs/assurance/DEVELOPMENT-FRAMEWORK.md`.
@@ -36,7 +36,9 @@ One record per reference: `{ path, line, plugin, name, text }`. The checker buil
 | `crosscheck/skills/journal-context/SKILL.md` | yes (`crosscheck/skills/*/SKILL.md`) | `/journal-lint` loses its slash |
 | `crosscheck/slash-allowlist.txt` | no | new, comments only |
 | `crosscheck/docs/skills.md` | no | generated |
-| `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md`, `crosscheck/skills/journal-context/docs/invariants/journal-context.md`, `crosscheck/docs/specs/rationale-2026-05-11.md`, `crosscheck/docs/orchestrator-coordination.md`, `crosscheck/docs/add/operating-modes.md`, `crosscheck/conformance/README.md` | no | unbuilt names and placeholders reworded |
+| `crosscheck/docs/orchestrator-coordination.md`, `crosscheck/docs/add/operating-modes.md`, `crosscheck/conformance/README.md` | no | unbuilt names and placeholders reworded |
+| `crosscheck/skills/journal-context/docs/invariants/journal-context.md` | yes (Class B, a module invariant doc; the hook's glob does not reach it) | `/journal-lint` loses its slash, and a governance section names the amendment |
+| `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md`, `crosscheck/docs/specs/rationale-2026-05-11.md` | no | unchanged; SR-2 skips these dated records |
 | `docs/gates/skill-references.md`, `docs/gates/README.md` | no | explainer and inventory row |
 | `docs/TASKS.md`, `JOURNAL.md` | no | PB-1.18 `done`, entry |
 | `.assurance/protected-surface-amend/slash-references-2026-10-07.md` | no | new governance note |

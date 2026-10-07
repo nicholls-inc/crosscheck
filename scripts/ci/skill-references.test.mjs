@@ -169,7 +169,7 @@ test('SR-5: allowlist problems are findings of the check', () => {
   ]);
 });
 
-test('SR-2: a file under each prefix that is not checked is not read, and a sibling path is', () => {
+test('SR-2: a file under each prefix, and each record, that is not checked is not read, and a sibling path is', () => {
   const broken = 'Run /gamma.\n';
   const problems = checkSnapshot(
     snapshot({
@@ -178,13 +178,23 @@ test('SR-2: a file under each prefix that is not checked is not read, and a sibl
       'crosscheck/docs/research/a.md': broken,
       'crosscheck/docs/reports/a.md': broken,
       'crosscheck/docs/examples/workflows/a.md': broken,
+      'crosscheck/JOURNAL.md': broken,
+      'crosscheck/skills/JOURNAL.md': broken,
+      'crosscheck/docs/specs/rationale-2026-05-11.md': broken,
       'crosscheck/docs/examples/a.md': broken,
       'crosscheck/docs/researcher.md': broken,
+      'crosscheck/docs/JOURNAL.md': broken,
+      'crosscheck/docs/specs/rationale-2026-05-12.md': broken,
       'crosscheck/notes.txt': broken,
     }),
     '',
   );
-  assert.deepEqual(problems, [`crosscheck/docs/examples/a.md:1: /gamma ${NO_SKILL}`, `crosscheck/docs/researcher.md:1: /gamma ${NO_SKILL}`]);
+  assert.deepEqual(problems, [
+    `crosscheck/docs/JOURNAL.md:1: /gamma ${NO_SKILL}`,
+    `crosscheck/docs/examples/a.md:1: /gamma ${NO_SKILL}`,
+    `crosscheck/docs/researcher.md:1: /gamma ${NO_SKILL}`,
+    `crosscheck/docs/specs/rationale-2026-05-12.md:1: /gamma ${NO_SKILL}`,
+  ]);
 });
 
 test('SR-6: a stale or missing catalogue and a skill with no description are findings', () => {

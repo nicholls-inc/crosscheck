@@ -20,7 +20,9 @@ This spec adds SR-1 to SR-10. The PC requirements (`intent/2026-10-06-pre-commit
   - `crosscheck/docs/research/` and `crosscheck/docs/reports/`, research notes that propose skills;
   - `crosscheck/docs/examples/workflows/`, gh-aw workflow sources whose `/assurance-recheck` and `/assurance-squad` are GitHub comment commands, not Claude Code skills.
 
-  The list is a constant in `scripts/ci/skill-references.mjs`, so a change to it is a Class A amendment.
+  It also skips three dated records that name a skill as it was planned: `crosscheck/JOURNAL.md`, `crosscheck/skills/JOURNAL.md` and `crosscheck/docs/specs/rationale-2026-05-11.md`. Rewriting a record falsifies it, so the record keeps its text and the check skips the file, by the maintainer's decision on this pull request. A sibling path, such as a later dated snapshot under `crosscheck/docs/specs/`, is checked.
+
+  Both lists are constants in `scripts/ci/skill-references.mjs`, so a change to either is a Class A amendment.
 - **SR-3. Grammar.** A name is `[a-z][a-z0-9]*(-[a-z0-9]+)*`: lower case, no trailing or doubled hyphen. A reference is `/`, then an optional `<plugin>:` where the plugin is a name, then a name, with both conditions:
   - the character before `/` is not a letter, digit, `_`, `/`, `.`, `-`, `~`, `:`, `<`, `*`, `\`, `$`, `}`, `)`, `]`, `@`, `%`, `+` or `=`. This leaves out URLs, paths such as `src/x` and `packages/*/src`, `</summary>`, and `${HOME}/x`;
   - the character after the name is not a letter, digit, `_`, `/`, `-`, `*`, `<`, `>`, `:` or `\`, and not a `.` followed by a letter, digit or `_`. This leaves out `/tmp/x`, `/x.md`, `/assurance-*` and the regex `/lemma\s+/g`, and keeps a reference that ends a sentence.
@@ -38,15 +40,15 @@ This spec adds SR-1 to SR-10. The PC requirements (`intent/2026-10-06-pre-commit
   - a reference to an agent, to `crosscheck:<skill>`, and to another plugin's skill with and without an allowlist line;
   - an allowlist `crosscheck:` entry and a malformed line are findings;
   - a stale catalogue is a finding, and `--write` fixes it;
-  - a file under an SR-2 prefix is not read;
+  - a file under an SR-2 prefix, or one of the three SR-2 records, is not read;
   - the real repository passes.
 
   `scripts/ci/pre-commit.test.mjs` adds a staged Markdown file under `crosscheck/` with a broken reference, which fails the commit and names the file and line.
 
 ## Concerns flagged, not resolved here
 
-- **Files not checked.** The decision for #36 named all of `crosscheck/**/*.md`. SR-2 leaves out archives, snapshots, research notes and gh-aw examples, where about 150 mentions name skills that were planned or never built, or GitHub comment commands. Rewriting a historical record to satisfy a checker would falsify it. Checking these files is not yet reached. The property that blocks it is that a historical mention and an instruction look the same in the text. The open question is how a document marks a mention as historical so a checker can tell the two apart. The maintainer may prefer a different line.
+- **Files not checked.** The decision for #36 named all of `crosscheck/**/*.md`. SR-2 leaves out archives, snapshots, research notes, gh-aw examples and three dated records, where about 150 mentions name skills that were planned or never built, or GitHub comment commands. Rewriting a historical record to satisfy a checker would falsify it. Checking these files is not yet reached. The property that blocks it is that a historical mention and an instruction look the same in the text. The open question is how a document marks a mention as historical so a checker can tell the two apart. The maintainer decided that the three records stay as written and are skipped. Whether the five directories stay skipped, or some of their files are rewritten instead, is still the maintainer's call (the open marker in the governance note).
 - **Catalogue shape.** The hand-written catalogue grouped skills by category with trigger phrases and an owner. None of those is in `crosscheck/skills/`, so the generated catalogue is one table of names and frontmatter descriptions. Categories would need a new frontmatter key in all 30 `SKILL.md` files, or a second source file that could drift on its own.
-- **Live text that named unbuilt skills.** Seven live documents named a skill that does not exist (`/journal-lint`, `/rationale-adversary`, `/crosscheck-gc`, the four greenfield skills of ADR-004) or used `/skill` and `/x` as placeholders. This change drops the slash from the unbuilt names and writes the placeholders as `/<skill>`, so the text no longer reads as an instruction to run them.
+- **Live text that named unbuilt skills.** Four live documents named a skill that does not exist (`/journal-lint`, `/crosscheck-gc`, the four greenfield skills of ADR-004), and `crosscheck/conformance/README.md` used `/skill` and `/x` as placeholders. This change drops the slash from the unbuilt names and writes the placeholders as `/<skill>`, so the text no longer reads as an instruction to run them. Three dated records also named unbuilt skills (`/journal-lint`, `/rationale-adversary`). They keep their text, and SR-2 skips them.
 - **Overlap with conformance.** AUTO 2 and AUTO 5 still run. PB-1.19 aligns AUTO 5 with this grammar and allowlist.
 - The hook runs only where `npm install` ran, and `--no-verify` skips it. CI is the check every pull request passes through.

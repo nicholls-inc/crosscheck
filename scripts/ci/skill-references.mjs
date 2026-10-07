@@ -37,6 +37,13 @@ export const NOT_CHECKED = [
   'crosscheck/docs/examples/workflows/',
 ];
 
+// SR-2. Dated records that name skills as they were planned. Rewriting one would falsify it.
+export const NOT_CHECKED_FILES = [
+  'crosscheck/JOURNAL.md',
+  'crosscheck/skills/JOURNAL.md',
+  'crosscheck/docs/specs/rationale-2026-05-11.md',
+];
+
 // SR-3.
 const NAME = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
 const REFERENCE = new RegExp(`(?<![\\w/.\\-~:<*\\\\$})\\]@%+=])/(?:(${NAME}):)?(${NAME})(?![\\w/\\-*<>:\\\\]|\\.\\w)`, 'g');
@@ -50,7 +57,10 @@ export class CannotRead extends Error {
 }
 
 export const isChecked = (path) =>
-  path.startsWith('crosscheck/') && path.endsWith('.md') && !NOT_CHECKED.some((prefix) => path.startsWith(prefix));
+  path.startsWith('crosscheck/') &&
+  path.endsWith('.md') &&
+  !NOT_CHECKED.some((prefix) => path.startsWith(prefix)) &&
+  !NOT_CHECKED_FILES.includes(path);
 
 // SR-3. `plugin` is null for a reference with no prefix.
 export function findReferences(text) {
