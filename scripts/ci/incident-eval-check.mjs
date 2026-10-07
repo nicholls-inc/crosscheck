@@ -19,7 +19,7 @@ import { join, relative, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const CWD = process.cwd();
-const GATE_DOC = 'README.md';
+const GATE_DOC = 'incident-eval-check.md';
 const INVARIANT_DIRS = ['docs/invariants', 'crosscheck/docs/invariants'];
 const EVAL_DIR = 'evals';
 // Node's default is 1 MiB, which a long commit message or history can exceed.
@@ -53,9 +53,9 @@ function readCommitLines() {
   gitOrFail(['fetch', '--no-tags', '--quiet', 'origin', `+refs/pull/${prNumber}/head:refs/remotes/origin/pr/${prNumber}`]);
   const range = `origin/${baseRef}..${headSha}`;
   const messages = gitOrFail(['log', '-z', '--format=%B', range]).split('\0').filter((m) => m.trim().length > 0);
-  // An empty range means the head is already on the base branch (a merge commit
-  // or a rebase merge). Its commits cannot be told apart from the base's, so
-  // fail rather than skip.
+  // An empty range means the head is already on the base branch, as after a
+  // merge commit. Its commits cannot be told apart from the base's, so fail
+  // rather than skip.
   if (messages.length === 0) {
     fail(`no commits in ${range}`);
   }
@@ -127,7 +127,7 @@ function printFailure(missingItems) {
   const link = gateDocLink();
   console.log('**Action needed: add an eval and candidate invariant**');
   console.log(
-    `You are being asked to add a regression eval and a candidate invariant for this incident because every production incident must leave both artefacts in the suite. Approving means the incident becomes a permanent regression check and a documented invariant; declining means the change stays blocked until both artefacts are added. Full explanation: ${link}.`
+    `You are being asked to add a regression eval and a candidate invariant for this incident in a follow-up pull request because this check runs after the merge and every production incident must leave both artefacts in the suite. Approving means the incident becomes a permanent regression check and a documented invariant; declining means the merged change leaves the incident with no regression check and no invariant. Full explanation: ${link}.`
   );
   console.log('');
   for (const item of missingItems) {

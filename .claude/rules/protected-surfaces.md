@@ -117,6 +117,19 @@ A proof must still be a proof. `lake build` accepts `sorry` with a warning, so
 the generator also fails when a protected theorem or definition depends on any
 axiom other than `propext`, `Classical.choice` and `Quot.sound`. A `sorry`, or
 a new axiom that closes a proof, fails CGV CI.
+The axiom check does not re-check a proof: `set_option debug.skipKernelTC
+true` with `addDecl` adds a theorem that reports no axioms. So CGV CI also
+replays the built environment through the kernel with the pinned toolchain's
+`leanchecker`, and fails on any replayed declaration that does not re-check.
+`leanchecker --fresh ContractGraph.Main` replays the whole import closure of
+`ContractGraph.Main`, which holds every protected theorem, and
+`leanchecker ContractGraph` replays every `ContractGraph.*` module. A
+self-test step fails if `leanchecker` stops rejecting such a declaration.
+The replay skips constants whose kernel safety is `unsafe` or `partial`, so a
+safe declaration that uses one fails with an unknown constant. It uses the
+kernel that built the files. The `ContractGraphTest` library is not replayed:
+no protected theorem lives in it, and `ContractGraph` does not import it.
+
 The theorems are about the definitions, and the checker binary runs their
 compiled code. `@[implemented_by]` and `@[extern]` replace that code without
 an axiom, so the generator also fails if either sits on a constant of a
@@ -126,11 +139,10 @@ CI, fails if the generator stops rejecting them. The compiled code of the Lean
 and `leansqlite` libraries, `@[csimp]` lemmas, and `main` with the translation
 and JSON output (no theorem is about them), are not yet reached: see
 `intent/2026-10-07-compiled-code-attributes-spec.md`.
-A declaration the kernel never checked is not yet reached: `set_option
-debug.skipKernelTC true` with `addDecl` adds a theorem that reports no axioms.
-The property that blocks it is a kernel replay of the built environment, and
-the open question is whether a replay (`lean4checker`, `Environment.replay`)
-fits CGV CI's time budget.
+
+A second, independently written checker is not yet reached:
+the property that blocks it is an export of the proofs that a second checker
+reads, and the open question is which checker to use (roadmap item TB-1).
 
 A PR that touches a CGV proof surface includes, in its description, a
 **Protected-surface change** section, in addition to the amendment pattern

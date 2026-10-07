@@ -8,8 +8,8 @@
 ### Change Description
 
 1. `cgv/prover/scripts/ProtectedStatements.lean`: a new check, `checkCompiledCode`, runs before any output. It walks from the constants in every protected theorem's statement and from the three protected definitions, through the types, values, constructors and `_unsafe_rec` helpers of every non-theorem constant defined in a `ContractGraph` module, and fails if a reached constant carries `@[implemented_by]` or `@[extern]` (SM-7). The manifest output is unchanged (SM-7a).
-2. `.github/workflows/cgv-ci.yml`: a new step after the manifest step runs `scripts/compiled-code-selftest.sh` (SM-8).
-3. `.claude/rules/protected-surfaces.md`: one short paragraph in "CGV proof surfaces" says the generator also fails on either attribute in the reached code.
+2. `.github/workflows/cgv-ci.yml`: a new step runs `scripts/compiled-code-selftest.sh` (SM-8). It follows the kernel-replay self-test and the `leanchecker` replay steps that `main` added, and precedes the `manifest-selftest.sh` step.
+3. `.claude/rules/protected-surfaces.md`: one short paragraph in "CGV proof surfaces" says the generator also fails on either attribute in the reached code. It follows `main`'s kernel-replay paragraph and precedes the sentence on a second checker. `main`'s sentence that called `implemented_by` and `extern` "not yet reached" is dropped, because the generator now rejects them on the reached code.
 
 ### Rationale
 
@@ -31,8 +31,8 @@ Task TB-1.2, issue #48. The `runChecker_*` theorems are proved about the definit
 | # | File | Section | Action |
 |---|------|---------|--------|
 | 1 | `cgv/prover/scripts/ProtectedStatements.lean` | header comment; new `inProject`, `runtimeDependencies`, `runtimeReach`, `checkCompiledCode`; `render` | check added, output unchanged |
-| 2 | `.github/workflows/cgv-ci.yml` | new step after the manifest step | added |
-| 3 | `.claude/rules/protected-surfaces.md` | CGV proof surfaces | one short paragraph added |
+| 2 | `.github/workflows/cgv-ci.yml` | new step after the kernel-replay steps, before the `manifest-selftest.sh` step | added |
+| 3 | `.claude/rules/protected-surfaces.md` | CGV proof surfaces | one short paragraph added after the kernel-replay paragraph; one "not yet reached" sentence on `implemented_by` and `extern` dropped |
 
 ### Test / Coverage Impact
 
