@@ -16,5 +16,5 @@ The executable form of each rule is a `#guard` in `cgv/prover/ContractGraphTest/
 
 **Known gaps, not rules.**
 - The SQL reads in `readNodes`, `readContracts` and `readEdges` are not checked. `readOptionalString` reads an empty string as NULL in every column but `contract_role`. TB-1.21 tests the reads against the rows the Rust writer inserted.
-- `graphOf`, the test helper that builds a graph through `translateRows`, panics on rejected rows. `lake build` prints the panic and passes. TB-1.29 makes CGV CI fail on it.
+- Rejected test rows: `graphOf`, the test helper that builds a graph through `translateRows`, takes a `native_decide` proof that the rows are accepted (TB-1.29), so rejected rows fail `lake build`. Panics elsewhere still print and return a default; TB-1.31 makes CGV CI fail on them.
 - No theorem states these rules yet. TB-1.20 proves them.
