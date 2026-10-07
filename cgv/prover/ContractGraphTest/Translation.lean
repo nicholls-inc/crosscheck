@@ -9,9 +9,12 @@ namespace ContractGraphTest.Translation
 
 open ContractGraph
 
-/-- The graph of a translation that is known to be accepted. The `.error`
-    branch runs only after `accepted` failed to elaborate, so the build has
-    already failed; an `absurd` there crashes Lean before it prints why. -/
+/-- The graph of a translation that is known to be accepted. With the default
+    proof the `.error` branch runs only after `accepted` failed to elaborate,
+    so the build has already failed; an `absurd` there crashes Lean before it
+    prints why. A caller who passes `(accepted := sorry)` gets the empty graph
+    and only a warning; CGV CI does not yet reject a `sorry` in
+    `ContractGraphTest` (TB-1.32). -/
 def acceptedGraph (rows : Except String ContractGraph) (_accepted : rows.isOk) : ContractGraph :=
   match rows with
   | .ok g => g

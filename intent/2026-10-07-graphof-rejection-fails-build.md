@@ -17,7 +17,7 @@ Build completed successfully (54 jobs).
 `lake build` exits 0. CGV CI runs the same `lake build` with no other setting, so CI passes too. `cargo test`, the fixtures and the statement manifest do not build `ContractGraphTest` modules.
 
 ## Proposed outcome
-`graphOf` takes a proof that `translateRows` accepts its rows, and the proof is filled in by `native_decide` when the call is elaborated. A call on rejected rows is an elaboration error, so `lake build` fails, on a developer's machine as in CI. A graph that `graphOf` returns is always the graph `translateRows` built. A `#guard_msgs` test in `ContractGraphTest/Translation.lean` checks that a call on rejected rows is an error, so the build fails if `graphOf` stops rejecting them.
+`graphOf` takes a proof that `translateRows` accepts its rows, and the proof is filled in by `native_decide` when the call is elaborated. A call on rejected rows is an elaboration error, so `lake build` fails, on a developer's machine as in CI. With the default proof, a graph that `graphOf` returns is the graph `translateRows` built. A caller who passes `(accepted := sorry)` bypasses it with a warning, and CGV CI does not yet reject a `sorry` in `ContractGraphTest`; TB-1.32 shows it failing or names the property that blocks it. A `#guard_msgs` test in `ContractGraphTest/Translation.lean` checks that a call on rejected rows is an error, so the build fails if `graphOf` stops rejecting them.
 
 The task row offered two fixes. Setting `LEAN_ABORT_ON_PANIC=1` for `lake build` in CGV CI would fail CI only, leave a local `lake build` green, and need a test outside the Lean build to show it works. Failing at elaboration fixes the cause, and its test runs in every `lake build`.
 
