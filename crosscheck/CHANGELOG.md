@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.9.0](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.8.0...crosscheck-v2.9.0) (2026-10-07)
+
+
+### Features
+
+* **crosscheck:** check slash-references in pre-commit and CI and generate the skill catalogue ([#108](https://github.com/nicholls-inc/crosscheck/issues/108)) ([deed99a](https://github.com/nicholls-inc/crosscheck/commit/deed99a43a3e95024b8afdb35a74391194b10eae))
+* **crosscheck:** check that dafny_evidence's requirement names a tracked file, and refuse a duplicate theorem ([#97](https://github.com/nicholls-inc/crosscheck/issues/97)) ([e5089f7](https://github.com/nicholls-inc/crosscheck/commit/e5089f7c9cddf7ebebb65c1d051041bba96a0103))
+* **crosscheck:** emit an evidence record from /generate-verified with dafny_evidence ([#91](https://github.com/nicholls-inc/crosscheck/issues/91)) ([b5893ea](https://github.com/nicholls-inc/crosscheck/commit/b5893ea83d3aa695f0f877b4823df4ad48878c38))
+* **crosscheck:** emit an evidence record from the Dafny pipeline with dafny_evidence ([#82](https://github.com/nicholls-inc/crosscheck/issues/82)) ([0f3ab3d](https://github.com/nicholls-inc/crosscheck/commit/0f3ab3d1840fb1bc3284d8efc8c434882f45b294))
+* **crosscheck:** let a maintainer's instruction tick a verification box and tick mechanical items with evidence ([#127](https://github.com/nicholls-inc/crosscheck/issues/127)) ([f72d959](https://github.com/nicholls-inc/crosscheck/commit/f72d959433c83ce9a007b5eb263e5907fcedbca5))
+* **crosscheck:** rerun dafny_evidence records by image ID, and narrow output and include paths ([#95](https://github.com/nicholls-inc/crosscheck/issues/95)) ([5dfb277](https://github.com/nicholls-inc/crosscheck/commit/5dfb277402780fd555716d2dd689833d935fec0b))
+* **crosscheck:** run dafny_evidence and its rerun command with sandbox flags ([#93](https://github.com/nicholls-inc/crosscheck/issues/93)) ([17d40ec](https://github.com/nicholls-inc/crosscheck/commit/17d40ec21aed6e113193b109853ef9ae35a81996))
+* **crosscheck:** run dafny_evidence's Dafny on a copy of the blobs at commit ([#118](https://github.com/nicholls-inc/crosscheck/issues/118)) ([d261934](https://github.com/nicholls-inc/crosscheck/commit/d261934dacfb1cb59025018ed8d18a234476abab))
+
+
+### Bug Fixes
+
+* **crosscheck:** fail the conformance run on a claims.json of the wrong shape ([#114](https://github.com/nicholls-inc/crosscheck/issues/114)) ([bdae608](https://github.com/nicholls-inc/crosscheck/commit/bdae6086617ef7fc92bb74d804f7f2d289322969))
+* **crosscheck:** fail the conformance run on a dangling claims.json symlink ([#113](https://github.com/nicholls-inc/crosscheck/issues/113)) ([904d948](https://github.com/nicholls-inc/crosscheck/commit/904d948167a3f2927570def44e7e2973deb29348))
+* **crosscheck:** fail the conformance run on a plugin root that does not resolve ([#115](https://github.com/nicholls-inc/crosscheck/issues/115)) ([4a9f341](https://github.com/nicholls-inc/crosscheck/commit/4a9f341c2984bc25f8b691048e88d992bb491607))
+* **crosscheck:** fail the conformance run on a root that is not a Crosscheck plugin tree ([#119](https://github.com/nicholls-inc/crosscheck/issues/119)) ([60e1a43](https://github.com/nicholls-inc/crosscheck/commit/60e1a43c9af9dc9751d065ec7c9a927dd32bb80a))
+* **crosscheck:** fail the conformance run on an unreadable or invalid claims.json ([#111](https://github.com/nicholls-inc/crosscheck/issues/111)) ([9f99147](https://github.com/nicholls-inc/crosscheck/commit/9f991479f249b394d55dca8bce459f9811b2302b))
+* **crosscheck:** give the invariant-coverage gate one heading grammar ([#112](https://github.com/nicholls-inc/crosscheck/issues/112)) ([8138901](https://github.com/nicholls-inc/crosscheck/commit/81389013f13d728dd5cf774f8ff2a99501015567))
+* **crosscheck:** reject a claims.json with missing fields, unknown check types or duplicate keys ([#117](https://github.com/nicholls-inc/crosscheck/issues/117)) ([24bc384](https://github.com/nicholls-inc/crosscheck/commit/24bc384764fbda056260c0410669253a6df477c3))
+* **crosscheck:** reject a ledger claim status outside the allowlist ([#110](https://github.com/nicholls-inc/crosscheck/issues/110)) ([7cafa0d](https://github.com/nicholls-inc/crosscheck/commit/7cafa0d26c3e5bc37f0ed837ac2e44af36346527))
+* **crosscheck:** reject two claims with the same id in claims.json ([#120](https://github.com/nicholls-inc/crosscheck/issues/120)) ([bdb5ca6](https://github.com/nicholls-inc/crosscheck/commit/bdb5ca6c23ddc1ae64f0c4fde555cb56ab6ab9a3))
+* **crosscheck:** require a skill and an agent under a plugin root, and read the manifest name key exactly ([#121](https://github.com/nicholls-inc/crosscheck/issues/121)) ([4f0c1e0](https://github.com/nicholls-inc/crosscheck/commit/4f0c1e05581b8ec633bf23d47542d2c25a271160))
+* **crosscheck:** say "not yet reached" for Layer 6 and unreached classes in skills ([#77](https://github.com/nicholls-inc/crosscheck/issues/77)) ([2cfb0f5](https://github.com/nicholls-inc/crosscheck/commit/2cfb0f5119bb5b7219f0ff7893f807c334ddcc46))
+* **crosscheck:** stop merged governance notes from unlocking the protected-surface hook ([#55](https://github.com/nicholls-inc/crosscheck/issues/55)) ([2884b50](https://github.com/nicholls-inc/crosscheck/commit/2884b502178ac927771115f092316361119a0d30))
+* **crosscheck:** stop presenting the intent-check attestation as a required artefact ([#72](https://github.com/nicholls-inc/crosscheck/issues/72)) ([05180a7](https://github.com/nicholls-inc/crosscheck/commit/05180a7cfab8726514e7f127bdebf9e263683de9))
+* **crosscheck:** write ledger parse faults in the checker's own words and reject invisible text ([#122](https://github.com/nicholls-inc/crosscheck/issues/122)) ([cfbbf38](https://github.com/nicholls-inc/crosscheck/commit/cfbbf38984ea5a155a779690aef6667319f65702))
+
 ## [2.8.0](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.7.0...crosscheck-v2.8.0) (2026-09-29)
 
 
