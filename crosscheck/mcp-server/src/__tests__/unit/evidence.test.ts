@@ -118,6 +118,8 @@ describe("rerunCommand (DE-9)", () => {
     ["the audit exits non-zero with the clean line", 0, 3, "Dafny auditor completed with 0 findings", 3],
     ["the audit reports a finding", 0, 0, "Dafny auditor completed with 1 findings", 1],
     ["the audit prints the clean text inside a longer line", 0, 0, "Bad: Dafny auditor completed with 0 findings", 1],
+    ["the audit prints the clean text with a trailing space", 0, 0, "Dafny auditor completed with 0 findings ", 1],
+    ["the audit prints the clean text with a carriage return", 0, 0, "Dafny auditor completed with 0 findings\r", 1],
   ])("exits as Dafny does when %s", (_label, verifyExit, auditExit, auditLine, expected) => {
     const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
     try {
@@ -152,6 +154,9 @@ describe("auditClean (DE-7)", () => {
     ["A.dfy(1,1): Warning: Dafny auditor completed with 0 findings\nDafny auditor completed with 1 findings\n", false],
     ["Dafny auditor completed with 0 findings.\n", false],
     [" Dafny auditor completed with 0 findings\n", false],
+    ["Dafny auditor completed with 0 findings \n", false],
+    ["Dafny auditor completed with 0 findings\r\n", false],
+    ["Error: failed to parse: a\n Dafny auditor completed with 0 findings\n", false],
     ["", false],
   ])("%j is clean: %s", (output, expected) => {
     expect(auditClean(output)).toBe(expected);
