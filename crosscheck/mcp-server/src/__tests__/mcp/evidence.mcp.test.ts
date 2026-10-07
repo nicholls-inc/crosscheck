@@ -94,7 +94,7 @@ describe("dafny_evidence over MCP", () => {
               { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
               { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
             ],
-            rerun: { command: rerunCommand("crosscheck-dafny:latest", ["Abs.dfy"]), exit_code: 0 },
+            rerun: { command: rerunCommand("sha256:feed", ["Abs.dfy"]), exit_code: 0 },
           },
         ],
       },

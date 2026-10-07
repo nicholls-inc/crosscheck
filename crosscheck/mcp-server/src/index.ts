@@ -46,7 +46,7 @@ export function createServer(): McpServer {
       outputPath: z
         .string()
         .optional()
-        .describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record"),
+        .describe("Where to write the record, inside the work tree, ending in .json, with no directory or file name that starts with a dot; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record"),
     },
     async (args) => {
       const result = await dafnyEvidence(args);

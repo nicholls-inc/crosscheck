@@ -99,7 +99,7 @@ describe("dafnyEvidence against a real git repository", () => {
             { component: "Z3 solver shipped with the Dafny release", version: "Dafny 4.11.0+fcb2042d" },
             { component: "Dafny Docker image crosscheck-dafny:latest", version: "sha256:feed" },
           ],
-          rerun: { command: rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"]), exit_code: 0 },
+          rerun: { command: rerunCommand("sha256:feed", ["proofs/Abs.dfy"]), exit_code: 0 },
         },
       ],
     };
@@ -502,9 +502,19 @@ describe("dafnyEvidence against a real git repository", () => {
       await refusesBeforeDafny(".", `is not inside the work tree ${repo}`);
     });
 
-    it("refuses a path inside .git, in any case", async () => {
-      await refusesBeforeDafny(".git/hooks/pre-commit", "is inside .git");
-      await refusesBeforeDafny("sub/.Git/config", "is inside .git");
+    it("refuses a path that does not end in .json, in that case", async () => {
+      await refusesBeforeDafny("out/record.txt", "does not end in .json");
+      await refusesBeforeDafny("out/record.JSON", "does not end in .json");
+    });
+
+    it("refuses a path with a part whose name starts with a dot, directory or file, .git in any case included", async () => {
+      const DOT_DIR = 'has a part whose name starts with ".": ';
+      await refusesBeforeDafny(".github/workflows/x.json", `${DOT_DIR}.github`);
+      await refusesBeforeDafny("sub/.cache/x.json", `${DOT_DIR}.cache`);
+      await refusesBeforeDafny(".git/x.json", `${DOT_DIR}.git`);
+      await refusesBeforeDafny("sub/.Git/config.json", `${DOT_DIR}.Git`);
+      await refusesBeforeDafny(".mcp.json", `${DOT_DIR}.mcp.json`);
+      await refusesBeforeDafny("sub/.rec.json", `${DOT_DIR}.rec.json`);
     });
 
     it("refuses a missing directory before running Dafny", async () => {
@@ -530,9 +540,9 @@ describe("dafnyEvidence against a real git repository", () => {
 
     const NOT_A_RECORD = "names an existing file that is not an evidence record";
 
-    it("refuses to overwrite the verified file, under any spelling", async () => {
-      await refusesBeforeDafny("proofs/Abs.dfy", NOT_A_RECORD);
-      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", NOT_A_RECORD);
+    it("refuses the verified file by its extension, under any spelling", async () => {
+      await refusesBeforeDafny("proofs/Abs.dfy", "does not end in .json");
+      await refusesBeforeDafny("proofs/../proofs/Abs.dfy", "does not end in .json");
     });
 
     it("refuses to overwrite a hard link to the verified file", async () => {
@@ -546,17 +556,17 @@ describe("dafnyEvidence against a real git repository", () => {
         "proofs/Abs.dfy": `include "Lib.dfy"\n${SOURCE}`,
         "proofs/Lib.dfy": "lemma Lib() ensures true {}\n",
       });
-      await refusesBeforeDafny("proofs/Lib.dfy", NOT_A_RECORD);
+      await refusesBeforeDafny("proofs/Lib.dfy", "does not end in .json");
     });
 
     it("refuses to overwrite any other tracked or ignored file, or a directory", async () => {
       await commitFiles({ "docs/SKILL.md": "# skill\n", "docs/other.json": '{"format": "x"}\n' });
-      await mkdir(join(repo, "out", "dir"), { recursive: true });
-      await writeFile(join(repo, "out", ".env"), "TOKEN=1\n");
-      await refusesBeforeDafny("docs/SKILL.md", NOT_A_RECORD);
+      await mkdir(join(repo, "out", "dir.json"), { recursive: true });
+      await writeFile(join(repo, "out", "env.json"), '{"token": 1}\n');
+      await refusesBeforeDafny("docs/SKILL.md", "does not end in .json");
       await refusesBeforeDafny("docs/other.json", NOT_A_RECORD);
-      await refusesBeforeDafny("out/.env", NOT_A_RECORD);
-      await refusesBeforeDafny("out/dir", NOT_A_RECORD);
+      await refusesBeforeDafny("out/env.json", NOT_A_RECORD);
+      await refusesBeforeDafny("out/dir.json", NOT_A_RECORD);
     });
 
     it("refuses a FIFO without reading it", async () => {
@@ -598,7 +608,7 @@ describe("dafnyEvidence against a real git repository", () => {
         "/work/proofs/lib/B.dfy",
       ]);
       expect(result.record?.claims[0].rerun.command).toBe(
-        rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy", "proofs/lib/A.dfy", "proofs/lib/B.dfy"])
+        rerunCommand("sha256:feed", ["proofs/Abs.dfy", "proofs/lib/A.dfy", "proofs/lib/B.dfy"])
       );
     });
 
@@ -647,9 +657,16 @@ describe("dafnyEvidence against a real git repository", () => {
     });
 
     it("refuses an include that names a tracked directory", async () => {
-      await commitFiles({ "proofs/Abs.dfy": `include "lib"\n${SOURCE}`, "proofs/lib/A.dfy": "" });
+      await commitFiles({ "proofs/Abs.dfy": `include "lib.dfy"\n${SOURCE}`, "proofs/lib.dfy/A.dfy": "" });
       await refusesBeforeDafny([
-        'include "lib" in proofs/Abs.dfy is outside the tracked files: proofs/lib is not a regular file',
+        'include "lib.dfy" in proofs/Abs.dfy is outside the tracked files: proofs/lib.dfy is not a regular file',
+      ]);
+    });
+
+    it("refuses a tracked include that does not end in .dfy", async () => {
+      await commitFiles({ "proofs/Abs.dfy": `include "Lib.txt"\n${SOURCE}`, "proofs/Lib.txt": "lemma {:axiom} Lib()\n" });
+      await refusesBeforeDafny([
+        'include "Lib.txt" in proofs/Abs.dfy is outside the tracked files: the path does not end in .dfy',
       ]);
     });
 

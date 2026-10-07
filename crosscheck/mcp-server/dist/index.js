@@ -21409,8 +21409,8 @@ function unverifiedTheorems(verifyStdout, theorems) {
 function shellQuote(s) {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
-function rerunCommand(image, files) {
-  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(image)}`;
+function rerunCommand(imageId, files) {
+  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(imageId)}`;
   const paths = files.map((f) => shellQuote(`/work/${f}`));
   return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`;
 }
@@ -21437,7 +21437,7 @@ function buildRecord(facts) {
           { component: "Z3 solver shipped with the Dafny release", version: `Dafny ${facts.dafnyVersion}` },
           { component: `Dafny Docker image ${facts.image}`, version: facts.imageId }
         ],
-        rerun: { command: rerunCommand(facts.image, [facts.file, ...facts.includes]), exit_code: 0 }
+        rerun: { command: rerunCommand(facts.imageId, [facts.file, ...facts.includes]), exit_code: 0 }
       }
     ]
   };
@@ -21487,6 +21487,8 @@ async function includedFiles(root, file, source) {
       let reason = `resolves outside the work tree: ${target}`;
       if (!outside && !PLAIN_PATH.test(target)) {
         reason = "the path has characters outside A-Z a-z 0-9 _ . / -, which Dafny may decode before it opens the file";
+      } else if (!outside && !path.endsWith(".dfy")) {
+        reason = "the path does not end in .dfy";
       } else if (!outside) {
         try {
           reason = await untrackedReason(root, path);
@@ -21508,7 +21510,9 @@ async function outputTarget(root, outputPath) {
   if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
     return fail(`is not inside the work tree ${root}`);
   }
-  if (rel.split(sep).some((s) => s.toLowerCase() === ".git")) return fail("is inside .git");
+  if (!out.endsWith(".json")) return fail("does not end in .json");
+  const dotPart = rel.split(sep).find((s) => s.startsWith("."));
+  if (dotPart !== void 0) return fail(`has a part whose name starts with ".": ${dotPart}`);
   let parent;
   try {
     parent = await realpath(dirname(out));
@@ -21771,7 +21775,7 @@ function createServer() {
       statement: external_exports.string().describe("What the theorems prove, in plain language for a reader who will not open the code"),
       requirement: external_exports.string().nullable().describe("Repository path (optionally #anchor) of the requirement the claim traces to, or null"),
       theorems: external_exports.array(external_exports.string()).describe("Fully qualified names of the lemmas, methods or functions whose contracts prove the statement, as Dafny's verification log names them: M.C.Name for Name in class C of module M, and Name alone at the top level"),
-      outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree and not in .git; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record")
+      outputPath: external_exports.string().optional().describe("Where to write the record, inside the work tree, ending in .json, with no directory or file name that starts with a dot; a relative path resolves against the work tree's top level. An existing file is overwritten only when it is an earlier evidence record")
     },
     async (args) => {
       const result = await dafnyEvidence(args);
