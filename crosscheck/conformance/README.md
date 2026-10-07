@@ -70,7 +70,10 @@ parsed).
   `reviewed-disclsed` cannot pass as a reviewed claim. A missing `claims.json` is an
   empty ledger. A `claims.json` that cannot be read, or does not parse as the
   ledger shape, fails CI, so a syntax error cannot pass as a ledger with no
-  claims.
+  claims. Not yet reached: a `claims.json` that is a symlink to a missing
+  target still loads as an empty ledger, because `os.ReadFile` reports it as
+  missing and the oracle does not look at the link itself; PB-1.24 queues the
+  fix.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 

@@ -429,6 +429,11 @@ func TestLedgerLoad(t *testing.T) {
 		wantPrefix string
 	}{
 		{"missing", func(*testing.T, string) {}, ""},
+		{"no_conformance_dir", func(t *testing.T, path string) {
+			if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+				t.Fatal(err)
+			}
+		}, ""},
 		{"directory", func(t *testing.T, path string) {
 			if err := os.Mkdir(path, 0o755); err != nil {
 				t.Fatal(err)
@@ -446,6 +451,9 @@ func TestLedgerLoad(t *testing.T) {
 		{"truncated", writeLedger(`{"version":1,"narrative_claims":[`), parseErr},
 		{"empty", writeLedger(``), parseErr},
 		{"claims_not_array", writeLedger(`{"version":1,"narrative_claims":{}}`), parseErr},
+		// The first claim decodes, the second has a type error: json.Unmarshal
+		// returns the decoded claim and the error, and the ledger must still be empty.
+		{"partial_decode", writeLedger(`{"narrative_claims":[{"id":"C1","status":"reviewed-accurate"},{"id":5}]}`), parseErr},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -467,6 +475,9 @@ func TestLedgerLoad(t *testing.T) {
 			}
 			if len(r.errors) != 1 || !strings.HasPrefix(r.errors[0], tc.wantPrefix) {
 				t.Errorf("want one error starting %q, got: %v", tc.wantPrefix, r.errors)
+			}
+			if len(r.ledger) != 0 {
+				t.Errorf("a ledger that failed to load must be empty, got %d claims", len(r.ledger))
 			}
 			if !strings.Contains(out, "RESULT: FAIL") {
 				t.Errorf("want RESULT: FAIL, got:\n%s", out)
