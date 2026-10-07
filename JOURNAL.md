@@ -11,7 +11,18 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 **Why:** CGV read an annotation's type by the last segment of its name, so a project `class float` got the builtin's type contract. Writes between it and a builtin `float` passed with exit 0 (CG-1.15). The numeric tower in #87 would also let a project `int` into a `float` field.
 **Links:** [intent](intent/2026-10-07-cgv-shadowed-builtins.md)
 
-`ProjectIndex::annotation_shadow` resolves the type-contract names of an annotation (`int`, `float`, `str`, `bool`, `Decimal`, `Strict*`) in the module that holds it. A name bound to a project class gives a contract that names the class by its qualified name (`units.float`), which equals only itself, so neither equality nor the numeric tower matches it to a builtin. A name bound to anything else gives no type contract. The extractor applies the answer to parameter, return and data class field annotations, and `ProjectIndex::is_contract_type` replaces the `VALUE_TYPES` filters, so the qualified name survives into the database. No Lean file changes. Names bound in a class body or a function, star imports from outside the project, aliases from another module and shadowed `con*()` helpers are not yet reached (CG-1.49).
+`ProjectIndex::annotation_shadow` resolves the type-contract names of an annotation (`int`, `float`, `str`, `bool`, `Decimal`, `Strict*`) in the module that holds it. A name bound to a project class gives a contract that names the class by its qualified name (`units.float`), which equals only itself, so neither equality nor the numeric tower matches it to a builtin. A name bound to anything else gives no type contract. The extractor applies the answer to parameter, return and data class field annotations, and `ProjectIndex::is_contract_type` replaces the `VALUE_TYPES` filters, so the qualified name survives into the database. No Lean file changes. Names bound in a class body or a function, star imports from outside the project, aliases from another module and shadowed `con*()` helpers are not yet reached (CG-1.50).
+
+---
+
+## 2026-10-07 - A context manager may suppress what a `with` body raises
+
+**Type:** fix
+**Touches:** cgv/src/flow.rs, cgv/test_fixtures/with_suppress/, docs/TASKS.md
+**Why:** `with suppress(ValueError): raise ValueError(k)` at the end of a function, and `with suppress(AssertionError): assert x is not None` before `return x`, return None from a function annotated `-> str`, and CGV exited 0 on both.
+**Links:** [intent](intent/2026-10-07-with-suppress.md)
+
+`flow.rs` now assumes that any context manager may suppress any exception raised in its body, since it cannot tell which managers do. Inside a `with` body, at any depth, only a `return` ends the flow: a `raise`, a call that never returns and a `while True:` loop with no `break` do not. What a `with` body narrows never survives it, nor does what a later item of a multi-item `with` narrows (its expression runs inside the earlier managers); what the first item narrows does. The effects of the whole statement do survive. This replaces the CG-1.11 rule, which dropped the narrowing only when the body held a marked exit. The public bench corpus holds no `with`, so its result is unchanged. An exception raised before a `with` body's final `return` (or by the expression of a later item) under a suppressing manager is not yet reached, and so is keeping the narrowing of a manager that never suppresses. CG-1.47 takes both, through a closed list of managers that never suppress.
 
 ---
 

@@ -41,4 +41,4 @@ The spec is `cgv/test_fixtures/shadowed_builtins/expected.json`. `bad.py` holds 
 - CG-1.43 is a separate task. Shadowing still affects the pydantic validation-boundary allowlist (`is_validated_name`), and this change does not alter it.
 
 ## Open questions
-None beyond the not-yet-reached cases under Constraints, which CG-1.49 tracks.
+None beyond the not-yet-reached cases under Constraints, which CG-1.50 tracks.
