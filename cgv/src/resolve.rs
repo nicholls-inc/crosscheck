@@ -1283,7 +1283,12 @@ impl ProjectIndex {
     pub fn annotation_shadow(&self, module: &str, annotation: &Expr) -> Option<Shadow> {
         let mut leaves = Vec::new();
         type_leaves(annotation, &mut leaves);
-        leaves.iter().find_map(|leaf| self.name_shadow(module, leaf))
+        match leaves.iter().find_map(|leaf| self.name_shadow(module, leaf)) {
+            // A union of several types does not promise the project class:
+            // the annotation allows the other members, so it gives no type.
+            Some(Shadow::Class(_)) if leaves.len() > 1 => Some(Shadow::Unknown),
+            other => other,
+        }
     }
 
     fn name_shadow(&self, module: &str, leaf: &Expr) -> Option<Shadow> {
@@ -1884,6 +1889,9 @@ mod tests {
         assert_eq!(shadow("app", "decimal.Decimal"), None);
         assert_eq!(shadow("app", "builtins.int"), None);
         assert_eq!(shadow("app", "list[float]"), None);
+        assert_eq!(shadow("app", "float | str"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Union[float, Decimal]"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Decimal | units.float"), Some(Shadow::Unknown));
         assert_eq!(shadow("units", "float"), units_float);
     }
 }
