@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — The research doc says what Layers 4 to 6 prove, test or only search
+
+**Type:** docs
+**Touches:** docs/research/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-07-layer-strengths-research-doc.md
+**Why:** VA-1.4 fixed the Layer 4 to 6 strengths in the README and the hierarchy guide, but the research doc they link to still called Layer 5 "probabilistic" with "~96% accuracy", called Layer 4 "still deterministic", and said claimcheck "validates intent alignment".
+**Links:** [intent](../intent/2026-10-07-layer-strengths-research-doc.md)
+
+The research doc now uses the wording VA-1.4 settled. Layer 5 checks spec–intent alignment only by search, and the ~96% is the accuracy Claimcheck reports for the round-trip method on a development benchmark, which measures the search, not the spec. At Layer 4 a verifier proves the code against the spec as it now stands, so the doc also says that a person confirms an edited spec did not weaken; VA-1.12 adds the same caveat to the README and the guide. `/acceptance-oracle-draft` moved from the Layer 6 paragraph to Layer 5, where the guide lists it. The implementation-chain summary still calls Layers 1 to 3 "deterministically verifiable" although Layers 2 and 3 are not yet reached; VA-1.13 owns that.
+
+---
+
 ## 2026-10-07 — `dafny_evidence` checks that `requirement` names a tracked file, and refuses a theorem named twice
 
 **Type:** feature
