@@ -21400,7 +21400,10 @@ function shellQuote(s) {
 function rerunCommand(image, files) {
   const run = `docker run --rm --network=none -v "$PWD":/work:ro ${shellQuote(image)}`;
   const paths = files.map((f) => shellQuote(`/work/${f}`));
-  return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && case "$out" in *'${AUDIT_CLEAN}'*) true ;; *) false ;; esac`;
+  return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`;
+}
+function auditClean(output) {
+  return output.split("\n").includes(AUDIT_CLEAN);
 }
 function claimId(file) {
   const slug = file.replace(/\.dfy$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -21564,7 +21567,7 @@ async function dafnyEvidence(input) {
   }
   const audit = await runDafny(root, ["audit", ...paths], run);
   const auditOutput = audit.stdout + "\n" + audit.stderr;
-  if (audit.timedOut || audit.exitCode !== 0 || !auditOutput.includes(AUDIT_CLEAN)) {
+  if (audit.timedOut || audit.exitCode !== 0 || !auditClean(auditOutput)) {
     return refuse([`dafny audit did not report 0 findings`, auditOutput.trim()]);
   }
   const unverified = unverifiedTheorems(verify.stdout, input.theorems);

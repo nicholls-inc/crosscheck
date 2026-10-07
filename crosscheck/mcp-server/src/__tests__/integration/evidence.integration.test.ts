@@ -296,6 +296,13 @@ describe("dafnyEvidence against a real git repository", () => {
     expect(result.errors[1]).toContain("{:axiom}");
   });
 
+  it("refuses an audit whose clean text is only part of a line (DE-7)", async () => {
+    stubDafny({ audit: ok(`Abs.dfy(1,15): Warning: ${AUDIT_CLEAN}\nDafny auditor completed with 1 findings\n`) });
+    const result = await dafnyEvidence(input);
+    expect(result.success).toBe(false);
+    expect(result.errors[0]).toBe("dafny audit did not report 0 findings");
+  });
+
   it("refuses an unreadable Dafny version (DE-8)", async () => {
     stubDafny({ "--version": ok("dafny\n") });
     expect((await dafnyEvidence(input)).errors).toEqual(["could not read the Dafny version: dafny"]);

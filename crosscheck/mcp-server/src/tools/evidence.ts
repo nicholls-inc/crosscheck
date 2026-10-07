@@ -102,8 +102,12 @@ export function rerunCommand(image: string, files: string[]): string {
   const paths = files.map((f) => shellQuote(`/work/${f}`));
   return (
     `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && ` +
-    `case "$out" in *'${AUDIT_CLEAN}'*) true ;; *) false ;; esac`
+    `printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`
   );
+}
+
+export function auditClean(output: string): boolean {
+  return output.split("\n").includes(AUDIT_CLEAN);
 }
 
 export function claimId(file: string): string {
@@ -315,7 +319,7 @@ export async function dafnyEvidence(input: EvidenceInput): Promise<EvidenceOutpu
   }
   const audit = await runDafny(root, ["audit", ...paths], run);
   const auditOutput = audit.stdout + "\n" + audit.stderr;
-  if (audit.timedOut || audit.exitCode !== 0 || !auditOutput.includes(AUDIT_CLEAN)) {
+  if (audit.timedOut || audit.exitCode !== 0 || !auditClean(auditOutput)) {
     return refuse([`dafny audit did not report 0 findings`, auditOutput.trim()]);
   }
   const unverified = unverifiedTheorems(verify.stdout, input.theorems);

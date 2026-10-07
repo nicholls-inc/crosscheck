@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  auditClean,
   buildRecord,
   claimId,
   rerunCommand,
@@ -99,7 +100,7 @@ describe("rerunCommand (DE-9)", () => {
     expect(rerunCommand("crosscheck-dafny:latest", ["proofs/Abs.dfy"])).toBe(
       `docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
         `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'crosscheck-dafny:latest' audit '/work/proofs/Abs.dfy' 2>&1) && ` +
-        `case "$out" in *'Dafny auditor completed with 0 findings'*) true ;; *) false ;; esac`
+        `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`
     );
   });
 
@@ -107,7 +108,7 @@ describe("rerunCommand (DE-9)", () => {
     expect(rerunCommand("img", ["proofs/Abs.dfy", "proofs/Lib.dfy"])).toBe(
       `docker run --rm --network=none -v "$PWD":/work:ro 'img' verify '/work/proofs/Abs.dfy' --verify-included-files && ` +
         `out=$(docker run --rm --network=none -v "$PWD":/work:ro 'img' audit '/work/proofs/Abs.dfy' '/work/proofs/Lib.dfy' 2>&1) && ` +
-        `case "$out" in *'Dafny auditor completed with 0 findings'*) true ;; *) false ;; esac`
+        `printf '%s\\n' "$out" | grep -qxF 'Dafny auditor completed with 0 findings'`
     );
   });
 
@@ -116,6 +117,7 @@ describe("rerunCommand (DE-9)", () => {
     ["verify fails", 4, 0, "Dafny auditor completed with 0 findings", 4],
     ["the audit exits non-zero with the clean line", 0, 3, "Dafny auditor completed with 0 findings", 3],
     ["the audit reports a finding", 0, 0, "Dafny auditor completed with 1 findings", 1],
+    ["the audit prints the clean text inside a longer line", 0, 0, "Bad: Dafny auditor completed with 0 findings", 1],
   ])("exits as Dafny does when %s", (_label, verifyExit, auditExit, auditLine, expected) => {
     const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
     try {
@@ -139,6 +141,20 @@ describe("rerunCommand (DE-9)", () => {
     const out = execFileSync("sh", ["-c", `printf %s ${shellQuote(path)}`]).toString();
     expect(out).toBe(path);
     expect(rerunCommand("img", [path])).toContain(`'/work/it'\\''s a/proof.dfy'`);
+  });
+});
+
+describe("auditClean (DE-7)", () => {
+  it.each([
+    ["Dafny auditor completed with 0 findings", true],
+    ["warning\nDafny auditor completed with 0 findings\n\nDafny program verifier did not attempt verification\n", true],
+    ["Dafny auditor completed with 1 findings\n", false],
+    ["A.dfy(1,1): Warning: Dafny auditor completed with 0 findings\nDafny auditor completed with 1 findings\n", false],
+    ["Dafny auditor completed with 0 findings.\n", false],
+    [" Dafny auditor completed with 0 findings\n", false],
+    ["", false],
+  ])("%j is clean: %s", (output, expected) => {
+    expect(auditClean(output)).toBe(expected);
   });
 });
 
