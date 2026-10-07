@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-07 — One invariant-heading grammar for the gate, the templates and the real docs
+
+**Type:** fix
+**Touches:** conformance/heading_grammar_test.go, skills/invariant-coverage-scaffold/references/{python,go,typescript}-template.md, docs/examples/workflows/tier-a/check_invariant_coverage.py, docs/invariants/*.md, skills/journal-context/docs/invariants/journal-context.md, docs/examples/workflows/example.md, ../docs/TASKS.md
+**Why:** The coverage gate's comment pattern read any upper-case ID prefix while its header pattern read only `I`, and every real invariant doc used `### I1 — Name`, which the `add-orchestrator` grep counts as zero invariants. The guard test passed because it never read a real doc or a comment pattern (#26).
+**Links:** [intent](../intent/2026-10-07-invariant-heading-grammar.md), [spec](../intent/2026-10-07-invariant-heading-grammar-spec.md), [plan](../intent/2026-10-07-invariant-heading-grammar-plan.md)
+
+The alphabet is `I`. The header pattern, the `add-orchestrator` grep and `draft-invariants` already used it, so the comment pattern narrowed to match rather than the grammar widening. The four invariant docs and the worked example now use `## I<N>: <Name>`. `heading_grammar_test.go` extracts each template's comment pattern and checks it against its header pattern over a list of IDs, and reads every `docs/invariants/*.md` in the repository for a heading in any other form. Eight mutants, among them the old comment pattern and one h3 heading, each fail a test. A comment with another prefix is now ignored silently (PB-1.26), and the tier-b example parses a third form, `## Invariant <ID>:` (PB-1.27).
+
+---
+
 ## 2026-10-07 — `dafny_evidence` checks that `requirement` names a tracked file, and refuses a theorem named twice
 
 **Type:** feature
