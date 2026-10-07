@@ -45,8 +45,10 @@
 // whitespace, and the checker reports each fault in its own words. Keys match
 // exactly, including case. A key the schema does not name, a key that appears
 // twice in one object, a null anywhere, a non-string check.type, and a string
-// holding U+FFFD or an unpaired surrogate escape are ERRORs. A required string
-// of only white space and format characters (such as U+200B) is blank. A
+// holding U+FFFD or an unpaired surrogate escape are ERRORs. So are two claims
+// whose ids match once surrounding white space is trimmed and case is folded
+// (sameID), because every ledger message names a claim by its id. A required
+// string of only white space and format characters (such as U+200B) is blank. A
 // claims.json or a conformance directory that is a symlink to a missing target
 // is an ERROR, and so is a plugin root that does not resolve, because it is
 // missing or a symlink on its path dangles. A plugin root is a directory whose
@@ -59,14 +61,17 @@
 // the tree to a released Crosscheck inventory; the open question is whether
 // one can be written without pinning a count that changes with every release.
 //
-// Not yet reached: what the text fields say. Two claims may share an id,
-// source and tracked_in need not name a real file or issue, and check.path may
-// point outside the plugin root. The property that blocks it is a check of
-// each field against the tree and the tracker; the open question is which of
-// them can be checked without a network call. Unique ids are PB-1.42. Text no
-// reader sees that is neither white space nor a format character, such as
-// U+3164, is not blank; the property that blocks it is a definition of visible
-// text, and the open question is whether Default_Ignorable_Code_Point is it.
+// Not yet reached: what the other text fields say. source and tracked_in need
+// not name a real file or issue, and check.path may point outside the plugin
+// root. The property that blocks it is a check of each field against the tree
+// and the tracker; the open question is which of them can be checked without a
+// network call. Two ids that differ only by a look-alike letter from another
+// script are distinct; what blocks it is a rule for which characters an id may
+// hold (PB-1.45). Two ids that differ only by a format character such as U+200B
+// are distinct (PB-1.49). Text no reader sees that is neither white space nor a format
+// character, such as U+3164, is not blank; the property that blocks it is a
+// definition of visible text, and the open question is whether
+// Default_Ignorable_Code_Point is it.
 package main
 
 import (
@@ -716,6 +721,7 @@ func checkLedgerSchema(data []byte) error {
 	if err := json.Unmarshal(top["narrative_claims"], &claims); err != nil {
 		return fmt.Errorf("narrative_claims: %w", err)
 	}
+	ids := make([]string, 0, len(claims))
 	for i, c := range claims {
 		where := fmt.Sprintf("narrative_claims[%d]", i)
 		fields, err := readObject(c, where)
@@ -728,8 +734,23 @@ func checkLedgerSchema(data []byte) error {
 		if err := checkCheck(where+".check", fields["check"]); err != nil {
 			return err
 		}
+		var id string
+		// checkFields has already required a non-blank string id, so this cannot fail.
+		_ = json.Unmarshal(fields["id"], &id)
+		for j, prev := range ids {
+			if sameID(prev, id) {
+				return fmt.Errorf("%s.id %q repeats narrative_claims[%d].id %q", where, id, j, prev)
+			}
+		}
+		ids = append(ids, id)
 	}
 	return nil
+}
+
+// sameID reports whether two claim ids would read as one claim in a log line:
+// equal once surrounding white space is trimmed and case is folded.
+func sameID(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
 // checkCheck checks a claim's check against the schema its type names.

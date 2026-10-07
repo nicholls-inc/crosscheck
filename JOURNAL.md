@@ -13,6 +13,19 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 `Sub.s(x)` is an exit only when `ProjectIndex::method_by_mro`, a C3 lookup that returns nothing when a base is unreadable or the binding class binds `s` other than by one `def`, names the same `NoReturn` method. `method` keeps its depth-first search, because edge discovery and value analysis use it and an uncertain result there would drop edges. An enum's bases must resolve through imports to `enum`, Django's choices classes or the builtins `str` and `int`. A method in an enum body may carry only a bare `staticmethod`, `classmethod` or `property` that the module does not rebind, which settles the row's open question with a fixed list. Each of the seven forms exited 0 before and exits 1 now. CG-1.48 takes the metaclass, class decorator, `__init_subclass__`, `del` and nested-enum forms that stay not yet reached.
 
+---
+
+## 2026-10-07 - A context manager may suppress what a `with` body raises
+
+**Type:** fix
+**Touches:** cgv/src/flow.rs, cgv/test_fixtures/with_suppress/, docs/TASKS.md
+**Why:** `with suppress(ValueError): raise ValueError(k)` at the end of a function, and `with suppress(AssertionError): assert x is not None` before `return x`, return None from a function annotated `-> str`, and CGV exited 0 on both.
+**Links:** [intent](intent/2026-10-07-with-suppress.md)
+
+`flow.rs` now assumes that any context manager may suppress any exception raised in its body, since it cannot tell which managers do. Inside a `with` body, at any depth, only a `return` ends the flow: a `raise`, a call that never returns and a `while True:` loop with no `break` do not. What a `with` body narrows never survives it, nor does what a later item of a multi-item `with` narrows (its expression runs inside the earlier managers); what the first item narrows does. The effects of the whole statement do survive. This replaces the CG-1.11 rule, which dropped the narrowing only when the body held a marked exit. The public bench corpus holds no `with`, so its result is unchanged. An exception raised before a `with` body's final `return` (or by the expression of a later item) under a suppressing manager is not yet reached, and so is keeping the narrowing of a manager that never suppresses. CG-1.47 takes both, through a closed list of managers that never suppress.
+
+---
+
 ## 2026-10-07 - Baseline mode reports only the findings that a change introduces
 
 **Type:** feature
