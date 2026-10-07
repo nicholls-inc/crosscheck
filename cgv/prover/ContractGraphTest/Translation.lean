@@ -9,16 +9,43 @@ namespace ContractGraphTest.Translation
 
 open ContractGraph
 
-instance : Inhabited ContractGraph := ⟨{ nodes := [], edges := [] }⟩
-
-/-- `translateRows` on rows a test means to be well formed. A rejection
-    panics, which `lake build` prints but does not fail on; build with
-    `LEAN_ABORT_ON_PANIC=1` to make it fail. -/
-def graphOf (nodeRows : List NodeRow) (contractRows : List ContractRow)
-    (edgeRows : List EdgeRow) : ContractGraph :=
-  match translateRows nodeRows contractRows edgeRows with
+/-- The graph of a translation that is known to be accepted. With the default
+    proof the `.error` branch runs only after `accepted` failed to elaborate,
+    so the build has already failed; an `absurd` there crashes Lean before it
+    prints why. A caller who passes `(accepted := sorry)` gets the empty graph
+    and only a warning; CGV CI does not yet reject a `sorry` in
+    `ContractGraphTest` (TB-1.32). -/
+def acceptedGraph (rows : Except String ContractGraph) (_accepted : rows.isOk) : ContractGraph :=
+  match rows with
   | .ok g => g
-  | .error msg => panic! s!"translateRows rejected test rows: {msg}"
+  | .error _ => { nodes := [], edges := [] }
+
+/-- The graph `translateRows` builds from a test's rows. `native_decide`
+    proves at elaboration that the rows are accepted, so rejected rows fail
+    the build instead of giving the test an empty graph. A test graph with
+    parameters translates its rows in a separate def and takes the same
+    `accepted` argument, so the proof runs at each call. -/
+def graphOf (nodeRows : List NodeRow) (contractRows : List ContractRow)
+    (edgeRows : List EdgeRow)
+    (accepted : (translateRows nodeRows contractRows edgeRows).isOk := by native_decide) :
+    ContractGraph :=
+  acceptedGraph _ accepted
+
+/--
+error: could not synthesize default value for parameter 'accepted' using tactics
+---
+error: Tactic `native_decide` evaluated that the proposition
+  (translateRows
+        [match (1, "a", "function") with
+          | (id, name, kind) => { id := id, name := name, kind := kind },
+          match (1, "b", "model") with
+          | (id, name, kind) => { id := id, name := name, kind := kind }]
+        [] []).isOk =
+    true
+is false
+-/
+#guard_msgs in
+example : ContractGraph := graphOf [(1, "a", "function"), (1, "b", "model")] [] []
 
 /-- `make` (4dp) writes `Invoice.total` (2dp) on edge 1, whose override row
     says 2dp. -/

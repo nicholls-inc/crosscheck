@@ -26,7 +26,7 @@ import ContractGraphTest.NullableDemo
 namespace ContractGraphTest.Round3
 
 open ContractGraph
-open ContractGraphTest.Translation (graphOf)
+open ContractGraphTest.Translation (graphOf acceptedGraph)
 
 def contains (s sub : String) : Bool := (s.splitOn sub).length > 1
 def errors (o : CheckOutput) : List ResultEntry := o.results.filter (·.severity == "error")
@@ -241,14 +241,18 @@ def siteGraphNoSites : ContractGraph :=
 #guard legacyMicros 0.1234567 false false == 123456
 
 /-- ratio: Field(ge=0.0, le=0.5); writes 0.7. -/
-def microsGraph (written : Int) : ContractGraph :=
-  graphOf
+def microsRows (written : Int) : Except String ContractGraph :=
+  translateRows
     [(1, "make", "function"), (2, "R.ratio", "model")]
     [{ nodeId := 1, constraintType := "range", minMicros := some written, maxMicros := some written,
        role := some "postcondition", sourceLine := 1 },
      { nodeId := 2, constraintType := "range", minMicros := some 0, maxMicros := some 500000,
        role := some "precondition", sourceLine := 2 }]
     [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]
+
+def microsGraph (written : Int)
+    (accepted : (microsRows written).isOk := by native_decide) : ContractGraph :=
+  acceptedGraph _ accepted
 
 #guard (errors (runChecker (microsGraph 700000))).map (fun r => (r.sourceGuarantee, r.targetRequirement))
   == [("range ≤ 0.7", "range ≤ 0.5")]
@@ -286,8 +290,8 @@ def depRow (kind e : String) : ContractRow :=
 #guard (({ nodeId := 1, constraintType := "range", minDecimal := some "-0.25", maxDecimal := some "10" } : ContractRow).malformed).isNone
 
 /-- status: CharField(choices=[("a", ...), ("x", ...)]), JSON-encoded. -/
-def choicesGraph (written : Option String) : ContractGraph :=
-  graphOf
+def choicesRows (written : Option String) : Except String ContractGraph :=
+  translateRows
     [(1, "make", "function"), (2, "P.status", "model")]
     ((match written with
       | some w => [{ nodeId := 1, constraintType := "choices", choices := some w,
@@ -298,6 +302,10 @@ def choicesGraph (written : Option String) : ContractGraph :=
       { nodeId := 2, constraintType := "choices", choices := some "[\"a\", \"x\"]",
         role := some "precondition", sourceLine := 7 }])
     [{ id := 1, sourceId := 1, targetId := 2, relationship := "writes_to" }]
+
+def choicesGraph (written : Option String)
+    (accepted : (choicesRows written).isOk := by native_decide) : ContractGraph :=
+  acceptedGraph _ accepted
 
 #guard (errors (runChecker (choicesGraph (some "[\"zz\"]")))).map (·.sourceGuarantee)
   == ["choices in [zz]"]

@@ -31,19 +31,23 @@ const NO_RETURN_FUNCTIONS: [(&str, &str); 5] = [
     ("os", "abort"),
 ];
 
-/// Bases an enum may list for a `match` over its members to be exhaustive
-/// (last dotted segment). `Flag` / `IntFlag` are absent: a combined flag
-/// value matches no member. A mixin other than `str` / `int` may define an
-/// equality under which a member does not equal itself.
-const ENUM_BASES: [&str; 8] = [
-    "Enum",
-    "IntEnum",
-    "StrEnum",
-    "TextChoices",
-    "IntegerChoices",
-    "Choices",
-    "str",
-    "int",
+/// Bases an enum may list for a `match` over its members to be exhaustive,
+/// as `(module, name)`; `builtins` is a name the module does not bind.
+/// `Flag` / `IntFlag` are absent: a combined flag value matches no member. A
+/// mixin other than `str` / `int` may define an equality under which a
+/// member does not equal itself.
+const ENUM_BASES: [(&str, &str); 11] = [
+    ("enum", "Enum"),
+    ("enum", "IntEnum"),
+    ("enum", "StrEnum"),
+    ("django.db.models", "TextChoices"),
+    ("django.db.models", "IntegerChoices"),
+    ("django.db.models", "Choices"),
+    ("django.db.models.enums", "TextChoices"),
+    ("django.db.models.enums", "IntegerChoices"),
+    ("django.db.models.enums", "Choices"),
+    ("builtins", "str"),
+    ("builtins", "int"),
 ];
 
 /// The statements of `f`'s body (at every nesting level, not inside nested
@@ -130,13 +134,22 @@ impl Cx<'_> {
         if !awaited && self.is_process_exit(&parts) {
             return true;
         }
-        match self.index.resolve_expr(&self.module.name, &call.func) {
-            Some(Symbol::Function(q)) => self
-                .index
-                .function(&q)
-                .is_some_and(|g| g.is_async == awaited && never_returns(self.index, g)),
-            _ => false,
+        let Some(Symbol::Function(q)) = self.index.resolve_expr(&self.module.name, &call.func) else {
+            return false;
+        };
+        // `Sub.s(x)`: the method Python finds on `Sub`, which an unreadable
+        // base or a class-body binding may supply instead.
+        let [prefix @ .., attr] = parts.as_slice() else {
+            return false;
+        };
+        if let Some(Symbol::Class(cq)) = self.index.resolve_dotted(&self.module.name, prefix) {
+            if self.index.method_by_mro(&cq, attr).as_ref() != Some(&q) {
+                return false;
+            }
         }
+        self.index
+            .function(&q)
+            .is_some_and(|g| g.is_async == awaited && never_returns(self.index, g))
     }
 
     /// `parts` names a standard library function that never returns
@@ -262,6 +275,46 @@ fn is_no_return_annotation(index: &ProjectIndex, module: &str, annotation: &Expr
         && index.find_module(from, module).is_none()
 }
 
+/// The `(module, name)` of a library class that the base `expr` of `class`
+/// names through its module's imports (`from enum import Enum`, `import enum`
+/// then `enum.Enum`, `from django.db import models` then `models.TextChoices`),
+/// or `("builtins", name)` for a bare name nothing binds. `None` when the
+/// module or an enclosing class body may bind the head name otherwise, or the
+/// import names a project module.
+fn library_name(index: &ProjectIndex, class: &ClassInfo, expr: &Expr) -> Option<(String, String)> {
+    let parts = dotted_parts(expr)?;
+    let head = parts[0].as_str();
+    let module = index.modules.get(&class.module)?;
+    if module.rebound.contains(head) || module.defs.contains_key(head) {
+        return None;
+    }
+    // A nested class's bases are read in the enclosing class bodies.
+    if index.enclosing_body_binds(class, head) {
+        return None;
+    }
+    let (root, mut path) = match module.imports.get(head) {
+        Some(Import::Symbol { module: m, name }) => (m.clone(), vec![m.clone(), name.clone()]),
+        Some(Import::Module(m)) => (m.clone(), vec![m.clone()]),
+        None if parts.len() == 1 && module.star_imports.is_empty() => {
+            return Some(("builtins".to_string(), parts[0].clone()));
+        }
+        None => return None,
+    };
+    // A project module the import may reach instead (`find_module` also
+    // matches `models` for `django.db.models`, so it is not used here).
+    let top = root.split('.').next().unwrap_or(&root);
+    let shadowed = index.modules.keys().any(|k| {
+        [root.as_str(), top].iter().any(|r| k == r || k.ends_with(&format!(".{r}")))
+    });
+    if shadowed {
+        return None;
+    }
+    path.extend(parts[1..].iter().cloned());
+    let full = path.join(".");
+    let (m, n) = full.rsplit_once('.')?;
+    Some((m.to_string(), n.to_string()))
+}
+
 struct ExitFinder<'i> {
     cx: Cx<'i>,
     f: &'i FunctionInfo,
@@ -320,10 +373,7 @@ impl<'i> ExitFinder<'i> {
         }
         let class = index.resolve_class(&self.f.module, annotation)?;
         let plain_bases = class.bases.iter().all(|b| {
-            dotted_parts(b)
-                .and_then(|p| p.last().cloned())
-                .is_some_and(|last| ENUM_BASES.contains(&last.as_str()))
-                && !matches!(index.resolve_expr(&class.module, b), Some(Symbol::Class(_)))
+            library_name(index, class, b).is_some_and(|(m, n)| ENUM_BASES.contains(&(m.as_str(), n.as_str())))
         });
         // An enum without members may be subclassed by one with members.
         let members = class.enum_members.as_ref().is_some_and(|m| !m.is_empty());
@@ -775,5 +825,159 @@ mod tests {
         assert_eq!(marked(&files, "f").1, Vec::<String>::new());
         let src = format!("from enum import Enum, unique\n\n@unique\nclass E(str, Enum):\n    A = 'a'\n{f}");
         assert_eq!(marked(&[("code.py", &src)], "f").1, ["match e:"]);
+    }
+
+    #[test]
+    fn test_method_through_a_subclass_is_the_one_the_mro_finds() {
+        let base = "from typing import NoReturn\nfrom lib import Mixin\n\nclass Base:\n    @staticmethod\n    def s(m) -> NoReturn:\n        raise E(m)\n\nclass Left(Base):\n    pass\n\n";
+        let call = "\ndef f(x):\n    K.s(x)\n";
+        let exit = [
+            "class K(Base):\n    pass\n",
+            "class K(Left, object):\n    pass\n",
+            // Names bound inside a method, a lambda or a nested class stay local to it.
+            "class K(Base):\n    def g(self):\n        (s := 1)\n        match 1:\n            case s:\n                pass\n",
+            "class K(Base):\n    h = lambda: (s := 1)\n",
+            "class K(Base):\n    class Inner:\n        type s = int\n",
+            // The override comes after the class that has `s` in the MRO.
+            "class Other:\n    @staticmethod\n    def s(m):\n        return m\n\nclass K(Base, Other):\n    pass\n",
+        ];
+        for class in exit {
+            assert_eq!(calls(&format!("{base}{class}{call}"), "f"), ["K.s(x)"], "{class}");
+        }
+        let not_exit = [
+            // A base the index cannot read may define `s`.
+            "class K(Mixin, Base):\n    pass\n",
+            "class K(Base, Mixin):\n    pass\n",
+            "class K(Left, dict):\n    pass\n",
+            // A class-body binding overrides the base's method.
+            "class K(Base):\n    s = staticmethod(print)\n",
+            "class K(Base):\n    if X:\n        def s(m):\n            return m\n",
+            "class K(Base):\n    from lib import s\n",
+            // Bound by a `case` capture, a walrus, a `type` statement or a default.
+            "class K(Base):\n    match 1:\n        case s:\n            pass\n",
+            "class K(Base):\n    match [1]:\n        case [*s]:\n            pass\n",
+            "class K(Base):\n    match {}:\n        case {**s}:\n            pass\n",
+            "class K(Base):\n    match 1:\n        case int() as s:\n            pass\n",
+            "class K(Base):\n    (s := print)\n",
+            "class K(Base):\n    def g(self, a=(s := print)):\n        pass\n",
+            "class K(Base):\n    type s = int\n",
+            // Bound by a statement in a `case` body.
+            "class K(Base):\n    match 1:\n        case _:\n            s = print\n",
+            "class K(Base):\n    match 1:\n        case _:\n            def s(m):\n                return m\n",
+            "class K(Base):\n    match 1:\n        case _:\n            from lib import s\n",
+            // The MRO puts the override first (depth-first search would not).
+            "class Right(Base):\n    @staticmethod\n    def s(m):\n        return m\n\nclass K(Left, Right):\n    pass\n",
+            // Bound twice in the class that defines it.
+            "class K:\n    @staticmethod\n    def s(m) -> NoReturn:\n        raise E(m)\n    s = staticmethod(print)\n",
+            // No consistent order.
+            "class Right(Left):\n    pass\n\nclass K(Left, Right):\n    pass\n",
+            // `object` that the module binds is not the builtin.
+            "object = Mixin\n\nclass K(Base, object):\n    pass\n",
+            "from lib import object\n\nclass K(Base, object):\n    pass\n",
+            "from lib import *\n\nclass K(Base, object):\n    pass\n",
+            // A class that is its own base, or a cycle.
+            "class K(K):\n    pass\n",
+            "class K(Right, Base):\n    pass\n\nclass Right(K):\n    pass\n",
+        ];
+        for class in not_exit {
+            assert_eq!(calls(&format!("{base}{class}{call}"), "f"), Vec::<String>::new(), "{class}");
+        }
+    }
+
+    #[test]
+    fn test_method_through_a_nested_class_reads_its_bases_in_the_enclosing_body() {
+        let src = |outer_body: &str| {
+            format!("from typing import NoReturn\nfrom lib import Other\n\nclass Base:\n    @staticmethod\n    def s(m) -> NoReturn:\n        raise E(m)\n\nclass Outer:\n{outer_body}    class K(Base):\n        pass\n\ndef f(x):\n    Outer.K.s(x)\n")
+        };
+        for body in ["", "    y = 1\n"] {
+            assert_eq!(calls(&src(body), "f"), ["Outer.K.s(x)"], "{body}");
+        }
+        // The enclosing body rebinds `Base`.
+        for body in [
+            "    Base = Other\n",
+            "    from lib import Base\n",
+            "    def Base():\n        pass\n",
+            "    match 1:\n        case _:\n            Base = Other\n",
+        ] {
+            assert_eq!(calls(&src(body), "f"), Vec::<String>::new(), "{body}");
+        }
+    }
+
+    #[test]
+    fn test_enum_base_is_the_library_class_it_names() {
+        let f = "\ndef f(e: E):\n    match e:\n        case E.A:\n            return 1\n";
+        let exhaustive = [
+            "from enum import Enum\n\nclass E(Enum):\n    A = 1\n",
+            "import enum\n\nclass E(enum.IntEnum):\n    A = 1\n",
+            "import enum as en\n\nclass E(en.StrEnum):\n    A = 'a'\n",
+            "from django.db import models\n\nclass E(models.TextChoices):\n    A = 'a', 'A'\n",
+            "import django.db.models\n\nclass E(django.db.models.IntegerChoices):\n    A = 1, 'A'\n",
+            "from django.db.models.enums import TextChoices\n\nclass E(str, TextChoices):\n    A = 'a', 'A'\n",
+            "from django.db.models.enums import IntegerChoices\n\nclass E(IntegerChoices):\n    A = 1, 'A'\n",
+            "from django.db.models.enums import Choices\n\nclass E(Choices):\n    A = 1\n",
+            "from django.db.models import Choices\n\nclass E(Choices):\n    A = 1\n",
+            "import builtins\nfrom enum import Enum\n\nclass E(builtins.str, Enum):\n    A = 'a'\n",
+            "from enum import Enum\n\nclass E(int, Enum):\n    A = 1\n",
+        ];
+        for class in exhaustive {
+            assert_eq!(marked(&[("code.py", &format!("{class}{f}"))], "f").1, ["match e:"], "{class}");
+        }
+        let not_exhaustive = [
+            "from other_lib import Enum\n\nclass E(Enum):\n    A = 1\n",
+            "import other_lib\n\nclass E(other_lib.Enum):\n    A = 1\n",
+            "from enum import Flag as Enum\n\nclass E(Enum):\n    A = 1\n",
+            "from django.db import models\n\nclass E(models.Enum):\n    A = 1\n",
+            "from enum import Enum\nstr = bytes\n\nclass E(str, Enum):\n    A = 'a'\n",
+            "from enum import Enum\nfrom lib import *\n\nclass E(str, Enum):\n    A = 'a'\n",
+        ];
+        for class in not_exhaustive {
+            assert_eq!(marked(&[("code.py", &format!("{class}{f}"))], "f").1, Vec::<String>::new(), "{class}");
+        }
+        // A project module the import may reach instead of the library.
+        let src = format!("from enum import Enum\n\nclass E(Enum):\n    A = 1\n{f}");
+        let files = [("app/enum.py", "class Enum:\n    pass\n"), ("code.py", src.as_str())];
+        assert_eq!(marked(&files, "f").1, Vec::<String>::new());
+        // A `models` module of the project does not shadow `django.db.models`.
+        let src = format!("from django.db.models import TextChoices\n\nclass E(TextChoices):\n    A = 'a', 'A'\n{f}");
+        let files = [("models.py", "X = 1\n"), ("code.py", src.as_str())];
+        assert_eq!(marked(&files, "f").1, ["match e:"]);
+        // A nested enum's bases are read in the enclosing class body.
+        let nested = "from enum import Enum\n\nclass Outer:\n    Enum = dict\n    class E(Enum):\n        A = 1\n\ndef f(e: Outer.E):\n    match e:\n        case Outer.E.A:\n            return 1\n";
+        assert_eq!(marked(&[("code.py", nested)], "f").1, Vec::<String>::new());
+        let in_case = nested.replace("    Enum = dict\n", "    match 1:\n        case _:\n            Enum = dict\n");
+        assert_eq!(marked(&[("code.py", &in_case)], "f").1, Vec::<String>::new());
+        let nested = nested.replace("    Enum = dict\n", "");
+        assert_eq!(marked(&[("code.py", &nested)], "f").1, ["match e:"]);
+    }
+
+    #[test]
+    fn test_enum_method_decorator_must_be_a_builtin_descriptor() {
+        let class = |head: &str, deco: &str| {
+            format!("from enum import Enum\n{head}\nclass E(Enum):\n    A = 1\n\n    {deco}\n    def B(self):\n        return 2\n\ndef f(e: E):\n    match e:\n        case E.A:\n            return 1\n")
+        };
+        for deco in ["@staticmethod", "@classmethod", "@property"] {
+            assert_eq!(marked(&[("code.py", &class("", deco))], "f").1, ["match e:"], "{deco}");
+        }
+        let not_exhaustive = [
+            // `member` under another name makes `B` a member.
+            ("from enum import member as m\n", "@m"),
+            ("import enum as e\n", "@e.member"),
+            // A decorator that returns a value that is no descriptor.
+            ("def const(fn):\n    return 3\n", "@const"),
+            ("import functools\n", "@functools.cache"),
+            ("", "@property.getter"),
+            // The builtin's name bound to something else.
+            ("from lib import member as property\n", "@property"),
+            ("def staticmethod(fn):\n    return 3\n", "@staticmethod"),
+            ("from lib import *\n", "@classmethod"),
+            ("property = lambda fn: 3\n", "@property"),
+            ("staticmethod = print\nif X:\n    classmethod = print\n", "@classmethod"),
+        ];
+        for (head, deco) in not_exhaustive {
+            assert_eq!(marked(&[("code.py", &class(head, deco))], "f").1, Vec::<String>::new(), "{head}{deco}");
+        }
+        // The class body binds the name, so `B` is 3, a member.
+        let src = class("", "@property").replace("    A = 1\n", "    A = 1\n\n    def property(fn):\n        return 3\n");
+        assert_eq!(marked(&[("code.py", &src)], "f").1, Vec::<String>::new());
     }
 }

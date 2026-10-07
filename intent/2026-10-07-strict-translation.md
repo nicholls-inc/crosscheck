@@ -53,7 +53,7 @@ A NULL `contract_role` stays a precondition. `range_min` stays an accepted `cons
 ## Constraints
 - No verdict of a database the extractor writes may change. `scripts/check-fixtures.sh` and `scripts/bench.py run --compare bench/baseline.json` show it.
 - `translateRows` stays pure and total, so TB-1.20 can state "returns an error exactly when a row is malformed".
-- Test graphs in `ContractGraphTest` are built through `translateRows`, by `graphOf`. A test whose rows are rejected panics, which `lake build` prints but passes, so its guards would run on an empty graph. `LEAN_ABORT_ON_PANIC=1 lake build` fails on such a panic, and passes on this change. CGV CI does not set it yet; TB-1.29 makes it.
+- Test graphs in `ContractGraphTest` are built through `translateRows`, by `graphOf`. A test whose rows are rejected panics, which `lake build` prints but passes, so its guards would run on an empty graph. `LEAN_ABORT_ON_PANIC=1 lake build` fails on such a panic, and passes on this change. TB-1.29 later made `graphOf` fail at elaboration instead (`intent/2026-10-07-graphof-rejection-fails-build.md`); TB-1.31 sets the variable in CGV CI for panics elsewhere.
 
 ## Open questions
 None. The question the plan left to this intent is settled above.

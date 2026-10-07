@@ -15,6 +15,28 @@ The alphabet is `I`. The header pattern, the `add-orchestrator` grep and `draft-
 
 ---
 
+## 2026-10-07 — The research doc says what Layers 4 to 6 prove, test or only search
+
+**Type:** docs
+**Touches:** docs/research/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-07-layer-strengths-research-doc.md
+**Why:** VA-1.4 fixed the Layer 4 to 6 strengths in the README and the hierarchy guide, but the research doc they link to still called Layer 5 "probabilistic" with "~96% accuracy", called Layer 4 "still deterministic", and said claimcheck "validates intent alignment".
+**Links:** [intent](../intent/2026-10-07-layer-strengths-research-doc.md)
+
+The research doc now uses the wording VA-1.4 settled. Layer 5 checks spec–intent alignment only by search, and the ~96% is the accuracy Claimcheck reports for the round-trip method on a development benchmark, which measures the search, not the spec. At Layer 4 a verifier proves the Dafny source against the spec as it now stands, so the doc also says that a person confirms an edited spec did not weaken; VA-1.12 adds the same caveat to the README and the guide. `/acceptance-oracle-draft` moved from the Layer 6 paragraph to Layer 5, where the guide lists it. The implementation-chain summary still calls Layers 1 to 3 "deterministically verifiable" although Layers 2 and 3 are not yet reached; VA-1.13 owns that. VA-1.14 owns the placement of `/acceptance-oracle-draft`, the "exhaustive" wording in the Layer 6 section and in "Supporting Workflow Elements", and the point that a person's confirmation of an unweakened spec is a one-time check. The "formally verified user stories" sentence says a property without a verifier gets a test file the tools only check exists, because `/check-regressions` does not run soft-constraint tests. VA-1.13 also owns saying what holds at Layer 4 for the Lean path.
+
+---
+
+## 2026-10-07 — `dafny_evidence` runs Dafny on a copy of the blobs at `commit`
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/__tests__/integration/evidence.integration.test.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The tool mounted the whole work tree into the Dafny container, and DE-13 compared the tree only before and after the runs, so an edit made and reverted while Dafny ran could change what Dafny checked without changing the record.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-commit-export.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+ER-1.10 asked whether to mount a `git archive` copy of `commit`. The answer is yes, with a smaller copy. DE-12 already names every file Dafny reads, so the tool reads `file` and each include as its blob at `commit` with `git ls-tree` and `git cat-file blob`, scans those bytes for includes, and writes the same bytes into a fresh `dafny-` temporary directory with modes `0755` and `0644`. Every Dafny run mounts that directory. The copy is the include closure, so its cost grows with the proof, not the repository. `git archive` was not used because it applies `.gitattributes` export filters, so its output can differ from the blob. DE-3 and DE-13 stay, because the rerun command still mounts the auditor's checkout. ER-1.18 asks whether it should build its mount from `commit` too.
+
+---
+
 ## 2026-10-07 — `dafny_evidence` checks that `requirement` names a tracked file, and refuses a theorem named twice
 
 **Type:** feature
@@ -82,6 +104,17 @@ The Dafny pipeline as a user runs it does not emit a record yet. The MCP tool do
 **Links:** [intent](../intent/2026-10-06-not-yet-reached-research-docs.md)
 
 The research doc's Scope section, its Layer 1, 2, 3 and 6 text, and its "What this hierarchy is not good for" section (now "Where this hierarchy does not reach yet") use the wording VA-1.2 gave the README. The workflows label Layer 6 "search only". Dated research records, the ADR, the reports and the ADD retrospectives keep their wording, since they record what was believed at the time. The research doc's Layer 5 confidence stays for VA-1.7.
+
+---
+
+## 2026-10-06 — Layers 4 to 6 say what they prove, test or only search
+
+**Type:** docs
+**Touches:** README.md, docs/assurance-hierarchy.md, ../docs/TASKS.md, ../intent/2026-10-06-layer-strengths-docs.md
+**Why:** Rule 1 of `docs/VISION.md` makes `/intent-check` a search tool, and rule 7 asks every claim to name its strength. The hierarchy guide said Layers 4 to 6 "prove the specification is the right specification" and gave Layer 5 the confidence "Probabilistic (~96%)". The README called `/intent-check` "round-trip intent verification".
+**Links:** [intent](../intent/2026-10-06-layer-strengths-docs.md)
+
+The hierarchy table's "Confidence" column is now "Strength", and each of Layers 4 and 5 says what proves, what tests and what only searches. At Layer 4, only `/check-regressions` proves, and only the Dafny source of a hard-constraint spec. For soft constraints it only checks that the property-test file still exists and suggests that a person run it. The `/invariant-coverage-scaffold` gate checks that each non-aspirational invariant is referenced by a comment in a test file, not that a test checks the invariant, and `/assurance-probe`'s mutation probe is deterministic mutation testing (AST-derived mutations, Python only in Phase 1), so whether a covering test kills each mutation is tested evidence about that test; a person judges whether a survivor shows a weak test. Layer 5 is search only for spec–intent alignment (`/intent-check`, and the invariant-vs-spec pass of `/audit-invariant-consistency`, whose other two passes are Layer 6), and a proof that a spec achieves its intent is not yet reached for the same reason as Layer 6 (RQ-1). The ~96% is now described as the accuracy Claimcheck reports for the round-trip method on a development benchmark, which measures the search, not the spec. Step 4 of the hierarchy guide's onboarding flow still says `/intent-check` "verifies"; open PR #72 (VA-1.1) rewrites that step, so this change leaves it alone. The research doc keeps the old Layer 5 wording; this change adds VA-1.7 for it. `/rationale` still marks static leaves "Verified (static)" and `/acceptance-oracle-draft` still says it measures whether the spec was the right spec; `/rationale`'s summary table also counts FORMAL leaves as `Verified` while they are only pending byfuglien dispatch, and says the root claim `holds by construction`. All are Class A skill text that VA-1.5 owns, and the docs now say otherwise.
 
 ---
 
