@@ -47,7 +47,7 @@ The canonical classifier is `ClassifyCommitShape(subject, body)` in `crosscheck/
 
 ## D6 — Two-tier completion contract
 
-**Decision.** `passes-oracles ≠ matches-intent`. Reaching green (all D2 gates pass) is **necessary, not sufficient**. `lowry` reports *"passes oracles"* and explicitly **does not** claim *"matches intent"* — that is a human / `hellebuyck` (`/intent-check`, `/rationale`) judgment. This disclaimer is load-bearing and mirrors `add-orchestrator`'s CLAIM-ADDORCH-TERMINAL.
+**Decision.** `passes-oracles ≠ matches-intent`. Reaching green (all D2 gates pass) is **necessary, not sufficient**. `lowry` reports *"passes oracles"* and explicitly **does not** claim *"matches intent"* — that is a human judgment, which `hellebuyck`'s `/intent-check` and `/rationale` can inform but not decide. This disclaimer is load-bearing and mirrors `add-orchestrator`'s CLAIM-ADDORCH-TERMINAL.
 
 **Why.** The whole point of the assurance hierarchy: a green build over a wrong spec is false confidence.
 

@@ -47,7 +47,7 @@ The marker lives at `.assurance/add-session-<id>/session.json` (or any ancestor 
 }
 ```
 
-Hash computation follows `crosscheck/skills/intent-check/references/attestation-schema.md` lines 76–92: sorted absolute paths, raw bytes concatenated with no delimiter, single SHA-256, lowercase hex.
+Hash computation follows "SHA-256 computation (exact)" in `crosscheck/skills/intent-check/references/attestation-schema.md`: sorted absolute paths, raw bytes concatenated with no delimiter, single SHA-256, lowercase hex.
 
 ### Detection, validation, effect
 

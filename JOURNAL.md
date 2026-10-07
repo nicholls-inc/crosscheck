@@ -229,6 +229,19 @@ A record is a closed JSON object about one commit. Each claim names its strength
 
 ---
 
+## 2026-10-06 - The intent-check attestation is an advisory record
+
+**Type:** fix
+**Touches:** crosscheck/skills/intent-check/SKILL.md, crosscheck/skills/intent-check/references/attestation-schema.md, crosscheck/skills/assurance-init/SKILL.md, crosscheck/skills/protected-surface-amend/SKILL.md, crosscheck/skills/draft-invariants/SKILL.md, crosscheck/skills/assurance-status/SKILL.md, crosscheck/agents/hellebuyck.md, crosscheck/agents/add-orchestrator.md, crosscheck/agents/lowry.md, crosscheck/docs/orchestrator-coordination.md, docs/gates/intent-check-verdict.md, docs/gates/intent-check-kill-criterion.md, docs/gates/README.md, docs/TASKS.md
+**Why:** This repository stopped counting the attestation as a Tier 3 artefact on 2026-09-29, but the skills and agents it ships still told other repositories to gate commits on an LLM `pass`, to list the attestation as a Tier 3 artefact, and to accept it as amendment authority.
+**Links:** [intent](intent/2026-10-06-intent-check-advisory.md), [spec](intent/2026-10-06-intent-check-advisory-spec.md), [plan](intent/2026-10-06-intent-check-advisory-plan.md)
+
+`/intent-check` still runs the round trip, appends the tracker row and writes `.assurance/intent-check-attestation.json`, with the same schema and hash. It no longer drafts a pre-commit hook that rejects a commit without a passing attestation, and it tells the user to remove one that an earlier version drafted. A failed verdict now offers a fourth route, classifying the verdict as spurious. `add-orchestrator` and `/draft-invariants` cite the hash algorithm by section heading, since removing the hook sections moved the lines they cited. No check enforces the new wording. The example workflows under `crosscheck/docs/examples/workflows/` still describe a mandatory intent-check gate, and task VA-1.3 covers them.
+
+---
+
+---
+
 ## 2026-10-06 - A pre-commit hook runs the checks that need no PR body
 
 **Type:** feature
