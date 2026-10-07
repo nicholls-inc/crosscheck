@@ -61,7 +61,7 @@ Python project (.py files)
 | Lean kernel | Absolute — accepts or rejects the proof |
 | Checker + proofs | Proved — soundness theorems are machine-checked |
 | Theorem statements | Tracked — the kernel proves each theorem only as stated, so CI compares the statements (and the definitions reachable from `constraintImplies`, `IsDataPath` and `stepwiseSound`) with the committed manifest `prover/protected-statements.txt`; a change fails CI unless the manifest changes with it, which is a reviewed protected-surface change. CI also fails if a protected theorem or definition depends on `sorry` or on any axiom other than `propext`, `Classical.choice` and `Quot.sound` |
-| Translation | Not proved — no theorems yet; rejects malformed rows (exit 2) rather than dropping them |
+| Translation | Not proved — no theorems yet. `translateRows` translates every row or rejects the database (exit 2), so no row is dropped. It rejects an unknown `constraint_type`, `verification_level`, `contract_role` or `relationship`, a node kind other than `model`, `function` or `field`, two rows with one id, an edge or contract row that names a missing node, a per-edge contract row whose edge is missing, has no `source_override`, starts at another node or is not a postcondition, a row with neither the value its kind reads nor a `dependent_expr`, and a malformed `dependent_expr`, `param_choices` or decimal bound. The SQL reads that produce the rows (`readNodes`, `readContracts`, `readEdges`) are not tested yet; TB-1.21 tests them |
 | Behavior model (`BehaviorModel.lean`) | Trusted-not-proved, documentation only — ~100 lines, auditable, version-pinned; no theorem references it yet, so exit 0 is a statement about the translated constraints, not about Django or pydantic acceptance |
 | Rust extraction | Untrusted but auditable — tagged `[EXTRACTED]` with source locations |
 
@@ -368,7 +368,7 @@ The checked path and the `--overrides` file must sit in a git work tree with no 
 |------|---------|
 | 0 | Every data path (function → model node) that the extractor discovered is consistent; see [What exit 0 promises](#what-exit-0-promises) |
 | 1 | One or more inconsistencies found |
-| 2 | Extraction, parse or translation failure (including an unreadable database or a malformed contract row), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
+| 2 | Extraction, parse or translation failure (including an unreadable database or a row that translation rejects, see [Trust model](#trust-model)), or an incomplete check (a `--max-states` / `--max-states-per-edge` budget exceeded — nothing is verified — or the checker crashed or produced no JSON) |
 
 `--max-states N` (alias `--max-paths N`) and `--max-states-per-edge N` are passed to the checker after the database path.
 
