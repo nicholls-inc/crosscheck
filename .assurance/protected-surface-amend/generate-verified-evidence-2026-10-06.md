@@ -7,7 +7,7 @@
 
 ### Change Description
 
-1. `crosscheck/skills/generate-verified/SKILL.md`: a new Step 7 commits the verified program to a path the caller names with `evidence:`, and calls the MCP tool `dafny_evidence` to emit an evidence record to `.crosscheck/work/dafny/<spec-id>/evidence.json`. It runs only on that opt-in, only after `dafny_verify` accepted the program, and only on a clean work tree. It writes `.crosscheck/.gitignore` with `*` when git does not already ignore `.crosscheck/`. The Evidence Summary moves from Step 6 to a new Step 8, after Step 7, and reports the record, or why there is none, and always asks a person to check the drafted statement against the contracts. The front matter and "Arguments" document `evidence:` and `requirement:`.
+1. `crosscheck/skills/generate-verified/SKILL.md`: a new Step 7 commits the verified program to a path the caller names with `evidence:`, and calls the MCP tool `dafny_evidence` to emit an evidence record to `.crosscheck/work/dafny/<spec-id>/evidence.json`. It runs only on that opt-in, only after `dafny_verify` accepted the program, and only on a clean work tree. It writes `.crosscheck/.gitignore` with `*` when git does not already ignore `.crosscheck/`. The Evidence Summary moves from Step 6 to a new Step 8, after Step 7, and reports the record, or why there is none, and, whenever a record is emitted, asks a person to check the drafted statement against the contracts. The front matter and "Arguments" document `evidence:` and `requirement:`.
 
 ### Rationale
 

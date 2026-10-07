@@ -141,7 +141,7 @@ All commands run at the work tree's top level (`git rev-parse --show-toplevel`).
    - `requirement`: the invocation's `requirement:` value, or `null`;
    - `theorems`: the names from 5;
    - `outputPath`: `.crosscheck/work/dafny/<spec-id>/evidence.json`. That path is ignored, so the record leaves the tree clean, and a later run overwrites it.
-8. **Handle a refusal.** If the result has `success: false`, give Step 8 every entry of `errors` as the tool wrote it. If an error names a theorem (an invalid name, or a name not in Dafny's log), you may correct the names and call once more. Never edit the program, the spec or a contract to get a record. A refusal is a finding, not an obstacle.
+8. **Handle a refusal.** If the result has `success: false`, give Step 8 every entry of `errors` as the tool wrote it. If an error names a theorem (an invalid name, or a name not in Dafny's log), you may correct the names and call once more. If the corrected set differs from the set in the draft, redraft the statement from 6 so that it covers exactly the theorems you pass, and say in Step 8 that the set changed. Never edit the program, the spec or a contract to get a record. A refusal is a finding, not an obstacle.
 
 ### Step 8: Present the Evidence Summary
 
