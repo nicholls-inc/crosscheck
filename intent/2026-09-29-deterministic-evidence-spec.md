@@ -2,6 +2,8 @@
 
 Intent: `intent/2026-09-29-deterministic-evidence.md`. Decisions: `intent/2026-09-29-crosscheck-monorepo.md`. Governing roadmap item: PB-1.
 
+The `evals/**` row of TG-8 below is revised by `intent/2026-09-30-tier-anchor-spec.md` and `intent/2026-10-06-incident-eval-surfaces-spec.md`: the Incident Eval Check does not run an eval, so that row is not yet reached.
+
 Each requirement has an ID. The tests cite these IDs.
 
 ## Tier gate (`scripts/ci/tier-gate.mjs`)
