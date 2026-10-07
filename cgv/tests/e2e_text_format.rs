@@ -81,7 +81,7 @@ fn text_format_on_transitive_fixture() {
     // RESULT summary line, and the process exit code must match the
     // checker's semantic exit code (fixture is inconsistent -> 1).
     assert!(
-        stdout.contains("RESULT: 1 error, 1 warning, 0 unverified. Exit code 1."),
+        stdout.contains("RESULT: 1 error, 1 warning, 2 unverified. Exit code 1."),
         "got:\n{stdout}"
     );
     assert_eq!(output.status.code(), Some(1));
@@ -123,7 +123,7 @@ fn missing_guarantees_are_coverage_on_a_real_run() {
         .iter()
         .filter(|r| r["suggestion"].as_str().unwrap().contains(" postcondition for the value it passes to "))
         .collect();
-    assert_eq!(missing.len(), 2, "{json}");
+    assert_eq!(missing.len(), 6, "{json}");
     for r in &missing {
         assert_eq!(r["severity"], "warning", "{r}");
         assert!(r["source_guarantee"].as_str().unwrap().ends_with(" (unspecified)"), "{r}");
@@ -137,21 +137,21 @@ fn missing_guarantees_are_coverage_on_a_real_run() {
     assert!(!text.contains("(unspecified)"), "{text}");
     assert!(
         text.contains(
-            "COVERAGE BY MODULE\n  bug: 12 edges checked, 2 requirements unverified (precision 1, range_min 1)\n  ok: 12 edges checked, 0 requirements unverified\n"
+            "COVERAGE BY MODULE\n  bug: 12 edges checked, 4 requirements unverified (precision 1, range 1, range_min 2)\n  ok: 12 edges checked, 2 requirements unverified (range 1, range_min 1)\n"
         ),
         "{text}"
     );
     assert!(text.contains("Pass --warnings to list them."), "{text}");
-    assert!(text.ends_with("RESULT: 3 errors, 0 warnings, 2 unverified. Exit code 1.\n"), "{text}");
+    assert!(text.ends_with("RESULT: 3 errors, 0 warnings, 6 unverified. Exit code 1.\n"), "{text}");
 
     let (text, code) = run_fixture(fixture, &db, &["--format", "text", "--warnings"]).unwrap();
     assert_eq!(code, Some(1));
-    assert_eq!(text.matches("\nUNVERIFIED  ").count(), 2, "{text}");
+    assert_eq!(text.matches("\nUNVERIFIED  ").count(), 6, "{text}");
     assert!(
         text.contains("UNVERIFIED  bug.py:26 \u{2192} models.py:7\n       no precision guarantee for the value fee_of passes to StockItem.fee\n"),
         "{text}"
     );
-    assert!(text.ends_with("RESULT: 3 errors, 0 warnings, 2 unverified. Exit code 1.\n"), "{text}");
+    assert!(text.ends_with("RESULT: 3 errors, 0 warnings, 6 unverified. Exit code 1.\n"), "{text}");
 }
 
 #[test]
@@ -175,5 +175,5 @@ fn no_warnings_hides_the_dependent_bound_warning() {
     let (text, code) = run_fixture("test_fixtures/transitive/", &db, &["--format", "text", "--no-warnings"]).unwrap();
     assert_eq!(code, Some(1));
     assert!(!text.contains("WARNING  "), "{text}");
-    assert!(text.ends_with("RESULT: 1 error, 1 warning, 0 unverified. Exit code 1.\n"), "{text}");
+    assert!(text.ends_with("RESULT: 1 error, 1 warning, 2 unverified. Exit code 1.\n"), "{text}");
 }

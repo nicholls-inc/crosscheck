@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "record_big -> Price.amount",
+      "source_guarantee": "range ≤ 123456.78",
+      "target_requirement": "range ≤ 999.99",
+      "target": "Price.amount"
+    },
+    {
+      "path": "record_negative -> Price.amount",
+      "source_guarantee": "range ≥ -1000",
+      "target_requirement": "range ≥ -999.99",
+      "target": "Price.amount"
+    },
+    {
+      "path": "quote_big -> Quote.amount",
+      "source_guarantee": "range ≤ 1000.5",
+      "target_requirement": "range ≤ 999.99",
+      "target": "Quote.amount"
+    }
+  ]
+}

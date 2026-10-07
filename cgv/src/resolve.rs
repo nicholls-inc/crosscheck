@@ -14,7 +14,8 @@
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::visitor::{walk_expr, walk_pattern, walk_stmt, Visitor};
+use ruff_python_ast::{Expr, Pattern, Stmt};
 
 use crate::dataclass_extractor::DataClassKind;
 use crate::function_extractor::FunctionInfo;
@@ -742,6 +743,8 @@ pub struct ClassInfo {
     /// Every name the class body binds (assignments, `def`, nested `class`,
     /// imports), constant or not: a binding here overrides one in a base.
     pub body_names: HashSet<String>,
+    /// Names the class body binds more than once.
+    pub body_rebound: HashSet<String>,
     /// For enum-like classes (Django `TextChoices` / `IntegerChoices`, `enum.Enum`):
     /// how member values are read.
     pub enum_kind: Option<EnumKind>,
@@ -762,6 +765,9 @@ pub struct ClassInfo {
     /// requirements (each write to it is checked against them), as facts
     /// for reads of the field.
     pub field_facts: HashMap<String, crate::value_analysis::ValueFacts>,
+    /// Fields whose input a pydantic validation call (`Cls.model_validate`)
+    /// still writes as a typed write: validation does not enforce their contract.
+    pub validate_checked: HashSet<String>,
 }
 
 /// An enum-like class: members are class-body constants.
@@ -789,6 +795,7 @@ impl ClassInfo {
             constants: HashMap::new(),
             stored_attrs: HashSet::new(),
             body_names: HashSet::new(),
+            body_rebound: HashSet::new(),
             enum_kind: None,
             enum_members: None,
             strict: false,
@@ -796,13 +803,18 @@ impl ClassInfo {
             field_nullable: HashMap::new(),
             patterns: HashSet::new(),
             field_facts: HashMap::new(),
+            validate_checked: HashSet::new(),
         }
     }
 
     /// Record the class body: constants, `self.x = ...` stores, enum kind.
     pub fn with_body(mut self, body: &[Stmt]) -> Self {
         self.stored_attrs = self_stores(body);
-        self.body_names = body_bindings(body);
+        for name in body_bindings(body) {
+            if !self.body_names.insert(name.clone()) {
+                self.body_rebound.insert(name);
+            }
+        }
         self.enum_kind = self.bases.iter().find_map(|b| {
             let parts = dotted_parts(b)?;
             match parts.last()?.as_str() {
@@ -852,8 +864,9 @@ impl ClassInfo {
 }
 
 /// The member names of an enum class body, in order, when every
-/// class-level statement is `NAME = value` with one name target, a `def` (not
-/// decorated `@member`), a docstring or `pass`, and the body neither defines `__eq__` nor binds
+/// class-level statement is `NAME = value` with one name target, a `def`
+/// with no decorator other than a bare `staticmethod`, `classmethod` or
+/// `property` (`ENUM_METHOD_DECORATORS`), a docstring or `pass`, and the body neither defines `__eq__` nor binds
 /// `_ignore_`; `None` otherwise. Dunder and sunder names (as `enum` defines
 /// them) are not members.
 fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
@@ -864,9 +877,12 @@ fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
                 [Expr::Name(n)] => n.id.as_str(),
                 _ => return None,
             },
-            // `@enum.member` makes a method a member.
+            // Any other decorator may return a value that is not a
+            // descriptor (`enum.member`, under any name), which is a member.
             Stmt::FunctionDef(f) if f.name.as_str() != "__eq__" => {
-                if f.decorator_list.iter().any(is_member_decorator) {
+                if !f.decorator_list.iter().all(|d| {
+                    matches!(&d.expression, Expr::Name(n) if ENUM_METHOD_DECORATORS.contains(&n.id.as_str()))
+                }) {
                     return None;
                 }
                 continue;
@@ -889,14 +905,10 @@ fn enum_member_names(body: &[Stmt]) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// A decorator whose last name is `member`, bare or called.
-fn is_member_decorator(d: &ruff_python_ast::Decorator) -> bool {
-    let expr = match &d.expression {
-        Expr::Call(c) => c.func.as_ref(),
-        e => e,
-    };
-    dotted_parts(expr).is_some_and(|p| p.last().is_some_and(|n| n == "member"))
-}
+/// The builtin decorators a method of an enum body may carry and stay a
+/// method: each returns a descriptor. The index checks that the module does
+/// not bind these names (`extractor`).
+pub const ENUM_METHOD_DECORATORS: [&str; 3] = ["staticmethod", "classmethod", "property"];
 
 /// A string or integer literal as a choice value (`"a"` -> `a`, `3` -> `3`).
 pub fn literal_choice(expr: &Expr) -> Option<String> {
@@ -916,11 +928,12 @@ pub fn literal_choice(expr: &Expr) -> Option<String> {
 /// Names a class body binds at its own level (not inside methods): simple
 /// and annotated assignments with a value, augmented assignments, `def`,
 /// nested `class`, imports, `for` / `with` targets, inside `if` / `try` too.
-fn body_bindings(body: &[Stmt]) -> HashSet<String> {
-    fn targets(expr: &Expr, out: &mut HashSet<String>) {
+/// A name appears once per binding.
+fn body_bindings(body: &[Stmt]) -> Vec<String> {
+    fn targets(expr: &Expr, out: &mut Vec<String>) {
         match expr {
             Expr::Name(n) => {
-                out.insert(n.id.to_string());
+                out.push(n.id.to_string());
             }
             Expr::Tuple(t) => t.elts.iter().for_each(|e| targets(e, out)),
             Expr::List(l) => l.elts.iter().for_each(|e| targets(e, out)),
@@ -928,27 +941,27 @@ fn body_bindings(body: &[Stmt]) -> HashSet<String> {
             _ => {}
         }
     }
-    fn walk(stmts: &[Stmt], out: &mut HashSet<String>) {
+    fn walk(stmts: &[Stmt], out: &mut Vec<String>) {
         for stmt in stmts {
             match stmt {
                 Stmt::Assign(a) => a.targets.iter().for_each(|t| targets(t, out)),
                 Stmt::AnnAssign(a) if a.value.is_some() => targets(&a.target, out),
                 Stmt::AugAssign(a) => targets(&a.target, out),
                 Stmt::FunctionDef(f) => {
-                    out.insert(f.name.to_string());
+                    out.push(f.name.to_string());
                 }
                 Stmt::ClassDef(c) => {
-                    out.insert(c.name.to_string());
+                    out.push(c.name.to_string());
                 }
                 Stmt::Import(i) => {
                     for alias in &i.names {
                         let local = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
-                        out.insert(local.split('.').next().unwrap_or(&local).to_string());
+                        out.push(local.split('.').next().unwrap_or(&local).to_string());
                     }
                 }
                 Stmt::ImportFrom(i) => {
                     for alias in &i.names {
-                        out.insert(alias.asname.as_ref().unwrap_or(&alias.name).to_string());
+                        out.push(alias.asname.as_ref().unwrap_or(&alias.name).to_string());
                     }
                 }
                 Stmt::For(f) => {
@@ -974,12 +987,17 @@ fn body_bindings(body: &[Stmt]) -> HashSet<String> {
                         walk(&clause.body, out);
                     }
                 }
+                Stmt::Match(m) => {
+                    for case in &m.cases {
+                        walk(&case.body, out);
+                    }
+                }
                 Stmt::Try(t) => {
                     walk(&t.body, out);
                     for handler in &t.handlers {
                         let ruff_python_ast::ExceptHandler::ExceptHandler(h) = handler;
                         if let Some(n) = &h.name {
-                            out.insert(n.to_string());
+                            out.push(n.to_string());
                         }
                         walk(&h.body, out);
                     }
@@ -990,9 +1008,71 @@ fn body_bindings(body: &[Stmt]) -> HashSet<String> {
             }
         }
     }
-    let mut out = HashSet::new();
+    let mut out = Vec::new();
     walk(body, &mut out);
+    let mut scope = ScopeBinders { out: &mut out };
+    scope.visit_body(body);
     out
+}
+
+/// The names a class body binds that `body_bindings`' statement walk does
+/// not read: `case` captures (`case s:`, `case [*s]`, `case {**s}`,
+/// `case X() as s`), walrus targets (`(s := ...)`), and `type s = ...`. It
+/// does not enter a `def`, a `class` or a `lambda` body, whose names are
+/// local to it, but reads what those evaluate in the class scope (decorators,
+/// defaults, base classes).
+struct ScopeBinders<'o> {
+    out: &'o mut Vec<String>,
+}
+
+impl<'a> Visitor<'a> for ScopeBinders<'_> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(f) => {
+                f.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                self.visit_parameters(&f.parameters);
+            }
+            Stmt::ClassDef(c) => {
+                c.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                if let Some(args) = &c.arguments {
+                    self.visit_arguments(args);
+                }
+            }
+            Stmt::TypeAlias(t) => {
+                if let Expr::Name(n) = t.name.as_ref() {
+                    self.out.push(n.id.to_string());
+                }
+            }
+            _ => walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Lambda(l) => {
+                if let Some(parameters) = &l.parameters {
+                    self.visit_parameters(parameters);
+                }
+            }
+            Expr::Named(n) => {
+                if let Expr::Name(target) = n.target.as_ref() {
+                    self.out.push(target.id.to_string());
+                }
+                walk_expr(self, expr);
+            }
+            _ => walk_expr(self, expr),
+        }
+    }
+
+    fn visit_pattern(&mut self, pattern: &'a Pattern) {
+        match pattern {
+            Pattern::MatchAs(p) => self.out.extend(p.name.iter().map(|n| n.to_string())),
+            Pattern::MatchStar(p) => self.out.extend(p.name.iter().map(|n| n.to_string())),
+            Pattern::MatchMapping(p) => self.out.extend(p.rest.iter().map(|n| n.to_string())),
+            _ => {}
+        }
+        walk_pattern(self, pattern);
+    }
 }
 
 /// Attributes assigned as `<first param>.attr = ...` in the methods of a class body.
@@ -1272,6 +1352,70 @@ impl ProjectIndex {
         }
     }
 
+    /// What the type-contract name in `annotation` (see `canonical_modules`)
+    /// refers to, as seen from `module`, when that is not the type the name
+    /// spells: `None` for the builtin (or `decimal.Decimal`, or pydantic's
+    /// `StrictInt`, ...), and for a name `module` does not bind.
+    pub fn annotation_shadow(&self, module: &str, annotation: &Expr) -> Option<Shadow> {
+        let mut leaves = Vec::new();
+        type_leaves(annotation, &mut leaves);
+        match leaves.iter().find_map(|leaf| self.name_shadow(module, leaf)) {
+            // A union of several types does not promise the project class:
+            // the annotation allows the other members, so it gives no type.
+            Some(Shadow::Class(_)) if leaves.len() > 1 => Some(Shadow::Unknown),
+            other => other,
+        }
+    }
+
+    fn name_shadow(&self, module: &str, leaf: &Expr) -> Option<Shadow> {
+        let parts = dotted_parts(leaf)?;
+        let name = parts.last()?.as_str();
+        let canonical = canonical_modules(name)?;
+        let info = self.modules.get(module)?;
+        let class_or_unknown = |sym: Symbol| match sym {
+            Symbol::Class(q) if q.contains('.') => Shadow::Class(q),
+            _ => Shadow::Unknown,
+        };
+        if let [head] = parts.as_slice() {
+            if info.rebound.contains(head) {
+                return Some(Shadow::Unknown);
+            }
+            if let Some(sym) = self.lookup(module, head) {
+                return Some(class_or_unknown(sym));
+            }
+            return match info.imports.get(head) {
+                Some(Import::Symbol { module: m, name: n })
+                    if canonical.contains(&m.as_str()) && n == name =>
+                {
+                    None
+                }
+                Some(_) => Some(Shadow::Unknown),
+                None => None,
+            };
+        }
+        match self.resolve_dotted(module, &parts) {
+            // `decimal.Decimal` resolves to a module path outside the project.
+            Some(Symbol::Module(path)) if !self.modules.contains_key(&path) => {}
+            Some(sym) => return Some(class_or_unknown(sym)),
+            None => {}
+        }
+        let (head, middle) = (&parts[0], &parts[1..parts.len() - 1]);
+        let path = match info.imports.get(head)? {
+            Import::Module(path) => path.clone(),
+            Import::Symbol { module: m, name: n } => qualify(m, n),
+        };
+        let path = std::iter::once(path).chain(middle.iter().cloned()).collect::<Vec<_>>().join(".");
+        (!canonical.contains(&path.as_str())).then_some(Shadow::Unknown)
+    }
+
+    /// Whether `t`, a type name taken from an annotation, is one that type
+    /// contracts compare: a value type, or a project class that shadows one.
+    pub fn is_contract_type(&self, t: &str) -> bool {
+        crate::dataclass_extractor::VALUE_TYPES.contains(&t)
+            || t.rsplit_once('.').is_some_and(|(_, last)| canonical_modules(last).is_some())
+                && self.classes.contains_key(t)
+    }
+
     /// Whether bare `name` in `module` is a module-level compiled pattern
     /// (defined there or imported from where it is defined).
     pub fn is_pattern(&self, module: &str, name: &str) -> bool {
@@ -1537,6 +1681,86 @@ impl ProjectIndex {
         })
     }
 
+    /// The method that `class_q.name` reads, found as Python finds it: the
+    /// first class in the method resolution order whose body binds `name`.
+    /// `None` when that is not certain: a base the index cannot read (other
+    /// than `object`), bases with no consistent order, or a body that binds
+    /// `name` other than by one `def`. Unlike `method`, which takes the first
+    /// definition depth-first and skips unreadable bases.
+    pub fn method_by_mro(&self, class_q: &str, name: &str) -> Option<String> {
+        for q in self.mro(class_q, 0)? {
+            let class = self.classes.get(&q)?;
+            if class.body_names.contains(name) {
+                return class.methods.get(name).filter(|_| !class.body_rebound.contains(name)).cloned();
+            }
+        }
+        None
+    }
+
+    /// Whether the name `head`, read in the bases of `class`, may be bound by
+    /// the body of a class that encloses it. A nested class's bases are read
+    /// there, not at module level, so such a name cannot be looked up in the
+    /// module. True also when an enclosing class is not in the index.
+    pub fn enclosing_body_binds(&self, class: &ClassInfo, head: &str) -> bool {
+        let mut outer = class.name.as_str();
+        while let Some((o, _)) = outer.rsplit_once('.') {
+            let q = qualify(&class.module, o);
+            if self.classes.get(&q).is_none_or(|c| c.body_names.contains(head)) {
+                return true;
+            }
+            outer = o;
+        }
+        false
+    }
+
+    /// The C3 linearisation of `class_q`, when every base is a project class
+    /// or the builtin `object`.
+    fn mro(&self, class_q: &str, depth: usize) -> Option<Vec<String>> {
+        if depth > MAX_DEPTH {
+            return None;
+        }
+        let class = self.classes.get(class_q)?;
+        let module = self.modules.get(&class.module)?;
+        let mut bases = Vec::new();
+        for base in &class.bases {
+            if dotted_parts(base).is_none_or(|p| self.enclosing_body_binds(class, &p[0])) {
+                return None;
+            }
+            match self.resolve_expr(&class.module, base) {
+                Some(Symbol::Class(bq)) if bq != class_q => bases.push(bq),
+                _ if matches!(base, Expr::Name(n) if n.id.as_str() == "object")
+                    && !module.defs.contains_key("object")
+                    && !module.imports.contains_key("object")
+                    && !module.rebound.contains("object")
+                    && module.star_imports.is_empty() => {}
+                _ => return None,
+            }
+        }
+        let mut seqs = Vec::new();
+        for b in &bases {
+            seqs.push(self.mro(b, depth + 1)?);
+        }
+        seqs.push(bases);
+        let mut out = vec![class_q.to_string()];
+        loop {
+            seqs.retain(|s| !s.is_empty());
+            if seqs.is_empty() {
+                return Some(out);
+            }
+            let head = seqs
+                .iter()
+                .map(|s| &s[0])
+                .find(|h| seqs.iter().all(|s| !s[1..].contains(h)))?
+                .clone();
+            for s in &mut seqs {
+                if s[0] == head {
+                    s.remove(0);
+                }
+            }
+            out.push(head);
+        }
+    }
+
     /// Method `name` of class `class_q`, searching project-local bases.
     pub fn method(&self, class_q: &str, name: &str) -> Option<String> {
         let mut visited = HashSet::new();
@@ -1577,6 +1801,68 @@ pub fn dotted_parts(expr: &Expr) -> Option<Vec<String>> {
             Some(parts)
         }
         _ => None,
+    }
+}
+
+/// What a type-contract name in an annotation refers to when a module binds
+/// it to something other than the type it spells (see
+/// `ProjectIndex::annotation_shadow`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Shadow {
+    /// A project class, by qualified name (`units.float`): the type contract names it.
+    Class(String),
+    /// Anything else (a function, a constant, a rebound global, an import
+    /// from another module): no type contract.
+    Unknown,
+}
+
+/// The modules a type-contract name means when imported from them (an
+/// unimported builtin name means the builtin), or `None` for a name that
+/// gives no type contract.
+fn canonical_modules(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        "int" | "float" | "str" | "bool" => Some(&["builtins"]),
+        "Decimal" => Some(&["decimal", "_decimal", "_pydecimal"]),
+        "StrictInt" | "StrictFloat" | "StrictStr" | "StrictBool" => Some(&["pydantic", "pydantic.types"]),
+        _ => None,
+    }
+}
+
+/// The names in an annotation that can give its type, read as
+/// `dataclass_extractor::walk_annotation` reads them: through `Optional`,
+/// unions, `Annotated`, `Final` and similar wrappers, and quoted forward
+/// references. A generic (`list[float]`) or a `Literal` is not read into: it is
+/// a leaf that names no type, and counts as a member of a union.
+fn type_leaves(expr: &Expr, out: &mut Vec<Expr>) {
+    match expr {
+        Expr::Name(_) | Expr::Attribute(_) => out.push(expr.clone()),
+        Expr::Subscript(sub) => {
+            let head = dotted_parts(&sub.value).and_then(|p| p.last().cloned()).unwrap_or_default();
+            match head.as_str() {
+                "Optional" | "Union" | "Final" | "Required" | "NotRequired" | "ReadOnly"
+                | "SkipValidation" => match sub.slice.as_ref() {
+                    Expr::Tuple(t) => t.elts.iter().for_each(|e| type_leaves(e, out)),
+                    other => type_leaves(other, out),
+                },
+                "Annotated" => match sub.slice.as_ref() {
+                    Expr::Tuple(t) => t.elts.iter().take(1).for_each(|e| type_leaves(e, out)),
+                    other => type_leaves(other, out),
+                },
+                // A generic (`list[str]`) is a member of a union that names no
+                // type contract, but it is a member: it counts as a leaf.
+                _ => out.push(expr.clone()),
+            }
+        }
+        Expr::BinOp(b) if matches!(b.op, ruff_python_ast::Operator::BitOr) => {
+            type_leaves(&b.left, out);
+            type_leaves(&b.right, out);
+        }
+        Expr::StringLiteral(s) => {
+            if let Ok(parsed) = ruff_python_parser::parse_expression(s.value.to_str().trim()) {
+                type_leaves(parsed.expr(), out);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1726,5 +2012,47 @@ mod tests {
         ]);
         assert_eq!(names["billing.code.make"], "billing.code.make");
         assert_eq!(names["helpers.label"], "label");
+    }
+
+    #[test]
+    fn test_annotation_shadow() {
+        let idx = index(&[
+            ("units.py", "class float:\n    pass\n"),
+            (
+                "app.py",
+                "import builtins\nimport units\nimport decimal\nfrom decimal import Decimal\n\
+                 from units import float\nfrom ctypes import c_int as int\nstr = bytes\n\
+                 def bool(): pass\n",
+            ),
+            ("plain.py", "from builtins import int as float\n"),
+        ]);
+        let shadow = |module: &str, annotation: &str| {
+            let expr = ruff_python_parser::parse_expression(annotation).unwrap().into_expr();
+            idx.annotation_shadow(module, &expr)
+        };
+        let units_float = Some(Shadow::Class("units.float".to_string()));
+        assert_eq!(shadow("app", "float"), units_float);
+        assert_eq!(shadow("app", "Optional[float]"), units_float);
+        assert_eq!(shadow("app", "float | None"), units_float);
+        assert_eq!(shadow("app", "Annotated[float, Field(ge=0)]"), units_float);
+        assert_eq!(shadow("app", "'float'"), units_float);
+        assert_eq!(shadow("app", "units.float"), units_float);
+        assert_eq!(shadow("plain", "units.float"), None);
+        assert_eq!(shadow("app", "int"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "str"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "bool"), Some(Shadow::Unknown));
+        assert_eq!(shadow("plain", "float"), Some(Shadow::Unknown));
+        assert_eq!(shadow("plain", "int"), None);
+        assert_eq!(shadow("app", "Decimal"), None);
+        assert_eq!(shadow("app", "decimal.Decimal"), None);
+        assert_eq!(shadow("app", "builtins.int"), None);
+        assert_eq!(shadow("app", "list[float]"), None);
+        assert_eq!(shadow("app", "float | str"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Union[float, Decimal]"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Decimal | units.float"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "float | list[str]"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Union[float, Callable[[], int]]"), Some(Shadow::Unknown));
+        assert_eq!(shadow("app", "Optional[list[float]]"), None);
+        assert_eq!(shadow("units", "float"), units_float);
     }
 }
