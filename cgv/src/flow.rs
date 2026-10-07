@@ -18,7 +18,8 @@
 //! other than by a simple assignment; entering a loop drops every name the
 //! loop rebinds, and after `try` / `match` blocks only narrowings from
 //! before the block that the block does not rebind survive. A `with` body is
-//! walked like straight-line code. A name
+//! walked like straight-line code, except that what it narrowed does not
+//! survive it when it holds a marked exit. A name
 //! whose definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
