@@ -4,9 +4,11 @@ add-mode: bootstrap
 description: >-
   Generate a Dafny implementation body that satisfies a verified spec. Iteratively
   adds proof hints, loop invariants, and lemmas until the verifier accepts.
+  With `evidence: <path.dfy>`, commits the verified program there and emits an
+  evidence record with dafny_evidence.
   Use after /spec-iterate produces an approved spec. Triggers: "implement the spec",
   "generate verified code", "prove the implementation".
-argument-hint: "[optional: Dafny spec to implement]"
+argument-hint: "[optional: Dafny spec to implement] [evidence: <path.dfy>] [requirement: <path[#anchor]>]"
 ---
 
 # /generate-verified — Verified Dafny Implementation
@@ -114,9 +116,34 @@ If verification succeeds, present:
 
 If all 5 attempts fail, the structured failure artifact from Step 3 is the deliverable. Do not paste the best version into chat as the primary output; the artifact path is the handoff.
 
-### Step 6: Write Verified Artifact and Evidence Summary
+### Step 6: Write Verified Artifact
 
 Persist the verified implementation to `.crosscheck/work/dafny/<spec-id>/impl.dfy` per the persistence convention. The downstream `/extract-code` and `/check-regressions` skills consume this file directly.
+
+### Step 7: Emit an Evidence Record
+
+This step commits the verified program and asks the MCP tool `dafny_evidence` for an evidence record (`evidence-record/1`) with one `proved` claim. The spec is `intent/2026-10-06-generate-verified-evidence-spec.md` (GV-1 to GV-9) in the Crosscheck repository. The tool's own rules (DE-1 to DE-13 in `intent/2026-10-06-dafny-evidence-record-spec.md`) decide whether a record is emitted. This step only puts the repository in the state the tool asks for, and reports what the tool returns.
+
+Run this step only when the invocation names `evidence: <path>` and verification succeeded in Step 3. Otherwise skip it, make no commit, write no file, and record the reason for Step 8: `No evidence record: no evidence path was named.` or `No evidence record: verification did not succeed.` The file in `.crosscheck/work/` cannot be the committed file the tool needs, because `.crosscheck/` is gitignored by convention, so the caller names where the repository keeps it.
+
+All commands run at the work tree's top level (`git rev-parse --show-toplevel`). When a command below says "stop", skip the rest of this step and give Step 8 the reason and the command's output.
+
+1. **Check the path.** `<path>` is relative to the top level, ends in `.dfy`, uses `/`, has no `..`, `.` or empty segment, and uses only `A-Z a-z 0-9 _ . / -`. Otherwise stop. The tool refuses such a path anyway (DE-1).
+2. **Ignore `.crosscheck/`.** Run `git check-ignore -q .crosscheck/work/dafny/<spec-id>/impl.dfy`. If it exits non-zero, write `.crosscheck/.gitignore` with the single line `*`, which ignores everything under `.crosscheck/` including itself, and run the check again. If it still fails, stop. Do not edit the repository's own `.gitignore`.
+3. **Require a clean tree.** Run `git status --porcelain --untracked-files=all`. If it prints anything, stop and list every path it printed. Do not commit, stash, discard or ignore a change this run did not make. The tool refuses a dirty tree (DE-3), and stopping here avoids a commit made for nothing.
+4. **Commit the program.** Write the exact bytes of `.crosscheck/work/dafny/<spec-id>/impl.dfy` to `<path>`, creating its directory, and run `git add -- <path>`. If `git add` fails, for example because `<path>` is ignored, stop with git's output. If `git diff --cached --quiet` exits 0, HEAD already holds this program, so make no commit. Otherwise run `git commit -m "chore: add <path>, verified by /generate-verified"`. Never pass `--no-verify` or `--amend`. If the commit fails, stop with git's output, and leave `<path>` staged for the caller.
+5. **Name the theorems.** List the fully qualified name of each method, function and lemma that carries the `requires` and `ensures` clauses signed off in the spec: `M.C.Name` for `Name` in class `C` of module `M`, and `Name` alone at the top level of the file. This is the name Dafny's verification log prints. Do not list helper lemmas added in Step 2, since they prove the contracts and do not state them.
+6. **Draft the statement.** In plain language, for a reader who will not open the code, say what the contracts of those theorems guarantee, and nothing more. This is your draft. A person must check it against the contracts (rule 1 of the Crosscheck vision), and the record cannot show that anyone did.
+7. **Call the tool.** Call `dafny_evidence` with:
+   - `repoPath`: the top level, as an absolute path;
+   - `file`: `<path>`;
+   - `statement`: the draft from 6;
+   - `requirement`: the invocation's `requirement:` value, or `null`;
+   - `theorems`: the names from 5;
+   - `outputPath`: `.crosscheck/work/dafny/<spec-id>/evidence.json`. That path is ignored, so the record leaves the tree clean, and a later run overwrites it.
+8. **Handle a refusal.** If the result has `success: false`, give Step 8 every entry of `errors` as the tool wrote it. If an error names a theorem (an invalid name, or a name not in Dafny's log), you may correct the names and call once more. Never edit the program, the spec or a contract to get a record. A refusal is a finding, not an obstacle.
+
+### Step 8: Present the Evidence Summary
 
 Present an Evidence Summary, not a checklist:
 
@@ -128,9 +155,13 @@ Present an Evidence Summary, not a checklist:
 - Empty lemma bodies flagged: <list with line refs, or "none">.
 - Target-language pitfalls detected in Step 4: <list with file:line refs, or "none">.
 - Implementation written to .crosscheck/work/dafny/<spec-id>/impl.dfy.
+- Evidence record: <writtenTo>, claim <id>, strength <strength>, for commit <commit> (<path> committed by this run | <path> already at HEAD). The record describes that commit, not the work tree. Copy it to wherever the change ships it: a commit, the pull request or a CI artefact.
+  Or: No evidence record: <reason from Step 7, with each tool error or path verbatim>.
+- .crosscheck/.gitignore written: <yes | no>.
 
 ## Decisions for Review (human owns these at PR time, if any)
 
+- [ ] Evidence-record statement (only if a record was emitted): does "<statement>" say what the contracts of <theorems> say, and nothing more? The statement is an agent draft, and the record's `proved` covers the contracts, not the statement.
 - [ ] Empty-lemma-body finding (only if flagged): are the trivial properties intentional, or do they indicate over-claimed postconditions?
 - [ ] Trivial-proof finding (only if flagged + spec has meaningful postconditions): would `/lightweight-verify` have sufficed for this property?
 ```
@@ -141,4 +172,7 @@ The "Consider using `/lightweight-verify`" aside on trivial proofs is moved into
 
 Optionally, the Dafny spec to implement. If not provided, assumes the spec was established in the current conversation via `/spec-iterate`.
 
-Example: `/generate-verified`
+- `evidence: <path>`: where to commit the verified program, relative to the work tree's top level, ending in `.dfy`. Naming it turns on Step 7, which makes one commit in the repository and emits an evidence record. Without it, the skill makes no commit and emits no record.
+- `requirement: <path[#anchor]>`: the requirement the record's claim traces to. Without it, the claim's `requirement` is `null`. It has an effect only with `evidence:`.
+
+Examples: `/generate-verified`, `/generate-verified evidence: verified/max.dfy`, `/generate-verified evidence: specs/max.dfy requirement: docs/requirements.md#max`

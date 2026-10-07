@@ -7,7 +7,7 @@ Exhaustive index of all 29 skills in the crosscheck plugin, grouped by category.
 | Skill | Trigger phrases | One-line summary | Owner |
 |-------|----------------|------------------|-------|
 | [`/spec-iterate`](../skills/spec-iterate/SKILL.md) | "specify", "formal spec", "preconditions", "postconditions" | Draft and verify a Dafny formal specification from a natural-language description. | byfuglien |
-| [`/generate-verified`](../skills/generate-verified/SKILL.md) | "implement the spec", "generate verified code", "prove the implementation" | Generate a Dafny implementation body that satisfies a verified spec. | byfuglien |
+| [`/generate-verified`](../skills/generate-verified/SKILL.md) | "implement the spec", "generate verified code", "prove the implementation" | Generate a Dafny implementation body that satisfies a verified spec. With `evidence: <path.dfy>`, commit it there and emit an evidence record with `dafny_evidence`. | byfuglien |
 | [`/extract-code`](../skills/extract-code/SKILL.md) | "extract to python", "extract to go", "compile dafny" | Compile verified Dafny to Python or Go with runtime boilerplate stripped. | byfuglien |
 | [`/lightweight-verify`](../skills/lightweight-verify/SKILL.md) | "lightweight verify", "add contracts", "property-based tests", "assertions" | Generate design-by-contract assertions, property-based tests, or runtime invariants when full Dafny verification is overkill. | byfuglien |
 | [`/assurance-probe`](../skills/assurance-probe/SKILL.md) | "assurance probe", "test strength", "mutation probe", "vacuity probe" | Measure test strength via mutation, vacuity, and generator probes (rotation-based; Phase 1 — experimental). | byfuglien |

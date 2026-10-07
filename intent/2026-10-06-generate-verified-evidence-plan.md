@@ -7,8 +7,8 @@ Intent: `intent/2026-10-06-generate-verified-evidence.md`. Spec: `intent/2026-10
 1. `.assurance/protected-surface-amend/generate-verified-evidence-2026-10-06.md`. The governance note naming `crosscheck/skills/generate-verified/SKILL.md`. It goes first, because the PreToolUse hook blocks the edit until a note new on the branch names the file.
 2. `crosscheck/skills/generate-verified/SKILL.md`.
    - Front matter: `argument-hint` names `evidence:` and `requirement:`.
-   - A new "Step 7: Emit an Evidence Record" after Step 6, stating GV-1 to GV-8 as instructions, with the exact `git` commands and the `dafny_evidence` arguments.
-   - Step 6's Evidence Summary template gains the record lines and the unticked statement review item of GV-9.
+   - Step 6 keeps only the write of `impl.dfy`. A new "Step 7: Emit an Evidence Record" states GV-1 to GV-8 as instructions, with the exact `git` commands and the `dafny_evidence` arguments.
+   - The Evidence Summary moves to a new Step 8, so it reports Step 7's outcome. Its template gains the record lines and the unticked statement review item of GV-9.
    - "Arguments" documents `evidence:` and `requirement:`, with an example.
 3. `crosscheck/docs/skills.md`. The `/generate-verified` row says it can emit an evidence record.
 4. `crosscheck/README.md`. The `dafny_evidence` row names `/generate-verified` as its caller.

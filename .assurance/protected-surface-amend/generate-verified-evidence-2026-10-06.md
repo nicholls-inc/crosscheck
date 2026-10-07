@@ -7,7 +7,7 @@
 
 ### Change Description
 
-1. `crosscheck/skills/generate-verified/SKILL.md`: a new Step 7 commits the verified program to a path the caller names with `evidence:`, and calls the MCP tool `dafny_evidence` to emit an evidence record to `.crosscheck/work/dafny/<spec-id>/evidence.json`. It runs only on that opt-in, only after `dafny_verify` accepted the program, and only on a clean work tree. It writes `.crosscheck/.gitignore` with `*` when git does not already ignore `.crosscheck/`. Step 6's Evidence Summary reports the record, or why there is none, and always asks a person to check the drafted statement against the contracts. The front matter and "Arguments" document `evidence:` and `requirement:`.
+1. `crosscheck/skills/generate-verified/SKILL.md`: a new Step 7 commits the verified program to a path the caller names with `evidence:`, and calls the MCP tool `dafny_evidence` to emit an evidence record to `.crosscheck/work/dafny/<spec-id>/evidence.json`. It runs only on that opt-in, only after `dafny_verify` accepted the program, and only on a clean work tree. It writes `.crosscheck/.gitignore` with `*` when git does not already ignore `.crosscheck/`. The Evidence Summary moves from Step 6 to a new Step 8, after Step 7, and reports the record, or why there is none, and always asks a person to check the drafted statement against the contracts. The front matter and "Arguments" document `evidence:` and `requirement:`.
 
 ### Rationale
 
@@ -29,9 +29,10 @@ Task ER-1.6, issue #80. ER-1's acceptance asks for one Crosscheck pipeline to em
 | # | File | Section | Action |
 |---|------|---------|--------|
 | 1 | `crosscheck/skills/generate-verified/SKILL.md` | front matter `argument-hint` | names `evidence:` and `requirement:` |
-| 2 | `crosscheck/skills/generate-verified/SKILL.md` | Step 6 Evidence Summary | record lines and the statement review item |
+| 2 | `crosscheck/skills/generate-verified/SKILL.md` | Step 6 | keeps only the write of `impl.dfy` |
 | 3 | `crosscheck/skills/generate-verified/SKILL.md` | new Step 7 | added |
-| 4 | `crosscheck/skills/generate-verified/SKILL.md` | Arguments | documents the two arguments |
+| 4 | `crosscheck/skills/generate-verified/SKILL.md` | new Step 8 (Evidence Summary, moved from Step 6) | record lines and the statement review item |
+| 5 | `crosscheck/skills/generate-verified/SKILL.md` | Arguments | documents the two arguments |
 
 ### Test / Coverage Impact
 
