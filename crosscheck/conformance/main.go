@@ -41,23 +41,36 @@
 //	            present_artifact requires path (a non-blank string) and takes
 //	            an optional expect_present (true or false, default true)
 //
-// Keys match exactly, including case. A key the schema does not name, a key
-// that appears twice in one object, and a null anywhere are ERRORs. So are two
-// claims whose ids match once surrounding white space is trimmed and case is
-// folded (sameID), because every ledger message names a claim by its id. A
+// The file must be UTF-8 holding one JSON value and nothing after it but
+// whitespace, and the checker reports each fault in its own words. Keys match
+// exactly, including case. A key the schema does not name, a key that appears
+// twice in one object, a null anywhere, a non-string check.type, and a string
+// holding U+FFFD or an unpaired surrogate escape are ERRORs. So are two claims
+// whose ids match once surrounding white space is trimmed and case is folded
+// (sameID), because every ledger message names a claim by its id. A required
+// string of only white space and format characters (such as U+200B) is blank. A
 // claims.json or a conformance directory that is a symlink to a missing target
 // is an ERROR, and so is a plugin root that does not resolve, because it is
 // missing or a symlink on its path dangles. A plugin root is a directory whose
-// .claude-plugin/plugin.json names crosscheck, and any other directory is an
-// ERROR.
+// .claude-plugin/plugin.json has a "name" key, spelt exactly, whose value is
+// crosscheck, and that holds at least one skill (skills/<name>/SKILL.md) and
+// one agent (agents/<name>.md). Any other directory is an ERROR.
+//
+// Not yet reached: a copied manifest next to one skill and one agent passes,
+// whatever else is missing. The property that blocks it is a check that ties
+// the tree to a released Crosscheck inventory; the open question is whether
+// one can be written without pinning a count that changes with every release.
 //
 // Not yet reached: what the other text fields say. source and tracked_in need
 // not name a real file or issue, and check.path may point outside the plugin
 // root. The property that blocks it is a check of each field against the tree
 // and the tracker; the open question is which of them can be checked without a
-// network call. Two ids that differ only by an invisible or look-alike
-// character are distinct; what blocks it is a rule for which characters an id
-// may hold (PB-1.43 queues zero-width characters, PB-1.45 look-alikes).
+// network call. Two ids that differ only by a look-alike letter from another
+// script are distinct; what blocks it is a rule for which characters an id may
+// hold (PB-1.45). Text no reader sees that is neither white space nor a format
+// character, such as U+3164, is not blank; the property that blocks it is a
+// definition of visible text, and the open question is whether
+// Default_Ignorable_Code_Point is it.
 package main
 
 import (
@@ -65,12 +78,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // docFiles is the user-facing documentation set scanned for references. Files
@@ -322,11 +338,11 @@ func missingKeys(fm map[string]string) []string {
 // root and returns the assembled result.
 func analyze(root string) result {
 	var r result
-	if err := checkPluginRoot(root); err != nil {
-		r.errors = append(r.errors, "[root] "+err.Error())
-	}
 	r.skills = discoverSkills(root)
 	r.agents = discoverAgents(root)
+	if err := checkPluginRoot(root, len(r.skills), len(r.agents)); err != nil {
+		r.errors = append(r.errors, "[root] "+err.Error())
+	}
 	docText, present := scanDocs(root)
 	r.presentDocs = present
 	r.refTokens = referencedTokens(docText)
@@ -487,24 +503,37 @@ func analyze(root string) result {
 }
 
 // checkPluginRoot reports a root directory whose .claude-plugin/plugin.json
-// cannot be read, does not decode, or does not name crosscheck. A root that is
-// not a directory to os.Stat passes here, because the ledger read reports it.
-func checkPluginRoot(root string) error {
+// cannot be read, does not decode, or does not name crosscheck (LL-11), or
+// that holds no skill or no agent (LL-12). A root that is not a directory to
+// os.Stat passes here, because the ledger read reports it.
+func checkPluginRoot(root string, skills, agents int) error {
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {
 		return nil
 	}
+	notTree := "plugin root " + root + " is not a Crosscheck plugin tree: "
 	data, err := os.ReadFile(filepath.Join(root, ".claude-plugin", "plugin.json"))
 	if err != nil {
-		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: %w", root, err)
+		return fmt.Errorf("%s%w", notTree, err)
 	}
-	var manifest struct {
-		Name string `json:"name"`
-	}
+	// A map, not a struct: json.Unmarshal folds a struct field's key case, and
+	// Claude Code rejects a manifest whose only name key is "Name".
+	var manifest map[string]json.RawMessage
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: .claude-plugin/plugin.json: %w", root, err)
+		return fmt.Errorf("%s.claude-plugin/plugin.json: %w", notTree, err)
 	}
-	if manifest.Name != "crosscheck" {
-		return fmt.Errorf("plugin root %s is not a Crosscheck plugin tree: .claude-plugin/plugin.json names %q, want \"crosscheck\"", root, manifest.Name)
+	raw, ok := manifest["name"]
+	if !ok {
+		return fmt.Errorf("%s.claude-plugin/plugin.json has no \"name\" key", notTree)
+	}
+	var name string
+	if err := json.Unmarshal(raw, &name); err != nil {
+		return fmt.Errorf("%s.claude-plugin/plugin.json name is %s, want \"crosscheck\"", notTree, raw)
+	}
+	if name != "crosscheck" {
+		return fmt.Errorf("%s.claude-plugin/plugin.json names %q, want \"crosscheck\"", notTree, name)
+	}
+	if skills == 0 || agents == 0 {
+		return fmt.Errorf("%sit holds %d skills and %d agents, want at least one skill (skills/<name>/SKILL.md) and one agent (agents/<name>.md)", notTree, skills, agents)
 	}
 	return nil
 }
@@ -579,18 +608,46 @@ type schema map[string]field
 // reaches a kind: checkFields rejects it first.
 type kind func(raw json.RawMessage) string
 
-func nonBlank(raw json.RawMessage) string {
+// text decodes a JSON string. encoding/json turns an unpaired surrogate escape
+// into U+FFFD without an error, so any U+FFFD is a fault: the decoded text
+// would not be what the file says.
+func text(raw json.RawMessage) (string, string) {
 	var s string
-	if json.Unmarshal(raw, &s) != nil || strings.TrimSpace(s) == "" {
+	if json.Unmarshal(raw, &s) != nil {
+		return "", "must be a string"
+	}
+	if strings.ContainsRune(s, utf8.RuneError) {
+		return "", "must not contain U+FFFD or an unpaired surrogate"
+	}
+	return s, ""
+}
+
+// invisible reports white space and format characters such as U+200B.
+func invisible(r rune) bool {
+	return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r)
+}
+
+func nonBlank(raw json.RawMessage) string {
+	s, fault := text(raw)
+	switch {
+	case fault == "must be a string":
+		return "must be a non-blank string"
+	case fault != "":
+		return fault
+	case strings.TrimFunc(s, invisible) == "":
 		return "must be a non-blank string"
 	}
 	return ""
 }
 
 func anyString(raw json.RawMessage) string {
-	var s string
-	if json.Unmarshal(raw, &s) != nil {
-		return "must be a string"
+	_, fault := text(raw)
+	return fault
+}
+
+func array(raw json.RawMessage) string {
+	if !bytes.HasPrefix(raw, []byte("[")) {
+		return "must be an array"
 	}
 	return ""
 }
@@ -611,14 +668,14 @@ func versionOne(raw json.RawMessage) string {
 	return ""
 }
 
-// nested is the kind of an object or array that checkLedgerSchema walks itself.
+// nested is the kind of an object that checkLedgerSchema walks itself.
 func nested(json.RawMessage) string { return "" }
 
 var (
 	ledgerSchema = schema{
 		"version":          {true, versionOne},
 		"description":      {false, anyString},
-		"narrative_claims": {true, nested},
+		"narrative_claims": {true, array},
 	}
 	claimSchema = schema{
 		"id":         {true, nonBlank},
@@ -643,11 +700,15 @@ var (
 	}
 )
 
-// checkLedgerSchema rejects JSON that is not a ledger: an object that repeats a
+// checkLedgerSchema rejects a file that is not one UTF-8 JSON value
+// (checkJSONText), and JSON that is not a ledger: an object that repeats a
 // key, a key the schema does not name, a required key that is absent, a null,
 // or a value of the wrong kind. It runs before json.Unmarshal, which would
 // drop a repeated key, fold case and read null as a zero value.
 func checkLedgerSchema(data []byte) error {
+	if err := checkJSONText(data); err != nil {
+		return err
+	}
 	top, err := readObject(data, "the ledger")
 	if err != nil {
 		return err
@@ -701,13 +762,51 @@ func checkCheck(where string, raw json.RawMessage) error {
 	if !ok {
 		return fmt.Errorf("%s.type is missing", where)
 	}
-	var name string
-	_ = json.Unmarshal(typ, &name)
+	if string(typ) == "null" {
+		return fmt.Errorf("%s.type is null", where)
+	}
+	name, fault := text(typ)
+	if fault != "" {
+		return fmt.Errorf("%s.type %s", where, fault)
+	}
 	sch, ok := checkSchemas[name]
 	if !ok {
 		return fmt.Errorf("%s.type is %s, want one of manual|present_artifact", where, typ)
 	}
 	return checkFields(where, fields, sch, fmt.Sprintf(" for type %q", name))
+}
+
+// checkJSONText rejects a file that is not UTF-8 holding exactly one JSON value,
+// in the checker's own words, so a Go upgrade cannot change the message. The
+// UTF-8, syntax and trailing-data faults name a byte.
+func checkJSONText(data []byte) error {
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		if r == utf8.RuneError && size == 1 {
+			return fmt.Errorf("the ledger is not valid UTF-8 at byte %d", i)
+		}
+		i += size
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var v json.RawMessage
+	err := dec.Decode(&v)
+	var syntax *json.SyntaxError
+	switch {
+	case errors.Is(err, io.EOF):
+		return errors.New("the ledger is empty")
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return errors.New("the ledger ends before its top-level value is complete")
+	case errors.As(err, &syntax):
+		return fmt.Errorf("the ledger is not valid JSON at byte %d", max(syntax.Offset-1, 0))
+	case err != nil:
+		return errors.New("the ledger is not valid JSON")
+	}
+	end := dec.InputOffset()
+	rest := data[end:]
+	if gap := len(rest) - len(bytes.TrimLeft(rest, " \t\r\n")); gap < len(rest) {
+		return fmt.Errorf("the ledger has data after its top-level value at byte %d", end+int64(gap))
+	}
+	return nil
 }
 
 // readObject decodes data as one JSON object and returns its keys, failing on

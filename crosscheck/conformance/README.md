@@ -75,9 +75,16 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
   symlink to a missing target cannot be read, so it fails CI too. So does a
   plugin root that does not resolve, because the path is wrong or a symlink on
   it dangles: a run that scans nothing cannot pass. A plugin root is a directory
-  whose `.claude-plugin/plugin.json` names `crosscheck`, so any other directory,
-  such as the repository root, fails CI. JSON that parses but breaks
-  the ledger schema fails CI as well:
+  whose `.claude-plugin/plugin.json` has a `name` key, spelt exactly as Claude
+  Code reads it, whose value is `crosscheck`, and that holds at least one skill
+  (`skills/<name>/SKILL.md`) and one agent (`agents/<name>.md`). Any other
+  directory, such as the repository root or a directory that holds only a copy
+  of the manifest, fails CI. Not yet reached: a copied manifest next to one
+  skill and one agent passes, whatever else is missing. The property that
+  blocks it is a check that ties the tree to a released Crosscheck inventory,
+  and the open question is whether one can be written without pinning a count
+  that changes with every release. JSON that parses but breaks the ledger
+  schema fails CI as well:
 
   | Place | Required keys | Optional keys |
   |---|---|---|
@@ -94,15 +101,28 @@ parsed, or a plugin root that is not a Crosscheck plugin tree).
   surrounding white space is trimmed and case is folded fail, so `C1`, `c1` and
   `C1 ` cannot name three different claims.
 
+  The file must be UTF-8 and hold one JSON value with nothing after it but
+  whitespace. An empty file, a truncated one, a byte-order mark and data after
+  the value each fail with a message written by the checker rather than by
+  `encoding/json`, so a Go upgrade cannot change it. The byte-order mark and
+  the data after the value name the byte; the empty and truncated messages do
+  not. A `check.type` that is not a string fails as `must be a string`. A required
+  text field of only white space and format characters, such as a zero-width
+  space, is blank. No string may hold U+FFFD or an unpaired surrogate escape,
+  which `encoding/json` would turn into U+FFFD without saying so.
+
   Not yet reached: what the other text fields say. `source` need not name a
   real file, `tracked_in` need not name a real issue, and `check.path` may point
   outside the plugin root. The property that blocks them is a check of each
   field against the tree and the tracker, and the open question is which of
-  them can be checked without a network call. Two `id`s that differ only by an
-  invisible or look-alike character are distinct. What blocks it is a rule for
-  which characters an `id` may hold, and the open question is whether that is
-  an allowlist or a Unicode confusables check. PB-1.43 queues zero-width
-  characters in `id`, and PB-1.45 look-alike letters.
+  them can be checked without a network call. Two `id`s that differ only by a
+  look-alike letter from another script are distinct. What blocks it is a rule
+  for which characters an `id` may hold, and the open question is whether that
+  is an allowlist or a Unicode confusables check (PB-1.45). Text that no reader
+  sees but that is neither white space nor a format character, such as U+3164
+  HANGUL FILLER, is not blank. The property that blocks it is a definition of
+  visible text, and the open question is whether Unicode's
+  Default_Ignorable_Code_Point property is it.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 
