@@ -286,6 +286,17 @@ The bullet now names the trigger (the `incident` label, or a `Fixes-Incident:` l
 
 ---
 
+## 2026-10-06 - The commit-msg hook reads staged names NUL-separated
+
+**Type:** fix
+**Touches:** .husky/commit-msg, scripts/ci/commit-msg.test.mjs, docs/TASKS.md
+**Why:** The hook's `docs:` and `refactor:` check read `git diff --cached --name-only`, which quotes a name with a non-ASCII byte, a double quote or a newline. The quoted name ended in `"`, so `crosscheck/skills/é/SKILL.md` passed under `docs: x`.
+**Links:** [intent](intent/2026-10-06-commit-msg-names.md), [spec](intent/2026-10-06-commit-msg-names-spec.md), [plan](intent/2026-10-06-commit-msg-names-plan.md)
+
+The hook now reads `git diff -z` through `xargs -0` and tests each name with a shell `case` pattern, whose `*` matches a newline. `grep -z` was the obvious fix and is not portable: on a machine where `grep` is ugrep, `-z` decompresses input. The hook had no test. Its test sits in `scripts/ci/` because CI runs only that glob, which makes the test a protected file. The test stubs `npx`, so commitlint does not run in it. A CI check of commit types against behavioural artefacts is not yet reached.
+
+---
+
 ## 2026-10-01 - The Tier Gate step computes its own changed files
 
 **Type:** fix
