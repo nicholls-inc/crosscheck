@@ -16,12 +16,12 @@ The decision table, with 21 Refine and 2 Drop:
 - **#34 Drop.** Done on `main`, apart from two residues that move to AD-1.11.
 - **#37 Drop.** Already done on `main`.
 - **#27 Refine.** It becomes the tracker for AD-1, and its row is AD-1.1, this task.
-- **The other 20 Refine.** They need 19 new rows, because #39 and #41 share AD-1.13:
+- **The other 20 Refine.** They need 19 new rows, because #39 and #41 share AD-1.13, and #39, #40 and #41 share VA-1.11:
   - PB-1.18 to PB-1.21: deterministic CI checks of Crosscheck's own content;
   - VA-1.9 to VA-1.11: agents and skills that present an unchecked or LLM verdict as evidence;
   - AD-1.2 to AD-1.13: issues that serve a design rule but no other current item.
 
-This pull request changes only these four files: the decisions file, this intent, `docs/TASKS.md`, and an entry in the root `JOURNAL.md`. It adds the 19 rows, and it sets AD-1.1 to `done` with this intent as its record. It edits and closes no GitHub issue. After review approves the head, the coordinator applies the recorded decisions to the issues: it rewrites each refined issue with its recorded text and closes each dropped issue with its recorded reason. The pull request is the record those edits follow. No work starts on any issue in this task.
+This pull request changes only these four files: the decisions file, this intent, `docs/TASKS.md`, and an entry in the root `JOURNAL.md`. It adds the 19 rows, and it sets AD-1.1 to `done` with this intent as its record. It edits and closes no GitHub issue. `done` on AD-1.1 means the decisions are recorded; applying them to the issues is the coordinator's step after review, and no queue row owns it. After review approves the head, the coordinator applies the recorded decisions to the issues: it rewrites each refined issue with its recorded text and closes each dropped issue with its recorded reason. The pull request is the record those edits follow. No work starts on any issue in this task.
 
 ## Affected users and systems
 - The maintainer, who decides by merging whether each decision stands.

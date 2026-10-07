@@ -49,7 +49,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #20 → VA-1.9
 
-> **Auditor: never report `settled` for an artefact the auditor could not check.** Serves VA-1 and rule 7: every claim names its strength. `crosscheck/agents/auditor.md` has three verdicts (`:67` to `:68`). On `docs/invariants/*.md`, which carry no frontmatter, three of the five drift criteria "pass *vacuously*, not *cleanly*" (`:118` to `:129`), and the artefact still gets `settled`. `:60` says every audited artefact gets one verdict, and `:241` to `:242` say only flagged artefacts are judged. Together, these two leave the verdict unable to tell "clean" from "never examined". `:118` to `:129` disclose the vacuous pass in prose only.
+> **Auditor: never report `settled` for an artefact the auditor could not check.** Serves VA-1 and rule 7: every claim names its strength. `crosscheck/agents/auditor.md` has three verdicts (`:67` to `:68`). On `docs/invariants/*.md`, which carry no frontmatter, three of the five drift criteria "pass *vacuously*, not *cleanly*" (`:118` to `:129`), and the artefact still gets `settled`. `:60` says every audited artefact gets one verdict, and `:241` to `:242` say only flagged artefacts are judged. Together, these two leave the verdict unable to tell "clean" from "never examined". `:118` to `:129` say that the auditor MUST surface this distinction in the report and does not silently emit a confident `settled`, and that an `unaudited` state is "a spec change tracked for ADR follow-up". So the gap is a caveated `settled` that depends on the auditor following prose, and no verdict carries it.
 >
 > Acceptance:
 > - Add a verdict, such as `unaudited`, for an artefact whose criteria cannot be computed. List it in its own rows of the verdict table.
@@ -84,7 +84,7 @@ Each section gives the text to put in the issue's body in place of the current t
 
 ### #23 → AD-1.4
 
-> **ADD Step 0: choose the operating mode with a pure function of repository state.** Serves rule 3: the same repository gives the same mode on every run. `crosscheck/agents/add-orchestrator.md:133` and `crosscheck/docs/add/operating-modes.md:23` use "near-empty" with no definition. A thin repository is both "existing code" and "near-empty", and the ambiguity rule (`add-orchestrator.md:140` to `:141`) covers only code with a candidate spec. The bootstrap branch (`:125` to `:132`) names no next step. Step 1's zero-candidate fallback (`:165` to `:172`) chooses a mode inline and skips Step 0's ambiguity rule.
+> **ADD Step 0: choose the operating mode with a pure function of repository state.** Serves rule 3: the same repository gives the same mode on every run. `crosscheck/agents/add-orchestrator.md:133` and `crosscheck/docs/add/operating-modes.md:23` use "near-empty" with no definition. A thin repository is both "existing code" and "near-empty", and the ambiguity rule (`add-orchestrator.md:140` to `:141`) covers only code with a candidate spec. The bootstrap branch (`:125` to `:132`) names its next steps in prose only, and the greenfield branch routes to `/assurance-init` and then re-enters Step 0, so the loop is not one pure function. Step 1's zero-candidate fallback (`:165` to `:172`) chooses a mode inline and skips Step 0's ambiguity rule.
 >
 > Acceptance:
 > - Define "near-empty" by a mechanical predicate, such as no source files outside a stated scaffolding list.
@@ -197,6 +197,7 @@ Each section gives the text to put in the issue's body in place of the current t
 > **add-orchestrator: commit the spec, the invariants and the failing tests before implementation starts.** Serves the vision's open question "How to keep the AI that writes the code from also writing the checks that grade it" (`docs/VISION.md:114`). A scaffolding commit fixes the checks before the code exists. Any later change to them then shows in the diff, and the field test also showed it saves work when a session fails.
 >
 > Acceptance:
+> - First decide who owns the step. `add-orchestrator.md:559`, `:572` and `:650` say it does not auto-commit, and its work ends at the Step 11 routing recommendation (`:605` to `:618`), so either change that contract or put the entry contract on lowry.
 > - A scaffolding-commit step between triage close and implementation dispatch, with a stated artefact set: spec, invariants, failing tests and per-file plan.
 > - Implementation does not dispatch without it.
 > - The pull request body lists any change the implementation made to the scaffolding files.
