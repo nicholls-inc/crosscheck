@@ -4,6 +4,37 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - The manifest generator rejects `implemented_by` and `extern` on what the theorems reach
+
+**Type:** feature
+**Touches:** cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/scripts/compiled-code-selftest.sh, .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, cgv/CLAUDE.md, cgv/README.md, docs/TASKS.md
+**Why:** The soundness theorems are about the definitions, and the checker binary runs their compiled code. Either attribute replaces that code without an axiom, so neither the manifest nor the axiom check saw it (issue #48).
+**Links:** [intent](intent/2026-10-07-compiled-code-attributes.md), [spec](intent/2026-10-07-compiled-code-attributes-spec.md), [plan](intent/2026-10-07-compiled-code-attributes-plan.md)
+
+The generator walks from the constants in each protected theorem's statement and from the three protected definitions, through types, values, opaque values, constructors and `_unsafe_rec` helpers, and fails if a reached constant of a `ContractGraph` module carries either attribute. It scopes by module, not namespace, because private helpers live under `_private`. A `partial def` is an opaque constant to the kernel, and the compiler runs its `_unsafe_rec` helper, so the walk follows that helper. The manifest is unchanged. A self-test in CGV CI edits `Main.lean` five ways and checks the generator's verdict on each. Library code (103 constants with either attribute are reachable through Lean core and `leansqlite`) and `@[csimp]` lemmas (TB-1.7) are not yet reached.
+
+## 2026-10-07 - The CGV manifest hashes what the protected statements mention
+
+**Type:** feat
+**Touches:** cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/protected-statements.txt, cgv/prover/scripts/manifest-selftest.sh, .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** Issue #51. The manifest hashed only what `constraintImplies`, `IsDataPath` and `stepwiseSound` reach, so a redefinition of `CheckResult.isError` or `runChecker` could change what the theorems promise with no manifest change. The generator's name lists were kept in step with the rules table by hand.
+**Links:** [intent](intent/2026-10-07-manifest-reach.md), [spec](intent/2026-10-07-manifest-reach-spec.md), [plan](intent/2026-10-07-manifest-reach-plan.md)
+
+The walk now starts from every constant in a protected statement as well as the three definitions, and scopes by defining module, so private helpers count. The manifest grows from 107 hashed constants to 386, the checker among them, so a change to the checker's definitions now makes a pull request Tier 3. The generator reads the CGV table in `.claude/rules/protected-surfaces.md` and fails if names or files differ, and CGV CI runs when that file changes. `scripts/manifest-selftest.sh` pins each behaviour with a case that fails when it is mutated away. Whether that script is itself a protected surface is TB-1.27.
+
+---
+
+## 2026-10-06 - The protected-surface hook's `**` matches a newline
+
+**Type:** fix
+**Touches:** .claude/hooks/protected-surface-guard.mjs, scripts/ci/protected-surface-guard.test.mjs, docs/TASKS.md
+**Why:** The hook compiled `**` to `.*` with no flags, and `.` matches no newline. An edit to `docs/assurance/n<newline>l.md` exited 0 with no governance note.
+**Links:** [intent](intent/2026-10-06-hook-newline.md), [spec](intent/2026-10-06-hook-newline-spec.md), [plan](intent/2026-10-06-hook-newline-plan.md)
+
+Each glob now compiles with the `s` flag, as the tier gate's has since PB-1.10. `*` and `?` compile to negated classes, which already matched a newline, so only `**` changed. A path with no newline matches the same globs as before. The tests feed the hook a `PreToolUse` payload. No test drives a real harness edit of a file whose name holds a newline. The pull request also queues PB-1.17, for the pre-commit hook on a merge commit.
+
+---
+
 ## 2026-10-07 - A project class named like a builtin type gets a type contract of its own
 
 **Type:** fix
@@ -86,6 +117,39 @@ Twenty-one issues are refined and two are dropped. #37 is already done on `main`
 
 ---
 
+## 2026-10-07 - CGV CI replays the built environment through the Lean kernel
+
+**Type:** feature
+**Touches:** .github/workflows/cgv-ci.yml, .claude/rules/protected-surfaces.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, cgv/CLAUDE.md, cgv/README.md, intent/2026-09-29-deterministic-evidence-spec.md, docs/TASKS.md
+**Why:** The generator's axiom check uses `collectAxioms`, which does not re-check a proof. A theorem of `False` added under `debug.skipKernelTC` with `addDecl` kept `lake build` green, left the manifest unchanged and passed the axiom check (#47).
+**Links:** [intent](intent/2026-10-07-kernel-replay.md), [plan](intent/2026-10-07-kernel-replay-plan.md)
+
+The pinned toolchain ships `leanchecker`, so no dependency was added. `leanchecker --fresh ContractGraph.Main` replays the whole import closure of `ContractGraph.Main` (the Lean library, `leansqlite` and the `ContractGraph` modules) into an empty environment, and `leanchecker ContractGraph` replays every `ContractGraph.*` module. Locally the first took 48 to 57 s and the second 3.5 s. A self-test step compiles a bad module and a module that imports it outside the Lake package, and fails unless both modes reject them with the kernel's type mismatch, so a toolchain whose `leanchecker` changes cannot pass silently. The self-test sets `PATH` to the pinned toolchain's `bin`: run from a scratch directory, `leanchecker` otherwise asked elan's default toolchain for its sysroot and failed on an incompatible `Init.olean`. The replay skips constants whose kernel safety is `unsafe` or `partial`, and a safe theorem that uses one fails with an unknown constant. It uses the kernel that built the files, so a second, independent checker stays not yet reached: it needs an export of the proofs that a second checker reads, and the open question is which checker to use. The tier gate's evidence line for `cgv/**` does not name the replay yet (TB-1.5).
+
+---
+
+## 2026-10-06 - Only a whole `Fixes-Incident:` line is an incident reference
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, docs/assurance/DEVELOPMENT-FRAMEWORK.md, docs/gates/tier-layer-gate.md, intent/2026-09-30-incident-eval-range-spec.md, docs/TASKS.md
+**Why:** The check matched its trigger anywhere in a line. The run for #62 failed after the merge with the incident id `<id>` and a backtick, because the body quoted the trigger and a commit wrapped a sentence onto it.
+**Links:** [intent](intent/2026-10-06-incident-line.md), [spec](intent/2026-10-06-incident-line-spec.md), [plan](intent/2026-10-06-incident-line-plan.md)
+
+A line now counts only when it holds the trigger and one id, optionally indented, with nothing else on it. That is the anchor the tier gate uses for `Tier:` and the queue check for `Task:`, with one extra condition: no second word after the id, because wrapped commit prose can start a line with the trigger. The body is matched one line at a time, so an empty trigger line no longer takes the next line's first word. Replaying #62 against the remote now prints the skip line. A reference written as a sentence is now skipped silently; the `incident` label still forces the check. A trigger line in a fenced code block and a placeholder id still count. The spec records all three as not yet reached.
+
+---
+
+## 2026-10-06 - Every description of the Incident Eval Check matches stage 5
+
+**Type:** fix
+**Touches:** scripts/ci/incident-eval-check.mjs, scripts/ci/incident-eval-check.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/gates/incident-eval-check.md, docs/gates/README.md, docs/assurance/TIER-LAYER-MAP.md, docs/assurance/DEVELOPMENT-FRAMEWORK.md, evals/README.md, CLAUDE.md, docs/TASKS.md
+**Why:** After PB-1.8, the check's own failure message still said the change "stays blocked", though it prints after the merge, the tier gate credited the check with evidence for `evals/**`, and `evals/README.md` made the invariant optional. IE-2 said a rebase merge leaves an empty range, which GitHub's documentation contradicts.
+**Links:** [intent](intent/2026-10-06-incident-eval-surfaces.md), [spec](intent/2026-10-06-incident-eval-surfaces-spec.md), [plan](intent/2026-10-06-incident-eval-surfaces-plan.md)
+
+The check has an explainer, `docs/gates/incident-eval-check.md`, and its failure message links to it and asks for a follow-up pull request. The tier gate now reports `evals/**` as not yet reached, because the check finds an eval under `evals/` and a candidate invariant that name the incident and never runs the eval. Two tests replay a pull request onto the base with a new committer, as GitHub's rebase merge does, and show the check still reads its commits. A follow-up pull request with no incident reference of its own is skipped, so nothing deterministic records that an incident was closed after the merge. The explainer says to repeat the incident reference in the follow-up.
+
+---
+
 ## 2026-10-06 - A call that never returns, and a match over every enum member, end the flow
 
 **Type:** fix
@@ -119,6 +183,15 @@ The maintainer then settled the review's open questions with one rule: exit 0 pr
 
 At `model_validate`, `model_validate_json`, `model_validate_strings`, `parse_obj` and `parse_raw` on a pydantic class, an entry is no longer a write when validation enforces the field's contract. The first draft dropped every entry. Review and a pydantic 2.13.5 run showed that this left reads of some fields resting on a contract nothing checked: `decimal_places` and `max_digits` count digits after trailing zeros are dropped, and `SkipValidation`, `PlainValidator` and `WrapValidator` can store None in a `str` field. Those fields, and a `None` default that pydantic v1 reads as Optional, keep their writes. A later review found that matching those markers by literal name lets a renamed import or an alias drop the write, so the rule is now an allowlist: a field counts as validated only when every name in its annotation, every union member and every `Annotated` metadata item is on a list of types and constraints that pydantic validates, and anything else keeps the write. A project name that shadows a listed name is still read as the listed type (CG-1.43), and container arguments and aliased validator decorators are not inspected (CG-1.44). So `r5_write_patterns` keeps its `model_validate` precision error. A typed constructor call and `model_copy(update=...)` stay writes. `BehaviorModel.lean` needs no rule for lax coercion, but its `pydanticDecimalAccepts` is false for trailing zeros (CG-1.17), and `Annotated` validators do not clear requirements as the decorator forms do (CG-1.18). `model_construct` records no write (CG-1.16).
 
+## 2026-10-06 - CI runs the evidence record checker's tests
+
+**Type:** ci
+**Touches:** .github/workflows/evidence-record.yml, scripts/ci/evidence-record-workflow.test.mjs, scripts/ci/tier-gate.mjs, scripts/ci/tier-gate.test.mjs, docs/assurance/TIER-LAYER-MAP.md, docs/TASKS.md
+**Why:** No workflow ran the checker's tests, so a pull request that broke the checker merged green, and the tier gate reported the checker as "not yet reached".
+**Links:** [intent](intent/2026-10-06-evidence-record-ci.md), [spec](intent/2026-10-06-evidence-record-ci-spec.md), [plan](intent/2026-10-06-evidence-record-ci-plan.md)
+
+The `Evidence Record` workflow runs `node --test scripts/check-evidence-record.test.mjs` on every pull request. It is its own workflow, not a step of the Tier Gate job, so a checker failure does not read as a tier gate failure. The tier gate's evidence table names the workflow for the checker and its test file, and for no other path under `scripts/`. `scripts/ci/evidence-record-workflow.test.mjs` runs the step's own script against the committed checker and against one whose `checkRecord` reports nothing, and the second must fail. The test sees the step's script, not the `on:` trigger, so the pull request's own run is the runner evidence.
+
 ---
 
 ## 2026-10-06 - A parameter typed `object` accepts None
@@ -129,6 +202,17 @@ At `model_validate`, `model_validate_json`, `model_validate_strings`, `parse_obj
 **Links:** [intent](intent/2026-10-06-object-param-accepts-none.md)
 
 A parameter whose annotation names `object` now has the nullability of `Optional[object]`. So does a parameter typed with a union that has an `object` member, such as `Union[object, int]` or `object | int`, since that union is `object`. That check lives on the parameter path, and the shared union walk is unchanged. It gets no non-null precondition, and inside the function its value may be None, so a write of it into a non-null field is an error. `Any` and an unannotated parameter already gave no precondition, and the new fixture pins all three. Data class fields typed `object` stay non-null. Several fixtures use that as a non-null field with no type contract, and the docstring of `annotationAcceptsNull` in `BehaviorModel.lean` states the same rule, so the change to fields is CG-1.12.
+
+---
+
+## 2026-10-06 - CGV accepts an int where a float is required
+
+**Type:** feature
+**Touches:** cgv/prover/ContractGraph/Checker.lean, cgv/prover/ContractGraph/BehaviorModel.lean, cgv/prover/protected-statements.txt, cgv/prover/ContractGraphTest/NumericTower.lean, cgv/test_fixtures/numeric_tower/, cgv/bench/baseline.json, cgv/README.md, cgv/CLAUDE.md, docs/TASKS.md
+**Why:** An `int` passed where `float` is annotated was 35 of the 53 triaged false positives on the measured codebase (#5). PEP 484 accepts it.
+**Links:** [intent](intent/2026-10-06-cgv-numeric-tower.md), [plan](intent/2026-10-06-cgv-numeric-tower-plan.md)
+
+`typeAccepts` in `Checker.lean` accepts equal type names, or `int` where `float` is required, and both `checkTypeConsistency` and `constraintImplies` use it. No proof changed. The extractor could not do this alone: a `type` constraint holds one name and the check is equality, so the extractor could only drop `float` requirements (losing `Decimal` and `str` into `float`), rewrite `int` guarantees (breaking `int` into `int`), or drop them per edge (missing multi-hop paths). `bool` into `float` stays an error, because strict pydantic rejects it while PEP 484 accepts it (#86). `complex` still carries no type requirement, since strict pydantic rejects `int` and `float` there. The bench's labelled run went from 4 false positives to 3.
 
 ---
 
@@ -174,6 +258,19 @@ An unset or empty `CHANGED_FILES_PATH`, or one that names a file the gate cannot
 
 ---
 
+## 2026-10-06 - The intent-check attestation is an advisory record
+
+**Type:** fix
+**Touches:** crosscheck/skills/intent-check/SKILL.md, crosscheck/skills/intent-check/references/attestation-schema.md, crosscheck/skills/assurance-init/SKILL.md, crosscheck/skills/protected-surface-amend/SKILL.md, crosscheck/skills/draft-invariants/SKILL.md, crosscheck/skills/assurance-status/SKILL.md, crosscheck/agents/hellebuyck.md, crosscheck/agents/add-orchestrator.md, crosscheck/agents/lowry.md, crosscheck/docs/orchestrator-coordination.md, docs/gates/intent-check-verdict.md, docs/gates/intent-check-kill-criterion.md, docs/gates/README.md, docs/TASKS.md
+**Why:** This repository stopped counting the attestation as a Tier 3 artefact on 2026-09-29, but the skills and agents it ships still told other repositories to gate commits on an LLM `pass`, to list the attestation as a Tier 3 artefact, and to accept it as amendment authority.
+**Links:** [intent](intent/2026-10-06-intent-check-advisory.md), [spec](intent/2026-10-06-intent-check-advisory-spec.md), [plan](intent/2026-10-06-intent-check-advisory-plan.md)
+
+`/intent-check` still runs the round trip, appends the tracker row and writes `.assurance/intent-check-attestation.json`, with the same schema and hash. It no longer drafts a pre-commit hook that rejects a commit without a passing attestation, and it tells the user to remove one that an earlier version drafted. A failed verdict now offers a fourth route, classifying the verdict as spurious. `add-orchestrator` and `/draft-invariants` cite the hash algorithm by section heading, since removing the hook sections moved the lines they cited. No check enforces the new wording. The example workflows under `crosscheck/docs/examples/workflows/` still describe a mandatory intent-check gate, and task VA-1.3 covers them.
+
+---
+
+---
+
 ## 2026-10-06 - A pre-commit hook runs the checks that need no PR body
 
 **Type:** feature
@@ -215,6 +312,17 @@ The section now says that the Incident Eval Check, a separate workflow, checks i
 **Links:** [intent](intent/2026-10-06-incident-eval-doc.md), [plan](intent/2026-10-06-incident-eval-doc-plan.md)
 
 The bullet now names the trigger (the `incident` label, or a `Fixes-Incident:` line in the body or a commit), the eval and the candidate invariant it needs, exit 1, and exit 2 for commits it cannot read. It also says that the workflow runs on a merged pull request, so it reports on a merge and cannot block one. The run for #61 started four seconds after the merge, and the run for #60, closed without a merge, was skipped. `docs/gates/tier-layer-gate.md` still says the tier gate expects the eval before it passes. Task PB-1.11 fixes that.
+
+---
+
+## 2026-10-06 - The commit-msg hook reads staged names NUL-separated
+
+**Type:** fix
+**Touches:** .husky/commit-msg, scripts/ci/commit-msg.test.mjs, docs/TASKS.md
+**Why:** The hook's `docs:` and `refactor:` check read `git diff --cached --name-only`, which quotes a name with a non-ASCII byte, a double quote or a newline. The quoted name ended in `"`, so `crosscheck/skills/é/SKILL.md` passed under `docs: x`.
+**Links:** [intent](intent/2026-10-06-commit-msg-names.md), [spec](intent/2026-10-06-commit-msg-names-spec.md), [plan](intent/2026-10-06-commit-msg-names-plan.md)
+
+The hook now reads `git diff -z` through `xargs -0` and tests each name with a shell `case` pattern, whose `*` matches a newline. `grep -z` was the obvious fix and is not portable: on a machine where `grep` is ugrep, `-z` decompresses input. The hook had no test. Its test sits in `scripts/ci/` because CI runs only that glob, which makes the test a protected file. The test stubs `npx`, so commitlint does not run in it. A CI check of commit types against behavioural artefacts is not yet reached.
 
 ---
 

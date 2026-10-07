@@ -48,11 +48,16 @@ python3 -m unittest discover -s scripts/tests
 # Protected theorem statements: regenerate and compare with the committed manifest
 cd prover && lake build ContractGraph ContractGraph.Main \
   && lake env lean --run scripts/ProtectedStatements.lean | diff -u protected-statements.txt -
+
+# Kernel replay: re-check the built environment with the pinned toolchain's kernel (limits: CI-9)
+cd prover && lake env leanchecker --fresh ContractGraph.Main && lake env leanchecker ContractGraph
 ```
 
-`protected-statements.txt` records the statement of every protected soundness theorem, and the type and value hash of `constraintImplies`, `IsDataPath`, `stepwiseSound` and every definition they reach. A proof-only edit leaves it unchanged. The generator also exits 1 if a protected theorem or definition depends on `sorry` or on any axiom other than `propext`, `Classical.choice` and `Quot.sound` (`lake build` only warns on `sorry`). If a statement changes on purpose, regenerate the file (`> protected-statements.txt`). The file is a protected surface, so the pull request becomes Tier 3 and needs a governance note and a **Protected-surface change** section (see `.claude/rules/protected-surfaces.md` at the repository root).
+`protected-statements.txt` records the statement of every protected soundness theorem, and the type and value hash of every non-theorem constant of a `ContractGraph` module that `constraintImplies`, `IsDataPath`, `stepwiseSound` or a protected statement reaches. That covers the checker itself (`runChecker`, `checkPath`, `CheckResult.isError` and what they call), so a change to the checker's definitions changes the manifest and makes the pull request Tier 3. A proof-only edit leaves it unchanged. The generator also reads the CGV table in `.claude/rules/protected-surfaces.md` and exits 1 if its lists differ from the table. `scripts/manifest-selftest.sh` checks these behaviours: it edits a copy of the table, and edits `ContractGraph/Main.lean` and `ContractGraph/Composition.lean` in place, restoring them on exit. The generator also exits 1 if a protected theorem or definition depends on `sorry` or on any axiom other than `propext`, `Classical.choice` and `Quot.sound` (`lake build` only warns on `sorry`). It exits 1 as well if `@[implemented_by]` or `@[extern]` sits on a constant of a `ContractGraph` module that a protected theorem's statement or a protected definition reaches, because the binary would then run code the theorems are not about; `scripts/compiled-code-selftest.sh` checks that it still does (it edits `prover/ContractGraph/Main.lean` and restores it on exit, so run it on a clean tree). If a statement changes on purpose, regenerate the file (`> protected-statements.txt`). The file is a protected surface, so the pull request becomes Tier 3 and needs a governance note and a **Protected-surface change** section (see `.claude/rules/protected-surfaces.md` at the repository root).
 
-CI (`.github/workflows/cgv-ci.yml`) runs `lake build`, `cargo test`, `cargo build --release`, `scripts/check-fixtures.sh` and the manifest and axiom check on every pull request that touches `cgv/`. Every CGV change follows the repository's development framework (`docs/assurance/DEVELOPMENT-FRAMEWORK.md`): an intent for every change, and for behavioural changes a spec. The spec can be the changed Lean statements plus fixture `expected.json` files, cited with `Spec: <path>`. See `docs/assurance/TIER-LAYER-MAP.md`.
+The axiom check reads which constants a proof uses and does not re-check the proof, so a declaration added with `debug.skipKernelTC` passes it. The kernel replay catches that: `leanchecker --fresh ContractGraph.Main` (about a minute) re-checks the whole import closure of `ContractGraph.Main`, and `leanchecker ContractGraph` (a few seconds) every `ContractGraph.*` module. It skips `unsafe` and `partial` constants, uses the kernel that built the files, and does not replay `ContractGraphTest` (limits CI-9 in `intent/2026-09-29-deterministic-evidence-spec.md`). It checks definitions, never the code compiled from them, so the manifest generator rejects `implemented_by` and `extern` on what the theorems reach, and `scripts/compiled-code-selftest.sh` checks that it still does.
+
+CI (`.github/workflows/cgv-ci.yml`) runs `lake build`, `cargo test`, `cargo build --release`, `scripts/check-fixtures.sh`, the manifest and axiom check, `scripts/manifest-selftest.sh`, the kernel replay with its self-test, and `scripts/compiled-code-selftest.sh` on every pull request that touches `cgv/` or `.claude/rules/protected-surfaces.md`. Every CGV change follows the repository's development framework (`docs/assurance/DEVELOPMENT-FRAMEWORK.md`): an intent for every change, and for behavioural changes a spec. The spec can be the changed Lean statements plus fixture `expected.json` files, cited with `Spec: <path>`. See `docs/assurance/TIER-LAYER-MAP.md`.
 
 ## Architecture
 
@@ -89,7 +94,7 @@ The trust boundary matters for correctness claims:
 
 **Contract composition:** `composeContracts` in Composition.lean evaluates dependent expressions through intermediate nodes, substituting upstream postcondition bounds as inputs. This is what enables multi-hop path checking to catch transitive inconsistencies that pairwise checking misses.
 
-**Constraint matching:** Constraints only interact when they share the same `ConstraintKind`. Checking dispatches by kind: precision/length/range use `<=` on static bounds, nullability checks null-producing vs non-null-accepting, type checks equality, choices checks subset.
+**Constraint matching:** Constraints only interact when they share the same `ConstraintKind`. Checking dispatches by kind: precision/length/range use `<=` on static bounds, nullability checks null-producing vs non-null-accepting, type checks equality except that `int` is accepted where `float` is required (`typeAccepts`, PEP 484), choices checks subset.
 
 ## Lean-specific notes
 
@@ -107,7 +112,7 @@ Each `test_fixtures/<name>/` has `expected.json` (errors by path, guarantee, req
 
 - `bug1/`, `transitive/`, `nullable/`: original PoC scenarios (transitive: max(4,3)=4 > 3 only on the composed path; nullable: 4dp writes into 2dp fields, and `return None` under a non-Optional annotation reported at the return site `apply_discount -> apply_discount.<return>`)
 - `plain_python/`, `plain_python_clean/`: no Django (clean version must pass)
-- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`, `r6_*`, `r7_*`: adversarial findings; `r8_*`: findings from the pr-swarm review of PR #3. Several include an `ok.py` with correct code so a false positive fails the fixture.
+- `limits_*`: the v1 limitations, now fixed; `v2_*`: data-flow model v2; `r3_*`, `r5_*`, `r6_*`, `r7_*`: adversarial findings; `r8_*`: findings from the pr-swarm review of PR #3. `numeric_tower/`: an `int` where `float` is required is accepted; `Decimal` or `str` into `float`, and `float` into `int`, are errors. Several include an `ok.py` with correct code so a false positive fails the fixture.
 - `V2_FIXTURE_NOTES.md`: how ambiguous verdicts were decided
 
 Design: `docs/design/dataflow-v2.md` (model, SQLite interface, and the round 3/5 addenda). Adversarial reports and repros from each round were kept outside the repo; their findings are recorded in the addenda and as fixtures.

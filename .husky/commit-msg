@@ -16,7 +16,15 @@ elif echo "$MSG" | grep -qE '^refactor(\(.*\))?(!)?:'; then
 fi
 
 if [ -n "$BLOCKED_TYPE" ]; then
-  BEHAVIORAL_FILES=$(git diff --cached --name-only | grep -E '(SKILL\.md|agents/.*\.md)$' || true)
+  # -z keeps each name as git stores it. Without it, git quotes a name with a
+  # non-ASCII byte, a quote or a newline, and the quoted name matched nothing.
+  BEHAVIORAL_FILES=$(git diff --cached --name-only -z | xargs -0 sh -c '
+    for f do
+      case "$f" in
+        *SKILL.md|*agents/*.md) printf "%s\n" "$f" ;;
+      esac
+    done
+  ' sh)
   if [ -n "$BEHAVIORAL_FILES" ]; then
     echo ""
     echo "ERROR: commits touching behavioral artifacts must not use the '${BLOCKED_TYPE}:' prefix."
@@ -30,7 +38,7 @@ if [ -n "$BLOCKED_TYPE" ]; then
     echo "  that does not touch any of these files."
     echo ""
     echo "  Affected files:"
-    echo "$BEHAVIORAL_FILES" | sed 's/^/    /'
+    printf '%s\n' "$BEHAVIORAL_FILES" | sed 's/^/    /'
     echo ""
     exit 1
   fi

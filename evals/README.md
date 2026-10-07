@@ -8,7 +8,12 @@ This directory holds the eval suite that grows out of production incidents. Each
 
 ## CI linkage
 
-`incident-eval-check.yml` verifies that a merged PR referencing an incident (via a `Fixes-Incident:` trailer or an `incident` label) is accompanied by a matching eval under `evals/` and, where applicable, a candidate invariant under `docs/invariants/`. A PR referencing an incident without a matching eval fails this check.
+`incident-eval-check.yml` applies to a merged pull request that has the `incident` label, or a `Fixes-Incident: <id>` line in its body or in one of its commit messages. It needs both of these, each containing the incident id:
+
+- an eval under `evals/`, matched by its path or its content;
+- a candidate invariant under `docs/invariants/` or `crosscheck/docs/invariants/`, matched by its content.
+
+If either is missing, the check fails. It runs only after the pull request is merged, so it reports on the merge and cannot block it. Add the eval and the invariant in the pull request that fixes the incident. The check finds the file and does not run the eval. The full explanation is `docs/gates/incident-eval-check.md`.
 
 ## Full picture
 

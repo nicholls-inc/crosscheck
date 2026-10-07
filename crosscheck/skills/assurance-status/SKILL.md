@@ -125,7 +125,7 @@ Recommend `/invariant-coverage-scaffold` if coverage tooling is missing or incom
 Identify recent changes to files the repo marks as protected (per `.claude/rules/protected-surfaces.md`).
 
 1. Enumerate the protected files / globs from the rules doc.
-2. Run `git log --since="30 days ago" --name-only` filtered to those paths, or use the repo's attestation record (e.g. `.assurance/intent-check-attestation.json` if present) to cross-reference.
+2. Run `git log --since="30 days ago" --name-only` filtered to those paths.
 3. For each touched protected file, check whether the governance note required by the rules doc is present in the commit message or linked amendment file.
 
 Report any protected-surface edit from the review window that lacks a governance note. Recommend `/protected-surface-amend` to author the missing amendment block.

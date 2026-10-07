@@ -52,14 +52,20 @@ work-queue/
 The work queue is a FIFO buffer with at-most-`max_retries` redelivery and
 a separate dead-letter store. Three properties are load-bearing.
 
-**Q1. FIFO_ORDER.** Items are dequeued in the order they were enqueued.
+## I1: FIFO_ORDER
+
+Items are dequeued in the order they were enqueued.
 Reordering would break ordered-processing consumers.
 
-**Q2. DEAD_LETTER_TERMINAL.** Once an item has failed `max_retries`
+## I2: DEAD_LETTER_TERMINAL
+
+Once an item has failed `max_retries`
 times, it moves to the dead-letter store and never returns to the main
 queue. Redelivering a poison item silently retries forever.
 
-**Q3. NO_DUPLICATE_DELIVERY.** Each item is delivered to a consumer at
+## I3: NO_DUPLICATE_DELIVERY
+
+Each item is delivered to a consumer at
 most once before either being acknowledged or moving to dead-letter.
 Duplicate delivery would force consumers to dedup, defeating the point
 of having a queue.
@@ -71,7 +77,7 @@ of having a queue.
 from queue.work_queue import WorkQueue
 
 
-# Invariant Q1: FIFO_ORDER.
+# Invariant I1: FIFO_ORDER.
 def test_fifo_order_preserved():
     q = WorkQueue()
     for x in ("A", "B", "C"):
@@ -79,7 +85,7 @@ def test_fifo_order_preserved():
     assert [q.dequeue() for _ in range(3)] == ["A", "B", "C"]
 
 
-# Invariant Q2: DEAD_LETTER_TERMINAL.
+# Invariant I2: DEAD_LETTER_TERMINAL.
 def test_poison_item_does_not_redeliver():
     q = WorkQueue(max_retries=3)
     q.enqueue("P")
@@ -91,7 +97,7 @@ def test_poison_item_does_not_redeliver():
         assert q.dequeue(timeout=0.0) != "P"
 
 
-# Invariant Q3: NO_DUPLICATE_DELIVERY.
+# Invariant I3: NO_DUPLICATE_DELIVERY.
 def test_no_duplicate_delivery_before_ack():
     q = WorkQueue()
     q.enqueue("X")
@@ -104,9 +110,9 @@ def test_no_duplicate_delivery_before_ack():
 The pre-commit hook and `assurance.yml` both invoke
 `check_invariant_coverage.py`, which:
 
-1. Scans `docs/invariants/queue.md` for `**Q1.`, `**Q2.`, `**Q3.`
-2. Scans `tests/test_*.py` for `# Invariant Q1:`, `# Invariant Q2:`,
-   `# Invariant Q3:`
+1. Scans `docs/invariants/queue.md` for `## I1:`, `## I2:`, `## I3:`
+2. Scans `tests/test_*.py` for `# Invariant I1:`, `# Invariant I2:`,
+   `# Invariant I3:`
 3. Reports any declared-but-uncovered or covered-but-undeclared IDs
 
 If a contributor deletes `test_poison_item_does_not_redeliver` to fix a
@@ -114,7 +120,7 @@ If a contributor deletes `test_poison_item_does_not_redeliver` to fix a
 
 ```
 Missing coverage — add `# Invariant <ID>: <Name>` above the property test:
-  - queue/Q2 declared at docs/invariants/queue.md:9 (no covering test)
+  - queue/I2 declared at docs/invariants/queue.md:11 (no covering test)
 ```
 
 ## Layer 5 — acceptance scenarios
@@ -172,25 +178,29 @@ non-blocking job until you trust the scenarios.
 ## Layer 5 — the PR-Gate in flight
 
 A contributor opens a PR that edits `queue/work_queue.py` and rewrites
-the test for Q2 because "max_retries was off-by-one". The PR also adds a
-single line to `docs/invariants/queue.md`:
+the test for I2 because "max_retries was off-by-one". The PR also changes
+one line in `docs/invariants/queue.md`:
 
 ```diff
-- **Q2. DEAD_LETTER_TERMINAL.** Once an item has failed `max_retries`
-- times, it moves to the dead-letter store and never returns to the main
-- queue. Redelivering a poison item silently retries forever.
-+ **Q2. DEAD_LETTER_TERMINAL.** Once an item has failed `max_retries + 1`
-+ times, it moves to the dead-letter store and never returns to the main
-+ queue. Redelivering a poison item silently retries forever.
+ ## I2: DEAD_LETTER_TERMINAL
+
+-Once an item has failed `max_retries`
++Once an item has failed `max_retries + 1`
+ times, it moves to the dead-letter store and never returns to the main
+ queue. Redelivering a poison item silently retries forever.
 ```
 
 This trips the PR-Gate. `assurance-pr-gate.md` runs:
 
-1. `assurance_pr_gate_plan.py` computes the content hash for Q2 (its
+1. `assurance_pr_gate_plan.py` computes the content hash for I2 (its
    prose changed, the covering test changed, and the module source
-   changed). No cache hit. `action: run_intent_check`.
+   changed). No cache hit. `action: run_intent_check`. (Not yet reached:
+   the shipped `tier-b/assurance_pr_gate_plan.py` reads only
+   `## Invariant <ID>` headings, so on a canonical `## I<N>:` doc it finds
+   no invariant. The step shows the intended behaviour. PB-1.27 tracks the
+   parser.)
 2. `assurance-pr-gate.md` invokes `/crosscheck:intent-check` with:
-   - The new Q2 prose (includes "max_retries + 1")
+   - The new I2 prose (includes "max_retries + 1")
    - The new covering test (`test_poison_item_does_not_redeliver`)
    - The diff to `queue/work_queue.py`
 3. The skill's blind back-translator reads only the code + test and
@@ -216,7 +226,7 @@ Kill criterion: inactive
 
 > **Layer 5 — Intent-check (probabilistic)**
 >
-> Invariant: `Q2` (`DEAD_LETTER_TERMINAL`) in `docs/invariants/queue.md`
+> Invariant: `I2` (`DEAD_LETTER_TERMINAL`) in `docs/invariants/queue.md`
 > Verdict: **PASS**
 > Attestation: `sha256:7f4f9fb…` (`docs/assurance/attestations/7f4f9fb….json`)
 > FP-tracker rolling 14 d: 12% (n=8)
@@ -227,7 +237,7 @@ Kill criterion: inactive
 >
 > _Layer 5 is probabilistic. Verdict is non-binding; reviewers may
 > accept, reject, or defer with rationale. Force a fresh re-run with
-> `/assurance-recheck Q2`._
+> `/assurance-recheck I2`._
 
 </details>
 
@@ -268,17 +278,17 @@ intent-check actually understood the off-by-one fix. They comment on the
 PR:
 
 ```
-/assurance-recheck Q2
+/assurance-recheck I2
 ```
 
-`assurance-recheck.md` fires. The pre-step parses `Q2` out of the
+`assurance-recheck.md` fires. The pre-step parses `I2` out of the
 comment body, the recheck workflow ignores the cache, runs
 `/crosscheck:intent-check` fresh, and posts:
 
 ```markdown
 > **Layer 5 — Force-rechecked (cache bypassed)**
 >
-> Invariant: `Q2` (`DEAD_LETTER_TERMINAL`) in `docs/invariants/queue.md`
+> Invariant: `I2` (`DEAD_LETTER_TERMINAL`) in `docs/invariants/queue.md`
 > Verdict: **PASS**
 > Attestation: `sha256:c1d8e2a…` (`docs/assurance/attestations/c1d8e2a….json`)
 > Triggered by: `/assurance-recheck` on `@reviewer`
@@ -365,7 +375,7 @@ Layer 4 → 1–3 (hand-off).
 
 `docs/invariants/queue.md` sets `dafny_candidate: true`. The module's
 core dequeue/fail/dead-letter logic is pure sequential code with three
-quantified properties (Q1, Q2, Q3) that Dafny can express directly.
+quantified properties (I1, I2, I3) that Dafny can express directly.
 
 Recommend the byfuglien chain:
 
@@ -399,7 +409,7 @@ Across one development cycle, the queue project's protections look like:
 - **Layer 5 (every protected-surface PR):** `assurance-pr-gate.md` runs
   `/crosscheck:intent-check` with a content-hash cache so unchanged
   invariants don't pay the LLM cost on every push.
-- **Layer 5 (on demand):** `/assurance-recheck Q2` bypasses the cache
+- **Layer 5 (on demand):** `/assurance-recheck I2` bypasses the cache
   when a reviewer wants a fresh take.
 - **Layer 5 (daily):** `assurance-squad.md` audits, scaffolds, drafts,
   reviews FPs, alerts on kill-criterion, proposes Dafny promotions.

@@ -12,7 +12,7 @@ def weigh(points: float) -> Sample:
 
 
 def score_customer(customer: Customer) -> Sample:
-    # FALSE POSITIVE (numeric-tower): an int is a valid float
+    # Was a false positive (numeric-tower), fixed by CG-1.7: an int is a valid float
     return weigh(count_visits(customer))
 
 

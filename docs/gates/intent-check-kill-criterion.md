@@ -36,8 +36,9 @@ CSV, and either
   need improving, fix them, and let the rate fall back under 30% naturally
   as new, better-classified rows enter the rolling window; or
 - **retire** — conclude this check is not worth running for this repository
-  or this class of change, and stop relying on it (removing it from any
-  required gates) rather than continuing to patch it.
+  or this class of change, and stop running it rather than continuing to
+  patch it. The check is advisory, so retiring it removes no gate: no commit
+  or merge should ever have waited on its verdict.
 
 There is no third option of just overriding the refusal — the whole point
 of a kill criterion is that it is not optional. If you believe the tracker

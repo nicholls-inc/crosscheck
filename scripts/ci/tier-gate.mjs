@@ -69,7 +69,17 @@ export const EVIDENCE_CLASSES = [
     kind: 'checked',
     workflow: 'Tier Gate workflow (node --test scripts/ci/*.test.mjs)',
   },
-  { re: /^evals\//, kind: 'checked', workflow: 'Incident Eval Check workflow' },
+  {
+    re: /^scripts\/check-evidence-record(\.test)?\.mjs$/,
+    kind: 'checked',
+    workflow: 'Evidence Record workflow (node --test scripts/check-evidence-record.test.mjs)',
+  },
+  {
+    re: /^evals\//,
+    kind: 'notYetReached',
+    property: 'no CI job runs an eval, and the Incident Eval Check only looks, after the merge, for an eval under evals/ and a candidate invariant that name the incident',
+    question: 'what runs an eval as a regression test, and which workflow runs it before the merge',
+  },
   {
     re: /^docs\/invariants\//,
     kind: 'notYetReached',

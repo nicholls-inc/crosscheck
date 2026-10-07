@@ -56,10 +56,16 @@ def checkNullability (sourceNullable targetNullable : Bool)
   else
     .consistent
 
+/-- A value of type `st` is accepted where type `tt` is required: the same
+    type, or an `int` where a `float` is required (PEP 484 numeric tower; see
+    `BehaviorModel.annotationAcceptsNumeric`). -/
+def typeAccepts (st tt : String) : Bool :=
+  st == tt || (st == "int" && tt == "float")
+
 /-- Check type consistency. -/
 def checkTypeConsistency (sourceType targetType : String)
     (source target : Constraint) : CheckResult :=
-  if sourceType == targetType then
+  if typeAccepts sourceType targetType then
     .consistent
   else
     .inconsistent {
@@ -187,7 +193,7 @@ def constraintImplies (c d : Constraint) : Prop :=
     | _, _ => True
   | .type =>
     match c.typeName, d.typeName with
-    | some st, some tt => st = tt
+    | some st, some tt => typeAccepts st tt = true
     | _, _ => True
   | .choices =>
     match c.choicesList, d.choicesList with
