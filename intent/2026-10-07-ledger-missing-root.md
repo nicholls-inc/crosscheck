@@ -16,7 +16,7 @@ A run that scans nothing cannot vouch for anything, so it must not print `RESULT
 ## Proposed outcome
 - When the read of `claims.json` reports a missing file, no LL-8 link applies, and `os.Stat` on the plugin root fails, `analyze` appends one error, `[ledger] cannot read conformance/claims.json: plugin root <root> does not resolve: <error>`. The run prints `RESULT: FAIL` and exits 1. This covers a missing root, a dangling root link, and a dangling link in an ancestor of the root.
 - A root that resolves to a directory with no `conformance/claims.json` stays an empty ledger, as LL-1 says. A root that is a symlink to a real plugin tree loads as before.
-- `TestLedgerLoad` asserts, for each dangling-link case and each new root case, that the error from `loadLedger` wraps the original with `errors.Is(err, fs.ErrNotExist)`.
+- `TestLedgerLoad` asserts, for each dangling-link case, and `TestLedgerLoadRoot` asserts, for each failing root case, that the error from `loadLedger` wraps the original with `errors.Is(err, fs.ErrNotExist)`.
 - The header comment of `main.go` names the dangling `conformance` link and the unresolved root. `crosscheck/conformance/README.md` names the unresolved root.
 
 ## Affected users and systems
@@ -30,4 +30,6 @@ A run that scans nothing cannot vouch for anything, so it must not print `RESULT
 - PB-1.25 (schema check) is a separate row and stays out of this change.
 
 ## Open questions
-None. The measurement above answers the open question in the task row: `analyze` does not fail on a missing root, so the check belongs in this change.
+The measurement above answers the open question in the task row: `analyze` does not fail on a missing root, so the check belongs in this change.
+
+Not yet reached: a root that exists but is not a plugin tree, such as an empty directory, still passes with 0 skills. The blocking property is that nothing marks a directory as a plugin root. The open question is what does. Queued as PB-1.41, with tests for the roots that fail through LL-2 (a regular file, an unreadable directory, a symlink loop).
