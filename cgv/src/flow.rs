@@ -273,6 +273,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 v.header(&f.iter, &n);
                 n.extend(dereferenced(&f.iter));
                 forget_members_after(&mut n, &f.iter);
+                forget_members_in_loop(&mut n, stmt);
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 walk(&f.body, &n, v, counts);
                 walk(&f.orelse, &n, v, counts);
@@ -281,6 +282,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 v.header(&w.test, &n);
                 forget_members_after(&mut n, &w.test);
+                forget_members_in_loop(&mut n, stmt);
                 let mut body_n = n.clone();
                 body_n.extend(positive(&w.test));
                 walk(&w.body, &body_n, v, counts);
@@ -569,6 +571,13 @@ fn only_get_calls_in_stmt(stmt: &Stmt) -> bool {
     let mut v = OnlyGetCalls(true);
     v.visit_stmt(stmt);
     v.0
+}
+
+/// A call in a later iteration may remove a key the loop's entry state holds.
+fn forget_members_in_loop(n: &mut Narrowed, stmt: &Stmt) {
+    if !only_get_calls_in_stmt(stmt) {
+        n.forget_members();
+    }
 }
 
 fn forget_members_after(n: &mut Narrowed, header: &Expr) {
@@ -1502,6 +1511,13 @@ mod tests {
         assert_eq!(uses, vec![Vec::<String>::new()]);
         let uses = narrowing_at_uses("def f(d, k):\n    if k in d:\n        if g():\n            use()\n");
         assert_eq!(uses, vec![Vec::<String>::new()]);
+        // A call in one iteration may remove the key before the next.
+        for lp in ["for x in e:", "while x:"] {
+            let uses = narrowing_at_uses(&format!(
+                "def f(d, k, e, x):\n    if k in d:\n        {lp}\n            use()\n"
+            ));
+            assert!(uses[0].iter().all(|n| !n.contains('[')), "{lp}: {uses:?}");
+        }
     }
 
     #[test]
