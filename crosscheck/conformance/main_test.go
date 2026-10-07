@@ -379,6 +379,40 @@ func TestKnownGapNeedsTracking(t *testing.T) {
 	}
 }
 
+func TestLedgerStatusAllowlist(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    string
+		wantError string
+	}{
+		{"typo", `"status":"reviewed-disclsed",`, `[ledger] claim C has unknown status "reviewed-disclsed"`},
+		{"empty", `"status":"",`, `[ledger] claim C has unknown status ""`},
+		{"missing", ``, `[ledger] claim C has unknown status ""`},
+		{"padded", `"status":" reviewed-accurate",`, `[ledger] claim C has unknown status " reviewed-accurate"`},
+		{"unreviewed", `"status":"unreviewed",`, ""},
+		{"known_gap", `"status":"known-gap",`, ""},
+		{"reviewed_disclosed", `"status":"reviewed-disclosed",`, ""},
+		{"reviewed_accurate", `"status":"reviewed-accurate",`, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files := baseTree()
+			files["conformance/claims.json"] = `{"version":1,"narrative_claims":[{"id":"C","claim":"c","reality":"r",` +
+				tc.status + `"tracked_in":"#25","check":{"type":"manual"}}]}`
+			r := analyze(writeTree(t, files))
+			if tc.wantError != "" {
+				if !hasMatch(r.errors, tc.wantError) {
+					t.Errorf("want error %q, got: %v", tc.wantError, r.errors)
+				}
+				return
+			}
+			if hasMatch(r.errors, "unknown status") {
+				t.Errorf("status %s must be accepted, got: %v", tc.status, r.errors)
+			}
+		})
+	}
+}
+
 func TestReportPassFail(t *testing.T) {
 	pass := report(result{})
 	if !strings.Contains(pass, "RESULT: PASS") {

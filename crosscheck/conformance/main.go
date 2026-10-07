@@ -17,6 +17,16 @@
 // ledger entry with status 'unreviewed' is promoted to an ERROR (forces
 // triage), and a 'present_artifact' auto-check that disagrees with reality is
 // likewise promoted to an ERROR.
+//
+// A ledger claim's status must be one of these four, matched exactly:
+//
+//	unreviewed         - new and not yet triaged; an ERROR until triaged
+//	known-gap          - the claim does not hold yet; needs a tracked_in link
+//	reviewed-disclosed - reviewed, and the docs disclose where reality differs
+//	reviewed-accurate  - reviewed, and the claim holds as written
+//
+// Any other status, including an empty or missing one, is an ERROR, so a typo
+// such as 'reviewed-disclsed' cannot pass as a reviewed claim.
 package main
 
 import (
@@ -37,6 +47,14 @@ var docFiles = []string{
 	"docs/agents.md",
 	"docs/assurance-hierarchy.md",
 	"docs/research/assurance-hierarchy.md",
+}
+
+// knownStatus is the ledger status allowlist the header comment documents.
+var knownStatus = map[string]bool{
+	"unreviewed":         true,
+	"known-gap":          true,
+	"reviewed-disclosed": true,
+	"reviewed-accurate":  true,
 }
 
 // reqKeys are the frontmatter keys every skill and agent must declare.
@@ -397,6 +415,11 @@ func analyze(root string) result {
 	// ---- LEDGER: narrative claims ----
 	r.ledger = loadLedger(root)
 	for _, c := range r.ledger {
+		if !knownStatus[c.Status] {
+			r.errors = append(r.errors, fmt.Sprintf(
+				"[ledger] claim %s has unknown status %q (want one of unreviewed|known-gap|reviewed-disclosed|reviewed-accurate)",
+				c.ID, c.Status))
+		}
 		if c.Status == "unreviewed" {
 			r.errors = append(r.errors, fmt.Sprintf(
 				"[ledger] claim %s is UNREVIEWED — triage required", c.ID))
