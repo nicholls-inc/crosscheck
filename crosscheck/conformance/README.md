@@ -22,7 +22,7 @@ Build a standalone binary:
 Exit 0 = PASS, 1 = FAIL (any AUTO error, or any `unreviewed` ledger claim or
 claim with an unknown status, or a `present_artifact` ledger check that
 disagrees with the filesystem, or a `claims.json` that cannot be read or
-parsed).
+parsed, or a plugin root that is not a Crosscheck plugin tree).
 
 > Run commands assume the repo-root Go workspace (`go.work`), which lets the
 > nested module resolve when invoked from the repo root. From inside this
@@ -70,14 +70,34 @@ parsed).
   `reviewed-disclsed` cannot pass as a reviewed claim.
 
   A missing `claims.json` is an empty ledger. A `claims.json` that cannot be
-  read, or is not valid JSON for the ledger types, fails CI, so a syntax error
-  cannot pass as a ledger with no claims. A `claims.json` or `conformance`
-  directory that is a symlink to a missing target cannot be read, so it fails
-  CI too. Not yet reached: JSON that decodes but has the wrong shape, such as a
-  top-level `null`, a missing `narrative_claims` or unknown keys, still loads
-  as an empty or partial ledger, because `json.Unmarshal` accepts any JSON that
-  fits the struct (PB-1.25). The open question is which schema the ledger
-  should be held to.
+  read, or is not valid JSON, fails CI, so a syntax error cannot pass as a
+  ledger with no claims. A `claims.json` or `conformance` directory that is a
+  symlink to a missing target cannot be read, so it fails CI too. So does a
+  plugin root that does not resolve, because the path is wrong or a symlink on
+  it dangles: a run that scans nothing cannot pass. A plugin root is a directory
+  whose `.claude-plugin/plugin.json` names `crosscheck`, so any other directory,
+  such as the repository root, fails CI. JSON that parses but breaks
+  the ledger schema fails CI as well:
+
+  | Place | Required keys | Optional keys |
+  |---|---|---|
+  | top level | `version` (the number `1`), `narrative_claims` (an array) | `description` (a string) |
+  | claim | `id`, `source`, `claim`, `reality` (non-blank strings), `status` (a string), `check` (an object) | `tracked_in` (a string) |
+  | `check` of type `manual` | `type` | none |
+  | `check` of type `present_artifact` | `type`, `path` (a non-blank string) | `expect_present` (`true` or `false`, default `true`) |
+
+  Any other `check.type`, such as `present_artfact`, fails, so a misspelt type
+  cannot pass as a check that never runs. Keys match exactly, including case, so
+  a misspelt `tracked-in` or `expect-present` fails instead of being dropped. A
+  key that appears twice in one object fails, so no copy of a key can hide from
+  the check. No value may be `null`.
+
+  Not yet reached: what the text fields say. Two claims may share an `id`,
+  `source` need not name a real file, `tracked_in` need not name a real issue,
+  and `check.path` may point outside the plugin root. The property that blocks
+  them is a check of each field against the tree and the tracker, and the open
+  question is which of them can be checked without a network call. Unique claim
+  IDs are queued as PB-1.42.
 
 ## First-run findings (2026-05-30, plugin v2.5.1)
 

@@ -15,6 +15,17 @@ The research doc now uses the wording VA-1.4 settled. Layer 5 checks spec–inte
 
 ---
 
+## 2026-10-07 — `dafny_evidence` runs Dafny on a copy of the blobs at `commit`
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/evidence.ts, mcp-server/src/__tests__/integration/evidence.integration.test.ts, mcp-server/dist/index.js, ../intent/2026-10-06-dafny-evidence-record-spec.md, ../docs/TASKS.md
+**Why:** The tool mounted the whole work tree into the Dafny container, and DE-13 compared the tree only before and after the runs, so an edit made and reverted while Dafny ran could change what Dafny checked without changing the record.
+**Links:** [intent](../intent/2026-10-07-dafny-evidence-commit-export.md), [spec](../intent/2026-10-06-dafny-evidence-record-spec.md)
+
+ER-1.10 asked whether to mount a `git archive` copy of `commit`. The answer is yes, with a smaller copy. DE-12 already names every file Dafny reads, so the tool reads `file` and each include as its blob at `commit` with `git ls-tree` and `git cat-file blob`, scans those bytes for includes, and writes the same bytes into a fresh `dafny-` temporary directory with modes `0755` and `0644`. Every Dafny run mounts that directory. The copy is the include closure, so its cost grows with the proof, not the repository. `git archive` was not used because it applies `.gitattributes` export filters, so its output can differ from the blob. DE-3 and DE-13 stay, because the rerun command still mounts the auditor's checkout. ER-1.18 asks whether it should build its mount from `commit` too.
+
+---
+
 ## 2026-10-07 — `dafny_evidence` checks that `requirement` names a tracked file, and refuses a theorem named twice
 
 **Type:** feature
