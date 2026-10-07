@@ -22,7 +22,7 @@ The bound is sound for a requirement: every value Django or pydantic accepts lie
 
 ## Affected users and systems
 - Anyone who writes a `DecimalField` or a pydantic `max_digits` field. A write whose magnitude is out of range is now an error. A write whose magnitude the extractor cannot bound gets the range warning that a `MaxValueValidator` field already gets: on the fixtures, warnings rise on 37 of the 98 other fixtures, by 146 in all and always in pairs (one for each side of the range). No error and no exit code changes outside the new fixture.
-- A read of such a field now carries the range as a guarantee, because `requirement_facts` reads the same bounds.
+- A read of such a field now carries the range as a guarantee, because `requirement_facts` reads the same bounds. That can add errors that no fixture shows: a sum of two reads written back into the field, or a copy from a wider decimal field into a narrower one. This follows the existing rule for `max_length` and validator bounds. Measured on django-oscar 4.2.1 from PyPI (`src/oscar`, tests and migrations excluded): errors stay at 1 and the exit code at 1, and range warnings go from 9 to 19. TB-1.34 measures it on a larger codebase.
 - `cgv/src/bounds.rs`, `cgv/src/model_extractor.rs`, `cgv/src/dataclass_extractor.rs`, `cgv/README.md`, the bench baseline (warnings on `precision-two-hop` go from 1 to 3; no outcome changes).
 
 ## Constraints
@@ -30,4 +30,4 @@ The bound is sound for a requirement: every value Django or pydantic accepts lie
 - Every fixture under `cgv/test_fixtures/` keeps the errors and exit code in its `expected.json`, and the bench corpus keeps every outcome in `cgv/bench/baseline.json`.
 
 ## Open questions
-None. Two cases are not yet reached, and the spec names each one's blocking property and open question: the total-digit conjunct of a `max_digits` field without a readable `decimal_places` (TB-1.33), and a `max_digits` above 38 or a `decimal_places` above 30, which `Dec` cannot hold.
+None. Three cases are not yet reached, and the spec names each one's blocking property and open question: the total-digit conjunct of a `max_digits` field without a readable `decimal_places` (TB-1.33), zero in a field with `max_digits == decimal_places`, and a `max_digits` above 38 or a `decimal_places` above 30, which `Dec` cannot hold.

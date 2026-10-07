@@ -647,10 +647,7 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
                 field.unvalidated = true;
             }
         }
-        // pydantic rejects more than max_digits - decimal_places whole digits.
-        if let Some(limit) = field.max_digits.and_then(|m| bounds::digits_limit(m, field.decimal_places)) {
-            bounds::narrow_to(limit, &mut field.min_value, &mut field.max_value);
-        }
+        bounds::narrow_to_digits(field.max_digits, field.decimal_places, &mut field.min_value, &mut field.max_value);
         fields.push(field);
     }
     fields
@@ -973,8 +970,10 @@ fn apply_constraint_keywords(field: &mut DataClassField, call: &ast::ExprCall) {
         let value = int_literal(&kw.value);
         let bound = bounds::literal_bound(&kw.value);
         match arg.as_str() {
-            "max_digits" => field.max_digits = value.or(field.max_digits),
-            "decimal_places" => field.decimal_places = value.or(field.decimal_places),
+            // A later Field overrides an Annotated alias's, so a bound the
+            // extractor cannot read replaces a literal one with unknown.
+            "max_digits" => field.max_digits = value,
+            "decimal_places" => field.decimal_places = value,
             "max_length" => field.max_length = value.or(field.max_length),
             "le" => field.max_value = bound.or(field.max_value),
             "lt" => {
@@ -1204,6 +1203,20 @@ mod tests {
         assert_eq!(bounds("whole"), (mu(-9_999_000_000), mu(9_999_000_000)));
         assert_eq!(bounds("capped"), (mu(0), mu(999_990_000)));
         assert_eq!(bounds("places"), (None, None));
+    }
+
+    #[test]
+    fn test_unreadable_override_of_digits() {
+        let cs = classes(
+            "class M(BaseModel):\n    \
+             wider: Annotated[Decimal, Field(max_digits=5, decimal_places=2)] = Field(max_digits=LIMIT)\n    \
+             unplaced: Annotated[Decimal, Field(max_digits=5, decimal_places=2)] = Field(decimal_places=PLACES)\n    \
+             narrower: Annotated[Decimal, Field(max_digits=9, decimal_places=2)] = Field(max_digits=5)\n",
+        );
+        let f = |name| field(&cs, "M", name);
+        assert_eq!((f("wider").max_digits, f("wider").max_value), (None, None));
+        assert_eq!((f("unplaced").decimal_places, f("unplaced").max_value), (None, mu(99_999_000_000)));
+        assert_eq!(f("narrower").max_value, mu(999_990_000));
     }
 
     #[test]

@@ -286,8 +286,8 @@ pub fn literal_bound(expr: &ruff_python_ast::Expr) -> Option<Dec> {
 /// last `decimal_places` after the point (`999.99` for 5 and 2). Without
 /// `decimal_places` the value may have no fractional digit and still be
 /// accepted, so the limit is `max_digits` whole nines. `None` for a
-/// `max_digits` below 1, a `decimal_places` below 0 or above `max_digits`,
-/// or a limit beyond `i128`.
+/// `max_digits` below 1 or above 38 (beyond `i128`), and for a
+/// `decimal_places` below 0, above `max_digits` or above 30 (`MAX_SCALE`).
 pub fn digits_limit(max_digits: i64, decimal_places: Option<i64>) -> Option<Dec> {
     let places = decimal_places.unwrap_or(0);
     if max_digits < 1 || places < 0 || places > max_digits {
@@ -297,8 +297,19 @@ pub fn digits_limit(max_digits: i64, decimal_places: Option<i64>) -> Option<Dec>
     Dec::from_scaled(nines, u32::try_from(places).ok()?)
 }
 
-/// Narrow the bounds `min` and `max` to `[-limit, limit]`.
-pub fn narrow_to(limit: Dec, min: &mut Option<Dec>, max: &mut Option<Dec>) {
+/// Narrow `min` and `max` to the magnitudes that `max_digits` and
+/// `decimal_places` allow (Django's `DecimalValidator` and pydantic reject
+/// more whole digits than `max_digits - decimal_places`). Unchanged when
+/// `max_digits` is unknown or `digits_limit` gives no limit.
+pub fn narrow_to_digits(
+    max_digits: Option<i64>,
+    decimal_places: Option<i64>,
+    min: &mut Option<Dec>,
+    max: &mut Option<Dec>,
+) {
+    let Some(limit) = max_digits.and_then(|m| digits_limit(m, decimal_places)) else {
+        return;
+    };
     *min = Some(min.map_or(-limit, |m| m.max(-limit)));
     *max = Some(max.map_or(limit, |m| m.min(limit)));
 }
@@ -361,16 +372,17 @@ mod tests {
     }
 
     #[test]
-    fn test_narrow_to() {
-        let (mut lo, mut hi) = (None, None);
-        narrow_to(d("999.99"), &mut lo, &mut hi);
-        assert_eq!((lo, hi), (Some(d("-999.99")), Some(d("999.99"))));
-        let (mut lo, mut hi) = (Some(d("0")), Some(d("5000")));
-        narrow_to(d("999.99"), &mut lo, &mut hi);
-        assert_eq!((lo, hi), (Some(d("0")), Some(d("999.99"))));
-        let (mut lo, mut hi) = (Some(d("-5000")), Some(d("10")));
-        narrow_to(d("999.99"), &mut lo, &mut hi);
-        assert_eq!((lo, hi), (Some(d("-999.99")), Some(d("10"))));
+    fn test_narrow_to_digits() {
+        let narrowed = |m, places, lo: Option<&str>, hi: Option<&str>| {
+            let (mut lo, mut hi) = (lo.map(d), hi.map(d));
+            narrow_to_digits(m, places, &mut lo, &mut hi);
+            (lo, hi)
+        };
+        assert_eq!(narrowed(Some(5), Some(2), None, None), (Some(d("-999.99")), Some(d("999.99"))));
+        assert_eq!(narrowed(Some(5), Some(2), Some("0"), Some("5000")), (Some(d("0")), Some(d("999.99"))));
+        assert_eq!(narrowed(Some(5), Some(2), Some("-5000"), Some("10")), (Some(d("-999.99")), Some(d("10"))));
+        assert_eq!(narrowed(None, Some(2), Some("1"), None), (Some(d("1")), None));
+        assert_eq!(narrowed(Some(2), Some(3), None, Some("7")), (None, Some(d("7"))));
     }
 
     #[test]

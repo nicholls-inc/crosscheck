@@ -250,11 +250,8 @@ fn extract_field_from_call(
         field.min_value = Some(field.min_value.map_or(bound, |m| m.max(bound)));
     }
 
-    // DecimalValidator rejects more than max_digits - decimal_places whole digits.
     if field_type == "DecimalField" {
-        if let Some(limit) = field.max_digits.and_then(|m| bounds::digits_limit(m, field.decimal_places)) {
-            bounds::narrow_to(limit, &mut field.min_value, &mut field.max_value);
-        }
+        bounds::narrow_to_digits(field.max_digits, field.decimal_places, &mut field.min_value, &mut field.max_value);
     }
 
     Some(field)
