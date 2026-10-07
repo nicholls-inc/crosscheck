@@ -11,6 +11,7 @@ use crate::db::{
 use crate::defaults::{self, FieldDefaults};
 use crate::docstring_parser::{self, DocstringContract};
 use crate::edge_discovery::{self, CallSite, DiscoveredEdge, SiteKey};
+use crate::exits;
 use crate::function_extractor;
 use crate::model_extractor::{self, ModelField};
 use crate::resolve::{self, ClassInfo, ClassKind, EnumKind, ModuleInfo, ProjectIndex, Symbol};
@@ -160,6 +161,9 @@ impl Project {
                 func.return_line = m.lines.line(func.return_line);
                 function_extractor::apply_aliases(&mut func, aliases);
                 function_extractor::apply_external_types(&mut func, &external_types);
+                function_extractor::apply_shadows(&mut func, &|a| {
+                    index.annotation_shadow(&m.module, dataclass_extractor::unalias(a, aliases))
+                });
                 match index.function_ids.get(&func.qualified_name) {
                     Some(&i) => index.functions[i] = func,
                     None => {
@@ -182,7 +186,35 @@ impl Project {
                         .as_ref()
                         .map(|a| a.args.to_vec())
                         .unwrap_or_default();
-                    let info = ClassInfo::new(&m.module, &name, bases).with_body(&class.body);
+                    let mut info = ClassInfo::new(&m.module, &name, bases).with_body(&class.body);
+                    // A metaclass keyword or a class decorator may change how members are made.
+                    let plain_decorators = class.decorator_list.iter().all(|d| {
+                        let target = match &d.expression {
+                            Expr::Call(c) => c.func.as_ref(),
+                            other => other,
+                        };
+                        resolve::dotted_parts(target)
+                            .is_some_and(|p| p.last().is_some_and(|l| l == "unique" || l == "verify"))
+                    });
+                    // A method decorator of an enum body must be the builtin.
+                    let info_m = &index.modules[&m.module];
+                    let decorated = class
+                        .body
+                        .iter()
+                        .any(|s| matches!(s, Stmt::FunctionDef(f) if !f.decorator_list.is_empty()));
+                    let builtins_shadowed = !info_m.star_imports.is_empty()
+                        || resolve::ENUM_METHOD_DECORATORS.iter().any(|d| {
+                            info_m.defs.contains_key(*d)
+                                || info_m.imports.contains_key(*d)
+                                || info_m.rebound.contains(*d)
+                                || info.body_names.contains(*d)
+                        });
+                    if !plain_decorators
+                        || class.arguments.as_ref().is_some_and(|a| !a.keywords.is_empty())
+                        || (decorated && builtins_shadowed)
+                    {
+                        info.enum_members = None;
+                    }
                     index.classes.insert(info.qualified.clone(), info);
                 }
             }
@@ -192,6 +224,12 @@ impl Project {
                     .into_iter()
                     .map(|mut c| {
                         c.external_types = external_types.clone();
+                        c.type_shadows = dataclass_extractor::field_annotations(&c.class_def)
+                            .filter_map(|(field, a)| {
+                                let a = dataclass_extractor::unalias(a, aliases);
+                                Some((field, index.annotation_shadow(&m.module, a)?))
+                            })
+                            .collect();
                         c
                     }),
             );
@@ -225,7 +263,27 @@ impl Project {
             })
         };
         enum_field_choices(&mut data_classes, &index);
-        for dc in &data_classes {
+        let field_facts: Vec<HashMap<String, value_analysis::ValueFacts>> = data_classes
+            .iter()
+            .map(|dc| {
+                dc.fields
+                    .iter()
+                    .map(|f| {
+                        let mut facts = dataclass_extractor::requirement_facts(&index, dc, f);
+                        // A lax pydantic numeric field accepts other numbers
+                        // but stores the declared type (it converts).
+                        if facts.type_name.is_none() && dc.lax_numeric(f) {
+                            facts.type_name = f
+                                .type_name
+                                .clone()
+                                .filter(|t| matches!(t.as_str(), "Decimal" | "int" | "float"));
+                        }
+                        (f.field_name.clone(), facts)
+                    })
+                    .collect()
+            })
+            .collect();
+        for (dc, field_facts) in data_classes.iter().zip(field_facts) {
             if let Some(c) = index.classes.get_mut(&dc.qualified_name) {
                 if c.kind == ClassKind::Plain {
                     c.kind = ClassKind::Data(dc.kind);
@@ -237,22 +295,15 @@ impl Project {
                         .collect();
                     c.positional = dc.positional.clone();
                     c.strict = dc.strict;
-                    c.field_facts = dc
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let mut facts = dataclass_extractor::requirement_facts(dc, f);
-                            // A lax pydantic numeric field accepts other numbers
-                            // but stores the declared type (it converts).
-                            if facts.type_name.is_none() && dc.lax_numeric(f) {
-                                facts.type_name = f
-                                    .type_name
-                                    .clone()
-                                    .filter(|t| matches!(t.as_str(), "Decimal" | "int" | "float"));
-                            }
-                            (f.field_name.clone(), facts)
-                        })
-                        .collect();
+                    if dc.kind == dataclass_extractor::DataClassKind::Pydantic {
+                        c.validate_checked = dc
+                            .fields
+                            .iter()
+                            .filter(|f| !f.validation_enforces())
+                            .map(|f| f.field_name.clone())
+                            .collect();
+                    }
+                    c.field_facts = field_facts;
                 }
             }
         }
@@ -265,6 +316,15 @@ impl Project {
                 (!doc.is_empty()).then(|| (f.qualified_name.clone(), doc))
             })
             .collect();
+
+        let exits: Vec<_> = index
+            .functions
+            .iter()
+            .map(|f| exits::function_exits(&index, f))
+            .collect();
+        for (f, e) in index.functions.iter_mut().zip(exits) {
+            f.exits = e;
+        }
 
         let summaries = value_analysis::compute_summaries(&index);
 
@@ -748,7 +808,9 @@ pub fn extract_with(
     // Nodes: model fields, data class fields, functions
     let mut model_node_ids =
         model_extractor::write_model_fields(&db, &project.model_fields, &names)?;
-    for (q, id) in dataclass_extractor::write_data_classes(&db, &project.data_classes, &names)? {
+    let data_class_ids =
+        dataclass_extractor::write_data_classes(&db, &project.index, &project.data_classes, &names)?;
+    for (q, id) in data_class_ids {
         model_node_ids.entry(q).or_insert(id);
     }
     let (func_node_ids, func_rows) = write_functions(&db, &project, &names)?;
@@ -855,7 +917,7 @@ fn write_functions(
         let rows: Vec<ContractRecord> = function_extractor::precondition_rows(func, doc, node_id)
             .into_iter()
             .chain(function_extractor::postcondition_rows(
-                func, &summary, doc, node_id,
+                &project.index, func, &summary, doc, node_id,
             ))
             .collect();
         for row in &rows {
@@ -905,12 +967,15 @@ fn write_return_nodes(
             param_nullable: Some(0),
             ..base(ConstraintType::Nullability)
         })?;
-        let type_name = func
-            .return_type
-            .as_deref()
-            .filter(|t| !t.contains('['))
-            .map(|t| t.rsplit('.').next().unwrap_or(t));
-        if let Some(t) = type_name.filter(|t| function_extractor::RETURN_TYPE_CONTRACTS.contains(t)) {
+        // A project class that shadows a value type keeps its qualified name.
+        let type_name = func.return_type.as_deref().filter(|t| !t.contains('[')).and_then(|t| {
+            if project.index.is_contract_type(t) && t.contains('.') {
+                return Some(t);
+            }
+            let last = t.rsplit('.').next().unwrap_or(t);
+            function_extractor::RETURN_TYPE_CONTRACTS.contains(&last).then_some(last)
+        });
+        if let Some(t) = type_name {
             db.insert_contract(&ContractRecord {
                 param_type_name: Some(t.to_string()),
                 ..base(ConstraintType::Type)

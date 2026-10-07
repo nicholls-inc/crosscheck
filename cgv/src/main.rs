@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crosscheck_contracts::{defaults, evidence, extractor, report};
+use crosscheck_contracts::{baseline, defaults, evidence, extractor, report};
 
 /// Stack size of the extraction thread: deeply nested Python (long operator
 /// chains, nested calls) recurses in the parser and the analyses.
@@ -34,6 +34,7 @@ enum TopCommands {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant, reason = "parsed once per process")]
 enum Commands {
     /// Check contracts in a Python application
     Check {
@@ -60,9 +61,15 @@ enum Commands {
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
 
-        /// Text format only: omit WARNING blocks from the body (still counted in the RESULT line)
-        #[arg(long)]
+        /// Text format only: omit WARNING and UNVERIFIED blocks from the body (still counted in the RESULT line)
+        #[arg(long, conflicts_with = "warnings")]
         no_warnings: bool,
+
+        /// Text format only: also list each UNVERIFIED requirement (a hop whose
+        /// source has no guarantee of the kind its target requires). By default
+        /// they are only counted, in the coverage section and the RESULT line
+        #[arg(long)]
+        warnings: bool,
 
         /// Search budget passed to the checker (`--max-states N`, total hop
         /// states); past it the checker reports an incomplete run (exit 2).
@@ -88,6 +95,18 @@ enum Commands {
         /// the checked path and the overrides file.
         #[arg(long, value_name = "PATH")]
         evidence_record: Option<PathBuf>,
+
+        /// Write the findings of this run to a baseline file at PATH. A run
+        /// that is incomplete or fails writes no file. Output and exit code
+        /// are unchanged
+        #[arg(long, value_name = "PATH")]
+        write_baseline: Option<PathBuf>,
+
+        /// Compare the findings with the baseline file at PATH: show only the
+        /// new ones, count the others, and exit 1 when an error is new. It
+        /// cannot name the same file as --write-baseline
+        #[arg(long, value_name = "PATH", conflicts_with = "evidence_record")]
+        baseline: Option<PathBuf>,
     },
     /// Generate defaults table from Django source
     GenerateDefaults {
@@ -125,12 +144,30 @@ fn run(cli: Cli) -> Result<i32> {
             output_db,
             format,
             no_warnings,
+            warnings,
             max_states,
             max_states_per_edge,
             exclude,
             allow_parse_errors,
             evidence_record,
+            write_baseline,
+            baseline: baseline_path,
         } => {
+            if let (Some(read), Some(write)) = (&baseline_path, &write_baseline) {
+                if baseline::same_file(read, write) {
+                    eprintln!(
+                        "error: --baseline and --write-baseline name the same file {}; overwriting the baseline with this run's findings would let the next run match its new errors",
+                        read.display()
+                    );
+                    return Ok(2);
+                }
+            }
+            let baseline_findings = baseline_path.as_deref().map(baseline::read);
+            if let Some(path) = &write_baseline {
+                baseline::remove(path)?;
+            }
+            let baseline_findings = baseline_findings.transpose()?;
+            let root = baseline::root(&app_path);
             let checkout = evidence_record
                 .as_deref()
                 .map(|record_path| evidence::begin(record_path, &app_path, overrides.as_deref(), &exclude))
@@ -193,6 +230,52 @@ fn run(cli: Cli) -> Result<i32> {
                 }
                 return Ok(2);
             }
+            let parsed = (baseline_findings.is_some() || write_baseline.is_some())
+                .then(|| report::parse(&String::from_utf8_lossy(&output.stdout)));
+            if let (Some(Err(e)), Some(_)) = (&parsed, &baseline_findings) {
+                eprintln!("Error: unrecognised checker result ({e}):");
+                std::io::stderr().write_all(&output.stdout)?;
+                eprintln!();
+                return Ok(2);
+            }
+            if let Some(Ok(checker_output)) = parsed {
+                let keys = baseline::keys(&checker_output, &root)?;
+                let incomplete = keys.iter().any(Option::is_none);
+                // A JSON exit code the process exit status contradicts is not a completed run.
+                let checker_code = if output.code == Some(checker_output.exit_code) {
+                    checker_output.exit_code
+                } else {
+                    2
+                };
+                if let Some(path) = &write_baseline {
+                    if !incomplete && (checker_code == 0 || checker_code == 1) {
+                        std::fs::write(path, baseline::render(&keys))
+                            .map_err(|e| anyhow::anyhow!("cannot write the baseline {}: {e}", path.display()))?;
+                    }
+                }
+                if let Some(findings) = &baseline_findings {
+                    let diff = baseline::diff(&keys, findings);
+                    let errors = diff.new.errors + diff.existing.errors;
+                    let code = baseline::exit_code(checker_code, incomplete, diff.new.errors, errors);
+                    match format {
+                        OutputFormat::Json => {
+                            let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+                            println!("{}", baseline::render_json(&json, &diff, code));
+                        }
+                        OutputFormat::Text => {
+                            let edges = report::edges_by_module(&db_path).map_err(|e| {
+                                anyhow::anyhow!("cannot count the edges of {}: {e}", db_path.display())
+                            })?;
+                            let display = warning_display(no_warnings, warnings);
+                            print!(
+                                "{}",
+                                report::render_text_with(&checker_output, display, &edges, Some((&diff, code)))
+                            );
+                        }
+                    }
+                    return Ok(code);
+                }
+            }
             let code = match format {
                 OutputFormat::Json => {
                     std::io::stdout().write_all(&output.stdout)?;
@@ -202,7 +285,11 @@ fn run(cli: Cli) -> Result<i32> {
                     let stdout_str = String::from_utf8_lossy(&output.stdout);
                     match report::parse(&stdout_str) {
                         Ok(checker_output) => {
-                            print!("{}", report::render_text(&checker_output, no_warnings));
+                            let display = warning_display(no_warnings, warnings);
+                            let edges = report::edges_by_module(&db_path).map_err(|e| {
+                                anyhow::anyhow!("cannot count the edges of {}: {e}", db_path.display())
+                            })?;
+                            print!("{}", report::render_text(&checker_output, display, &edges));
                             checker_output.exit_code
                         }
                         Err(e) => {
@@ -248,6 +335,14 @@ fn run(cli: Cli) -> Result<i32> {
             defaults::generate_defaults(&django_source, &version)?;
             Ok(0)
         }
+    }
+}
+
+fn warning_display(no_warnings: bool, warnings: bool) -> report::WarningDisplay {
+    match (no_warnings, warnings) {
+        (true, _) => report::WarningDisplay::Hide,
+        (_, true) => report::WarningDisplay::All,
+        _ => report::WarningDisplay::Default,
     }
 }
 

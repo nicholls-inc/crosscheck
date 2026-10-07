@@ -1,0 +1,29 @@
+{
+  "program": {
+    "name": "include-unproved",
+    "file": "Abs.dfy",
+    "sources": {
+      "Abs.dfy": "include \"Lib.dfy\"\nlemma T() ensures 1 == 2 { Bad(); }\n",
+      "Lib.dfy": "lemma Bad() ensures false {}\n"
+    },
+    "theorems": [
+      "T"
+    ]
+  },
+  "imageId": "sha256:ccd363af0c7fdba1a7766568daf1ded858f93708eac6bb7f01b7d1ee725d8f1c",
+  "runs": [
+    {
+      "args": [
+        "verify",
+        "/work/Abs.dfy",
+        "--verify-included-files",
+        "--log-format",
+        "csv;LogFileName=/dev/stdout"
+      ],
+      "exitCode": 4,
+      "stdout": "Lib.dfy(1,26): Error: a postcondition could not be proved on this return path\n  |\n1 | lemma Bad() ensures false {}\n  |                           ^\n\nLib.dfy(1,20): Related location: this is the postcondition that could not be proved\n  |\n1 | lemma Bad() ensures false {}\n  |                     ^^^^^\n\n\nDafny program verifier finished with 1 verified, 1 error\nTestResult.DisplayName,TestResult.Outcome,TestResult.Duration,TestResult.ResourceCount,RandomSeed\nBad (correctness),Failed,00:00:00.1989709,3138,0\nT (correctness),Passed,00:00:00.0098382,3542,0\nResults File: /dev/stdout\n",
+      "stderr": "",
+      "timedOut": false
+    }
+  ]
+}
