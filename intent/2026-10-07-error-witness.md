@@ -23,7 +23,7 @@ The error kinds weigh differently than issue #8 suggests. Of the 237 errors in t
 - **CG-1.38.** The extractor records the guard conditions that enclose a None-producing line, and the report prints them with the nullability error.
 - **CG-1.39.** A generated test that drives the path from its head and expects the sink to fail, for the first shape the evaluation found real: a field of one model written into a field of another, starting with a head that takes the source instance as an argument.
 
-No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request also commits the spec of CG-1.35, so that the row's format is fixed before its code. It does nothing else, as the queue's rule for splitting a task requires. It sets no row to `done`. Issue #8 stays open until the last of the five rows is done.
+No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request also commits the spec of CG-1.35, so that the row's format is fixed before its code. Apart from that spec it does nothing else. It sets no row to `done`. Issue #8 stays open until the last of the five rows is done.
 
 ## Affected users and systems
 - Anyone who reads a CGV error and has to decide whether it is real.
@@ -34,10 +34,12 @@ No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request
 - Rule 1 of the vision: a witness counts only when a deterministic run confirms it. An LLM may draft a test, but the test is evidence only once it runs and fails as stated. The rows ask for proofs and runs, not for an LLM's reading.
 - Rule 7: each witness names its strength. The counterexample of CG-1.35 is proved relative to the translated constraints. The tests of CG-1.37 and CG-1.39 are tested, on one input each, against pinned library versions.
 - The JSON key `witness` already names the whole data path of a result (`ResultEntry.witness` in `Types.lean`). The new field is `counterexample`, so no reader of the old key breaks.
-- `DiagnosticInfo` and `ResultEntry` appear in the statements in `cgv/prover/protected-statements.txt` by name only, and no protected definition reaches them, so CG-1.35 should leave the manifest unchanged and stay off CGV's protected surfaces. The row checks it.
+- `DiagnosticInfo` is not in `cgv/prover/protected-statements.txt`, and `ResultEntry` appears there only in the statements of `runChecker_exitCode_eq_zero_iff` and `runCheckerPaths_exitCode_eq_zero_iff`, through its `severity` projection. No protected definition reaches either. So adding a defaulted `counterexample` field to `ResultEntry` should leave the manifest unchanged, as long as `severity` keeps its name and type. CG-1.35 should stay off CGV's protected surfaces. The row checks it.
 - Task IDs are never reused. CG-1.35 to CG-1.39 appear in no row on `origin/main` (highest CG-1.32) and in no open pull request's diff (open pull request #105 uses CG-1.33 and CG-1.34), and no branch is named after them.
 
 ## Measured on Django 4.2.30 and pydantic 2.13.5
+Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic and data class sources that were not measured.
+
 A probe called `Field.clean(value, None)` on Django model fields and validated pydantic fields through `TypeAdapter`. It settles the value for each kind that CG-1.35 and the spec fix.
 
 - `"x" * 255` is accepted by `CharField(max_length=255)` and rejected by `max_length=100` (code `max_length`). pydantic `Field(max_length=100)` rejects it (`string_too_long`).
@@ -50,6 +52,8 @@ A probe called `Field.clean(value, None)` on Django model fields and validated p
 ## Not yet reached, with the blocking property and the open question
 - **A library test for a target that Python does not enforce.** Data class, attrs (without validators), `NamedTuple` and `TypedDict` fields, function parameters and return annotations carry their contract in the annotation. The property that blocks a runtime test is that nothing that runs rejects a value outside an annotation. The open question is whether a type checker's verdict on a generated snippet should count as the target's rejection, given that the type checker joins the trusted base.
 - **A failing path test for every error.** The property that blocks it is that CGV knows the value at the sink, not the arguments and database rows that make the head function produce it. The open question is whether to build those inputs from the source contract alone, which works when the head reads the source field off an argument, or to ask the user for fixtures. CG-1.39 takes the first shape and its intent settles the rest.
+
+- **A counterexample for a `type` error.** This is CG-1.36. The property that blocks it today is that Django and pydantic convert some values before they validate them (`IntegerField` accepts the string `"3"`), so a value of the source type may not be rejected by the target for the reason the type names say. The open question is which value to give for each type name, and which type names have none that the checker can prove.
 
 ## Open questions
 None for the split. Each new row carries its own question for its own intent. For CG-1.36, which value to give for each type name, given the conversions above. For CG-1.38, which guards the extractor can state as text a reader can check. For CG-1.39, how the inputs are built.
