@@ -17,11 +17,11 @@ The project index decides, once per function, which of its statements never comp
    - the builtins `exit` and `quit`, when the module neither defines nor imports the name;
    - a project function whose return annotation is `NoReturn` or `Never` from `typing` or `typing_extensions`, with no wrapping decorator, not an overload stub, and not a generator. A plain call of such a function needs it synchronous. An `await` of such a call needs it `async`, because a plain call of an `async def` returns a coroutine at once.
 
-   A name that the calling function binds itself (a parameter, an assignment, a local `def` or import) never counts, so a local `exit = ...` hides the builtin.
+   A name that the calling function binds itself (a parameter, an assignment, a local `def` or import) never counts, so a local `exit = ...` hides the builtin. Nor does a module global that the module binds other than by its one import or definition, declares `global` in a function, or imports from two places.
 2. **A match over every member of an enum.** A `match` statement ends the same way as one with a wildcard case when all of these hold:
-   - its subject is a bare name that is a parameter of the function, annotated with exactly one project enum class `E` (not `Optional[E]`, not a union), and the function never rebinds the name;
-   - `E` is an `enum.Enum`, `IntEnum` or `StrEnum` subclass, or a Django `TextChoices` or `IntegerChoices` subclass. A `Flag` or `IntFlag` is not, since a combined value matches no member case;
-   - `E`'s body binds members only by simple assignment, and defines no `__eq__` and no `_ignore_`. Any other class-level binding except `def`, a docstring and `pass` makes the member list uncertain, so the match is not treated as exhaustive;
+   - its subject is a bare name that is a parameter of the function, annotated with exactly one project enum class `E` (not `Optional[E]`, not a union), with no `= None` default, and the function never rebinds the name;
+   - every base of `E` is one of `Enum`, `IntEnum`, `StrEnum`, `TextChoices`, `IntegerChoices`, `Choices`, `str` or `int`, and none resolves to a project class. A `Flag` or `IntFlag` is not accepted, since a combined value matches no member case, and neither is another mixin, whose equality might not hold for a member and itself;
+   - `E`'s body binds members only by simple assignment, and defines no `__eq__` and no `_ignore_`. Any other class-level binding except `def`, a docstring and `pass` makes the member list uncertain, and so do a class keyword such as `metaclass=` and any class decorator other than `unique` or `verify`. In each such case the match is not treated as exhaustive;
    - each member name of `E` is matched by an unguarded case whose pattern is a value pattern `E.NAME`, an or-pattern of them, or an `as` pattern around one.
 
 Everything else stays as it is. An unrecognised call is assumed to return, and a match that the rule does not cover is assumed to fall through. Both assumptions can only add errors, never hide one.
@@ -30,7 +30,7 @@ A new fixture, `cgv/test_fixtures/no_return_exits/`, pins the behaviour, and its
 
 ## Affected users and systems
 - People who run `crosscheck-contracts contracts check` on code that ends a branch with `assert_never`, `sys.exit` or its own `NoReturn` helper, or matches over every member of an enum. They see fewer false non-null errors, and more narrowing after such a branch.
-- `cgv/src/flow.rs`, the index build that fills `FunctionInfo`, and a new fixture. `FunctionInfo` gains whether the function is `async`. No Lean file changes, so `protected-statements.txt` stays the same.
+- `cgv/src/flow.rs`, a new `cgv/src/exits.rs` that holds the two rules, `cgv/src/resolve.rs` (the module's rebound globals and an enum's member names), the index build in `cgv/src/extractor.rs` that fills `FunctionInfo`, and a new fixture. `FunctionInfo` gains whether the function is `async`, and a decorator that is not a dotted name now counts as one that wraps the function. No Lean file changes, so `protected-statements.txt` stays the same.
 
 ## Constraints
 - The rule rests on the type checker's semantics, as parameter preconditions already do. A `NoReturn` annotation is trusted the way a parameter annotation is, and a subject annotated `E` is assumed to hold a member of `E`. The README's trust model already states that contracts are relative to a type-correct program, so `BehaviorModel.lean` needs no new rule.
