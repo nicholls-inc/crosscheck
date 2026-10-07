@@ -119,7 +119,8 @@ an axiom, so the generator also fails if either sits on a constant of a
 `ContractGraph` module that a protected theorem's statement or a protected
 definition reaches. `cgv/prover/scripts/compiled-code-selftest.sh`, run by CGV
 CI, fails if the generator stops rejecting them. The compiled code of the Lean
-and `leansqlite` libraries, and `@[csimp]` lemmas, are not yet reached: see
+and `leansqlite` libraries, `@[csimp]` lemmas, and `main` with the translation
+and JSON output (no theorem is about them), are not yet reached: see
 `intent/2026-10-07-compiled-code-attributes-spec.md`.
 A declaration the kernel never checked is not yet reached: `set_option
 debug.skipKernelTC true` with `addDecl` adds a theorem that reports no axioms.

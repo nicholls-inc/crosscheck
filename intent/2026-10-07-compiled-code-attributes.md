@@ -17,7 +17,7 @@ If either attribute sat on `runChecker`, or on anything it calls, exit 0 from th
 
 ## Affected users and systems
 
-- Anyone who relies on CGV's exit 0. The guarantee of the binary now matches the theorem for the project's own code.
+- Anyone who relies on CGV's exit 0. For the project constants that a protected theorem's statement or a protected definition reaches, the binary runs the code the theorems are about. `main`, the translation and the JSON output are not reached: see the spec.
 - The CGV maintainer. A change that adds either attribute to the reached code fails CI and has to be argued in a protected-surface amendment.
 - `cgv/prover/scripts/ProtectedStatements.lean` (protected), `.github/workflows/cgv-ci.yml` (protected), `.claude/rules/protected-surfaces.md` (protected), `cgv/CLAUDE.md`, `cgv/README.md`.
 

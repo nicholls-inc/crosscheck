@@ -9,7 +9,7 @@
 
 1. `cgv/prover/scripts/ProtectedStatements.lean`: a new check, `checkCompiledCode`, runs before any output. It walks from the constants in every protected theorem's statement and from the three protected definitions, through the types, values, constructors and `_unsafe_rec` helpers of every non-theorem constant defined in a `ContractGraph` module, and fails if a reached constant carries `@[implemented_by]` or `@[extern]` (SM-7). The manifest output is unchanged (SM-7a).
 2. `.github/workflows/cgv-ci.yml`: a new step after the manifest step runs `scripts/compiled-code-selftest.sh` (SM-8).
-3. `.claude/rules/protected-surfaces.md`: one sentence in "CGV proof surfaces" says the generator also fails on either attribute in the reached code.
+3. `.claude/rules/protected-surfaces.md`: one short paragraph in "CGV proof surfaces" says the generator also fails on either attribute in the reached code.
 
 ### Rationale
 
@@ -32,7 +32,7 @@ Task TB-1.2, issue #48. The `runChecker_*` theorems are proved about the definit
 |---|------|---------|--------|
 | 1 | `cgv/prover/scripts/ProtectedStatements.lean` | header comment; new `inProject`, `runtimeDependencies`, `runtimeReach`, `checkCompiledCode`; `render` | check added, output unchanged |
 | 2 | `.github/workflows/cgv-ci.yml` | new step after the manifest step | added |
-| 3 | `.claude/rules/protected-surfaces.md` | CGV proof surfaces | one sentence added |
+| 3 | `.claude/rules/protected-surfaces.md` | CGV proof surfaces | one short paragraph added |
 
 ### Test / Coverage Impact
 

@@ -14,7 +14,7 @@ Intent: `intent/2026-10-07-compiled-code-attributes.md`. Spec: `intent/2026-10-0
    Call `checkCompiledCode` in `render` before any output. Update the header comment. Leave `reach`, `dependencies` and `inScope` unchanged, so the manifest is unchanged (SM-7a).
 3. `cgv/prover/scripts/compiled-code-selftest.sh`. The five cases of SM-8. It backs up `ContractGraph/Main.lean`, restores it on exit with a `trap`, and checks both the exit code and the named constant.
 4. `.github/workflows/cgv-ci.yml`. A step after the manifest step that runs the self-test from `cgv/prover`.
-5. Docs: one sentence each in `.claude/rules/protected-surfaces.md` (CGV proof surfaces), `cgv/CLAUDE.md` (the generator paragraph) and `cgv/README.md` (trust model, theorem statements row).
+5. Docs: one short paragraph in `.claude/rules/protected-surfaces.md` (CGV proof surfaces), one sentence each in `cgv/CLAUDE.md` (the generator paragraph) and `cgv/README.md` (trust model, theorem statements row).
 6. `docs/TASKS.md`: TB-1.2 `done` with this intent as its record, and a new row TB-1.7 for `@[csimp]` lemmas. TB-1.5 and TB-1.6 are taken by open PR #99. Root `JOURNAL.md` entry.
 
 ## Risks
