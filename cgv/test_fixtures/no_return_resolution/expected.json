@@ -1,0 +1,47 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "unreadable_base -> unreadable_base.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "unreadable_base.<return>"
+    },
+    {
+      "path": "class_body_assignment -> class_body_assignment.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "class_body_assignment.<return>"
+    },
+    {
+      "path": "diamond -> diamond.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "diamond.<return>"
+    },
+    {
+      "path": "rebound_in_body -> rebound_in_body.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "rebound_in_body.<return>"
+    },
+    {
+      "path": "color_name -> color_name.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "color_name.<return>"
+    },
+    {
+      "path": "shade_name -> shade_name.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "shade_name.<return>"
+    },
+    {
+      "path": "tone_name -> tone_name.<return>",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "tone_name.<return>"
+    }
+  ]
+}
