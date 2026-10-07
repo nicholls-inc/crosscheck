@@ -281,6 +281,28 @@ pub fn literal_bound(expr: &ruff_python_ast::Expr) -> Option<Dec> {
     }
 }
 
+/// The largest magnitude a value with at most `max_digits` digits, at most
+/// `decimal_places` of them fractional, can have: `max_digits` nines with the
+/// last `decimal_places` after the point (`999.99` for 5 and 2). Without
+/// `decimal_places` the value may have no fractional digit and still be
+/// accepted, so the limit is `max_digits` whole nines. `None` for a
+/// `max_digits` below 1, a `decimal_places` below 0 or above `max_digits`,
+/// or a limit beyond `i128`.
+pub fn digits_limit(max_digits: i64, decimal_places: Option<i64>) -> Option<Dec> {
+    let places = decimal_places.unwrap_or(0);
+    if max_digits < 1 || places < 0 || places > max_digits {
+        return None;
+    }
+    let nines = pow10(u32::try_from(max_digits).ok()?)? - 1;
+    Dec::from_scaled(nines, u32::try_from(places).ok()?)
+}
+
+/// Narrow the bounds `min` and `max` to `[-limit, limit]`.
+pub fn narrow_to(limit: Dec, min: &mut Option<Dec>, max: &mut Option<Dec>) {
+    *min = Some(min.map_or(-limit, |m| m.max(-limit)));
+    *max = Some(max.map_or(limit, |m| m.min(limit)));
+}
+
 /// The three column values of one bound of a contract row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Columns {
@@ -321,6 +343,34 @@ mod tests {
 
     fn d(text: &str) -> Dec {
         parse_decimal(text).unwrap()
+    }
+
+    #[test]
+    fn test_digits_limit() {
+        assert_eq!(digits_limit(5, Some(2)), Some(d("999.99")));
+        assert_eq!(digits_limit(5, Some(0)), Some(d("99999")));
+        assert_eq!(digits_limit(5, None), Some(d("99999")));
+        assert_eq!(digits_limit(3, Some(3)), Some(d("0.999")));
+        assert_eq!(digits_limit(1, Some(1)), Some(d("0.9")));
+        assert_eq!(digits_limit(30, Some(30)).map(|l| l.to_string()), Some(format!("0.{}", "9".repeat(30))));
+        assert_eq!(digits_limit(2, Some(3)), None);
+        assert_eq!(digits_limit(0, None), None);
+        assert_eq!(digits_limit(5, Some(-1)), None);
+        assert_eq!(digits_limit(39, None), None);
+        assert_eq!(digits_limit(31, Some(31)), None);
+    }
+
+    #[test]
+    fn test_narrow_to() {
+        let (mut lo, mut hi) = (None, None);
+        narrow_to(d("999.99"), &mut lo, &mut hi);
+        assert_eq!((lo, hi), (Some(d("-999.99")), Some(d("999.99"))));
+        let (mut lo, mut hi) = (Some(d("0")), Some(d("5000")));
+        narrow_to(d("999.99"), &mut lo, &mut hi);
+        assert_eq!((lo, hi), (Some(d("0")), Some(d("999.99"))));
+        let (mut lo, mut hi) = (Some(d("-5000")), Some(d("10")));
+        narrow_to(d("999.99"), &mut lo, &mut hi);
+        assert_eq!((lo, hi), (Some(d("-999.99")), Some(d("10"))));
     }
 
     #[test]

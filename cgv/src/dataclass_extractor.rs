@@ -647,6 +647,10 @@ fn own_fields(candidate: &ClassCandidate) -> Vec<DataClassField> {
                 field.unvalidated = true;
             }
         }
+        // pydantic rejects more than max_digits - decimal_places whole digits.
+        if let Some(limit) = field.max_digits.and_then(|m| bounds::digits_limit(m, field.decimal_places)) {
+            bounds::narrow_to(limit, &mut field.min_value, &mut field.max_value);
+        }
         fields.push(field);
     }
     fields
@@ -1181,6 +1185,25 @@ mod tests {
         assert_eq!(field(&cs, "M", "qty").max_value, mu(9_000_000));
         let pct = field(&cs, "M", "pct");
         assert_eq!((pct.type_name.as_deref(), pct.decimal_places, pct.max_value), (Some("Decimal"), Some(3), mu(100_000_000)));
+    }
+
+    #[test]
+    fn test_pydantic_max_digits_bounds() {
+        let cs = classes(
+            "class M(BaseModel):\n    \
+             amount: Decimal = Field(max_digits=5, decimal_places=2)\n    \
+             whole: Decimal = Field(max_digits=4)\n    \
+             capped: condecimal(max_digits=5, decimal_places=2, ge=0, le=5000)\n    \
+             places: Decimal = Field(decimal_places=2)\n",
+        );
+        let bounds = |name| {
+            let f = field(&cs, "M", name);
+            (f.min_value, f.max_value)
+        };
+        assert_eq!(bounds("amount"), (mu(-999_990_000), mu(999_990_000)));
+        assert_eq!(bounds("whole"), (mu(-9_999_000_000), mu(9_999_000_000)));
+        assert_eq!(bounds("capped"), (mu(0), mu(999_990_000)));
+        assert_eq!(bounds("places"), (None, None));
     }
 
     #[test]

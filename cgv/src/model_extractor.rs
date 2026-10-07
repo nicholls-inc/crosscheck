@@ -250,6 +250,13 @@ fn extract_field_from_call(
         field.min_value = Some(field.min_value.map_or(bound, |m| m.max(bound)));
     }
 
+    // DecimalValidator rejects more than max_digits - decimal_places whole digits.
+    if field_type == "DecimalField" {
+        if let Some(limit) = field.max_digits.and_then(|m| bounds::digits_limit(m, field.decimal_places)) {
+            bounds::narrow_to(limit, &mut field.min_value, &mut field.max_value);
+        }
+    }
+
     Some(field)
 }
 
@@ -552,6 +559,30 @@ mod tests {
             ]
         );
         assert_eq!(field_qualified(&fs[0]), "app.models.M.a");
+    }
+
+    #[test]
+    fn test_max_digits_bounds() {
+        let fs = fields(
+            "class M(models.Model):\n    \
+             a = models.DecimalField(max_digits=5, decimal_places=2)\n    \
+             b = models.DecimalField(max_digits=5, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(5000)])\n    \
+             c = models.DecimalField(max_digits=5, decimal_places=places)\n    \
+             d = models.DecimalField(max_digits=width, decimal_places=2)\n    \
+             e = models.IntegerField(max_digits=5)\n",
+        );
+        let bounds: Vec<(Option<Dec>, Option<Dec>)> =
+            fs.iter().map(|f| (f.min_value, f.max_value)).collect();
+        assert_eq!(
+            bounds,
+            [
+                (mu(-999_990_000), mu(999_990_000)),
+                (mu(0), mu(999_990_000)),
+                (mu(-99_999_000_000), mu(99_999_000_000)),
+                (None, None),
+                (None, None),
+            ]
+        );
     }
 
     #[test]

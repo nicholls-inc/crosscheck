@@ -4,6 +4,17 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-07 - `max_digits` becomes a range requirement
+
+**Type:** fix
+**Touches:** cgv/src/bounds.rs, cgv/src/model_extractor.rs, cgv/src/dataclass_extractor.rs, cgv/test_fixtures/tb_max_digits/, cgv/bench/baseline.json, cgv/README.md, docs/TASKS.md
+**Why:** The checker compared only decimal places, so `Decimal("123456.78")` written into `DecimalField(max_digits=5, decimal_places=2)` exited 0 (measured on `main`, TB-1.13, #16).
+**Links:** [intent](intent/2026-10-07-max-digits.md), [spec](intent/2026-10-07-max-digits-spec.md)
+
+The extractor turns `max_digits=m` with `decimal_places=d` into a range requirement of `±(10^(m-d) - 10^-d)`, intersected with any validator bounds, for Django's `DecimalField` and for pydantic. With the precision requirement this is the whole of `decimalFieldAccepts`. The task row offered a new conjunct in `constraintImplies` instead. It was not taken: no source has an integer-digit guarantee to compare against, while every literal write already has an exact range guarantee, so the range route needs no protected change and the range check already compares exact decimals. No fixture changes errors or exit code, and no bench outcome changes. Warnings rise on 37 fixtures, in pairs, one per side of the range for each write whose magnitude the extractor cannot bound. The total digits of a field without a readable `decimal_places` are not yet reached (TB-1.33).
+
+---
+
 ## 2026-10-07 - Baseline mode reports only the findings that a change introduces
 
 **Type:** feature
