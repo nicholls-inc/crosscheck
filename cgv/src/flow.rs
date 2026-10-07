@@ -281,7 +281,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 // The body runs once, in order (a context manager that
                 // suppresses an exception is not modelled).
                 let end = walk(&w.body, &n, exits, v, counts);
-                if always_exits(&w.body, exits) {
+                if always_exits(&w.body, &Exits::default()) {
                     remove_all(&mut n, bound_names(std::slice::from_ref(stmt)));
                 } else {
                     n = end;
@@ -613,7 +613,10 @@ fn terminates(body: &[Stmt], exits: &Exits) -> bool {
             matches!(w.test.as_ref(), Expr::BooleanLiteral(b) if b.value)
                 && !contains_break(&w.body)
         }
-        Some(Stmt::With(w)) => terminates(&w.body),
+        // A context manager may suppress the exception a call that never
+        // returns raises (`contextlib.suppress(SystemExit)`), so only the
+        // statements that end the body whatever the manager does count.
+        Some(Stmt::With(w)) => crate::flow::terminates(&w.body, &Exits::default()),
         Some(Stmt::Match(m)) => {
             exits.is_exhaustive(m) && m.cases.iter().all(|c| terminates(&c.body))
         }
@@ -1282,6 +1285,29 @@ mod tests {
         assert!(!falls_through(&body(src), &exits));
         assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new()]);
         assert!(falls_through(&body(src), &Exits::default()));
+    }
+
+    #[test]
+    fn test_marked_match_with_a_case_that_falls_through_is_no_exit() {
+        let src = "def f(c, x):\n    if x is None:\n        match c:\n            case E.A:\n                pass\n    use()\n";
+        let exits = exits_at(src, &[], &["match c:"]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
+        let src = "def f(c):\n    match c:\n        case E.A:\n            pass\n";
+        assert!(falls_through(&body(src), &exits_at(src, &[], &["match c:"])));
+    }
+
+    #[test]
+    fn test_exit_call_in_a_with_body_may_be_suppressed() {
+        // `with suppress(SystemExit): sys.exit(1)` completes normally.
+        let src = "def f(x):\n    with m:\n        stop(1)\n";
+        assert!(falls_through(&body(src), &exits_at(src, &["stop(1)"], &[])));
+        let src = "def f(x):\n    if x is None:\n        with m:\n            stop(1)\n    use()\n";
+        let exits = exits_at(src, &["stop(1)"], &[]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![Vec::<String>::new()]);
+        // The narrowing the body did before the call still holds after it.
+        let src = "def f(x):\n    with m:\n        if x is None:\n            return\n        stop(1)\n    use()\n";
+        let exits = exits_at(src, &["stop(1)"], &[]);
+        assert_eq!(narrowing_with_exits(src, &exits), vec![vec!["x".to_string()]]);
     }
 
     #[test]

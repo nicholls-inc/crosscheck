@@ -169,6 +169,9 @@ impl Cx<'_> {
 /// generator, and (a module-level function) its module does not rebind its name.
 fn never_returns(index: &ProjectIndex, g: &FunctionInfo) -> bool {
     g.wrapping_decorators().next().is_none()
+        // A plain name (`cache`, `wraps`) that a project function defines
+        // may wrap the call and swallow what it raises.
+        && g.decorators.iter().all(|d| index.resolve_dotted(&g.module, d).is_none())
         && !g.is_overload
         && !g.is_generator
         && (g.class_name.is_some()
@@ -269,7 +272,12 @@ impl<'i> ExitFinder<'i> {
         });
         // An enum without members may be subclassed by one with members.
         let members = class.enum_members.as_ref().is_some_and(|m| !m.is_empty());
-        (class.enum_kind.is_some() && plain_bases && members).then_some(class)
+        // A class its module defines twice (`if`/`else`) has one indexed list.
+        let defined_once = index
+            .modules
+            .get(&class.module)
+            .is_some_and(|m| !m.rebound.contains(&class.name));
+        (class.enum_kind.is_some() && plain_bases && members && defined_once).then_some(class)
     }
 }
 
@@ -380,6 +388,52 @@ mod tests {
         assert_eq!(calls(src, "f"), ["await later(x)", "sync(x)"]);
     }
 
+    #[test]
+    fn test_no_return_function_whose_name_or_annotation_is_rebound() {
+        let head = "from typing import NoReturn\n\n";
+        let f = "\ndef f(x):\n    a(x)\n";
+        let cases = [
+            // The function's name is bound again.
+            format!("{head}def a(m) -> NoReturn:\n    raise E(m)\n\na = other\n{f}"),
+            // `NoReturn` is bound again.
+            format!("{head}NoReturn = int\n\ndef a(m) -> NoReturn:\n    raise E(m)\n{f}"),
+        ];
+        for src in cases {
+            assert_eq!(calls(&src, "f"), Vec::<String>::new(), "{src}");
+        }
+        let src = format!("{head}def a(m) -> NoReturn:\n    raise E(m)\n{f}");
+        assert_eq!(calls(&src, "f"), ["a(x)"]);
+        // Imported from a module that binds the name again.
+        let code = "from helpers import a\n\ndef f(x):\n    a(x)\n";
+        let helper = format!("{head}def a(m) -> NoReturn:\n    raise E(m)\n\na = other\n");
+        let files = [("helpers.py", helper.as_str()), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, Vec::<String>::new());
+        let helper = format!("{head}def a(m) -> NoReturn:\n    raise E(m)\n");
+        let files = [("helpers.py", helper.as_str()), ("code.py", code)];
+        assert_eq!(marked(&files, "f").0, ["a(x)"]);
+    }
+
+    #[test]
+    fn test_a_project_decorator_with_a_plain_name_may_wrap() {
+        let head = "from typing import NoReturn\n";
+        let tail = "\n@cache\ndef a(m) -> NoReturn:\n    raise E(m)\n\ndef f(x):\n    a(x)\n";
+        let own = format!("{head}\ndef cache(fn):\n    return fn\n{tail}");
+        assert_eq!(calls(&own, "f"), Vec::<String>::new());
+        let std = format!("{head}from functools import cache\n{tail}");
+        assert_eq!(calls(&std, "f"), ["a(x)"]);
+    }
+
+    #[test]
+    fn test_enum_defined_twice_in_another_module() {
+        let enums = "import sys\nfrom enum import Enum\n\nif sys.version_info >= (3, 11):\n    class E(Enum):\n        A = 1\n        B = 2\n        C = 3\nelse:\n    class E(Enum):\n        A = 1\n        B = 2\n";
+        let code = "from enums import E\n\ndef f(e: E):\n    match e:\n        case E.A | E.B:\n            return 1\n";
+        let files = [("enums.py", enums), ("code.py", code)];
+        assert_eq!(marked(&files, "f").1, Vec::<String>::new());
+        let once = "from enum import Enum\n\nclass E(Enum):\n    A = 1\n    B = 2\n";
+        let files = [("enums.py", once), ("code.py", code)];
+        assert_eq!(marked(&files, "f").1, ["match e:"]);
+    }
+
     const COLOR: &str = "from enum import Enum, Flag, IntFlag, auto\nfrom typing import Optional\n\nclass Color(Enum):\n    \"\"\"Colors.\"\"\"\n    RED = 1\n    GREEN = auto()\n    BLUE = 3\n    _hidden_ = 4\n    def label(self):\n        return self.name\n\nclass Perm(Flag):\n    R = 1\n    W = 2\n\n";
 
     fn matches(body: &str, func: &str) -> Vec<String> {
@@ -409,6 +463,9 @@ mod tests {
             "def f(c: Color, raw):\n    c = raw\n    match c:\n        case Color.RED | Color.GREEN | Color.BLUE:\n            return 1\n",
             // The enum name rebound locally.
             "def f(c: Color, Other):\n    Color = Other\n    match c:\n        case Color.RED | Color.GREEN | Color.BLUE:\n            return 1\n",
+            // Not a single value.
+            "def f(*c: Color):\n    match c:\n        case Color.RED | Color.GREEN | Color.BLUE:\n            return 1\n",
+            "def f(**c: Color):\n    match c:\n        case Color.RED | Color.GREEN | Color.BLUE:\n            return 1\n",
             // Not a parameter.
             "def f(raw):\n    c = Color(raw)\n    match c:\n        case Color.RED | Color.GREEN | Color.BLUE:\n            return 1\n",
         ];
