@@ -10,5 +10,5 @@ Intent: `intent/2026-10-07-ledger-load-fails-closed.md`. Governing roadmap item:
 - **LL-6. Documentation.** The header comment of `main.go` and `crosscheck/conformance/README.md` say that a missing `claims.json` is an empty ledger and that one that cannot be read or parsed is an error.
 - **LL-7. Tests.** `TestLedgerLoad` in `main_test.go` builds a tree per case and asserts the error for a directory at the path, a mode-000 file (skipped when the process runs as root, which can read it), truncated JSON, an empty file, and a non-array `narrative_claims`, and asserts that each of them makes `report` print `RESULT: FAIL`. It asserts no ledger error for a missing file. Restoring the old `loadLedger`, which returns no claims on any failure, fails every error case.
 - **Known gaps, not rules.**
-  - A `claims.json` that is a symlink to a missing target reads as missing under LL-1, so it is an empty ledger.
-  - JSON that decodes but carries unknown keys, or a top-level `null` or `{}`, is a valid empty or partial ledger. Nothing checks the schema of `claims.json`.
+  - A `claims.json` that is a symlink to a missing target reads as missing under LL-1, so it is an empty ledger. Queued as PB-1.24, which treats a dangling symlink as unreadable.
+  - JSON that decodes but carries unknown keys, or a top-level `null` or `{}`, is a valid empty or partial ledger. Nothing checks the schema of `claims.json`. Queued as PB-1.25, which adds a schema check.
