@@ -61,7 +61,7 @@ Mechanical items.
 - [x] Diff plan names every changed protected file.
   Command: `git diff --name-only origin/main...HEAD`, filtered by the globs in `.claude/rules/protected-surfaces.md`. Output: `crosscheck/agents/byfuglien.md` is the only match. `.assurance/protected-surface-amend/byfuglien-cgv-routing-2026-10-21.md`, `crosscheck/JOURNAL.md`, `docs/TASKS.md` and the three `intent/` files are not protected paths.
 - [x] This amendment block appears in the PR body.
-  Command: `grep -c "## Protected-Surface Amendment"` on the PR body file. Output: `1`.
+  Command: `grep -c "^## Protected-Surface Amendment"` on the PR body file. Output: `1`.
 - [ ] No unresolved human-verification marker is left.
   Command: `grep -c "REQUIRES HUMAN VERIFICATION:"` on this file, minus this item's own line. Output: 6. The maintainer resolves them; agents must not tick them.
 
