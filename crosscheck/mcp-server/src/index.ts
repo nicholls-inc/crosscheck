@@ -5,6 +5,7 @@ import { dafnyVerify } from "./tools/verify.js";
 import { dafnyCompile } from "./tools/compile.js";
 import { dafnyCleanup } from "./tools/cleanup.js";
 import { dafnyEvidence } from "./tools/evidence.js";
+import { cgvCheck, cgvCheckInputShape } from "./tools/cgvCheck.js";
 import { leanCheck } from "./tools/leanCheck.js";
 import { leanRun } from "./tools/leanRun.js";
 import { leanTest } from "./tools/leanTest.js";
@@ -57,6 +58,18 @@ export function createServer(): McpServer {
   );
 
   server.tool(
+    "cgv_check",
+    "Run CGV's `crosscheck-contracts contracts check` on a committed Python project and return CGV's findings JSON and CGV's evidence record (evidence-record/1). Requires a clean git work tree, and that `path` is a directory or .py file committed at HEAD. Runs CGV at HEAD with --evidence-record. With `baseline`, it also writes a baseline from the project as committed at that revision, runs CGV at HEAD with --baseline, and returns those findings: only the ones the baseline does not match. CGV refuses --baseline with --evidence-record, so the record always comes from the run without a baseline, and it is null when that run exits 1, even when no error is new. Refuses when HEAD or the work tree changes while CGV runs. Finds the binaries through CGV_CONTRACTS and CGV_CHECKER, or else crosscheck-contracts and contract-graph-checker on PATH, and refuses with the build command when they are missing. Returns { success: true, commit, baseline, exitCode, findings, record } or { success: false, errors }. `findings` is CGV's JSON as printed, and `exitCode` (0 or 1) is CGV's exit code for it.",
+    cgvCheckInputShape,
+    async (args) => {
+      const result = await cgvCheck(args);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
     "dafny_compile",
     "Compile verified Dafny source to Python or Go. Runs `dafny build`, strips Dafny runtime boilerplate, and returns clean output files.",
     {
@@ -75,7 +88,7 @@ export function createServer(): McpServer {
 
   server.tool(
     "dafny_cleanup",
-    "Remove stale Dafny/Lean temp directories (older than 30 minutes) from /tmp.",
+    "Remove stale Dafny, Lean and cgv_check temp directories (older than 30 minutes) from the temporary directory.",
     {},
     async () => {
       const result = await dafnyCleanup();
