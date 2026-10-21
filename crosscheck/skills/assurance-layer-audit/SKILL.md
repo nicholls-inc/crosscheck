@@ -21,7 +21,7 @@ Run before any other `/assurance-*` skill, so the user knows what reach is reali
 
 ## Instructions
 
-You are an assurance-architecture reviewer producing a repo-specific projection of the 6-layer assurance hierarchy. Your output is a diagnostic, not a plan — the plan comes later via `/assurance-init`. Be honest about limits: a Go repo cannot address Layer 2, a Python repo loses most of Layer 1, and almost nobody has Layer 3 end-to-end subgraph verification today. Say so explicitly.
+You are an assurance-architecture reviewer producing a repo-specific projection of the 6-layer assurance hierarchy. Your output is a diagnostic, not a plan — the plan comes later via `/assurance-init`. Be honest about limits: a Go repo cannot address Layer 2, Layer 1 reaches only pure, sequential code, in the ecosystems Step 4 names (Dafny extracted to Python or Go, Rust-native verifiers, Dafny's JS backend or lemmafit for TypeScript and JavaScript), and almost nobody has Layer 3 end-to-end subgraph verification today outside CGV's Python data paths. Say so explicitly.
 
 ### Step 1: Locate the Repo Root
 
@@ -112,7 +112,8 @@ Apply the following ecosystem rules verbatim.
 **Layer 3 — Contract graph verification.**
 - Go: Pairwise contracts via Gobra possible for narrow scope; end-to-end subgraph verification is aspirational (no Go-native contract-graph verifier in general use).
 - Rust: Prusti / Creusot offer pairwise contract reasoning; a Rust+Lean contract-graph-verifier exists as a PoC.
-- Python / TypeScript: Runtime contract libraries (`icontract`, `dry-python`, `zod`) give dynamic checks, **not formal** subgraph verification. State this.
+- Python: CGV (`cgv/` in the Crosscheck repository) reaches the data paths into the declared fields of Django models, data classes, attrs, pydantic models, `NamedTuple` and `TypedDict`. Report this reach only when the repo declares such fields, and name `contracts check` from `cgv/` (see its README Quick start) as the command that checks them. State its strength and trusted base as `cgv/README.md` does: the Lean checker is deterministic and proved sound over the graph it is given; the trusted base is `Translation.lean` (no theorems yet) and `BehaviorModel.lean` (trusted, not proved); the Rust extractor is untrusted but auditable. State the exit-0 qualifiers: exit 0 covers only the paths the extractor discovered, relative to the translated constraints and not to Django or pydantic; for data class, attrs, `NamedTuple` and `TypedDict` fields it holds only for a type-correct program; a warning is an unknown path, not a consistent one, and writes outside the project's code are not yet reached: writes Django or DRF make on the project's behalf (the admin, `ModelForm.save()`, a serializer's `save()`), raw SQL and fixtures (`cgv/README.md`, "What exit 0 promises"). Layer 3 for other Python code is **not yet reached**. The blocking property is that a CGV data path must end at a model node. The open question is how a callee's contract should be modelled when the callee has no model node. Runtime contract libraries (`icontract`, `dry-python`) give dynamic checks: tested evidence on the inputs that run.
+- TypeScript: **Not yet reached.** Runtime contract libraries such as `zod` give dynamic checks. The blocking property is that Dafny-verified units and their callers share no contract format. The open question is how to check composition end to end, not pair by pair.
 - Almost always: "Pairwise: partial; end-to-end: aspirational" is the honest reading.
 
 **Layer 4 — Implementation–spec alignment.**
@@ -299,7 +300,8 @@ Every field MUST be populated from Steps 2–6's findings. Do not invent data th
 - [ ] Step 5 projection table cross-references Step 4.5 verdicts where layer reach is module-constrained
 - [ ] Every "not yet reached" claim names the blocking property, such as the specific missing tool ("no verified Go compiler"), and the open question
 - [ ] Rust repos note MIR-level partial Layer 2 reach rather than silent omission
-- [ ] Python / Ruby / Java / C# repos explicitly state Layer 1 is unreachable without a verifier bridge
+- [ ] Ruby / Java / C# repos explicitly state Layer 1 is unreachable without a verifier bridge
+- [ ] Python repos that declare Django model, data class, attrs, pydantic, `NamedTuple` or `TypedDict` fields name CGV's Layer 3 reach with its trusted base and exit-0 qualifiers, and call the rest of Layer 3 not yet reached
 - [ ] Gap list capped at 5, ordered by payoff/hour, each row names a concrete next skill
 - [ ] Final recommendation names the next skill and any adjustments from the gap list
 - [ ] `.assurance/layer-audit-result.json` written with every schema field populated from Steps 2–6's findings (Step 7.5)
