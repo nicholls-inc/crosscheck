@@ -14,8 +14,8 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::bounds::{self, Dec};
 use crate::db::{
-    ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
-    VerificationLevel,
+    ContractDb, ContractRecord, ContractRole, ConstraintType, FieldLibrary, FieldOrigin, NodeKind,
+    NodeRecord, VerificationLevel,
 };
 use crate::defaults::FieldDefaults;
 
@@ -456,6 +456,16 @@ pub fn write_model_fields(
             source_line: field.source_line,
             is_call_site: false,
             })?;
+        db.insert_field_origin(
+            node_id,
+            &FieldOrigin {
+                library: FieldLibrary::Django,
+                module: field.module.clone(),
+                class_name: field.model_name.clone(),
+                field_name: field.field_name.clone(),
+                validated: true,
+            },
+        )?;
         ids.insert(qualified, node_id);
 
         let base = |constraint_type: ConstraintType| {

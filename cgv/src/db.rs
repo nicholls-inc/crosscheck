@@ -130,6 +130,59 @@ pub struct NodeRecord {
     pub is_call_site: bool,
 }
 
+/// The library that declared a class field (`field_origins.library`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldLibrary {
+    Django,
+    Pydantic,
+    Dataclass,
+    Attrs,
+    NamedTuple,
+    TypedDict,
+}
+
+impl FieldLibrary {
+    pub const ALL: [FieldLibrary; 6] = [
+        FieldLibrary::Django,
+        FieldLibrary::Pydantic,
+        FieldLibrary::Dataclass,
+        FieldLibrary::Attrs,
+        FieldLibrary::NamedTuple,
+        FieldLibrary::TypedDict,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FieldLibrary::Django => "django",
+            FieldLibrary::Pydantic => "pydantic",
+            FieldLibrary::Dataclass => "dataclass",
+            FieldLibrary::Attrs => "attrs",
+            FieldLibrary::NamedTuple => "namedtuple",
+            FieldLibrary::TypedDict => "typeddict",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.as_str() == s)
+    }
+
+}
+
+/// Where a `model` node's field is declared (`field_origins`): the class to
+/// import and the field to take from it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldOrigin {
+    pub library: FieldLibrary,
+    /// Dotted module name of the class, relative to the checked path.
+    pub module: String,
+    pub class_name: String,
+    pub field_name: String,
+    /// The library validates a value against the field when the program
+    /// runs: every Django field, and a pydantic field that is not
+    /// `unvalidated` (`DataClassField::unvalidated`).
+    pub validated: bool,
+}
+
 /// A contract to be inserted.
 #[derive(Debug, Clone)]
 pub struct ContractRecord {
@@ -288,6 +341,24 @@ impl ContractDb {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Record which class field a `model` node is.
+    pub fn insert_field_origin(&self, node_id: i64, origin: &FieldOrigin) -> Result<()> {
+        self.conn
+            .prepare_cached(
+                "INSERT INTO field_origins (node_id, library, module, class_name, field_name, validated)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?
+            .execute(rusqlite::params![
+                node_id,
+                origin.library.as_str(),
+                origin.module,
+                origin.class_name,
+                origin.field_name,
+                origin.validated as i64,
+            ])?;
+        Ok(())
+    }
+
     /// Insert a contract.
     pub fn insert_contract(&self, contract: &ContractRecord) -> Result<i64> {
         self.conn
@@ -403,6 +474,17 @@ CREATE TABLE contracts (
     param_max_micros    INTEGER,
     param_min_decimal   TEXT,
     param_max_decimal   TEXT
+);
+
+CREATE TABLE field_origins (
+    node_id    INTEGER PRIMARY KEY REFERENCES nodes(id),
+    library    TEXT NOT NULL CHECK (library IN (
+                   'django', 'pydantic', 'dataclass', 'attrs', 'namedtuple', 'typeddict'
+               )),
+    module     TEXT NOT NULL,
+    class_name TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    validated  INTEGER NOT NULL CHECK (validated IN (0, 1))
 );
 
 CREATE INDEX idx_contracts_node ON contracts(node_id);
