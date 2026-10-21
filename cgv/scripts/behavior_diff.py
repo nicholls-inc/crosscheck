@@ -10,8 +10,9 @@ inputs and the disagreements per configuration and predicate.
 Subcommands (run from cgv/):
   run       Build the Lean evaluator and the pinned virtual environments, sample
             every configuration, evaluate, compare with scripts/behavior-baseline.json.
-            Exit 0 when every count matches the baseline, 1 when one differs,
-            2 when the harness itself fails.
+            Exit 0 when every count matches the baseline, 1 when one differs (or, with
+            --update-baseline, a disagreeing predicate has no tracked_by row), 2 when the
+            harness itself fails.
   selftest  Mutate charFieldAccepts (<= becomes <) in a scratch copy of
             BehaviorModel.lean, run against it, and exit 0 only if the run
             fails with new charFieldAccepts disagreements and nothing else moves.
@@ -336,7 +337,7 @@ def pydantic_probes():
 
 
 def lean_command():
-    proxy = Path(os.environ.get("ELAN_HOME", Path.home() / ".elan")) / "bin" / "lean"
+    proxy = Path(os.environ.get("ELAN_HOME") or Path.home() / ".elan") / "bin" / "lean"
     found = str(proxy) if proxy.exists() else shutil.which("lean")
     if not found or not Path(found).exists():
         raise HarnessError("lean not found: install elan, https://github.com/leanprover/elan")
@@ -457,7 +458,6 @@ def print_summary(summary, tracked):
 
 def run(args):
     work = Path(args.work_dir).resolve()
-    work.mkdir(parents=True, exist_ok=True)
     configs = list(dict.fromkeys(args.configs.split(","))) if args.configs else list(CONFIGS)
     for c in configs:
         if c not in CONFIGS:
@@ -472,10 +472,12 @@ def run(args):
             raise HarnessError("--update-baseline only accepts the default --seed and --examples")
     if baseline_path.exists():
         baseline = json.loads(baseline_path.read_text())
+        check_baseline_shape(baseline, baseline_path)
     elif args.update_baseline:
         baseline = {}
     else:
         raise HarnessError(f"baseline {baseline_path} not found; create it with --update-baseline")
+    work.mkdir(parents=True, exist_ok=True)
     olean_root = build_model(Path(args.behavior_model).resolve(), work)
     cases, versions = [], {}
     for config in configs:
@@ -502,7 +504,8 @@ def run(args):
                     for config, predicates in summary.items() for predicate, row in predicates.items()
                     if row["disagreements"] and predicate not in baseline["tracked_by"]]
         if problems:
-            print(f"not writing {baseline_path}: add a tracked_by row for each predicate below by hand first")
+            print(f"not writing {baseline_path}: add a tracked_by row for each predicate below "
+                  "(a new file may hold only a tracked_by object)")
         else:
             staged = baseline_path.with_suffix(baseline_path.suffix + ".tmp")
             try:
@@ -516,6 +519,17 @@ def run(args):
     for p in problems:
         print(f"FAIL {p}")
     return 1 if problems else 0
+
+
+def check_baseline_shape(baseline, path):
+    counts = baseline.get("counts", {}) if isinstance(baseline, dict) else None
+    ok = isinstance(counts, dict) and isinstance(baseline.get("tracked_by", {}), dict) and all(
+        isinstance(rows, dict) and all(isinstance(row, dict) and isinstance(row.get("drawn"), int)
+                                       and isinstance(row.get("disagreements"), int) for row in rows.values())
+        for rows in counts.values())
+    if not ok:
+        raise HarnessError(f"baseline {path} is malformed; fix it by hand or delete it and use --update-baseline "
+                           "(a new file needs a tracked_by object for the disagreeing predicates)")
 
 
 def baseline_counts(baseline, config, predicate):
@@ -575,7 +589,7 @@ def main():
             sample(args.config, args.seed, args.examples, args.out)
             return 0
         return run(args) if args.command == "run" else selftest(args)
-    except (HarnessError, subprocess.CalledProcessError, OSError, json.JSONDecodeError) as e:
+    except (HarnessError, subprocess.CalledProcessError, OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         print(f"ERROR {e}", file=sys.stderr)
         return 2
 
