@@ -98,7 +98,7 @@ are listed in `.claude/rules/protected-surfaces.md`. Intent:
 | ER-1 | Define the evidence record, and emit it from both tools | L | [`../VISION.md`](../VISION.md) |
 | CG-1 | Make CGV findings worth reading on a real codebase | M | [`../../cgv/docs/evaluation/real-codebase-evaluation-2026-09.md`](../../cgv/docs/evaluation/real-codebase-evaluation-2026-09.md) |
 
-**VA-1 — Status: Not started.** Serves rule 1 and the scope section of the
+**VA-1 — Status: In progress.** Serves rule 1 and the scope section of the
 vision. Scope: the skills, the agents, `crosscheck/README.md` and
 `crosscheck/docs/assurance-hierarchy.md` still describe the positions that the
 vision replaces. They tell a target repository that Tier 3 needs an
@@ -108,7 +108,7 @@ skill or agent presents an LLM verdict as evidence or as a required artefact,
 and each class of code that a tool does not reach is described as "not yet
 reached", with the property that blocks it and the open question.
 
-**ER-1 — Status: Not started.** Serves rules 3 and 7, and the vision's central
+**ER-1 — Status: In progress.** Serves rules 3 and 7, and the vision's central
 claim. Scope: one documented format for the record of evidence that ships with a
 change. Each claim names its strength (proved, tested, observed, or judged), its
 trusted base, and the command that reruns it. Acceptance: CGV and one Crosscheck
@@ -117,7 +117,7 @@ record with a claim that names no strength or no rerun command. How evidence of
 different strengths combines into one verdict is an open question of the vision,
 and the intent for ER-1 must flag it.
 
-**CG-1 — Status: Not started.** Serves rule 2. Scope: on the one real codebase
+**CG-1 — Status: In progress.** Serves rule 2. Scope: on the one real codebase
 measured so far, 3 of 67 triaged errors were reachable bugs. The work is fewer
 false errors, fewer real bugs reported as warnings, a baseline mode, a checkable
 witness for each error, and a README that says what exit 0 means. Acceptance:
@@ -132,7 +132,7 @@ corpus for each release. Issues: #5, #6, #7, #8, #9, #10.
 | RQ-1 | Write requirements formally, and prove that a spec achieves them | L | [`../VISION.md`](../VISION.md) |
 | AD-1 | Review the Crosscheck backlog imported from the marketplace repository against the vision, and refine or drop each issue | L | #27 |
 
-**TB-1 — Status: Not started.** Serves rule 2. Scope: CGV's extraction from
+**TB-1 — Status: In progress.** Serves rule 2. Scope: CGV's extraction from
 Python is not proved, a declaration can skip the Lean kernel, and no checker has
 a published record of the seeded errors it rejected. Acceptance: each issue
 below is closed or has a recorded decision, and each checker in the suite
@@ -146,9 +146,9 @@ the spec and the assumptions give the requirement. Scope: a formal statement of
 a requirement, a proof that a spec and its stated assumptions achieve it, and a
 trace from a CGV contract to the requirement it serves. Acceptance: one worked
 example in `formal-verification/` carries a requirement, a spec, stated
-assumptions, and a machine-checked proof that links them.
+assumptions, and a machine-checked proof that links them. Task: RQ-1.1.
 
-**AD-1 — Status: Not started.** Serves the vision as a whole: an imported issue
+**AD-1 — Status: In progress.** Serves the vision as a whole: an imported issue
 stays only if it moves the suite towards the vision. Scope: the 23 issues that
 came with the import of Crosscheck. They cover the gap between the ADD design
 and what ships (#27), the conformance oracle, the orchestrator, and four field
