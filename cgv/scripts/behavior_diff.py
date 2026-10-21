@@ -47,6 +47,8 @@ ENVIRONMENTS = {
     "django52": CGV / "scripts" / "behavior-requirements-django52.txt",
 }
 
+DEFAULT_MODEL = CGV / "prover" / "ContractGraph" / "BehaviorModel.lean"
+
 CONFIGS = {
     "django42-sqlite": ("django42", "django", "sqlite"),
     "django42-base": ("django42", "django", "base"),
@@ -334,10 +336,10 @@ def pydantic_probes():
 
 
 
-
 def lean_command():
-    found = shutil.which("lean") or str(Path.home() / ".elan" / "bin" / "lean")
-    if not Path(found).exists():
+    proxy = Path.home() / ".elan" / "bin" / "lean"
+    found = str(proxy) if proxy.exists() else shutil.which("lean")
+    if not found or not Path(found).exists():
         raise HarnessError("lean not found: install elan, https://github.com/leanprover/elan")
     toolchain = (CGV / "prover" / "lean-toolchain").read_text().strip()
     return [found, f"+{toolchain}"]
@@ -376,7 +378,9 @@ def evaluate(cases, olean_root):
 
 def ensure_venv(name, python, index_url, work):
     requirements = ENVIRONMENTS[name]
-    digest = hashlib.sha256(requirements.read_bytes() + python.encode()).hexdigest()
+    interpreter = subprocess.run([python, "-c", "import sys; print(sys.version)"], check=True,
+                                 capture_output=True, text=True).stdout
+    digest = hashlib.sha256(requirements.read_bytes() + python.encode() + interpreter.encode()).hexdigest()
     venv = work / f"venv-{name}"
     marker = venv / "requirements.sha256"
     if marker.exists() and marker.read_text() == digest:
@@ -414,11 +418,20 @@ def summarise(cases, verdicts):
     return summary
 
 
-def compare(summary, baseline, seed, examples):
-    """Problems that make the run fail, as strings."""
+def compare(summary, baseline, seed, examples, full=True):
+    """Problems that make the run fail, as strings. `full` is true when every configuration ran."""
     problems = []
     exact = baseline.get("seed") == seed and baseline.get("examples") == examples
     tracked = baseline.get("tracked_by", {})
+    if exact:
+        for config, predicates in baseline.get("counts", {}).items():
+            if config not in summary:
+                if full:
+                    problems.append(f"{config}: in the baseline but not run")
+                continue
+            for predicate in predicates:
+                if predicate not in summary[config]:
+                    problems.append(f"{config} {predicate}: in the baseline but not drawn by this run")
     for config, predicates in summary.items():
         for predicate, row in predicates.items():
             known = baseline.get("counts", {}).get(config, {}).get(predicate)
@@ -463,7 +476,17 @@ def run(args):
     verdicts = evaluate(cases, olean_root)
     summary = summarise(cases, verdicts)
     baseline_path = Path(args.baseline)
-    baseline = json.loads(baseline_path.read_text()) if baseline_path.exists() else {}
+    if args.update_baseline:
+        if args.configs:
+            raise HarnessError("--update-baseline needs every configuration; drop --configs")
+        if Path(args.behavior_model).resolve() != DEFAULT_MODEL.resolve():
+            raise HarnessError("--update-baseline only accepts the committed BehaviorModel.lean")
+    if baseline_path.exists():
+        baseline = json.loads(baseline_path.read_text())
+    elif args.update_baseline:
+        baseline = {}
+    else:
+        raise HarnessError(f"baseline {baseline_path} not found; create it with --update-baseline")
     report = {"seed": args.seed, "examples": args.examples, "behavior_model": str(args.behavior_model),
               "versions": versions, "summary": summary}
     (work / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
@@ -475,9 +498,16 @@ def run(args):
                            for p, r in predicates.items()} for config, predicates in summary.items()}
         baseline = {"seed": args.seed, "examples": args.examples, "versions": versions, "counts": counts,
                     "tracked_by": baseline.get("tracked_by", {})}
-        baseline_path.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n")
-        print(f"wrote {baseline_path}")
-    problems = compare(summary, baseline, args.seed, args.examples)
+        problems = compare(summary, baseline, args.seed, args.examples)
+        if not problems:
+            staged = baseline_path.with_suffix(baseline_path.suffix + ".tmp")
+            staged.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n")
+            os.replace(staged, baseline_path)
+            print(f"wrote {baseline_path}")
+        else:
+            print(f"not writing {baseline_path}")
+    else:
+        problems = compare(summary, baseline, args.seed, args.examples, full=len(configs) == len(CONFIGS))
     for p in problems:
         print(f"FAIL {p}")
     return 1 if problems else 0
@@ -515,7 +545,7 @@ def main():
         p.add_argument("--seed", type=int, default=DEFAULT_SEED)
         p.add_argument("--examples", type=int, default=DEFAULT_EXAMPLES, help="per configuration and predicate")
         p.add_argument("--configs", help=f"comma-separated subset of {', '.join(CONFIGS)}")
-        p.add_argument("--behavior-model", default=str(CGV / "prover" / "ContractGraph" / "BehaviorModel.lean"))
+        p.add_argument("--behavior-model", default=str(DEFAULT_MODEL))
         p.add_argument("--baseline", default=str(CGV / "scripts" / "behavior-baseline.json"))
         p.add_argument("--work-dir", default=str(CGV / "target" / "behavior-diff"))
         p.add_argument("--python", default="python3.12", help="interpreter for the virtual environments")
@@ -533,7 +563,7 @@ def main():
             sample(args.config, args.seed, args.examples, args.out)
             return 0
         return run(args) if args.command == "run" else selftest(args)
-    except (HarnessError, subprocess.CalledProcessError) as e:
+    except (HarnessError, subprocess.CalledProcessError, OSError, ValueError, KeyError) as e:
         print(f"ERROR {e}", file=sys.stderr)
         return 2
 
