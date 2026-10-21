@@ -31,10 +31,22 @@ def cx (s t : Constraint) : Option String := (counterexampleOf s t).map (·.toPy
 -- WT-5 range_min
 #guard cx (c .rangeMin (some (-1000000))) (c .rangeMin (some 0)) == some "-1"
 #guard cx (c .rangeMin (some (-50000000))) (c .rangeMin (some 0)) == some "-50"
--- WT-6 choices: the first source choice the target lacks, as a Python string
+-- WT-6 choices: the first source choice the target lacks, as a value of the
+-- target field's type: an int literal for an int field, a Python string for a
+-- str field, and a Python string when the type is unknown
 #guard cx (c .choices (cs := some ["a", "zz", "yy"])) (c .choices (cs := some ["a", "x"])) ==
   some "\"zz\""
 #guard cx (c .choices (cs := some ["3"])) (c .choices (cs := some ["1", "2"])) == some "\"3\""
+#guard cx (c .choices (cs := some ["3"])) (c .choices (cs := some ["1", "2"]) (ty := some "int")) ==
+  some "3"
+#guard cx (c .choices (cs := some ["-3"])) (c .choices (cs := some ["1"]) (ty := some "int")) ==
+  some "-3"
+#guard cx (c .choices (cs := some ["3"])) (c .choices (cs := some ["1", "2"]) (ty := some "str")) ==
+  some "\"3\""
+#guard cx (c .choices (cs := some ["3"]) (ty := some "int")) (c .choices (cs := some ["1", "2"])) ==
+  some "\"3\""
+#guard cx (c .choices (cs := some ["x"])) (c .choices (cs := some ["1"]) (ty := some "int")) ==
+  some "\"x\""
 -- WT-7 nullability
 #guard cx (c .nullability (some 1)) (c .nullability (some 0)) == some "None"
 

@@ -16,8 +16,10 @@ inductive Counterexample where
   | fraction (n : Nat)
   /-- The number m / 10^scale (`range`, `range_min`). -/
   | scaled (m : Int) (scale : Nat)
-  /-- A choice value (`choices`). -/
-  | choice (c : String)
+  /-- A choice value (`choices`), with the Python type of the target
+      field's values when the extractor knows it (`"int"` or `"str"`), which
+      decides how it is written (WT-6). -/
+  | choice (c : String) (ty : Option String)
   /-- `None` (`nullability`). -/
   | none
   deriving Repr, BEq, DecidableEq
@@ -41,7 +43,7 @@ def Counterexample.admits (v : Counterexample) (c : Constraint) : Bool :=
   | .scaled m _ =>
     (decide (c.kind = .range) && atMost m c.staticBound) ||
     (decide (c.kind = .rangeMin) && atLeast m c.staticBound)
-  | .choice x =>
+  | .choice x _ =>
     decide (c.kind = .choices) &&
       (match c.choicesList with
        | some cs => cs.contains x
@@ -61,7 +63,7 @@ def counterexampleCandidate (s t : Constraint) : Option Counterexample :=
   | .nullability, _ => some .none
   | .choices, _ =>
     match s.choicesList, t.choicesList with
-    | some sc, some tc => (sc.find? (fun x => !tc.contains x)).map .choice
+    | some sc, some tc => (sc.find? (fun x => !tc.contains x)).map (.choice · t.typeName)
     | _, _ => none
   | _, _ => none
 
@@ -203,7 +205,7 @@ theorem checkConstraintPair_counterexample (s t : Constraint) (d : DiagnosticInf
         | some x =>
           have hx := List.mem_of_find?_eq_some hf
           have hnx := List.find?_some hf
-          refine ⟨.choice x, ?_, ?_, ?_⟩
+          refine ⟨.choice x t.typeName, ?_, ?_, ?_⟩
           · simp [counterexampleCandidate, hsk, hsc, htc]
             simpa using hf
           · simp [Counterexample.admits, hsk, hsc, hx]
@@ -257,7 +259,10 @@ def Counterexample.toPython : Counterexample → String
   | .scaled m scale =>
     if m.natAbs % 10 ^ scale = 0 then formatScaled m scale
     else s!"Decimal(\"{formatScaled m scale}\")"
-  | .choice c => pythonStringLiteral c
+  | .choice c ty =>
+    match ty, c.toInt? with
+    | some "int", some n => toString n
+    | _, _ => pythonStringLiteral c
   | .none => "None"
 
 end ContractGraph

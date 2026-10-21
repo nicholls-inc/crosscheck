@@ -6,7 +6,7 @@
       "source_guarantee": "choices in [3]",
       "target_requirement": "choices in [1, 2]",
       "target": "Plan.tier",
-      "counterexample": "\"3\""
+      "counterexample": "3"
     },
     {
       "path": "bad -> Plan.code",

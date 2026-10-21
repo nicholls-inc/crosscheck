@@ -382,7 +382,10 @@ def rangeScale (rows : List ContractRow) : Nat :=
                    `scale`.
     - length:      staticBound ← param_max_length
     - choices:     choicesList ← `parseChoices param_choices` (JSON array of
-                   strings, or legacy comma list)
+                   strings, or legacy comma list), and typeName ←
+                   param_type_name, the Python type of the field's values
+                   when the extractor knows it, which only decides how a
+                   counterexample is written (WT-6)
     `dependent_expr` goes on the upper `range` constraint, or on `rangeMin`
     when the row has only a lower bound. `subject` is copied to every
     constraint. An unknown `constraint_type` or `verification_level`, or a
@@ -411,7 +414,7 @@ def translateContractRow (row : ContractRow) (scale : Nat := 6) : Except String 
   | .nullability => [{ base with staticBound := row.nullable }]
   | .length => [{ base with staticBound := row.maxLength }]
   | .type => [{ base with typeName := row.typeName }]
-  | .choices => [{ base with choicesList := row.choices.bind parseChoices }]
+  | .choices => [{ base with choicesList := row.choices.bind parseChoices, typeName := row.typeName }]
   | .rangeMin => [{ base with staticBound := row.lowerScaled scale }]
   | .range =>
     match row.lowerScaled scale, row.upperScaled scale with
