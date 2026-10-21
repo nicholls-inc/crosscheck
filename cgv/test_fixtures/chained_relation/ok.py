@@ -1,29 +1,31 @@
-"""CG-1.28: guarded reads through a relation stay clean."""
+"""CG-1.28: guarded reads through a relation give no error."""
 
 from models import Invoice, Order
 
 
 def bill_guarded(order: Order) -> None:
-    # SAFE: the guard narrows the chained name.
+    # NO ERROR: the guard narrows the chained email. Customer.name is non-null but
+    # read through a link, which carries no declared guarantee: a warning.
     if order.customer.email is None:
         return
     Invoice.objects.create(email=order.customer.email, name=order.customer.name, short="x")
 
 
 def bill_truthy(order: Order) -> None:
-    # SAFE: a truthiness test narrows it too.
+    # NO ERROR: a truthiness test narrows it too.
     if order.customer.email:
         Invoice.objects.create(email=order.customer.email, name="x", short="x")
 
 
 def bill_referrer(order: Order) -> None:
-    # SAFE: the nullable relation is guarded, and Customer.name is non-null.
+    # NO ERROR: the nullable relation is guarded. Customer.name is non-null but read
+    # through a link, which carries no declared guarantee: a warning.
     if order.referrer is not None:
         Invoice.objects.create(email="a", name=order.referrer.name, short="x")
 
 
 def bill_reassigned(order: Order) -> None:
-    # SAFE: the function stores a value into the chained field first.
+    # NO ERROR: the function stores a value into the chained field first.
     order.customer.email = "billing@example.com"
     Invoice.objects.create(email=order.customer.email, name="x", short="x")
 
