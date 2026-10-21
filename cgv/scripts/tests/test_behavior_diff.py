@@ -56,6 +56,14 @@ class CompareTest(unittest.TestCase):
         problems = compare({"c1": {"p": row(10, 1, 1)}, "c2": {}})
         self.assertEqual(problems, ["c2 p: in the baseline but not drawn by this run"])
 
+    def test_a_predicate_the_run_did_not_draw_fails_under_every_seed(self):
+        undrawn = "c2 p: in the baseline but not drawn by this run"
+        summary = {"c1": {"p": row(10, 1, 1)}, "c2": {}}
+        self.assertEqual(compare(summary, seed=2), [undrawn])
+        self.assertEqual(compare(summary, examples=50), [undrawn])
+        self.assertEqual(compare({"c2": {}}, full=False), [undrawn])
+        self.assertEqual(compare({"c2": {}}, full=False, seed=2), [undrawn])
+
     def test_a_configuration_left_out_fails_only_on_a_full_run(self):
         summary = {"c1": {"p": row(10, 1, 1)}}
         self.assertEqual(compare(summary, full=True), ["c2: in the baseline but not run"])

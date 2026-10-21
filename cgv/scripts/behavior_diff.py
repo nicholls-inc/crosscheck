@@ -467,10 +467,15 @@ def summarise(cases, verdicts):
     return summary
 
 
+def uses_baseline_draws(baseline, seed, examples):
+    """True when the run's seed and example count are the baseline's, so its counts are comparable."""
+    return baseline.get("seed") == seed and baseline.get("examples") == examples
+
+
 def compare(summary, baseline, seed, examples, full=True):
     """Problems that make the run fail, as strings. `full` is true when every configuration ran."""
     problems = []
-    exact = baseline.get("seed") == seed and baseline.get("examples") == examples
+    exact = uses_baseline_draws(baseline, seed, examples)
     tracked = baseline.get("tracked_by", {})
     for config, predicates in baseline.get("counts", {}).items():
         if config not in summary:
@@ -500,7 +505,7 @@ def compare(summary, baseline, seed, examples, full=True):
 def partial_gate_note(baseline, seed, examples, full):
     """What a run that is not the whole gate must say about the gate it applied; None for the whole gate.
     The conditions are those of compare(): `exact` is the seed and examples matching, `full` every configuration."""
-    if baseline.get("seed") != seed or baseline.get("examples") != examples:
+    if not uses_baseline_draws(baseline, seed, examples):
         return ("NOTE partial gate: this run does not use the baseline's seed and examples, so counts are not "
                 "compared; only a disagreement in a direction the baseline does not record fails")
     if not full:
