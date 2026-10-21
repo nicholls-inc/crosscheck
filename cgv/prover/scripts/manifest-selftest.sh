@@ -163,7 +163,7 @@ source_case private-helper changed _private.ContractGraph.Main.0.ContractGraph.s
 
 # 9. Nothing protected reaches the JSON output.
 source_case unreached same '' ContractGraph/Main.lean '' \
-  's/(\ndef outputToJson \(output : CheckOutput\) : String :=\n  let resultsJson := .*?\n)/$1  "" ++\n/'
+  's/(\ndef outputToJson \(output : CheckOutput\) \(cxs : List \(Option Counterexample\) := \[\]\) : String :=\n  let resultsJson := .*?\n)/$1  "" ++\n/'
 
 # 10. A proof-only edit: checkPath's termination proof, which Lean keeps in the
 # auxiliary theorem checkPath._proof_1 that checkPath's value names.

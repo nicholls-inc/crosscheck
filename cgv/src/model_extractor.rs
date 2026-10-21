@@ -390,6 +390,17 @@ fn type_contract(field_type: &str) -> Option<&'static str> {
     }
 }
 
+/// The Python type of a Django field's values, recorded on its choices
+/// contract so a counterexample is written as a value of that type (WT-6 of
+/// `intent/2026-10-07-error-witness-spec.md`). `None` when it is neither.
+fn choice_value_type(field_type: &str) -> Option<&'static str> {
+    match field_type {
+        "IntegerField" | "SmallIntegerField" | "BigIntegerField" | "PositiveIntegerField"
+        | "PositiveSmallIntegerField" | "PositiveBigIntegerField" => Some("int"),
+        _ => type_contract(field_type).filter(|t| *t == "str"),
+    }
+}
+
 /// The field's requirements as facts (what `write_model_fields` states as
 /// preconditions): what a read of the field yields, since every write to it
 /// is checked against them.
@@ -490,7 +501,10 @@ pub fn write_model_fields(
 
         // Insert choices constraint
         if let Some(choices) = &field.choices {
-            db.insert_contract(&base(ConstraintType::Choices).with_choices(choices))?;
+            db.insert_contract(&ContractRecord {
+                param_type_name: choice_value_type(&field.field_type).map(str::to_string),
+                ..base(ConstraintType::Choices).with_choices(choices)
+            })?;
         }
 
         // Insert range constraint (lower and/or upper bound)

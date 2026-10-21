@@ -7,3 +7,4 @@ import ContractGraph.Composition
 import ContractGraph.Diagnostics
 import ContractGraph.Search
 import ContractGraph.StateSearch
+import ContractGraph.Counterexample

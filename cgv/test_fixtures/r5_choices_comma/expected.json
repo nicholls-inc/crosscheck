@@ -5,13 +5,15 @@
       "path": "bad -> Plan.tier",
       "source_guarantee": "choices in [3]",
       "target_requirement": "choices in [1, 2]",
-      "target": "Plan.tier"
+      "target": "Plan.tier",
+      "counterexample": "3"
     },
     {
       "path": "bad -> Plan.code",
       "source_guarantee": "choices in [a]",
       "target_requirement": "choices in [a,b, c]",
-      "target": "Plan.code"
+      "target": "Plan.code",
+      "counterexample": "\"a\""
     }
   ]
 }

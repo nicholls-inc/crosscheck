@@ -99,7 +99,7 @@ opaque selftestOpaque : Nat → Nat := selftestInner' \
 
 # The JSON output: no protected theorem or definition reaches it.
 run_case outputToJson accept \
-  'def selftestOutputToJson (_ : CheckOutput) : String := ""' \
+  'def selftestOutputToJson (_ : CheckOutput) (_ : List (Option Counterexample) := []) : String := ""' \
   's/^def outputToJson /\@[implemented_by selftestOutputToJson] def outputToJson /'
 
 if [ "$failures" -ne 0 ]; then

@@ -60,13 +60,34 @@ missing_warnings = [
                for r in warning_results)
 ]
 got = [g for g in got]
-ok = want == got and code == expected["exit_code"] and not missing_warnings
+# An expected error may pin "counterexample": every actual error with the same key
+# (path, guarantee, requirement, and target when given) must carry that text, and
+# at least one must exist. For every kind but choices the key text fixes both
+# constraints, so errors that share a key share a counterexample. A choices
+# counterexample also depends on the target's field type, so a choices pin should
+# name its target.
+def actual_key(r, e):
+    return (" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"],
+            r["target"]["name"] if "target" in e else None)
+counterexample_failures = []
+for e in expected["errors"]:
+    if "counterexample" not in e:
+        continue
+    carried = [r.get("counterexample") for r in errors if actual_key(r, e) == key(e)]
+    if not carried or any(c != e["counterexample"] for c in carried):
+        counterexample_failures.append((e, carried))
+ok = (want == got and code == expected["exit_code"] and not missing_warnings
+      and not counterexample_failures)
 print(f"{'ok  ' if ok else 'FAIL'} {name}: {len(got)} errors, {warnings} warnings, exit {code}")
 if not ok:
     for e in sorted(set(want) - set(got)):
         print("  missing:   ", " | ".join(str(x) for x in e if x is not None))
     for e in sorted(set(got) - set(want)):
         print("  unexpected:", " | ".join(str(x) for x in e if x is not None))
+    for e, carried in counterexample_failures:
+        print("  counterexample:", e["path"], "|", e["source_guarantee"],
+              "| expected", json.dumps(e["counterexample"]),
+              "got", ", ".join(json.dumps(c) for c in carried) or "no matching error")
     for w in missing_warnings:
         print("  missing warning:", w["path"], "|", w["contains"])
     if code != expected["exit_code"]:

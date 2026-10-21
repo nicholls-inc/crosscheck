@@ -4,6 +4,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-21 - CGV errors carry a proved counterexample, paired outside the protected reporting
+
+**Type:** feature
+**Touches:** cgv/prover/ContractGraph/Counterexample.lean, cgv/prover/ContractGraph/Main.lean, cgv/prover/ContractGraph/Translation.lean, cgv/prover/ContractGraphTest/Counterexample.lean, cgv/src/report.rs, cgv/src/model_extractor.rs, cgv/src/dataclass_extractor.rs, cgv/scripts/check-fixtures.sh, cgv/tests/e2e_counterexample.rs, cgv/test_fixtures/*/expected.json, docs/TASKS.md
+**Why:** A reader of a CGV error had no value to run to check it (issue #8, CG-1.35).
+**Links:** [intent](intent/2026-10-21-error-counterexample.md), [spec](intent/2026-10-07-error-witness-spec.md)
+
+The split's intent expected a defaulted `counterexample` field on `ResultEntry` to leave the statement manifest unchanged. It does not: the manifest records the constructor's type and the value hash of every reporting function `runChecker` calls. So `main` calls `runCheckerCx`, which mirrors the reporting functions on (entry, counterexample) pairs, and `runCheckerCx_fst` proves its output is `runChecker`'s. The binary's guarantee now runs through `runCheckerCx_fst`, and `counterexampleOf_sound` and `checkConstraintPair_counterexample` are the guarantee of the counterexample field, so the review of #133 asked for all three to be protected. The governance note for that change has judgment items only the maintainer can resolve, and rule 4 of the protected-surface rules forbids a merge with them open, so the protection moved to TB-1.43, a separate Tier 3 pull request. The manifest is unchanged here. Adding a field to `ResultEntry` is a Tier 3 change. A choices counterexample is written as a value of the target field's type: the extractor records `"int"` or `"str"` on the choices contract, and an integer field's counterexample is `3`, not `"3"`. The counterexample's strength is proved relative to the translated constraints; no library has run it yet (CG-1.37).
+
 ## 2026-10-07 - Every slash-reference in Crosscheck's live Markdown resolves, and the skill catalogue is generated
 
 **Type:** feature

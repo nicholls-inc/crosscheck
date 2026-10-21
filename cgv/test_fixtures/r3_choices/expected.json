@@ -5,7 +5,8 @@
       "path": "bad_choice -> Price.status",
       "source_guarantee": "choices in [zz]",
       "target_requirement": "choices in [a, x]",
-      "target": "Price.status"
+      "target": "Price.status",
+      "counterexample": "\"zz\""
     }
   ]
 }

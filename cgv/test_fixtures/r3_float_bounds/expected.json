@@ -5,19 +5,22 @@
       "path": "bad -> R.ratio",
       "source_guarantee": "range ≤ 0.7",
       "target_requirement": "range ≤ 0.5",
-      "target": "R.ratio"
+      "target": "R.ratio",
+      "counterexample": "Decimal(\"0.7\")"
     },
     {
       "path": "bad -> R.amt",
       "source_guarantee": "range ≤ 11",
       "target_requirement": "range ≤ 10",
-      "target": "R.amt"
+      "target": "R.amt",
+      "counterexample": "11"
     },
     {
       "path": "bad -> R.amt2",
       "source_guarantee": "range ≥ -1",
       "target_requirement": "range ≥ 0",
-      "target": "R.amt2"
+      "target": "R.amt2",
+      "counterexample": "-1"
     }
   ]
 }

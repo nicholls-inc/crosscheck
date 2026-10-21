@@ -1144,7 +1144,12 @@ pub fn write_data_classes(
                 ))?;
             }
             if let Some(choices) = &field.choices {
-                db.insert_contract(&base(ConstraintType::Choices).with_choices(choices))?;
+                // The value type decides how a counterexample is written (WT-6).
+                let value_type = field.type_name.as_deref().filter(|t| matches!(*t, "int" | "str"));
+                db.insert_contract(&ContractRecord {
+                    param_type_name: value_type.map(str::to_string),
+                    ..base(ConstraintType::Choices).with_choices(choices)
+                })?;
             }
         }
     }

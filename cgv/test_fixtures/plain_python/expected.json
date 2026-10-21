@@ -4,17 +4,20 @@
     {
       "path": "lookup_discount -> InvoiceRecord.discount_pct",
       "source_guarantee": "nullable",
-      "target_requirement": "non-null"
+      "target_requirement": "non-null",
+      "counterexample": "None"
     },
     {
       "path": "with_tax -> normalise -> InvoiceRecord.total",
       "source_guarantee": "precision ≤ 4",
-      "target_requirement": "precision ≤ 2"
+      "target_requirement": "precision ≤ 2",
+      "counterexample": "Decimal(\"0.0001\")"
     },
     {
       "path": "customer_label -> InvoiceRecord.customer",
       "source_guarantee": "length ≤ 64",
-      "target_requirement": "length ≤ 32"
+      "target_requirement": "length ≤ 32",
+      "counterexample": "\"x\" * 64"
     }
   ]
 }
