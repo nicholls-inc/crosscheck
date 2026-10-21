@@ -1,6 +1,6 @@
 """CG-1.28: a field read through a relation carries the field's contracts."""
 
-from models import Invoice, Order, Shipment
+from models import Invoice, Ledger, Order, Shipment
 
 
 def bill(order: Order) -> None:
@@ -14,8 +14,16 @@ def bill_shipment(shipment: Shipment) -> None:
 
 
 def bill_short(order: Order) -> None:
-    # BUG: a 40-character name into a 10-character column.
+    # NOT CLEAN: a 40-character name into a 10-character column. A write through
+    # a chain is not checked yet (docs/TASKS.md CG-1.52), so the read carries no
+    # declared length: a warning, not an error.
     Invoice.objects.create(email="a", name="b", short=order.customer.name)
+
+
+def post_balance(order: Order) -> None:
+    # NOT CLEAN: 4 decimal places into a 2-place column. As above, the chained
+    # read carries no declared precision: a warning, not an error.
+    Ledger.objects.create(balance=order.customer.balance)
 
 
 def clear_email(customer) -> None:

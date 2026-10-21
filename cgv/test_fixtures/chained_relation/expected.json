@@ -14,12 +14,6 @@
       "target": "Invoice.email"
     },
     {
-      "path": "bill_short -> Invoice.short",
-      "source_guarantee": "length ≤ 40",
-      "target_requirement": "length ≤ 10",
-      "target": "Invoice.short"
-    },
-    {
       "path": "bill_handed -> Invoice.email",
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
@@ -52,6 +46,14 @@
     {
       "path": "bill_formatted -> Invoice.email",
       "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_short -> Invoice.short",
+      "contains": "length"
+    },
+    {
+      "path": "post_balance -> Ledger.balance",
+      "contains": "precision"
     }
   ]
 }

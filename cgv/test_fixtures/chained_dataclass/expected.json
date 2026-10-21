@@ -18,6 +18,14 @@
     {
       "path": "label_billing_unguarded -> Label.city",
       "contains": "no nullability postcondition"
+    },
+    {
+      "path": "statement -> Statement.name",
+      "contains": "length"
+    },
+    {
+      "path": "statement -> Statement.balance",
+      "contains": "precision"
     }
   ]
 }

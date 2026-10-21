@@ -1,7 +1,8 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 @dataclass
@@ -27,3 +28,18 @@ class Outer(BaseModel):
 class Label(BaseModel):
     postcode: str
     city: str
+
+
+class Account(BaseModel):
+    name: str = Field(max_length=40)
+    balance: Decimal = Field(max_digits=12, decimal_places=4)
+
+
+@dataclass
+class Holder:
+    account: Account
+
+
+class Statement(BaseModel):
+    name: str = Field(max_length=10)
+    balance: Decimal = Field(max_digits=12, decimal_places=2)

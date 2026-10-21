@@ -4,6 +4,7 @@ from django.db import models
 class Customer(models.Model):
     email = models.CharField(max_length=254, null=True)
     name = models.CharField(max_length=40)
+    balance = models.DecimalField(max_digits=12, decimal_places=4)
 
 
 class Order(models.Model):
@@ -21,3 +22,7 @@ class Invoice(models.Model):
     email = models.CharField(max_length=254)
     name = models.CharField(max_length=40)
     short = models.CharField(max_length=10)
+
+
+class Ledger(models.Model):
+    balance = models.DecimalField(max_digits=12, decimal_places=2)
