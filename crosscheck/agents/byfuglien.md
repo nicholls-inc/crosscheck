@@ -150,7 +150,7 @@ Do not commit, stash or reset the user's work to make the call succeed.
 
 **Result.** On `success: true`, report `commit`, `baseline`, `exitCode`, and each error and warning in `findings`. Read `exitCode` this way:
 
-- With a baseline, exit 1 means at least one error is new relative to the base, and exit 0 means no error is new. Exit 0 under a baseline is a comparison of findings. No theorem covers it, so say so. A finding matches a baseline entry by class, source, target, failing hop, guarantee, requirement, site file and the text of the site's line, with no line number, so an error removed and an equal one added at the same key is matched and not reported. That case is not yet reached: the key holds no position. Say so beside "no error is new".
+- With a baseline, read `findings.baseline.new.errors` beside `exitCode`. Exit 1 with a count above 0 means that many errors are new relative to the base. Exit 1 with a count of 0 means the checker exited 1 and reported no error (`cgv/src/baseline.rs`, BL-8): report exactly that, not as a new error. Exit 0 means no error is new. Exit 0 under a baseline is a comparison of findings. No theorem covers it, so say so. A finding matches a baseline entry by class, source, target, failing hop, guarantee, requirement, site file and the text of the site's line, with no line number, so an error removed and an equal one added at the same key is matched and not reported. That case is not yet reached: the key holds no position. Say so beside "no error is new".
 - Without a baseline, exit 1 means CGV found at least one error.
 - A warning marks a requirement CGV could not show. It is an unknown path, not a consistent one.
 
