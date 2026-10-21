@@ -32,3 +32,14 @@ def bill_referrer_unguarded(order: Order) -> None:
     # NOT AN ERROR: a None referrer raises AttributeError, so no None reaches
     # Invoice.name. The read is not known non-null either: a warning.
     Invoice.objects.create(email="a", name=order.referrer.name, short="x")
+
+
+def bill_caller_guarded(order: Order) -> None:
+    # NOT AN ERROR: the only caller narrows the chained field, but a caller the
+    # project does not show may not, so the read is unknown: a warning (CG-1.9).
+    Invoice.objects.create(email=order.customer.email, name="x", short="x")
+
+
+def bill_when_known(order: Order) -> None:
+    if order.customer.email:
+        bill_caller_guarded(order)

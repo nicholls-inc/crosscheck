@@ -24,6 +24,10 @@
     {
       "path": "bill_referrer_unguarded -> Invoice.name",
       "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_caller_guarded -> Invoice.email",
+      "contains": "no nullability postcondition"
     }
   ]
 }
