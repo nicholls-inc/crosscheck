@@ -21154,7 +21154,7 @@ var v4_default = v4;
 // src/tempdir.ts
 var DAFNY_TMP_PREFIX = "dafny-";
 var STALE_THRESHOLD_MS = 30 * 60 * 1e3;
-var TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-"];
+var TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-", "cgv-"];
 async function createTempDir(prefix) {
   const tag = prefix ?? DAFNY_TMP_PREFIX;
   const dir = await mkdtemp(join(tmpdir(), `${tag}${v4_default()}-`));
@@ -21784,6 +21784,7 @@ function run(file, args, cwd) {
         exitCode = typeof err.code === "number" ? err.code : null;
         if (exitCode !== null) failure = `exited ${exitCode}`;
         else if (err.killed && Date.now() - started >= CGV_TIMEOUT_MS) failure = "timed out after 10 minutes";
+        else if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = "produced more output than the 512 MiB limit";
         else if (err.signal) failure = `was stopped by ${err.signal}`;
         else failure = `could not run: ${err.message}`;
       }
@@ -21901,7 +21902,7 @@ async function cgvCheck(input, env = process.env) {
   } catch (err) {
     return refuse2([`cgv_check failed: ${err.message}`]);
   } finally {
-    await removeTempDir(tmp);
+    await removeTempDir(tmp).catch(() => void 0);
   }
 }
 

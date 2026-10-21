@@ -133,6 +133,7 @@ function run(file: string, args: string[], cwd: string): Promise<Run> {
         exitCode = typeof err.code === "number" ? err.code : null;
         if (exitCode !== null) failure = `exited ${exitCode}`;
         else if (err.killed && Date.now() - started >= CGV_TIMEOUT_MS) failure = "timed out after 10 minutes";
+        else if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = "produced more output than the 512 MiB limit";
         else if (err.signal) failure = `was stopped by ${err.signal}`;
         else failure = `could not run: ${err.message}`;
       }
@@ -273,6 +274,7 @@ export async function cgvCheck(input: CgvCheckInput, env: NodeJS.ProcessEnv = pr
   } catch (err) {
     return refuse([`cgv_check failed: ${(err as Error).message}`]);
   } finally {
-    await removeTempDir(tmp);
+    // A cleanup failure must not replace the result already computed (CK-10).
+    await removeTempDir(tmp).catch(() => undefined);
   }
 }
