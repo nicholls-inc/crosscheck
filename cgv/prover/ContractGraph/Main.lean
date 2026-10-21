@@ -980,8 +980,10 @@ def runCheckerCx (graph : ContractGraph) (maxStates : Nat := defaultMaxStates)
     else (runChecker graph maxStates maxPerEdge, [])
   | _ => (runChecker graph maxStates maxPerEdge, [])
 
-/-- The output of `runCheckerCx` is the output of `runChecker`, so the
-    soundness theorems about `runChecker` are about what the binary prints. -/
+/-- The first component of `runCheckerCx` is the output of `runChecker`, so the
+    soundness theorems about `runChecker` are about the results and the exit
+    code the binary prints. The counterexamples in the second component are
+    not covered. -/
 theorem runCheckerCx_fst (g : ContractGraph) (maxStates maxPerEdge : Nat) :
     (runCheckerCx g maxStates maxPerEdge).1 = runChecker g maxStates maxPerEdge := by
   unfold runCheckerCx

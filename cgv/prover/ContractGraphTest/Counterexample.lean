@@ -45,6 +45,8 @@ def cx (s t : Constraint) : Option String := (counterexampleOf s t).map (·.toPy
   some "\"3\""
 -- an int field whose choice text `toInt?` would rewrite ("03", "1_0", "-0", "+3")
 -- keeps the choice as a string, so the printed value is the one the target lacks
+-- among the translated constraints (a Django or pydantic int field would coerce
+-- the string, so runtime rejection is untested: CG-1.37)
 #guard cx (c .choices (cs := some ["03"])) (c .choices (cs := some ["3"]) (ty := some "int")) ==
   some "\"03\""
 #guard cx (c .choices (cs := some ["1_0"])) (c .choices (cs := some ["10"]) (ty := some "int")) ==
