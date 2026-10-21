@@ -4,6 +4,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-21 - The counterexample and pairing theorems are protected
+
+**Type:** governance
+**Touches:** .claude/rules/protected-surfaces.md, cgv/prover/scripts/ProtectedStatements.lean, cgv/prover/protected-statements.txt, cgv/CLAUDE.md, docs/TASKS.md
+**Why:** Since CG-1.35 the binary's guarantee runs through `runCheckerCx_fst`, and the counterexample field rests on `counterexampleOf_sound` and `checkConstraintPair_counterexample`. Outside the manifest, any of them could change silently (TB-1.43).
+**Links:** [intent](intent/2026-10-21-protect-counterexample-theorems.md), [spec](intent/2026-10-07-error-witness-spec.md), [plan](intent/2026-10-21-protect-counterexample-theorems-plan.md), [governance note](.assurance/protected-surface-amend/protect-runcheckercx-fst-2026-10-21.md)
+
+The three theorems join the CGV theorem table and `protectedTheorems`, and the manifest gains their statements and the 39 constants `runCheckerCx_fst` reaches. No earlier block changes. The change was first part of #133. It is its own pull request because its governance note has judgment items for the maintainer, and rule 4 of the protected-surface rules forbids a merge with them open. No agent merges it.
+
 ## 2026-10-21 - CGV errors carry a proved counterexample, paired outside the protected reporting
 
 **Type:** feature

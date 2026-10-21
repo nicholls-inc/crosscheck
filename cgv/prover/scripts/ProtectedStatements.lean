@@ -45,7 +45,10 @@ def protectedTheorems : List Name := [
   `ContractGraph.runChecker_sound_all,
   `ContractGraph.runChecker_exitCode_eq_zero_iff,
   `ContractGraph.runCheckerPaths_exitCode_eq_zero_iff,
-  `ContractGraph.incompleteWith_exitCode
+  `ContractGraph.incompleteWith_exitCode,
+  `ContractGraph.runCheckerCx_fst,
+  `ContractGraph.counterexampleOf_sound,
+  `ContractGraph.checkConstraintPair_counterexample
 ]
 
 def protectedDefinitions : List Name := [
