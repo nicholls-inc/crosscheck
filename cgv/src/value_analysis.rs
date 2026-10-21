@@ -3541,6 +3541,15 @@ mod tests {
             // A nested function that only reads the chain, or writes a chain of its own parameter, hands nothing.
             ("    def fmt():\n        return p.a.name\n    fmt()\n    p.a.code\n", None),
             ("    def cb(p):\n        p.a.code = None\n    cb(1)\n    p.a.code\n", None),
+            ("    def cb(p):\n        return p.a\n    cb(1)\n    p.a.code\n", None),
+            ("    class K:\n        def m(self, p):\n            return p.a\n    p.a.code\n", None),
+            ("    cb = lambda p: p.a\n    p.a.code\n", None),
+            // A default runs at the definition, in the caller's scope.
+            ("    def cb(p=p.a):\n        return 1\n    p.a.code\n", Some(true)),
+            ("    def cb(p=[0 for p.a.code in [None]]):\n        return 1\n    p.a.code\n", Some(true)),
+            // A store the walk does not track as an assignment ends the guard.
+            ("    [0 for p.a.code in [None]]\n    p.a.code\n", Some(true)),
+            ("    [0 for p.a.name in [None]]\n    p.a.code\n", Some(true)),
         ] {
             let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
