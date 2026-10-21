@@ -24,10 +24,12 @@ Intent: `intent/2026-10-21-cgv-check-mcp-tool.md`. Governing roadmap item: ER-1.
 - **CK-5. The baseline run.** When `baseline` is given:
   - the tool resolves it with `git rev-parse --verify --quiet --end-of-options <baseline>^{commit}` and refuses when that fails;
   - CK-4's check, run at the baseline commit, must pass, and the tool refuses when `path` does not exist there;
-  - it writes `git archive --format=tar <baseline commit>` of `path` (of the whole tree for `.`) into a temporary directory and extracts it with `tar -x`;
-  - it runs `crosscheck-contracts contracts check <export>/<path> --lean-checker <checker> --output-db <tmp>/baseline.sqlite --write-baseline <tmp>/baseline.json`.
+  - it checks the baseline commit out with `git -c core.hooksPath=/dev/null worktree add --detach <tmp>/baseline-tree <baseline commit>`, and refuses when that fails. This is the checkout that made HEAD's work tree, with the same smudge filters and end-of-line rules, so the two runs read the same bytes for the same committed content. It does not use `git archive`, which applies `.gitattributes` `export-ignore` and `export-subst` and so drops or rewrites baseline files that HEAD's work tree keeps. No hook runs on this checkout;
+  - it runs `crosscheck-contracts contracts check <tmp>/baseline-tree/<path> --lean-checker <checker> --output-db <tmp>/baseline.sqlite --write-baseline <tmp>/baseline.json` from `<tmp>/baseline-tree`.
 
   The run must exit 0 or 1 and write the baseline file. Otherwise the tool refuses with the exit code and CGV's stderr.
+
+  On every path out of this step, success, refusal or a thrown error, the tool runs `git worktree remove --force <tmp>/baseline-tree`, deletes that directory if it remains, and runs `git worktree prune`, so the repository lists no extra work tree afterwards.
 - **CK-6. The record run.** The tool runs `crosscheck-contracts contracts check <top level>/<path> --lean-checker <checker> --output-db <tmp>/head.sqlite --evidence-record <tmp>/record.json` from the top level. Its stdout must parse as a JSON object, or the tool refuses.
   - Exit 0: the file at `<tmp>/record.json` must parse as a JSON object whose `format` is `evidence-record/1` and whose `commit` is `commit`. That object is the record. The tool refuses when the file is missing or fails either test.
   - Exit 1: the record is `null`. CGV writes no record for a run with an error (CR-2).
@@ -41,11 +43,11 @@ Intent: `intent/2026-10-21-cgv-check-mcp-tool.md`. Governing roadmap item: ER-1.
   - `record` is CK-6's record or `null`. So with a baseline, `exitCode` can be 0 while `record` is `null`: no error is new, and an error the baseline holds still stops CGV from writing a record.
 - **CK-10. A refusal.** Every refusal returns `{ success: false, errors }` with at least one error. The tool returns a refusal as data at the MCP layer and does not throw.
 - **CK-11. Limits.** Each CGV run is stopped after 10 minutes and refused as a timeout. CGV's stdout and stderr may each be up to 512 MiB.
-- **CK-12. Cleanup.** The temporary directory, which holds the export, the databases, the baseline and the record, has the prefix `cgv-` and is removed on every path out of the tool once it exists. The tool writes nothing inside the work tree.
+- **CK-12. Cleanup.** The temporary directory, which holds the baseline checkout, the databases, the baseline and the record, has the prefix `cgv-` and is removed on every path out of the tool once it exists. The tool writes nothing inside the work tree. While the baseline checkout exists, git records it under the repository's `worktrees` directory, and CK-5's cleanup removes that entry.
 - **CK-13. Tests.**
   - Unit tests cover CK-1 and CK-2.
-  - MCP-layer tests call the tool through `createServer` with a stand-in CLI. They cover the result of CK-9 with and without a baseline, and one refusal for each of CK-1 to CK-8.
-  - An integration test runs the real CGV binaries on fixtures from `cgv/test_fixtures/`. It checks that the record of a clean project passes `scripts/check-evidence-record.mjs` and that its rerun command exits 0. It checks that a project with an error returns exit 1 and no record, and that a baseline with the same errors returns exit 0, and one without them exit 1. It is skipped, with a message that names the variables and the build command, when the binaries are not found.
+  - MCP-layer tests call the tool through `createServer` with a stand-in CLI. They cover the result of CK-9 with and without a baseline, and one refusal for each of CK-1 to CK-8. One commits a `.gitattributes` that marks a `.py` file `export-ignore` and another `export-subst`, and checks that the baseline run sees both files as committed. Others check that no extra work tree and no baseline checkout remain after a baseline run that completes and one that fails.
+  - An integration test runs the real CGV binaries on fixtures from `cgv/test_fixtures/`. It checks that the record of a clean project passes `scripts/check-evidence-record.mjs` and that its rerun command exits 0. It checks that a project with an error returns exit 1 and no record, that a baseline with the same errors returns exit 0, and one without them exit 1, and that a baseline whose `.gitattributes` marks the fixture's `models.py` `export-ignore` still holds its errors, so the result is exit 0 with no new error. It is skipped, with a message that names the variables and the build command, when the binaries are not found. No CI job builds the binaries today, so this test runs locally only and always skips in CI. Run it from the repository root with `(cd cgv && cargo build --release && cd prover && lake build contract-graph-checker) && cd crosscheck/mcp-server && npx vitest run src/__tests__/integration/cgvCheck.cgv.integration.test.ts`. ER-1.22 adds it to CI.
 
 ## Concerns flagged, not resolved here
 
