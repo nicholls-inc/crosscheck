@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the full pipeline (Rust extractor + Lean checker) on every fixture under
 # test_fixtures/ that has an expected.json, and compare the reported errors and
-# exit code with it. Warnings are printed but not compared.
+# exit code with it. A warning is compared only when expected.json requires it (by path
+# and a substring of its text); other warnings are printed but not compared.
 #
 # Usage: scripts/check-fixtures.sh [--release|--debug]
 # Requires: cargo build (--release by default), cd prover && lake build, python3.

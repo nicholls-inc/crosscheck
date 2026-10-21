@@ -405,11 +405,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         if (!names[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants);
+          this.rhs = optimizeExpr(this.rhs, names, constants2);
         return this;
       }
       get names() {
@@ -426,10 +426,10 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants);
+        this.rhs = optimizeExpr(this.rhs, names, constants2);
         return this;
       }
       get names() {
@@ -490,8 +490,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants) {
-        this.code = optimizeExpr(this.code, names, constants);
+      optimizeNames(names, constants2) {
+        this.code = optimizeExpr(this.code, names, constants2);
         return this;
       }
       get names() {
@@ -520,12 +520,12 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants))
+          if (n.optimizeNames(names, constants2))
             continue;
           subtractNames(names, n.names);
           nodes.splice(i, 1);
@@ -578,12 +578,12 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         var _a;
-        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
-        if (!(super.optimizeNames(names, constants) || this.else))
+        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
+        if (!(super.optimizeNames(names, constants2) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants);
+        this.condition = optimizeExpr(this.condition, names, constants2);
         return this;
       }
       get names() {
@@ -606,10 +606,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names, constants2) {
+        if (!super.optimizeNames(names, constants2))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants);
+        this.iteration = optimizeExpr(this.iteration, names, constants2);
         return this;
       }
       get names() {
@@ -645,10 +645,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names, constants2) {
+        if (!super.optimizeNames(names, constants2))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants);
+        this.iterable = optimizeExpr(this.iterable, names, constants2);
         return this;
       }
       get names() {
@@ -690,11 +690,11 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         var _a, _b;
-        super.optimizeNames(names, constants);
-        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants);
+        super.optimizeNames(names, constants2);
+        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants2);
         return this;
       }
       get names() {
@@ -995,7 +995,7 @@ var require_codegen = __commonJS({
     function addExprNames(names, from) {
       return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
     }
-    function optimizeExpr(expr, names, constants) {
+    function optimizeExpr(expr, names, constants2) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1010,14 +1010,14 @@ var require_codegen = __commonJS({
         return items;
       }, []));
       function replaceName(n) {
-        const c = constants[n.str];
+        const c = constants2[n.str];
         if (c === void 0 || names[n.str] !== 1)
           return n;
         delete names[n.str];
         return c;
       }
       function canOptimize(e) {
-        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
+        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants2[c.str] !== void 0);
       }
     }
     function subtractNames(names, from) {
@@ -21154,7 +21154,7 @@ var v4_default = v4;
 // src/tempdir.ts
 var DAFNY_TMP_PREFIX = "dafny-";
 var STALE_THRESHOLD_MS = 30 * 60 * 1e3;
-var TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-"];
+var TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-", "cgv-check-"];
 async function createTempDir(prefix) {
   const tag = prefix ?? DAFNY_TMP_PREFIX;
   const dir = await mkdtemp(join(tmpdir(), `${tag}${v4_default()}-`));
@@ -21365,9 +21365,37 @@ async function dafnyCleanup() {
 }
 
 // src/tools/evidence.ts
-import { execFile } from "node:child_process";
 import { chmod, lstat, mkdir, readFile as readFile2, realpath, rename, unlink, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolvePath, sep } from "node:path";
+
+// src/git.ts
+import { execFile } from "node:child_process";
+var GIT_MAX_BUFFER = 512 * 1024 * 1024;
+function gitBytes(cwd, args, opts = {}) {
+  return new Promise((done) => {
+    const child = execFile(
+      "git",
+      ["--literal-pathspecs", "-C", cwd, ...args],
+      { maxBuffer: GIT_MAX_BUFFER, encoding: "buffer", env: opts.env },
+      (err, stdout) => done({ ok: err === null, stdout })
+    );
+    child.stdin?.on("error", () => void 0);
+    child.stdin?.end(opts.input ?? "");
+  });
+}
+async function git(cwd, args, opts = {}) {
+  const { ok, stdout } = await gitBytes(cwd, args, opts);
+  return { ok, stdout: stdout.toString() };
+}
+async function treeChanges(root) {
+  const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
+  const tags = await git(root, ["ls-files", "-v"]);
+  if (!status.ok || !tags.ok) return null;
+  const hidden = tags.stdout.split("\n").filter((l) => /^[a-zS] /.test(l)).map((l) => `${/^[sS]/.test(l) ? "skip-worktree" : "assume-unchanged"} hides changes to ${l.slice(2)}`);
+  return [...status.stdout.split("\n").filter((l) => l !== ""), ...hidden];
+}
+
+// src/tools/evidence.ts
 var PLAIN_PATH = /^[A-Za-z0-9_./-]+$/;
 var NAME = /^[A-Za-z_][A-Za-z0-9_'?]*(\.[A-Za-z_][A-Za-z0-9_'?]*)*$/;
 var AUDIT_CLEAN = "Dafny auditor completed with 0 findings";
@@ -21423,9 +21451,9 @@ function shellQuote(s) {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 function rerunCommand(imageId, files) {
-  const run = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(imageId)}`;
+  const run2 = `docker run --rm --network=none ${SANDBOX_FLAGS.join(" ")} -v "$PWD":/work:ro ${shellQuote(imageId)}`;
   const paths = files.map((f) => shellQuote(`/work/${f}`));
-  return `${run} verify ${paths[0]} --verify-included-files && out=$(${run} audit ${paths.join(" ")} 2>&1) && printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`;
+  return `${run2} verify ${paths[0]} --verify-included-files && out=$(${run2} audit ${paths.join(" ")} 2>&1) && printf '%s\\n' "$out" | grep -qxF '${AUDIT_CLEAN}'`;
 }
 function auditClean(output) {
   return output.split("\n").includes(AUDIT_CLEAN);
@@ -21455,21 +21483,6 @@ function buildRecord(facts) {
     ]
   };
 }
-var GIT_MAX_BUFFER = 512 * 1024 * 1024;
-function gitBytes(cwd, args) {
-  return new Promise((done) => {
-    execFile(
-      "git",
-      ["--literal-pathspecs", "-C", cwd, ...args],
-      { maxBuffer: GIT_MAX_BUFFER, encoding: "buffer" },
-      (err, stdout) => done({ ok: err === null, stdout })
-    );
-  });
-}
-async function git(cwd, args) {
-  const { ok, stdout } = await gitBytes(cwd, args);
-  return { ok, stdout: stdout.toString() };
-}
 async function committedBlob(root, commit, path) {
   const entry = await git(root, ["ls-tree", "-z", commit, "--", path]);
   const blob = /^10(?:0644|0755) blob ([0-9a-f]+)\t/.exec(entry.stdout);
@@ -21477,13 +21490,6 @@ async function committedBlob(root, commit, path) {
   const bytes = await gitBytes(root, ["cat-file", "blob", blob[1]]);
   if (!bytes.ok) throw new Error(`git could not read the blob of ${path} at ${commit}`);
   return bytes.stdout;
-}
-async function treeChanges(root) {
-  const status = await git(root, ["status", "--porcelain", "--untracked-files=all"]);
-  const tags = await git(root, ["ls-files", "-v"]);
-  if (!status.ok || !tags.ok) return null;
-  const hidden = tags.stdout.split("\n").filter((l) => /^[a-zS] /.test(l)).map((l) => `${/^[sS]/.test(l) ? "skip-worktree" : "assume-unchanged"} hides changes to ${l.slice(2)}`);
-  return [...status.stdout.split("\n").filter((l) => l !== ""), ...hidden];
 }
 async function untrackedReason(root, path) {
   if (!(await git(root, ["ls-files", "--error-unmatch", "--", path])).ok) return `not committed: ${path}`;
@@ -21591,12 +21597,12 @@ async function exportFiles(files) {
 }
 async function runDafnyOn(dir, imageId, input, files) {
   const failed = (errors) => ({ errors, dafnyVersion: "" });
-  const run = { image: imageId, readOnly: true, sandboxed: true };
+  const run2 = { image: imageId, readOnly: true, sandboxed: true };
   const paths = files.map((f) => `/work/${f}`);
   const verify = await runDafny(
     dir,
     ["verify", paths[0], "--verify-included-files", "--log-format", "csv;LogFileName=/dev/stdout"],
-    run
+    run2
   );
   if (verify.timedOut || verify.exitCode !== 0) {
     return failed([
@@ -21604,7 +21610,7 @@ async function runDafnyOn(dir, imageId, input, files) {
       (verify.stdout + "\n" + verify.stderr).trim()
     ]);
   }
-  const audit = await runDafny(dir, ["audit", ...paths], run);
+  const audit = await runDafny(dir, ["audit", ...paths], run2);
   const auditOutput = audit.stdout + "\n" + audit.stderr;
   if (audit.timedOut || audit.exitCode !== 0 || !auditClean(auditOutput)) {
     return failed([`dafny audit did not report 0 findings`, auditOutput.trim()]);
@@ -21617,7 +21623,7 @@ async function runDafnyOn(dir, imageId, input, files) {
       )
     );
   }
-  const version2 = await runDafny(dir, ["--version"], run);
+  const version2 = await runDafny(dir, ["--version"], run2);
   const dafnyVersion = version2.stdout.trim();
   if (version2.exitCode !== 0 || !/^\d+\.\d+\.\d+\S*$/.test(dafnyVersion)) {
     return failed([`could not read the Dafny version: ${dafnyVersion}`]);
@@ -21702,9 +21708,287 @@ async function dafnyEvidence(input) {
   return { success: true, errors: [], record: record2, writtenTo: out };
 }
 
+// src/tools/cgvCheck.ts
+import { execFile as execFile2 } from "node:child_process";
+import { access, constants, mkdir as mkdir2, readFile as readFile3, stat as stat2, writeFile as writeFile4 } from "node:fs/promises";
+import { delimiter, dirname as dirname2, isAbsolute as isAbsolute2, join as join5 } from "node:path";
+var cgvCheckInputShape = {
+  repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
+  path: external_exports.string().describe("The Python project to check: a directory or a .py file, relative to the work tree's top level with / separators, or . for the top level"),
+  baseline: external_exports.string().optional().describe("A git revision, such as the pull request's base. When given, the findings are only those this revision's findings do not match")
+};
+var BUILD_COMMAND = 'git clone https://github.com/nicholls-inc/crosscheck && cd crosscheck/cgv && cargo build --release && (cd prover && lake build contract-graph-checker) && echo "CGV_CONTRACTS=$PWD/target/release/crosscheck-contracts CGV_CHECKER=$PWD/prover/.lake/build/bin/contract-graph-checker"';
+var HOW_TO_INSTALL = `Build both binaries with: ${BUILD_COMMAND} Then set CGV_CONTRACTS and CGV_CHECKER to the paths it prints in the environment Claude Code starts in, or put both binaries on PATH. The build needs cargo (https://rustup.rs) and elan (https://github.com/leanprover/elan).`;
+var MIB = 1024 * 1024;
+var DEFAULT_LIMITS = { timeoutMs: 10 * 60 * 1e3, maxBuffer: 512 * MIB };
+var TEMP_PREFIX = "cgv-check-";
+var RECORD_FORMAT = "evidence-record/1";
+function refuse2(errors) {
+  return { success: false, errors };
+}
+function validateCgvCheckInput(input) {
+  const errors = [];
+  for (const [name, value] of Object.entries(input)) {
+    if (typeof value === "string" && value.includes("\0")) errors.push(`${name} must not contain a NUL byte`);
+  }
+  if (!isAbsolute2(input.repoPath)) errors.push(`repoPath must be absolute: ${input.repoPath}`);
+  if (input.path !== "." && (input.path.includes("\\") || input.path.split("/").some((s) => s === "" || s === "." || s === ".."))) {
+    errors.push(`path must be . or a relative path with / separators and no empty, "." or ".." segment: ${input.path}`);
+  }
+  if (input.baseline !== void 0 && !/^[^\s-]\S*$/.test(input.baseline)) {
+    errors.push(`baseline must be a git revision that is not blank, holds no white space and does not start with "-": ${input.baseline}`);
+  }
+  return errors;
+}
+async function isExecutableFile(path) {
+  try {
+    if (!(await stat2(path)).isFile()) return false;
+    await access(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function findBinary(env, variable, name) {
+  const named = env[variable];
+  if (named !== void 0 && named !== "") {
+    if (isAbsolute2(named) && await isExecutableFile(named)) return named;
+    return { error: `${variable} is set to ${named}, which is not an absolute path to an executable file. ${HOW_TO_INSTALL}` };
+  }
+  for (const dir of (env.PATH ?? "").split(delimiter)) {
+    if (!isAbsolute2(dir)) continue;
+    const candidate = join5(dir, name);
+    if (await isExecutableFile(candidate)) return candidate;
+  }
+  return { error: `${name} not found: ${variable} is not set and no ${name} is on PATH. ${HOW_TO_INSTALL}` };
+}
+async function findBinaries(env) {
+  const cli = await findBinary(env, "CGV_CONTRACTS", "crosscheck-contracts");
+  const checker = await findBinary(env, "CGV_CHECKER", "contract-graph-checker");
+  if (typeof cli === "string" && typeof checker === "string") return { cli, checker };
+  return { errors: [cli, checker].flatMap((b) => typeof b === "string" ? [] : [b.error]) };
+}
+async function projectProblem(root, rev, path) {
+  if (path === ".") return null;
+  const entry = await git(root, ["ls-tree", "-z", rev, "--", path]);
+  if (!entry.ok) return `git could not list ${path} at ${rev}`;
+  const mode = /^(\d{6}) \S+ [0-9a-f]+\t/.exec(entry.stdout)?.[1];
+  if (mode === void 0) return `not committed: ${path}`;
+  if (mode === "040000") return null;
+  if ((mode === "100644" || mode === "100755") && path.endsWith(".py")) return null;
+  if (mode === "120000") return `${path} is a symbolic link at ${rev}; pass the directory or file it points to`;
+  if (mode === "160000") return `${path} is a submodule at ${rev}`;
+  return `${path} is neither a directory nor a .py file at ${rev}`;
+}
+var minutesOrSeconds = (ms) => ms % 6e4 === 0 ? `${ms / 6e4} minutes` : `${ms / 1e3} seconds`;
+var mibOrBytes = (n) => n % MIB === 0 ? `${n / MIB} MiB` : `${n} bytes`;
+function run(file, args, cwd, limits) {
+  return new Promise((done) => {
+    let timedOut = false;
+    const child = execFile2(file, args, { cwd, maxBuffer: limits.maxBuffer }, (err, stdout, stderr) => {
+      clearTimeout(timer);
+      let failure = null;
+      let exitCode = typeof err?.code === "number" ? err.code : err === null ? 0 : null;
+      if (timedOut) failure = `timed out after ${minutesOrSeconds(limits.timeoutMs)}`;
+      else if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = `produced more output than the ${mibOrBytes(limits.maxBuffer)} limit`;
+      else if (err === null || exitCode !== null) failure = null;
+      else if (err.signal) failure = `was stopped by ${err.signal}`;
+      else failure = `could not run: ${err.message}`;
+      if (failure !== null) exitCode = null;
+      done({ failure, exitCode, stdout, stderr });
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, limits.timeoutMs);
+  });
+}
+function parseObject(text) {
+  try {
+    const value = JSON.parse(text);
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+function cgvFailed(what, ran) {
+  return [`${what} ${ran.failure ?? `exited ${ran.exitCode}`}`, ran.stderr.trim()].filter((l) => l !== "");
+}
+var completed = (ran) => ran.exitCode === 0 || ran.exitCode === 1;
+var NO_FETCH = { env: { ...process.env, GIT_NO_LAZY_FETCH: "1" } };
+async function listTree(root, rev, path) {
+  const listed = await git(root, ["ls-tree", "-r", "-z", rev, ...path === "." ? [] : ["--", path]], NO_FETCH);
+  if (!listed.ok) return `git could not list ${path} at ${rev}`;
+  const tree = { blobs: [], refusals: [], submodules: [] };
+  for (const line of listed.stdout.split("\0").filter((l) => l !== "")) {
+    const m = /^(\d{6}) \S+ ([0-9a-f]+)\t(.*)$/s.exec(line);
+    if (m === null) return `git printed an entry cgv_check cannot read at ${rev}: ${JSON.stringify(line)}`;
+    const [, mode, oid, entry] = m;
+    if (entry.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) tree.refusals.push(`${JSON.stringify(entry)} at ${rev} is not a plain relative path`);
+    else if (mode === "100644" || mode === "100755") tree.blobs.push({ oid, path: entry });
+    else if (mode === "120000") tree.refusals.push(`${entry} is a symbolic link at ${rev}; cgv_check writes no link into the baseline tree`);
+    else if (mode === "160000") {
+      const refusal = `${entry} is a submodule at ${rev}; cgv_check cannot check a submodule`;
+      tree.refusals.push(refusal);
+      tree.submodules.push(refusal);
+    } else tree.refusals.push(`${entry} has mode ${mode} at ${rev}, which is not a regular file`);
+  }
+  return tree;
+}
+async function filteredPython(root, rev, blobs) {
+  const py = blobs.map((b) => b.path).filter((p) => p.endsWith(".py"));
+  if (py.length === 0) return [];
+  const where = rev ?? "HEAD";
+  const source = rev === null ? [] : ["--source", rev];
+  const checked = await git(root, ["check-attr", "-z", "--stdin", ...source, "filter"], { ...NO_FETCH, input: py.join("\0") + "\0" });
+  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}${rev === null ? "" : " (an older git may be the cause: reading it at a revision needs git 2.40 or later, and the no-lazy-fetch guard needs 2.44 or later)"}`];
+  const fields = checked.stdout.split("\0");
+  const errors = [];
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    const [file, , value] = fields.slice(i, i + 3);
+    if (value !== "unspecified" && value !== "unset") {
+      errors.push(`${file} has the git filter attribute "${value}" at ${where}, so its checked-out bytes may differ from the committed ones; cgv_check refuses a filtered .py file`);
+    }
+  }
+  return errors;
+}
+async function buildTree(root, rev, blobs, tree) {
+  await mkdir2(tree, { recursive: true });
+  if (blobs.length === 0) return null;
+  const batch = await gitBytes(root, ["cat-file", "--batch"], { ...NO_FETCH, input: blobs.map((b) => b.oid).join("\n") + "\n" });
+  if (!batch.ok) return `git could not read the blobs of ${rev} (they are read in one go, so the cause may be more than ${mibOrBytes(GIT_MAX_BUFFER)} of blobs in total)`;
+  let at = 0;
+  for (const blob of blobs) {
+    const eol = batch.stdout.indexOf(10, at);
+    const header = /^([0-9a-f]+) blob (\d+)$/.exec(batch.stdout.subarray(at, eol < 0 ? void 0 : eol).toString());
+    if (eol < 0 || header === null || header[1] !== blob.oid) return `git could not read ${blob.path} at ${rev}`;
+    const size = Number(header[2]);
+    const file = join5(tree, blob.path);
+    try {
+      await mkdir2(dirname2(file), { recursive: true });
+      await writeFile4(file, batch.stdout.subarray(eol + 1, eol + 1 + size), { flag: "wx" });
+    } catch (err) {
+      if (err.code !== "EEXIST" && err.code !== "ENOTDIR") throw err;
+      return `${blob.path} at ${rev} collides with another committed path on this file system, so the baseline tree cannot hold both`;
+    }
+    at = eol + 1 + size + 1;
+  }
+  return null;
+}
+async function writeBaseline(bins, root, tmp, baseline, blobs, path, limits) {
+  const tree = join5(tmp, "baseline-tree");
+  const built = await buildTree(root, baseline, blobs, tree);
+  if (built !== null) return [built];
+  const file = join5(tmp, "baseline.json");
+  const ran = await run(
+    bins.cli,
+    ["contracts", "check", join5(tree, path), "--lean-checker", bins.checker, "--output-db", join5(tmp, "baseline.sqlite"), "--write-baseline", file],
+    tree,
+    limits
+  );
+  const what = `crosscheck-contracts at the baseline ${baseline}`;
+  if (!completed(ran)) return cgvFailed(what, ran);
+  if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
+  return file;
+}
+async function readRecord(file, commit) {
+  const text = await readFile3(file, "utf-8").catch(() => null);
+  if (text === null) return "crosscheck-contracts exited 0 and wrote no evidence record";
+  const record2 = parseObject(text);
+  if (record2 === null) return "the evidence record crosscheck-contracts wrote is not a JSON object";
+  if (record2.format !== RECORD_FORMAT) return `the evidence record's format is not ${RECORD_FORMAT}: ${JSON.stringify(record2.format)}`;
+  if (record2.commit !== commit) return `the evidence record names commit ${JSON.stringify(record2.commit)}, not HEAD ${commit}`;
+  return record2;
+}
+async function runCgv(bins, root, commit, tmp, input, baseline, limits) {
+  let baselineFile = null;
+  if (baseline !== null) {
+    const written = await writeBaseline(bins, root, tmp, baseline.commit, baseline.blobs, input.path, limits);
+    if (Array.isArray(written)) return refuse2(written);
+    baselineFile = written;
+  }
+  const project = join5(root, input.path);
+  const check2 = (db, extra) => run(bins.cli, ["contracts", "check", project, "--lean-checker", bins.checker, "--output-db", join5(tmp, db), ...extra], root, limits);
+  const full = await check2("head.sqlite", ["--evidence-record", join5(tmp, "record.json")]);
+  if (!completed(full)) return refuse2(cgvFailed(`crosscheck-contracts at ${commit}`, full));
+  let findings = parseObject(full.stdout);
+  if (findings === null) return refuse2([`crosscheck-contracts at ${commit} exited ${full.exitCode} and printed no JSON object`]);
+  let record2 = null;
+  if (full.exitCode === 0) {
+    const read = await readRecord(join5(tmp, "record.json"), commit);
+    if (typeof read === "string") return refuse2([read]);
+    record2 = read;
+  }
+  let exitCode = full.exitCode;
+  if (baselineFile !== null) {
+    const diff = await check2("diff.sqlite", ["--baseline", baselineFile]);
+    const what = `crosscheck-contracts at ${commit} against the baseline ${baseline.commit}`;
+    if (!completed(diff)) return refuse2(cgvFailed(what, diff));
+    findings = parseObject(diff.stdout);
+    if (findings === null) return refuse2([`${what} printed no JSON object`]);
+    exitCode = diff.exitCode;
+  }
+  const headAfter = await git(root, ["rev-parse", "HEAD"]);
+  if (!headAfter.ok || headAfter.stdout.trim() !== commit) {
+    return refuse2([`HEAD moved from ${commit} while CGV ran: ${headAfter.stdout.trim()}`]);
+  }
+  const dirtyAfter = await treeChanges(root);
+  if (dirtyAfter === null) return refuse2([`git could not read the work tree state in ${root}`]);
+  if (dirtyAfter.length > 0) return refuse2(dirtyAfter.map((l) => `work tree changed while CGV ran: ${l}`));
+  return { success: true, commit, baseline: baseline?.commit ?? null, exitCode, findings, record: record2 };
+}
+async function cgvCheck(input, env = process.env, limits = DEFAULT_LIMITS) {
+  const inputErrors = validateCgvCheckInput(input);
+  if (inputErrors.length > 0) return refuse2(inputErrors);
+  const bins = await findBinaries(env);
+  if ("errors" in bins) return refuse2(bins.errors);
+  const top = await git(input.repoPath, ["rev-parse", "--show-toplevel"]);
+  const head = await git(input.repoPath, ["rev-parse", "HEAD"]);
+  if (!top.ok || !head.ok) return refuse2([`not a git work tree with a commit: ${input.repoPath}`]);
+  const root = top.stdout.trim();
+  const commit = head.stdout.trim();
+  const dirty = await treeChanges(root);
+  if (dirty === null) return refuse2([`git could not read the work tree state in ${root}`]);
+  if (dirty.length > 0) return refuse2(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
+  const problem = await projectProblem(root, commit, input.path);
+  if (problem !== null) return refuse2([problem]);
+  const headTree = await listTree(root, commit, input.path);
+  if (typeof headTree === "string") return refuse2([headTree]);
+  if (headTree.submodules.length > 0) return refuse2(headTree.submodules.map((e) => `at HEAD ${commit}: ${e}`));
+  const headFiltered = await filteredPython(root, null, headTree.blobs);
+  if (headFiltered.length > 0) return refuse2(headFiltered);
+  let baseline = null;
+  if (input.baseline !== void 0) {
+    const resolved = await git(root, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${input.baseline}^{commit}`]);
+    if (!resolved.ok) return refuse2([`baseline is not a commit in ${root}: ${input.baseline}`]);
+    const at = resolved.stdout.trim();
+    const atBaseline = await projectProblem(root, at, input.path);
+    if (atBaseline !== null) return refuse2([`at the baseline ${at}: ${atBaseline}`]);
+    const tree = await listTree(root, at, input.path);
+    if (typeof tree === "string") return refuse2([tree]);
+    if (tree.refusals.length > 0) return refuse2(tree.refusals.map((e) => `at the baseline ${at}: ${e}`));
+    const filtered = await filteredPython(root, at, tree.blobs);
+    if (filtered.length > 0) return refuse2(filtered);
+    baseline = { commit: at, blobs: tree.blobs };
+  }
+  let tmp;
+  try {
+    tmp = await createTempDir(TEMP_PREFIX);
+  } catch (err) {
+    return refuse2([`could not create a temporary directory: ${err.message}`]);
+  }
+  try {
+    return await runCgv(bins, root, commit, tmp, input, baseline, limits);
+  } catch (err) {
+    return refuse2([`cgv_check failed: ${err.message}`]);
+  } finally {
+    await removeTempDir(tmp).catch(() => void 0);
+  }
+}
+
 // src/tools/leanCheck.ts
-import { writeFile as writeFile4 } from "node:fs/promises";
-import { join as join5 } from "node:path";
+import { writeFile as writeFile5 } from "node:fs/promises";
+import { join as join6 } from "node:path";
 function parseLeanOutput(stdout, stderr) {
   const combined = stdout + "\n" + stderr;
   const lines = combined.split("\n").filter((l) => l.trim());
@@ -21746,8 +22030,8 @@ function classifyLeanFailure(exitCode, errors) {
 async function leanCheck(input) {
   const tempDir = await createTempDir("lean-");
   try {
-    const programPath = join5(tempDir, "program.lean");
-    await writeFile4(programPath, input.source, "utf-8");
+    const programPath = join6(tempDir, "program.lean");
+    await writeFile5(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["check", "/work/program.lean"]);
     if (result.timedOut) {
       return {
@@ -21780,13 +22064,13 @@ async function leanCheck(input) {
 }
 
 // src/tools/leanRun.ts
-import { writeFile as writeFile5 } from "node:fs/promises";
-import { join as join6 } from "node:path";
+import { writeFile as writeFile6 } from "node:fs/promises";
+import { join as join7 } from "node:path";
 async function leanRun(input) {
   const tempDir = await createTempDir("lean-");
   try {
-    const programPath = join6(tempDir, "program.lean");
-    await writeFile5(programPath, input.source, "utf-8");
+    const programPath = join7(tempDir, "program.lean");
+    await writeFile6(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["run", "/work/program.lean"]);
     return {
       success: !result.timedOut && result.exitCode === 0,
@@ -21801,13 +22085,13 @@ async function leanRun(input) {
 }
 
 // src/tools/leanTest.ts
-import { writeFile as writeFile6 } from "node:fs/promises";
-import { join as join7 } from "node:path";
+import { writeFile as writeFile7 } from "node:fs/promises";
+import { join as join8 } from "node:path";
 async function leanTest(input) {
   const tempDir = await createTempDir("lean-");
   try {
-    const programPath = join7(tempDir, "program.lean");
-    await writeFile6(programPath, input.source, "utf-8");
+    const programPath = join8(tempDir, "program.lean");
+    await writeFile7(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["test", "/work/program.lean"]);
     const { errors, warnings } = parseLeanOutput(result.stdout, result.stderr);
     const success = !result.timedOut && result.exitCode === 0 && errors.length === 0;
@@ -21862,6 +22146,17 @@ function createServer() {
     }
   );
   server.tool(
+    "cgv_check",
+    "Run CGV's `crosscheck-contracts contracts check` on a committed Python project and return CGV's findings JSON and CGV's evidence record (evidence-record/1). Requires a clean git work tree, and that `path` is a directory or .py file committed at HEAD. Runs CGV at HEAD with --evidence-record. With `baseline`, it also writes a baseline from the project as committed at that revision, runs CGV at HEAD with --baseline, and returns those findings: only the ones the baseline does not match. CGV refuses --baseline with --evidence-record, so the record always comes from the run without a baseline, and it is null when that run exits 1, even when no error is new. Refuses when HEAD or the work tree changes while CGV runs. Finds the binaries through CGV_CONTRACTS and CGV_CHECKER, or else crosscheck-contracts and contract-graph-checker on PATH, and refuses with the build command when they are missing. Returns { success: true, commit, baseline, exitCode, findings, record } or { success: false, errors }. `findings` is CGV's JSON as printed, and `exitCode` (0 or 1) is CGV's exit code for it.",
+    cgvCheckInputShape,
+    async (args) => {
+      const result = await cgvCheck(args);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+      };
+    }
+  );
+  server.tool(
     "dafny_compile",
     "Compile verified Dafny source to Python or Go. Runs `dafny build`, strips Dafny runtime boilerplate, and returns clean output files.",
     {
@@ -21877,7 +22172,7 @@ function createServer() {
   );
   server.tool(
     "dafny_cleanup",
-    "Remove stale Dafny/Lean temp directories (older than 30 minutes) from /tmp.",
+    "Remove stale Dafny, Lean and cgv_check temp directories (older than 30 minutes) from the temporary directory.",
     {},
     async () => {
       const result = await dafnyCleanup();

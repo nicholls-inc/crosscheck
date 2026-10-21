@@ -247,8 +247,8 @@ impl Ctx {
     /// `v` was truthy (`and`) or falsy (`or`), and its effects took place.
     pub fn after_operand(&self, v: &Expr, op: BoolOp) -> Ctx {
         let mut c = match op {
-            BoolOp::And => self.narrow(flow::positive(v)),
-            BoolOp::Or => self.narrow(flow::negative(v)),
+            BoolOp::And => self.narrow(flow::positive(v, &self.narrowed)),
+            BoolOp::Or => self.narrow(flow::negative(v, &self.narrowed)),
         };
         c.narrowed.apply(&flow::effects(v));
         c
@@ -258,7 +258,12 @@ impl Ctx {
     pub fn branch(&self, test: &Expr, taken: bool) -> Ctx {
         let mut c = self.clone();
         c.narrowed.apply(&flow::effects(test));
-        c.narrow(if taken { flow::positive(test) } else { flow::negative(test) })
+        let names = if taken {
+            flow::positive(test, &self.narrowed)
+        } else {
+            flow::negative(test, &self.narrowed)
+        };
+        c.narrow(names)
     }
 
     pub fn shadow(&self, names: impl IntoIterator<Item = String>) -> Ctx {
@@ -364,7 +369,8 @@ const STR_METHODS: [&str; 16] = [
 ];
 
 /// Per function whose callers the project shows (see
-/// `edge_discovery::caller_guards`), per parameter, the fields `p.f` that
+/// `edge_discovery::caller_guards`), per parameter, the fields `p.f` (and
+/// chains `p.link.f`, as `link.f`) that
 /// every call narrows on its argument (`if h.name: label_of(h)`).
 pub type CallerGuards = HashMap<String, HashMap<String, HashSet<String>>>;
 
@@ -610,6 +616,9 @@ impl<'a> Scope<'a> {
                 }
             }
         }
+        if let Some(facts) = self.linked_field_facts(attr, ctx) {
+            return facts;
+        }
         let Some(parts) = dotted_parts(expr) else {
             return ValueFacts::default();
         };
@@ -640,6 +649,50 @@ impl<'a> Scope<'a> {
         }
     }
 
+    /// `obj.link.f` (any depth) for local `obj` of a known class whose
+    /// fields `link` hold instances of project classes (`resolve::Link`): the
+    /// facts `field_read_facts` gives the chain, from the last class's field
+    /// `f` as `linked_declared_facts` declares it. A link that may be None
+    /// raises `AttributeError` rather than yield None, so it adds no None
+    /// (`intent/2026-10-21-cgv-chained-attribute-reads.md`). `None` when the
+    /// chain does not resolve, or when the function assigns a link (the
+    /// value's class is then not the declared one).
+    fn linked_field_facts(&self, attr: &ast::ExprAttribute, ctx: &Ctx) -> Option<ValueFacts> {
+        let mut links = Vec::new();
+        let mut value = attr.value.as_ref();
+        while let Expr::Attribute(a) = value {
+            links.push(a.attr.as_str());
+            value = a.value.as_ref();
+        }
+        let Expr::Name(root) = value else { return None };
+        if links.is_empty() {
+            return None;
+        }
+        links.reverse();
+        let element = ctx.elements.contains_key(root.id.as_str());
+        let Some((mut class, true)) = self.receiver_class(value, ctx) else {
+            return None;
+        };
+        let mut receiver = root.id.to_string();
+        for link in links {
+            let next = class.links.get(link)?;
+            receiver = format!("{receiver}.{link}");
+            if !element && (self.flow.attr_assignments.contains_key(&receiver) || self.flow.opaque.contains(&receiver)) {
+                return None;
+            }
+            class = self.index.class(&next.class)?;
+        }
+        let field = attr.attr.as_str();
+        if !class.fields.iter().any(|f| f == field) {
+            return None;
+        }
+        Some(if element {
+            linked_declared_facts(class, field)
+        } else {
+            self.field_read_facts(&receiver, class, field, ctx)
+        })
+    }
+
     /// The facts of each value class constant `name` may have when read as
     /// `self.name` / `cls.name` in a method of `class` (the receiver may be
     /// an instance of a project subclass that overrides it): at most
@@ -667,26 +720,36 @@ impl<'a> Scope<'a> {
         self.self_constant_values(class, name).filter(|v| v.len() > 1)
     }
 
-    /// A read of field `field` of `obj` (an instance of `class`): the values
-    /// assigned to `obj.f` in this function that reach here, or, when the
-    /// function does not assign it, the field's declared nullability.
+    /// A read of field `field` of `obj` (an instance of `class`; `obj` may
+    /// be a chain `root.link`): the values assigned to `obj.f` in this
+    /// function that reach here, or, when the function does not assign it,
+    /// the field's declared nullability.
     fn field_read_facts(&self, obj: &str, class: &ClassInfo, field: &str, ctx: &Ctx) -> ValueFacts {
         let name = format!("{obj}.{field}");
-        // Every caller narrows the argument's field: unknown, not nullable,
-        // since a caller the project does not show may still pass None.
+        let (root, path) = name.split_once('.').unwrap_or_default();
+        // Every caller narrows the argument's field (or chain): unknown, not
+        // nullable, since a caller the project does not show may still pass None.
         let guarded = self.func.is_some_and(|f| {
-            f.params.iter().any(|p| p.name == obj)
-                && !self.flow.assignments.contains_key(obj)
-                && !self.flow.opaque.contains(obj)
-                // No call can have written the field since the entry.
-                && ctx.narrowed.untouched(obj)
+            f.params.iter().any(|p| p.name == root)
+                && !self.flow.assignments.contains_key(root)
+                && !self.flow.opaque.contains(root)
+                // No call can have written the field since the entry, nor, for
+                // a chain, been handed an object along it (`helper(p.a)`,
+                // `helper(p.a.b)`).
+                && ctx.narrowed.untouched(root)
+                && (!path.contains('.')
+                    || (ctx.narrowed.links_untouched(root) && !ctx.narrowed.link_handed(&name)))
                 && self
                     .caller_guards
-                    .and_then(|g| g.get(&f.qualified_name)?.get(obj))
-                    .is_some_and(|fields| fields.contains(field))
+                    .and_then(|g| g.get(&f.qualified_name)?.get(root))
+                    .is_some_and(|fields| fields.contains(path))
         });
         let declared = || {
-            let mut facts = declared_field_facts(class, field);
+            let mut facts = if path.contains('.') {
+                linked_declared_facts(class, field)
+            } else {
+                declared_field_facts(class, field)
+            };
             if guarded && facts.nullable == Some(true) {
                 facts.nullable = None;
             }
@@ -1852,7 +1915,7 @@ impl<'a> Scope<'a> {
     /// `list[C]`, `QuerySet[C]`, `Iterable[C]`, `tuple[C, ...]` ... (also
     /// `Optional[...]`): `C`.
     fn collection_class(&self, annotation: &Expr) -> Option<&'a ClassInfo> {
-        self.annotation_class(self.module, collection_element(annotation)?)
+        self.index.annotation_class(self.module, collection_element(annotation)?)
     }
 
     /// Whether the elements iterable `iter` yields may be None, when known.
@@ -1919,7 +1982,7 @@ impl<'a> Scope<'a> {
             candidates.push(
                 p.annotation
                     .as_ref()
-                    .and_then(|a| self.annotation_class(self.module, a)),
+                    .and_then(|a| self.index.annotation_class(self.module, a)),
             );
         }
         if let Some(assigns) = self.flow.assignments.get(name) {
@@ -1934,30 +1997,6 @@ impl<'a> Scope<'a> {
             .then_some((first, true))
     }
 
-    /// The class named by a type annotation (`Invoice`, `Optional[Invoice]`,
-    /// `"Invoice"`), resolved in `module`.
-    fn annotation_class(&self, module: &str, annotation: &Expr) -> Option<&'a ClassInfo> {
-        let inner = strip_optional(annotation);
-        let sym = match inner {
-            Expr::StringLiteral(s) => {
-                let text = s.value.to_str().trim().to_string();
-                let parts: Vec<String> = text.split('.').map(str::to_string).collect();
-                if parts
-                    .iter()
-                    .any(|p| p.is_empty() || !p.chars().all(|c| c.is_alphanumeric() || c == '_'))
-                {
-                    return None;
-                }
-                self.index.resolve_dotted(module, &parts)?
-            }
-            other => self.index.resolve_expr(module, other)?,
-        };
-        match sym {
-            Symbol::Class(q) => self.index.class(&q),
-            _ => None,
-        }
-    }
-
     /// The class of the instance an expression evaluates to, if known:
     /// `Cls(...)`, `Cls.objects.get/create(...)`, `Cls.objects.filter(...).first()`,
     /// or a call to a function whose return annotation names the class.
@@ -1970,7 +2009,7 @@ impl<'a> Scope<'a> {
             Callee::Class(c) => Some(c),
             Callee::Function { qualified, .. } => {
                 let f = self.index.function(&qualified)?;
-                self.annotation_class(&f.module, f.return_annotation.as_ref()?)
+                self.index.annotation_class(&f.module, f.return_annotation.as_ref()?)
             }
             Callee::Unknown => None,
         }
@@ -2446,6 +2485,19 @@ fn declared_field_facts(class: &ClassInfo, field: &str) -> ValueFacts {
             Some(true) => ValueFacts::nullable(),
             None => ValueFacts::default(),
         },
+    }
+}
+
+/// What a read of field `field` of `class` through a link (`obj.link.field`)
+/// gives when nothing else is known: nullable when the field is declared
+/// nullable, else nothing. A write through a chain or an alias (`a.b.f = v`,
+/// `x = a.b; x.f = v`) is not yet checked against the field, so the stored
+/// value may break any declared guarantee (CG-1.52).
+fn linked_declared_facts(class: &ClassInfo, field: &str) -> ValueFacts {
+    if declared_field_facts(class, field).nullable == Some(true) {
+        ValueFacts::nullable()
+    } else {
+        ValueFacts::default()
     }
 }
 
@@ -3423,6 +3475,164 @@ mod tests {
         let g = |body: &str| facts_of(&[("code.py", &format!("{dict}{body}"))], "code.f").nullable;
         assert_eq!(g("def f(k):\n    if k in R:\n        R.get(k)\n"), Some(false));
         assert_eq!(g("def f(k):\n    R.get(k)\n"), Some(true));
+    }
+
+    /// CG-1.28: each branch of `linked_field_facts`, through a data class
+    /// field `a: A` and an `Optional` one `b`.
+    #[test]
+    fn test_linked_field_facts() {
+        let records = "from dataclasses import dataclass\nfrom typing import Optional\n\
+                       @dataclass\nclass A:\n    name: str\n    code: Optional[str]\n    \
+                       @property\n    def label(self) -> Optional[str]:\n        return self.code\n\
+                       @dataclass\nclass P:\n    a: A\n    b: Optional[A]\n";
+        let f = |body: &str| {
+            let src = format!("{records}def f(p: P, o, ps: list[P]):\n{body}");
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        for (body, want) in [
+            // A declared non-null field read through a link is unknown: a
+            // write through a chain or an alias is not checked yet (CG-1.52).
+            ("    p.a.name\n", None),
+            ("    p.a.code\n", Some(true)),
+            ("    p.b.code\n", Some(true)),
+            ("    if p.b is not None:\n        p.b.code\n", Some(true)),
+            // A narrowed chain is non-null.
+            ("    if p.a.name is None:\n        return\n    p.a.name\n", Some(false)),
+            ("    if p.a.code:\n        p.a.code\n", Some(false)),
+            // A value the function stores into the chain.
+            ("    p.a.code = 'x'\n    p.a.code\n", Some(false)),
+            ("    p.b.code = 'x'\n    p.b.code\n", Some(false)),
+            // A link the function assigns holds a value of any class.
+            ("    p.a = o\n    p.a.code\n", None),
+            // Not a field: a property computes a new value on each read.
+            ("    if p.a.label:\n        p.a.label\n", None),
+            // A comprehension variable: the declared facts, lowered the same way.
+            ("    max(x.a.code for x in ps)\n", Some(true)),
+            ("    max(x.a.name for x in ps)\n", None),
+        ] {
+            assert_eq!(f(body), want, "{body}");
+        }
+        // For the same reason no other declared guarantee carries through a link.
+        let limited = "from pydantic import BaseModel, Field\nclass A(BaseModel):\n    \
+                       name: str = Field(max_length=4)\nclass P(BaseModel):\n    a: A\n";
+        let read = |body: &str| {
+            let facts = facts_of(&[("code.py", &format!("{limited}{body}"))], "code.f");
+            (facts.max_length, facts.type_name)
+        };
+        assert_eq!(read("def f(a: A):\n    a.name\n"), (Some(4), Some("str".to_string())));
+        assert_eq!(read("def f(p: P):\n    p.a.name\n"), (None, None));
+        // CG-1.9 lowering: every caller narrows the chain.
+        let reader = format!("{records}def f(p: P):\n    p.a.code\n");
+        let guarded = format!("{reader}def g(p: P):\n    if p.a.code:\n        f(p)\n");
+        assert_eq!(facts_of(&[("code.py", &guarded)], "code.f").nullable, None);
+        let unguarded = format!("{guarded}def h(p: P):\n    f(p)\n");
+        assert_eq!(facts_of(&[("code.py", &unguarded)], "code.f").nullable, Some(true));
+        // The guard on `p.a.code` holds only while no code holds `p.a`: it
+        // can write `p.a.code = None`, which the entry state does not show.
+        for (body, want) in [
+            ("    p.a.code\n", None),
+            // Reading fields of the link, or passing a value read from it, hands nothing over.
+            ("    p.a.name\n    p.a.code\n", None),
+            ("    print(p.a.code)\n    p.a.code\n", None),
+            ("    clear(p)\n    p.a.code\n", Some(true)),
+            ("    clear(p.a)\n    p.a.code\n", Some(true)),
+            ("    x = p.a\n    x.code = None\n    p.a.code\n", Some(true)),
+            ("    keep(p.a.name, p.a)\n    p.a.code\n", Some(true)),
+            // An identity test runs no code and hands nothing over.
+            ("    if p.a is None:\n        return\n    p.a.code\n", None),
+            ("    if p.a.name is not None:\n        p.a.code\n", None),
+            // A nested function runs when it is called: it may hand over or write the chain.
+            ("    def fill():\n        clear(p.a)\n    fill()\n    p.a.code\n", Some(true)),
+            ("    def fill():\n        p.a.code = None\n    fill()\n    p.a.code\n", Some(true)),
+            ("    class K:\n        def m(self):\n            p.a.code = None\n    p.a.code\n", Some(true)),
+            // A nested function that only reads the chain, or writes a chain of its own parameter, hands nothing.
+            ("    def fmt():\n        return p.a.name\n    fmt()\n    p.a.code\n", None),
+            ("    def cb(p):\n        p.a.code = None\n    cb(1)\n    p.a.code\n", None),
+            ("    def cb(p):\n        return p.a\n    cb(1)\n    p.a.code\n", None),
+            ("    class K:\n        def m(self, p):\n            return p.a\n    p.a.code\n", None),
+            ("    cb = lambda p: p.a\n    p.a.code\n", None),
+            // A default runs at the definition, in the caller's scope.
+            ("    def cb(p=p.a):\n        return 1\n    p.a.code\n", Some(true)),
+            ("    def cb(p=[0 for p.a.code in [None]]):\n        return 1\n    p.a.code\n", Some(true)),
+            // A store the walk does not track as an assignment ends the guard; the
+            // chain it stores to has an unknown value.
+            ("    [0 for p.a.name in [None]]\n    p.a.code\n", Some(true)),
+            ("    for p.a.name in [None]:\n        pass\n    p.a.code\n", Some(true)),
+            ("    with cm() as p.a.name:\n        p.a.code\n", Some(true)),
+            ("    [0 for p.a.code in [None]]\n    p.a.code\n", None),
+            // The walk joins the paths of a branch: code that held `p.a` on one path may have written it.
+            ("    if o:\n        clear(p.a)\n    p.a.code\n", Some(true)),
+            ("    if o:\n        clear(p.a)\n    else:\n        pass\n    p.a.code\n", Some(true)),
+            ("    if o:\n        pass\n    else:\n        clear(p.a)\n    p.a.code\n", Some(true)),
+            // `super().m()` runs the parent's method on this object, which may write the chain.
+            ("    super().reset()\n    p.a.code\n", Some(true)),
+            ("    s = super()\n    s.reset()\n    p.a.code\n", Some(true)),
+            ("    x = super().total\n    p.a.code\n", Some(true)),
+        ] {
+            let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
+            assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
+        }
+        // The same hand-offs, one link deeper: `q.p.a` is an object along the chain `q.p.a.code`.
+        let deep = format!("{records}@dataclass\nclass Q:\n    p: P\n");
+        for (body, want) in [
+            ("    q.p.a.code\n", None),
+            // Reading the chain's own fields, or a value read from it, hands nothing over.
+            ("    q.p.a.name\n    q.p.a.code\n", None),
+            ("    print(q.p.a.code)\n    q.p.a.code\n", None),
+            ("    if q.p.a is None:\n        return\n    q.p.a.code\n", None),
+            ("    clear(q.p.a)\n    q.p.a.code\n", Some(true)),
+            ("    x = q.p.a\n    x.code = None\n    q.p.a.code\n", Some(true)),
+            ("    return q.p.a\n    q.p.a.code\n", Some(true)),
+            ("    keep(q.p.a.name, q.p.a)\n    q.p.a.code\n", Some(true)),
+            ("    if o:\n        clear(q.p.a)\n    q.p.a.code\n", Some(true)),
+            ("    clear(q.p)\n    q.p.a.code\n", Some(true)),
+            ("    def fill():\n        clear(q.p.a)\n    fill()\n    q.p.a.code\n", Some(true)),
+        ] {
+            let src = format!("{deep}def f(q: Q):\n{body}def g(q: Q):\n    if q.p.a.code:\n        f(q)\n");
+            assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
+        }
+        // A call that passes the root and an object along the guarded chain as two
+        // arguments can write the chain through the second parameter.
+        let alias = |call: &str| {
+            let src = format!(
+                "{records}def f(p: P, a: A):\n    a.code = None\n    p.a.code\n\
+                 def g(p: P, o: A):\n    if p.a.code:\n        {call}\n"
+            );
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        assert_eq!(alias("f(p, o)"), None);
+        assert_eq!(alias("f(p, p.a)"), Some(true));
+        assert_eq!(alias("f(p, a=p.a)"), Some(true));
+        assert_eq!(alias("f(p, p.b)"), None);
+        // A value read from the chain is not an object along it, and the same
+        // object twice is an alias of the whole chain.
+        assert_eq!(alias("f(p, p.a.name)"), None);
+        assert_eq!(alias("f(p, p)"), Some(true));
+        // The guarded field itself, read as a value, is no object that can write it.
+        assert_eq!(alias("f(p, p.a.code)"), None);
+        // An expression built from the root can hold the chain.
+        assert_eq!(alias("f(p, [p.a])"), Some(true));
+        assert_eq!(alias("f(p, p.get_a())"), Some(true));
+        // Any expression that reads the root ends the guard, a harmless one included: the
+        // walk has no class to tell a link from a plain value (a false error, never a missed one).
+        assert_eq!(alias("f(p, len(p.a.name))"), Some(true));
+        assert_eq!(alias("f(p, 1)"), None);
+        // An argument that `*args` takes is still an argument.
+        let rest = |call: &str| {
+            let src = format!(
+                "{records}def f(p: P, *rest):\n    rest[0].code = None\n    p.a.code\n\
+                 def g(p: P):\n    if p.a.code:\n        {call}\n"
+            );
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        assert_eq!(rest("f(p, p.a)"), Some(true));
+        assert_eq!(rest("f(p, 1)"), None);
+        // A name that only starts with the root's name is another object.
+        let other = format!(
+            "{records}def f(p: P, a: A):\n    a.code = None\n    p.a.code\n\
+             def g(p: P, p2: A):\n    if p.a.code:\n        f(p, p2)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &other)], "code.f").nullable, None);
     }
 
     /// CG-1.9: a field every caller narrows has unknown nullability, when

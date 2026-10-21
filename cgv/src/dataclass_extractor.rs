@@ -33,8 +33,8 @@ use ruff_python_ast::{self as ast, Expr, Number, Stmt, UnaryOp};
 
 use crate::bounds::{self, Dec};
 use crate::db::{
-    ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
-    VerificationLevel,
+    ContractDb, ContractRecord, ContractRole, ConstraintType, FieldLibrary, FieldOrigin, NodeKind,
+    NodeRecord, VerificationLevel,
 };
 use crate::resolve::Shadow;
 
@@ -52,6 +52,16 @@ pub enum DataClassKind {
 }
 
 impl DataClassKind {
+    pub fn library(self) -> FieldLibrary {
+        match self {
+            DataClassKind::Dataclass => FieldLibrary::Dataclass,
+            DataClassKind::Attrs => FieldLibrary::Attrs,
+            DataClassKind::Pydantic => FieldLibrary::Pydantic,
+            DataClassKind::NamedTuple => FieldLibrary::NamedTuple,
+            DataClassKind::TypedDict => FieldLibrary::TypedDict,
+        }
+    }
+
     /// Whether positional constructor arguments map to fields in declaration order.
     pub fn positional_fields(self) -> bool {
         matches!(
@@ -1095,6 +1105,16 @@ pub fn write_data_classes(
                 source_line: field.source_line,
                 is_call_site: false,
             })?;
+            db.insert_field_origin(
+                node_id,
+                &FieldOrigin {
+                    library: class.kind.library(),
+                    module: class.module.clone(),
+                    class_name: class.name.clone(),
+                    field_name: field.field_name.clone(),
+                    validated: class.kind == DataClassKind::Pydantic && !field.unvalidated,
+                },
+            )?;
             ids.insert(qualified, node_id);
 
             let base = |constraint_type: ConstraintType| {

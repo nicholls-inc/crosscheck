@@ -14,8 +14,8 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::bounds::{self, Dec};
 use crate::db::{
-    ContractDb, ContractRecord, ContractRole, ConstraintType, NodeKind, NodeRecord,
-    VerificationLevel,
+    ContractDb, ContractRecord, ContractRole, ConstraintType, FieldLibrary, FieldOrigin, NodeKind,
+    NodeRecord, VerificationLevel,
 };
 use crate::defaults::FieldDefaults;
 
@@ -94,6 +94,42 @@ pub fn extract_model_class(
                 }
             }
             Some(f)
+        })
+        .collect()
+}
+
+/// The `ForeignKey` / `OneToOneField` fields declared in the body of a model
+/// class: field name, target expression (first argument or `to=`), and
+/// whether the field may hold None (`null=`, default `False`; `None` when
+/// not a literal).
+pub fn relations(class_def: &ast::StmtClassDef) -> Vec<(String, &Expr, Option<bool>)> {
+    class_def
+        .body
+        .iter()
+        .filter_map(|stmt| {
+            let (target, value) = match stmt {
+                Stmt::Assign(a) if a.targets.len() == 1 => (&a.targets[0], a.value.as_ref()),
+                Stmt::AnnAssign(a) => (a.target.as_ref(), a.value.as_deref()?),
+                _ => return None,
+            };
+            let (Expr::Name(name), Expr::Call(call)) = (target, value) else {
+                return None;
+            };
+            let kind = match call.func.as_ref() {
+                Expr::Attribute(a) => a.attr.as_str(),
+                Expr::Name(n) => n.id.as_str(),
+                _ => return None,
+            };
+            if !matches!(kind, "ForeignKey" | "OneToOneField") {
+                return None;
+            }
+            let keyword = |k: &str| call.arguments.keywords.iter().find(|kw| kw.arg.as_deref() == Some(k));
+            let to = call.arguments.args.first().or_else(|| keyword("to").map(|k| &k.value))?;
+            let nullable = match keyword("null") {
+                Some(k) => extract_bool_value(&k.value),
+                None => Some(false),
+            };
+            Some((name.id.to_string(), to, nullable))
         })
         .collect()
 }
@@ -456,6 +492,16 @@ pub fn write_model_fields(
             source_line: field.source_line,
             is_call_site: false,
             })?;
+        db.insert_field_origin(
+            node_id,
+            &FieldOrigin {
+                library: FieldLibrary::Django,
+                module: field.module.clone(),
+                class_name: field.model_name.clone(),
+                field_name: field.field_name.clone(),
+                validated: true,
+            },
+        )?;
         ids.insert(qualified, node_id);
 
         let base = |constraint_type: ConstraintType| {

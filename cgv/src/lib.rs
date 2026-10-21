@@ -16,3 +16,4 @@ pub mod report;
 pub mod resolve;
 pub mod source;
 pub mod value_analysis;
+pub mod witness;

@@ -7,6 +7,9 @@
 //!   (also `if not x: ...`), when the `if` has no `elif` / `else`;
 //! - inside `if x is not None:` / `if x:` bodies, and in the `else` branch
 //!   of `if x is None:` / `if not x:`; conjunctions narrow every conjunct;
+//! - inside `if isinstance(x, str):` and after
+//!   `if not isinstance(x, str): return`, for the calls in
+//!   `Exits::excludes_none` only (`x` is a name);
 //! - after `assert x is not None` / `assert x`;
 //! - inside `if x in {"a", "b"}:` (a set, list or tuple display of string,
 //!   bytes, number or bool literals), and after `if x not in (...): return`.
@@ -45,21 +48,26 @@
 //! definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, ExprContext, Pattern, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
 
-/// Statements of one function body that never complete, by start byte
-/// offset (filled by `resolve::function_exits`, which can see what a call
-/// resolves to and what members an enum has). Any other statement is
-/// assumed to complete.
+/// What resolution decided about the nodes of one function body, by start
+/// byte offset (filled by `exits::function_exits`, which can see what a name
+/// resolves to and what members an enum has): the statements that never
+/// complete, and the calls that rule out None. Any other statement is assumed
+/// to complete, and any other call narrows nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Exits {
     /// Expression statements whose call never returns.
     pub calls: HashSet<u32>,
     /// `match` statements whose cases cover every member of the subject's enum.
     pub matches: HashSet<u32>,
+    /// `isinstance(v, spec)` calls that are true only when the name `v` is
+    /// not None, and after which `v` changes only where a statement rebinds it.
+    pub excludes_none: HashSet<u32>,
 }
 
 impl Exits {
@@ -98,6 +106,18 @@ pub struct Narrowed {
     /// (see `Effects::reached`): their fields still hold the values the
     /// caller passed.
     untouched: HashSet<String>,
+    /// Parameters of which no attribute (`p.a`) has been handed to other
+    /// code as a value on any path here (see `Effects::handed`): code that
+    /// holds `p.a` can write `p.a.f`, which `untouched` does not see.
+    links_untouched: HashSet<String>,
+    /// The chains `p.a.b` (two or more attributes deep) read as a value
+    /// somewhere on a path here (see `Effects::handed_paths`): the object
+    /// `p.a.b` may be in other code's hands, which can write its fields. A
+    /// caller's guard on a longer chain `p.a.b.f` holds only while no proper
+    /// prefix of it is here.
+    handed_paths: HashSet<String>,
+    /// The function's `Exits::excludes_none`, for `positive`.
+    excludes_none: Rc<HashSet<u32>>,
 }
 
 impl Narrowed {
@@ -171,22 +191,42 @@ impl Narrowed {
         self.untouched.contains(name)
     }
 
+    /// Whether no attribute of parameter `name` (`name.a`) has been handed
+    /// to other code as a value on any path to here: a caller's guard on a
+    /// chain `name.a.f` holds only then.
+    pub fn links_untouched(&self, name: &str) -> bool {
+        self.links_untouched.contains(name)
+    }
+
+    /// Whether an object along `chain` (`p.a.b.f`, a name and attributes) has
+    /// been read as a value on some path to here: a proper prefix of `chain`
+    /// of two or more attributes (`p.a.b`) was passed on, stored or returned,
+    /// so other code can write the field. Reading `chain` itself does not
+    /// count, nor does reading a field of it.
+    pub fn link_handed(&self, chain: &str) -> bool {
+        self.handed_paths.iter().any(|h| {
+            chain.len() > h.len() && chain.starts_with(h.as_str()) && chain.as_bytes()[h.len()] == b'.'
+        })
+    }
+
     /// The state after evaluating a node with effects `e`.
     pub fn apply(&mut self, e: &Effects) {
         self.names.retain(|n| e.keeps_member(n));
         if e.suspends {
             self.untouched.clear();
+            self.links_untouched.clear();
         } else {
             self.untouched.retain(|p| !e.reached.contains(p));
+            self.links_untouched
+                .retain(|p| !e.reached.contains(p) && !e.handed.contains(p));
+            self.handed_paths.extend(e.handed_paths.iter().cloned());
         }
     }
 
-    /// A rebound variable's attributes (`obj.f`) no longer hold values
-    /// assigned to them before (`Def::Param`), and are not narrowed.
+    /// A rebound variable's attributes (`obj.f`, and `obj.fk.f` of a rebound
+    /// `obj.fk`) no longer hold values assigned to them before
+    /// (`Def::Param`), and are not narrowed.
     fn forget_attributes(&mut self, name: &str) {
-        if name.contains('.') {
-            return;
-        }
         let prefix = format!("{name}.");
         if self.names.iter().any(|n| n.starts_with(&prefix)) {
             self.names.retain(|n| !n.starts_with(&prefix));
@@ -204,6 +244,7 @@ impl Narrowed {
         for p in params {
             n.defs.insert(p.to_string(), vec![(Def::Param, false)]);
             n.untouched.insert(p.to_string());
+            n.links_untouched.insert(p.to_string());
         }
         n
     }
@@ -215,6 +256,8 @@ impl Narrowed {
         for b in rest {
             out.names.retain(|n| b.names.contains(n));
             out.untouched.retain(|n| b.untouched.contains(n));
+            out.links_untouched.retain(|n| b.links_untouched.contains(n));
+            out.handed_paths.extend(b.handed_paths.iter().cloned());
             out.defs.retain(|name, defs| {
                 let Some(other) = b.defs.get(name) else {
                     return false;
@@ -250,7 +293,9 @@ pub fn walk_block<'a, V: FlowVisitor<'a>>(
     exits: &Exits,
     v: &mut V,
 ) -> Narrowed {
-    walk(stmts, narrowed, exits, v, &mut HashMap::new())
+    let mut start = narrowed.clone();
+    start.excludes_none = Rc::new(exits.excludes_none.clone());
+    walk(stmts, &start, exits, v, &mut HashMap::new())
 }
 
 /// `counts`: simple assignments seen so far per name (the next `Def::Assign` index).
@@ -270,12 +315,12 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects(&s.test));
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
-                body_n.extend(positive(&s.test));
+                body_n.extend(positive(&s.test, &n));
                 let end = walk(&s.body, &body_n, exits, v, counts);
                 if !always_exits(&s.body, exits) {
                     ends.push(end);
                 }
-                let mut negated = negative(&s.test);
+                let mut negated = negative(&s.test, &n);
                 let mut has_else = false;
                 for clause in &s.elif_else_clauses {
                     let mut clause_n = n.clone();
@@ -288,9 +333,9 @@ fn walk<'a, V: FlowVisitor<'a>>(
                             negated.retain(|x| e.keeps_member(x));
                             clause_n.apply(&e);
                             let mut bn = clause_n.clone();
-                            bn.extend(positive(test));
+                            bn.extend(positive(test, &clause_n));
                             let end = walk(&clause.body, &bn, exits, v, counts);
-                            negated.extend(negative(test));
+                            negated.extend(negative(test, &clause_n));
                             end
                         }
                         None => {
@@ -317,7 +362,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             Stmt::Assert(a) => {
                 v.simple(stmt, &n);
-                n.extend(positive(&a.test));
+                n.extend(positive(&a.test, &n));
                 n.apply(&effects_of_stmt(stmt));
             }
             Stmt::For(f) => {
@@ -336,7 +381,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects_of_stmt(stmt));
                 v.header(&w.test, &n);
                 let mut body_n = n.clone();
-                body_n.extend(positive(&w.test));
+                body_n.extend(positive(&w.test, &n));
                 walk(&w.body, &body_n, exits, v, counts);
                 walk(&w.orelse, &n, exits, v, counts);
             }
@@ -353,6 +398,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     n.apply(&effects(&item.context_expr));
                     if let Some(target) = &item.optional_vars {
                         remove_all(&mut n, bound_names_in_expr(target));
+                        n.apply(&effects(target));
                     }
                     if i == 0 {
                         after = n.clone();
@@ -424,12 +470,18 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 if let Some(r) = &f.returns {
                     v.visit_expr(r);
                 }
-                v.reached.extend(effects_of_stmt(stmt).reached);
+                // The body runs when the function is called: the chains it hands
+                // on, and those it writes, are as good as handed at the definition.
+                let inner = effects_of_stmt(stmt);
+                v.reached.extend(inner.reached);
+                v.handed.extend(inner.handed);
+                v.handed_paths.extend(inner.handed_paths);
                 n.apply(&v);
                 n.remove(f.name.as_str());
             }
             Stmt::ClassDef(c) => {
-                // The class body, its bases and decorators run at the definition.
+                // The class body, its bases and decorators run at the definition,
+                // and its methods later, like a nested function's body.
                 n.apply(&effects_of_stmt(stmt));
                 n.remove(c.name.as_str());
             }
@@ -644,9 +696,27 @@ pub struct Effects {
     /// as `x.f` or in an `is` test (an argument, a receiver `x.m(...)`, a
     /// value stored or returned, an operand that runs `x`'s dunders).
     pub reached: HashSet<String>,
+    /// Names `x` of which an attribute `x.a` is read as a value (an
+    /// argument, a stored or returned value) rather than only as the
+    /// receiver of a further attribute: the object `x.a` is then in other
+    /// code's hands, which can write its fields. Also the roots of the chains
+    /// it stores to or deletes other than by an assignment the walk tracks
+    /// (`simple_attr_targets`, `x.f += v`): a comprehension or `for` target,
+    /// or any store in a nested function or class body.
+    pub handed: HashSet<String>,
+    /// The chains `x.a.b` (two or more attributes deep) read as a value, each
+    /// as `x.a.b`: unlike `x.a`, nothing here says whether the last
+    /// attribute holds an object or a plain value, so only a guard on a longer
+    /// chain through it is lost (`Narrowed::link_handed`), not every guard on `x`.
+    pub handed_paths: HashSet<String>,
     /// It suspends (`await`, `yield`, `async for`, `async with`, an async
     /// comprehension): other code may then run on any object.
     suspends: bool,
+    /// The parameters of each enclosing nested function or lambda: inside
+    /// it, such a name is not the one the walk tracks.
+    shadowed: Vec<HashSet<String>>,
+    /// How many function or class bodies enclose the node.
+    nested: usize,
 }
 
 impl Effects {
@@ -674,12 +744,27 @@ impl Effects {
 
     fn reach_root(&mut self, expr: &Expr) {
         match expr {
-            Expr::Name(n) => {
+            Expr::Name(n) if self.outer(n.id.as_str()) => {
                 self.reached.insert(n.id.to_string());
             }
             Expr::Attribute(a) => self.reach_root(&a.value),
             _ => {}
         }
+    }
+
+    /// Whether `name` here is the walked function's own, not a parameter of
+    /// a nested function or lambda.
+    fn outer(&self, name: &str) -> bool {
+        !self.shadowed.iter().any(|s| s.contains(name))
+    }
+
+    /// Visit a body that runs later, as a function of `params`.
+    fn visit_nested(&mut self, params: HashSet<String>, visit: impl FnOnce(&mut Self)) {
+        self.shadowed.push(params);
+        self.nested += 1;
+        visit(self);
+        self.nested -= 1;
+        self.shadowed.pop();
     }
 }
 
@@ -692,6 +777,36 @@ impl<'a> Visitor<'a> for Effects {
             }
             Stmt::For(f) if f.is_async => *self = std::mem::take(self).suspended(),
             Stmt::With(w) if w.is_async => *self = std::mem::take(self).suspended(),
+            // The walk tracks these stores itself.
+            Stmt::Assign(a) if self.nested == 0 && simple_attr_targets(a).is_some() => {
+                return self.visit_expr(&a.value);
+            }
+            Stmt::AugAssign(a) if self.nested == 0 && attr_name(&a.target).is_some() => {
+                return self.visit_expr(&a.value);
+            }
+            // Decorators, defaults and annotations run at the definition, in this scope.
+            Stmt::FunctionDef(f) => {
+                f.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                if let Some(t) = &f.type_params {
+                    self.visit_type_params(t);
+                }
+                self.visit_parameters(&f.parameters);
+                if let Some(r) = &f.returns {
+                    self.visit_annotation(r);
+                }
+                let params = f.parameters.iter().map(|p| p.name().id.to_string()).collect();
+                return self.visit_nested(params, |v| v.visit_body(&f.body));
+            }
+            Stmt::ClassDef(c) => {
+                c.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                if let Some(t) = &c.type_params {
+                    self.visit_type_params(t);
+                }
+                if let Some(a) = &c.arguments {
+                    self.visit_arguments(a);
+                }
+                return self.visit_nested(HashSet::new(), |v| v.visit_body(&c.body));
+            }
             _ => {}
         }
         visitor::walk_stmt(self, stmt);
@@ -702,6 +817,13 @@ impl<'a> Visitor<'a> for Effects {
             Expr::Call(c) => {
                 if let Expr::Attribute(a) = c.func.as_ref() {
                     self.reach_root(&a.value);
+                }
+                // `super()` hands the method's own object to the parent's code, by a
+                // method call, a property read or a stored `s = super()`. The walk
+                // does not know which parameter that is, so it counts as other code
+                // running on any object.
+                if matches!(c.func.as_ref(), Expr::Name(n) if n.id.as_str() == "super") {
+                    *self = std::mem::take(self).suspended();
                 }
                 let get_on = match c.func.as_ref() {
                     Expr::Attribute(a) if a.attr.as_str() == "get" => match a.value.as_ref() {
@@ -718,15 +840,70 @@ impl<'a> Visitor<'a> for Effects {
                 }
             }
             Expr::Name(n) if matches!(n.ctx, ExprContext::Load) => {
-                self.reached.insert(n.id.to_string());
+                if self.outer(n.id.as_str()) {
+                    self.reached.insert(n.id.to_string());
+                }
             }
-            // `x.f` reads a field of `x` and hands `x` to nothing.
-            Expr::Attribute(a) if matches!(a.value.as_ref(), Expr::Name(_)) => return,
+            Expr::Lambda(l) => {
+                let mut params = HashSet::new();
+                if let Some(p) = &l.parameters {
+                    self.visit_parameters(p);
+                    params = p.iter().map(|p| p.name().id.to_string()).collect();
+                }
+                return self.visit_nested(params, |v| v.visit_expr(&l.body));
+            }
+            // `x.f` reads a field of `x` and hands `x` to nothing, but it hands
+            // the object `x.f` to whatever uses it as a value.
+            Expr::Attribute(a) => {
+                if matches!(a.ctx, ExprContext::Store | ExprContext::Del) {
+                    let mut base = a.value.as_ref();
+                    while let Expr::Attribute(inner) = base {
+                        base = inner.value.as_ref();
+                    }
+                    if let Expr::Name(n) = base {
+                        if self.outer(n.id.as_str()) {
+                            self.handed.insert(n.id.to_string());
+                        }
+                    }
+                }
+                if let Expr::Name(n) = a.value.as_ref() {
+                    if matches!(a.ctx, ExprContext::Load) && self.outer(n.id.as_str()) {
+                        self.handed.insert(n.id.to_string());
+                    }
+                    return;
+                }
+                // `x.a.f` reads a field of `x.a`: `x.a` is only the receiver. The
+                // object `x.a.f` is in other code's hands, though: when `x.a.f` is
+                // itself a link, code that holds it can write the fields of the
+                // chains through it.
+                if matches!(a.ctx, ExprContext::Load) {
+                    if let Some(path) = attr_name(expr) {
+                        if path.split('.').next().is_some_and(|root| self.outer(root)) {
+                            self.handed_paths.insert(path);
+                        }
+                    }
+                }
+                let mut base = a.value.as_ref();
+                while let Expr::Attribute(inner) = base {
+                    if matches!(inner.value.as_ref(), Expr::Name(_)) {
+                        return;
+                    }
+                    base = inner.value.as_ref();
+                }
+                self.visit_expr(base);
+                return;
+            }
             // An identity test runs no code of its operands.
             Expr::Compare(c) if c.ops.iter().all(|op| matches!(op, CmpOp::Is | CmpOp::IsNot)) => {
                 for e in std::iter::once(c.left.as_ref()).chain(c.comparators.iter()) {
-                    if !matches!(e, Expr::Name(_)) {
-                        self.visit_expr(e);
+                    // `x` and `x.a.b` run no code and hand nothing over; the base
+                    // of any other chain is evaluated.
+                    let mut base = e;
+                    while let Expr::Attribute(a) = base {
+                        base = a.value.as_ref();
+                    }
+                    if !matches!(base, Expr::Name(_)) {
+                        self.visit_expr(base);
                     }
                 }
                 return;
@@ -771,8 +948,9 @@ fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
 }
 
 /// Names known non-None when `test` is true (attributes of variables as
-/// `obj.f`, see `attr_name`), and `member_key` facts.
-pub fn positive(test: &Expr) -> Vec<String> {
+/// `obj.f`, see `attr_name`), and `member_key` facts. `n` knows the calls
+/// that rule out None.
+pub fn positive(test: &Expr, n: &Narrowed) -> Vec<String> {
     let mut out: Vec<String> = match test {
         Expr::Name(n) => vec![n.id.to_string()],
         Expr::Attribute(_) => attr_name(test).into_iter().collect(),
@@ -780,27 +958,39 @@ pub fn positive(test: &Expr) -> Vec<String> {
             .into_iter()
             .chain(membership(c, CmpOp::In))
             .collect(),
-        Expr::BoolOp(b) if matches!(b.op, BoolOp::And) => {
-            b.values.iter().flat_map(positive).collect()
+        // `isinstance(x, str).__eq__(y)` starts at the same offset: only the
+        // call of the name itself is the one resolution marked.
+        Expr::Call(c)
+            if matches!(c.func.as_ref(), Expr::Name(f) if f.id.as_str() == "isinstance")
+                && n.excludes_none.contains(&c.start().to_u32()) =>
+        {
+            match c.arguments.args.first() {
+                Some(Expr::Name(s)) => vec![s.id.to_string()],
+                _ => Vec::new(),
+            }
         }
-        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => negative(&u.operand),
+        Expr::BoolOp(b) if matches!(b.op, BoolOp::And) => {
+            b.values.iter().flat_map(|v| positive(v, n)).collect()
+        }
+        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => negative(&u.operand, n),
         _ => Vec::new(),
     };
     without_members_if_called(&mut out, test);
     out
 }
 
-/// Names known non-None when `test` is false, and `member_key` facts.
-pub fn negative(test: &Expr) -> Vec<String> {
+/// Names known non-None when `test` is false, and `member_key` facts. A
+/// false `isinstance` says nothing about None.
+pub fn negative(test: &Expr, n: &Narrowed) -> Vec<String> {
     let mut out: Vec<String> = match test {
         Expr::Compare(c) => none_comparison(c, CmpOp::Is)
             .into_iter()
             .chain(membership(c, CmpOp::NotIn))
             .collect(),
         Expr::BoolOp(b) if matches!(b.op, BoolOp::Or) => {
-            b.values.iter().flat_map(negative).collect()
+            b.values.iter().flat_map(|v| negative(v, n)).collect()
         }
-        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => positive(&u.operand),
+        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => positive(&u.operand, n),
         _ => Vec::new(),
     };
     without_members_if_called(&mut out, test);
@@ -855,16 +1045,16 @@ fn none_comparison(c: &ast::ExprCompare, op: CmpOp) -> Option<String> {
     }
 }
 
-/// `obj.f` for an attribute of a variable: the flow name of the attribute
-/// (tracked like a local: `obj.f = v` rebinds it, `if obj.f is None:` narrows it).
+/// `obj.f` (or `obj.fk.f`, any depth) for an attribute chain rooted at a
+/// variable: the flow name of the attribute (tracked like a local: `obj.f = v`
+/// rebinds it, `if obj.f is None:` narrows it).
 pub fn attr_name(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Attribute(a) => match a.value.as_ref() {
-            Expr::Name(n) => Some(format!("{}.{}", n.id, a.attr)),
-            _ => None,
-        },
-        _ => None,
-    }
+    let Expr::Attribute(a) = expr else { return None };
+    let receiver = match a.value.as_ref() {
+        Expr::Name(n) => n.id.to_string(),
+        inner => attr_name(inner)?,
+    };
+    Some(format!("{receiver}.{}", a.attr))
 }
 
 /// `(obj.f, value)` pairs of an assignment whose every target is an
@@ -1609,7 +1799,31 @@ mod tests {
         Exits {
             calls: calls.iter().map(at).collect(),
             matches: matches.iter().map(at).collect(),
+            ..Exits::default()
         }
+    }
+
+    #[test]
+    fn test_attribute_chains_narrow_and_rebinding_a_link_forgets_them() {
+        let src = "def f(o, c):\n    if o.fk.x is None:\n        return\n    use()\n    o.fk = c\n    use()\n    if o.fk.x:\n        use()\n    o = c\n    use()\n";
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            narrowing_at_uses(src),
+            vec![names(&["o", "o.fk", "o.fk.x"]), names(&["o"]), names(&["o", "o.fk", "o.fk.x"]), names(&[])]
+        );
+    }
+
+    #[test]
+    fn test_rebinding_a_middle_link_forgets_its_chains_and_no_others() {
+        let src = "def f(o, c):\n    if o.a.b.x is None:\n        return\n    if o.ab.x is None:\n        return\n    if o.other.x is None:\n        return\n    use()\n    o.a = c\n    use()\n";
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            narrowing_at_uses(src),
+            vec![
+                names(&["o", "o.a", "o.a.b", "o.a.b.x", "o.ab", "o.ab.x", "o.other", "o.other.x"]),
+                names(&["o", "o.ab", "o.ab.x", "o.other", "o.other.x"]),
+            ]
+        );
     }
 
     #[test]
@@ -1721,6 +1935,77 @@ mod tests {
         assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new()]);
         let src = "def f(d, k):\n    if k in d:\n        with m:\n            pass\n        probe.get()\n";
         assert_eq!(narrowing_at_uses(src), vec![vec!["d[k]".to_string()]]);
+    }
+
+    /// Narrowing at each `use()` with every `isinstance(` call of `src` in
+    /// `Exits::excludes_none`, as `exits::function_exits` marks the builtin.
+    fn narrowing_with_isinstance(src: &str) -> Vec<Vec<String>> {
+        let exits = Exits {
+            excludes_none: src.match_indices("isinstance(").map(|(at, _)| at as u32).collect(),
+            ..Exits::default()
+        };
+        narrowing_with_exits(src, &exits)
+    }
+
+    fn names(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_isinstance_narrows_in_the_true_branch_only() {
+        let src = "def f(x, c):\n    if isinstance(x, str):\n        use()\n    else:\n        use()\n    use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![names(&["x"]), vec![], vec![]]);
+        // A call that resolution did not mark narrows nothing.
+        assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new(), vec![], vec![]]);
+    }
+
+    #[test]
+    fn test_isinstance_negated_and_composed() {
+        let src = "def f(x, y, c):\n    if not isinstance(x, str):\n        use()\n        return\n    use()\n    if isinstance(y, int) or c:\n        use()\n    if isinstance(y, int) and c:\n        use()\n    if not isinstance(y, int) or c:\n        use()\n    else:\n        use()\n";
+        assert_eq!(
+            narrowing_with_isinstance(src),
+            vec![names(&[]), names(&["x"]), names(&["x"]), names(&["c", "x", "y"]), names(&["x"]), names(&["x", "y"])]
+        );
+    }
+
+    #[test]
+    fn test_isinstance_assert_while_and_elif() {
+        let src = "def f(x, y, c):\n    while isinstance(y, str):\n        use()\n    use()\n    if c:\n        use()\n    elif isinstance(y, str):\n        use()\n    assert isinstance(x, str)\n    use()\n";
+        assert_eq!(
+            narrowing_with_isinstance(src),
+            vec![names(&["y"]), names(&[]), names(&["c"]), names(&["y"]), names(&["x"])]
+        );
+    }
+
+    #[test]
+    fn test_isinstance_on_a_name_ends_where_is_not_none_ends() {
+        // The statements that rebind the name end both narrowings alike.
+        for tail in ["", "    x = c\n    use()\n", "    del x\n    use()\n", "    for x in c:\n        pass\n    use()\n", "    with c as x:\n        pass\n    use()\n", "    try:\n        pass\n    except E as x:\n        pass\n    use()\n", "    import x\n    use()\n", "    clear(x)\n    use()\n"] {
+            let body = |test: &str| format!("def f(x, c):\n    if not ({test}):\n        return\n    use()\n{tail}");
+            let by_isinstance = narrowing_with_isinstance(&body("isinstance(x, str)"));
+            let by_none_test = narrowing_at_uses(&body("x is not None"));
+            assert_eq!(by_isinstance, by_none_test, "{tail:?}");
+            assert_eq!(by_isinstance[0], names(&["x"]), "{tail:?}");
+        }
+    }
+
+    #[test]
+    fn test_isinstance_narrows_only_a_name() {
+        // An attribute, a subscript or a call is never narrowed by `isinstance`,
+        // even when its call is marked.
+        // Reading `o.a.b` dereferences `o` and `o.a`, whatever the test.
+        let src = "def f(o, x):\n    if isinstance(o.a, str):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![names(&["o"])]);
+        let src = "def f(o, x):\n    if isinstance(o.a.b, str):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![names(&["o", "o.a"])]);
+        let src = "def f(o, x):\n    if isinstance(g(x), str):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![names(&[])]);
+        // `d[0]` dereferences `d`, which narrows it whatever the test.
+        let src = "def f(d):\n    if isinstance(d[0], str):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![names(&["d"])]);
+        // A call on the result starts at the marked offset but is not the test.
+        let src = "def f(x, y):\n    if isinstance(x, str).__eq__(y):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![Vec::<String>::new()]);
     }
 
     #[test]

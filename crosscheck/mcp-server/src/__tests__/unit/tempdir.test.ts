@@ -39,6 +39,17 @@ describe("removeTempDir", () => {
 });
 
 describe("cleanupStaleDirs", () => {
+  it("removes stale cgv_check directories and no other cgv- directory", async () => {
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    vi.mocked(readdir).mockResolvedValue(["cgv-check-old-dir", "cgv-mcp-old-dir", "cgv-integration-old-dir"] as any);
+    vi.mocked(stat).mockResolvedValue({ mtimeMs: now - 31 * 60 * 1000 } as any);
+    vi.mocked(rm).mockResolvedValue(undefined);
+
+    expect(await cleanupStaleDirs()).toBe(1);
+    expect(vi.mocked(rm).mock.calls).toEqual([["/tmp/cgv-check-old-dir", { recursive: true, force: true }]]);
+  });
+
   it("removes stale dafny directories older than 30 minutes", async () => {
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now);

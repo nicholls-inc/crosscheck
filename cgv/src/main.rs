@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crosscheck_contracts::{baseline, defaults, evidence, extractor, report};
+use crosscheck_contracts::{baseline, defaults, evidence, extractor, report, witness};
 
 /// Stack size of the extraction thread: deeply nested Python (long operator
 /// chains, nested calls) recurses in the parser and the analyses.
@@ -107,6 +107,13 @@ enum Commands {
         /// cannot name the same file as --write-baseline
         #[arg(long, value_name = "PATH", conflicts_with = "evidence_record")]
         baseline: Option<PathBuf>,
+
+        /// Write one pytest module per error whose target is a Django model
+        /// field or a pydantic field into DIR, running the field's own
+        /// validation on the error's counterexample. Earlier generated
+        /// modules in DIR are removed. Output and exit code are unchanged
+        #[arg(long, value_name = "DIR")]
+        witness_tests: Option<PathBuf>,
     },
     /// Generate defaults table from Django source
     GenerateDefaults {
@@ -152,6 +159,7 @@ fn run(cli: Cli) -> Result<i32> {
             evidence_record,
             write_baseline,
             baseline: baseline_path,
+            witness_tests,
         } => {
             if let (Some(read), Some(write)) = (&baseline_path, &write_baseline) {
                 if baseline::same_file(read, write) {
@@ -229,6 +237,12 @@ fn run(cli: Cli) -> Result<i32> {
                     eprintln!();
                 }
                 return Ok(2);
+            }
+            if let Some(dir) = &witness_tests {
+                if let Err(e) = write_witness_tests(dir, &output.stdout, &db_path, &root) {
+                    eprintln!("Error: cannot write the witness tests to {}: {e:#}", dir.display());
+                    return Ok(2);
+                }
             }
             let parsed = (baseline_findings.is_some() || write_baseline.is_some())
                 .then(|| report::parse(&String::from_utf8_lossy(&output.stdout)));
@@ -336,6 +350,19 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
     }
+}
+
+/// Write the witness modules of a checker result (WX-1).
+fn write_witness_tests(dir: &std::path::Path, stdout: &[u8], db: &std::path::Path, root: &std::path::Path) -> Result<()> {
+    let Ok(checker_output) = report::parse(&String::from_utf8_lossy(stdout)) else {
+        eprintln!("witness tests not written: unrecognised checker result");
+        return Ok(());
+    };
+    let origins = witness::read_origins(db)?;
+    let plan = witness::plan(&checker_output, &origins);
+    witness::write(dir, &plan, root)?;
+    eprintln!("{}", witness::summary(dir, &plan));
+    Ok(())
 }
 
 fn warning_display(no_warnings: bool, warnings: bool) -> report::WarningDisplay {
