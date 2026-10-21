@@ -8,7 +8,7 @@ A user who does not yet trust CGV has to read code to decide whether each error 
 Row CG-1.6 asks one pull request for all of it. The work splits into four pieces of different strength, in different code:
 
 1. **A counterexample value, proved.** For a bound, choices or nullability error, a value that the source guarantee admits and the target requirement rejects. The Lean checker already holds both constraints of every error (`DiagnosticInfo.sourceConstraint` and `targetConstraint` in `cgv/prover/ContractGraph/Types.lean`), so it can compute the value, and the Lean kernel can check a proof that the value is admitted and rejected. The proof is relative to the translated constraints. It says nothing about Django or pydantic, nor about whether the code produces the value.
-2. **A test of the value against the real library, tested.** A generated pytest module that runs the target field's own validation on the value and expects a rejection, and, when the source is a field too, expects the source field to accept it. It checks the reading of `BehaviorModel.lean` for that one value, on a pinned library version, with no trust in CGV's semantics.
+2. **A test of the value against the real library, tested.** A generated pytest module that runs the target field's own validation on the value and asserts that the target field accepts it, so it fails while the error is real, and, when the source is a field too, asserts that the source field accepts it. A failure is the evidence. It checks the reading of `BehaviorModel.lean` for that one value, on a pinned library version, with no trust in CGV's semantics.
 3. **The condition under which None is produced.** For a nullability error, the guard conditions that enclose the line that yields None, when the extractor knows them.
 4. **A failing test of the code path, tested.** A generated test that calls the path's head with inputs that make the source produce the counterexample, and expects the sink to fail. Issue #8 says such a finding needs no trust in the tool. It is the only piece that shows the error is reachable.
 
@@ -19,7 +19,7 @@ The error kinds weigh differently than issue #8 suggests. Of the 237 errors in t
 
 - **CG-1.35.** The Lean checker computes a counterexample for each error of kind `length`, `precision`, `range`, `range_min`, `choices` and `nullability`, and proves it is admitted by the source constraint and rejected by the target. The checker's JSON carries it as `counterexample`, and `--format text` prints it. The rules are WT-1 to WT-12 in `intent/2026-10-07-error-witness-spec.md`.
 - **CG-1.36.** The same for `type`, after CG-1.7. Its intent picks a value for each type name, since Django and pydantic convert some values (measured below).
-- **CG-1.37.** `contracts check --witness-tests DIR` writes a pytest module per error whose target is a Django model field or a pydantic field, which checks the counterexample against the field's own validation. CGV CI runs the modules generated from the fixtures, with Django and pydantic pinned.
+- **CG-1.37.** `contracts check --witness-tests DIR` writes a pytest module per error whose target is a Django model field or a pydantic field, which checks the counterexample against the field's own validation; each test asserts acceptance and fails while the error is real. Running the modules generated from the fixtures in CGV CI, with Django and pydantic pinned, is CG-1.55.
 - **CG-1.38.** The extractor records the guard conditions that enclose a None-producing line, and the report prints them with the nullability error.
 - **CG-1.39.** A generated test that drives the path from its head and expects the sink to fail, for the first shape the evaluation found real: a field of one model written into a field of another, starting with a head that takes the source instance as an argument.
 
@@ -38,7 +38,7 @@ No row names CG-1.6 in `Depends on`, so no dependency changes. This pull request
 - Task IDs are never reused. CG-1.35 to CG-1.40 appear in no row on `origin/main` (highest CG-1.34, which pull request #105 merged) and in no open pull request's diff, and no branch is named after them.
 
 ## Measured on Django 4.2.30 and pydantic 2.13.5
-Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has no check that runs, so there is nothing to measure there. The property named in the next section for targets, that nothing which runs rejects a value outside an annotation, has a counterpart for a source: nothing which runs confirms that the source admits a value.
+Run once by hand, and the probe is not committed. CG-1.37 reruns the checks in a script, and CG-1.55 runs that script in CI, on Django 4.2 and 5.x and on pydantic 2, and CG-1.40 adds the pydantic sources that were not measured. A data class source has no check that runs, so there is nothing to measure there. The property named in the next section for targets, that nothing which runs rejects a value outside an annotation, has a counterpart for a source: nothing which runs confirms that the source admits a value.
 
 A probe called `Field.clean(value, None)` on Django model fields and validated pydantic fields through `TypeAdapter`. It settles the value for each kind that CG-1.35 and the spec fix.
 

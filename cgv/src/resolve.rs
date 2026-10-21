@@ -768,6 +768,22 @@ pub struct ClassInfo {
     /// Fields whose input a pydantic validation call (`Cls.model_validate`)
     /// still writes as a typed write: validation does not enforce their contract.
     pub validate_checked: HashSet<String>,
+    /// Fields whose value is an instance of a project class, so a read
+    /// `obj.link.field` reaches that class's field.
+    pub links: HashMap<String, Link>,
+}
+
+/// A field whose value is an instance of a project class: a Django
+/// `ForeignKey` / `OneToOneField`, or a data class field annotated with the
+/// class (`Optional` allowed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Link {
+    /// Qualified name of the class of the value.
+    pub class: String,
+    /// Whether the field may hold None (`null=True`, `Optional[...]`), when
+    /// known. No read uses it while a chained read of a non-null field is
+    /// unknown (CG-1.52).
+    pub nullable: Option<bool>,
 }
 
 /// An enum-like class: members are class-body constants.
@@ -804,6 +820,7 @@ impl ClassInfo {
             patterns: HashSet::new(),
             field_facts: HashMap::new(),
             validate_checked: HashSet::new(),
+            links: HashMap::new(),
         }
     }
 
@@ -1328,6 +1345,28 @@ impl ProjectIndex {
         }
         let parts = dotted_parts(expr)?;
         self.resolve_dotted(module, &parts)
+    }
+
+    /// The class named by a type annotation (`Invoice`, `Optional[Invoice]`,
+    /// `"Invoice"`), resolved in `module`.
+    pub fn annotation_class(&self, module: &str, annotation: &Expr) -> Option<&ClassInfo> {
+        let sym = match crate::function_extractor::strip_optional(annotation) {
+            Expr::StringLiteral(s) => {
+                let parts: Vec<String> = s.value.to_str().trim().split('.').map(str::to_string).collect();
+                if parts
+                    .iter()
+                    .any(|p| p.is_empty() || !p.chars().all(|c| c.is_alphanumeric() || c == '_'))
+                {
+                    return None;
+                }
+                self.resolve_dotted(module, &parts)?
+            }
+            other => self.resolve_expr(module, other)?,
+        };
+        match sym {
+            Symbol::Class(q) => self.class(&q),
+            _ => None,
+        }
     }
 
     pub fn resolve_dotted(&self, module: &str, parts: &[String]) -> Option<Symbol> {

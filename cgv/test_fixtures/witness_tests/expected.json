@@ -1,0 +1,117 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "open_account -> Account.code",
+      "source_guarantee": "length ≤ 8",
+      "target_requirement": "length ≤ 6",
+      "target": "Account.code",
+      "counterexample": "\"x\" * 8"
+    },
+    {
+      "path": "open_account -> Account.rate",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Account.rate",
+      "counterexample": "Decimal(\"0.001\")"
+    },
+    {
+      "path": "open_account -> Account.level",
+      "source_guarantee": "range ≤ 11",
+      "target_requirement": "range ≤ 10",
+      "target": "Account.level",
+      "counterexample": "11"
+    },
+    {
+      "path": "open_account -> Account.points",
+      "source_guarantee": "range ≥ -1",
+      "target_requirement": "range ≥ 0",
+      "target": "Account.points",
+      "counterexample": "-1"
+    },
+    {
+      "path": "open_account -> Account.status",
+      "source_guarantee": "choices in [z]",
+      "target_requirement": "choices in [a, x]",
+      "target": "Account.status",
+      "counterexample": "\"z\""
+    },
+    {
+      "path": "open_account -> Account.tier",
+      "source_guarantee": "choices in [3]",
+      "target_requirement": "choices in [1, 2]",
+      "target": "Account.tier",
+      "counterexample": "3"
+    },
+    {
+      "path": "open_account -> Account.note",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Account.note",
+      "counterexample": "None"
+    },
+    {
+      "path": "open_account -> Account.score",
+      "source_guarantee": "range ≤ 5.5",
+      "target_requirement": "range ≤ 5",
+      "target": "Account.score",
+      "counterexample": "Decimal(\"5.5\")"
+    },
+    {
+      "path": "place_order -> Order.ref",
+      "source_guarantee": "length ≤ 6",
+      "target_requirement": "length ≤ 4",
+      "target": "Order.ref",
+      "counterexample": "\"x\" * 6"
+    },
+    {
+      "path": "place_order -> Order.amount",
+      "source_guarantee": "precision ≤ 3",
+      "target_requirement": "precision ≤ 2",
+      "target": "Order.amount",
+      "counterexample": "Decimal(\"0.001\")"
+    },
+    {
+      "path": "place_order -> Order.qty",
+      "source_guarantee": "range ≤ 12",
+      "target_requirement": "range ≤ 10",
+      "target": "Order.qty",
+      "counterexample": "12"
+    },
+    {
+      "path": "place_order -> Order.discount",
+      "source_guarantee": "range ≥ -0.5",
+      "target_requirement": "range ≥ 0",
+      "target": "Order.discount",
+      "counterexample": "Decimal(\"-0.5\")"
+    },
+    {
+      "path": "place_order -> Order.channel",
+      "source_guarantee": "choices in [mail]",
+      "target_requirement": "choices in [web, shop]",
+      "target": "Order.channel",
+      "counterexample": "\"mail\""
+    },
+    {
+      "path": "place_order -> Order.label",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Order.label",
+      "counterexample": "None"
+    },
+    {
+      "path": "place_order -> Order.count",
+      "source_guarantee": "range ≤ 5.5",
+      "target_requirement": "range ≤ 5",
+      "target": "Order.count",
+      "counterexample": "Decimal(\"5.5\")"
+    },
+    {
+      "path": "draft -> Draft.title",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Draft.title",
+      "counterexample": "None"
+    }
+  ]
+}

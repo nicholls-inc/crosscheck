@@ -1,0 +1,45 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "label -> Label.postcode",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.postcode"
+    },
+    {
+      "path": "label_inner -> Label.postcode",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.postcode"
+    },
+    {
+      "path": "Courier.label_after_reset -> Label.postcode",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.postcode"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "label_billing_unguarded -> Label.city",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "statement -> Statement.name",
+      "contains": "length"
+    },
+    {
+      "path": "statement -> Statement.balance",
+      "contains": "precision"
+    },
+    {
+      "path": "label_guarded -> Label.city",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "label_billing -> Label.city",
+      "contains": "no nullability postcondition"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [
+    {
+      "path": "bill_reverse -> Invoice.email",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_auth_user_model -> Invoice.email",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_unresolvable -> Invoice.email",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_call_root -> Invoice.email",
+      "contains": "no nullability postcondition"
+    }
+  ]
+}

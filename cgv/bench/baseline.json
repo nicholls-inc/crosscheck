@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool_commit": "937378b193e6ad82eb71a4bc840557d4b5a1fcc3",
+  "tool_commit": "7fca7b6f4020a6e75826582260d576c7628bd89d",
   "corpora": [
     "public"
   ],
@@ -299,15 +299,15 @@
       "kind": "non-null",
       "in_scope": true,
       "source": "synthetic",
-      "outcome": "WARNING_ONLY",
+      "outcome": "CAUGHT",
       "rank": [
         1,
         1
       ],
       "pre": {
-        "exit": 0,
-        "errors": 0,
-        "warnings": 1
+        "exit": 1,
+        "errors": 1,
+        "warnings": 0
       },
       "fix": {
         "exit": 0,
@@ -316,7 +316,7 @@
       },
       "matched": [
         {
-          "severity": "warning",
+          "severity": "error",
           "source": "open_ticket",
           "target": "Ticket.operator_name",
           "site": "sites/logic.py:5"
@@ -341,9 +341,9 @@
   ],
   "summary": {
     "in_scope": 8,
-    "CAUGHT": 6,
+    "CAUGHT": 7,
     "DETECTED_NOT_CLEARED": 1,
-    "WARNING_ONLY": 1,
+    "WARNING_ONLY": 0,
     "MISSED": 0,
     "out_of_scope": 2,
     "NOT_REPORTED": 2,
