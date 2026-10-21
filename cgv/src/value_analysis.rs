@@ -610,6 +610,9 @@ impl<'a> Scope<'a> {
                 }
             }
         }
+        if let Some(facts) = self.linked_field_facts(attr, ctx) {
+            return facts;
+        }
         let Some(parts) = dotted_parts(expr) else {
             return ValueFacts::default();
         };
@@ -638,6 +641,62 @@ impl<'a> Scope<'a> {
             Some(Symbol::Constant(q)) => self.constant_facts(&q),
             _ => ValueFacts::default(),
         }
+    }
+
+    /// `obj.link.f` (any depth) for local `obj` of a known class whose
+    /// fields `link` hold instances of project classes (`resolve::Link`): the
+    /// declared facts of the last class's field `f`, as `field_read_facts`
+    /// gives them for the chain. A link that may be None and is not narrowed
+    /// raises `AttributeError` rather than yield None, so no None flows from
+    /// it; a non-null field read through it still gets unknown nullability,
+    /// so the possible `AttributeError` is a warning rather than silent
+    /// (`intent/2026-10-21-cgv-chained-attribute-reads.md`). `None` when the chain does
+    /// not resolve, or when the function assigns a link (the value's class
+    /// is then not the declared one).
+    fn linked_field_facts(&self, attr: &ast::ExprAttribute, ctx: &Ctx) -> Option<ValueFacts> {
+        let mut links = Vec::new();
+        let mut value = attr.value.as_ref();
+        while let Expr::Attribute(a) = value {
+            links.push(a.attr.as_str());
+            value = a.value.as_ref();
+        }
+        let Expr::Name(root) = value else { return None };
+        if links.is_empty() {
+            return None;
+        }
+        links.reverse();
+        let element = ctx.elements.contains_key(root.id.as_str());
+        let Some((mut class, true)) = self.receiver_class(value, ctx) else {
+            return None;
+        };
+        let mut receiver = root.id.to_string();
+        let mut may_be_none = false;
+        for link in links {
+            let next = class.links.get(link)?;
+            receiver = format!("{receiver}.{link}");
+            if !element && (self.flow.attr_assignments.contains_key(&receiver) || self.flow.opaque.contains(&receiver)) {
+                return None;
+            }
+            let narrowed = !element && ctx.narrowed.contains(&receiver);
+            may_be_none |= !narrowed && next.nullable != Some(false);
+            class = self.index.class(&next.class)?;
+        }
+        let field = attr.attr.as_str();
+        if !class.fields.iter().any(|f| f == field) {
+            return None;
+        }
+        let mut facts = if element {
+            declared_field_facts(class, field)
+        } else {
+            self.field_read_facts(&receiver, class, field, ctx)
+        };
+        // A narrowed chain was evaluated without raising, so every link held
+        // an object then, and none has been rebound since.
+        let narrowed = !element && ctx.narrowed.contains(&format!("{receiver}.{field}"));
+        if may_be_none && !narrowed && facts.nullable == Some(false) {
+            facts.nullable = None;
+        }
+        Some(facts)
     }
 
     /// The facts of each value class constant `name` may have when read as
@@ -1852,7 +1911,7 @@ impl<'a> Scope<'a> {
     /// `list[C]`, `QuerySet[C]`, `Iterable[C]`, `tuple[C, ...]` ... (also
     /// `Optional[...]`): `C`.
     fn collection_class(&self, annotation: &Expr) -> Option<&'a ClassInfo> {
-        self.annotation_class(self.module, collection_element(annotation)?)
+        self.index.annotation_class(self.module, collection_element(annotation)?)
     }
 
     /// Whether the elements iterable `iter` yields may be None, when known.
@@ -1919,7 +1978,7 @@ impl<'a> Scope<'a> {
             candidates.push(
                 p.annotation
                     .as_ref()
-                    .and_then(|a| self.annotation_class(self.module, a)),
+                    .and_then(|a| self.index.annotation_class(self.module, a)),
             );
         }
         if let Some(assigns) = self.flow.assignments.get(name) {
@@ -1934,30 +1993,6 @@ impl<'a> Scope<'a> {
             .then_some((first, true))
     }
 
-    /// The class named by a type annotation (`Invoice`, `Optional[Invoice]`,
-    /// `"Invoice"`), resolved in `module`.
-    fn annotation_class(&self, module: &str, annotation: &Expr) -> Option<&'a ClassInfo> {
-        let inner = strip_optional(annotation);
-        let sym = match inner {
-            Expr::StringLiteral(s) => {
-                let text = s.value.to_str().trim().to_string();
-                let parts: Vec<String> = text.split('.').map(str::to_string).collect();
-                if parts
-                    .iter()
-                    .any(|p| p.is_empty() || !p.chars().all(|c| c.is_alphanumeric() || c == '_'))
-                {
-                    return None;
-                }
-                self.index.resolve_dotted(module, &parts)?
-            }
-            other => self.index.resolve_expr(module, other)?,
-        };
-        match sym {
-            Symbol::Class(q) => self.index.class(&q),
-            _ => None,
-        }
-    }
-
     /// The class of the instance an expression evaluates to, if known:
     /// `Cls(...)`, `Cls.objects.get/create(...)`, `Cls.objects.filter(...).first()`,
     /// or a call to a function whose return annotation names the class.
@@ -1970,7 +2005,7 @@ impl<'a> Scope<'a> {
             Callee::Class(c) => Some(c),
             Callee::Function { qualified, .. } => {
                 let f = self.index.function(&qualified)?;
-                self.annotation_class(&f.module, f.return_annotation.as_ref()?)
+                self.index.annotation_class(&f.module, f.return_annotation.as_ref()?)
             }
             Callee::Unknown => None,
         }

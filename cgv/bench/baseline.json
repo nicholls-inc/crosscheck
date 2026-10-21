@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool_commit": "937378b193e6ad82eb71a4bc840557d4b5a1fcc3",
+  "tool_commit": "6659d00ad0e5ee02e5352c158fb11947261a7ca5",
   "corpora": [
     "public"
   ],
@@ -11,15 +11,15 @@
       "kind": "non-null",
       "in_scope": true,
       "source": "synthetic",
-      "outcome": "CAUGHT",
+      "outcome": "WARNING_ONLY",
       "rank": [
         1,
         2
       ],
       "pre": {
-        "exit": 1,
-        "errors": 2,
-        "warnings": 0
+        "exit": 0,
+        "errors": 0,
+        "warnings": 2
       },
       "fix": {
         "exit": 0,
@@ -28,7 +28,7 @@
       },
       "matched": [
         {
-          "severity": "error",
+          "severity": "warning",
           "source": "parse_payer",
           "target": "Payer.city",
           "site": "billing/logic.py:5"
@@ -299,15 +299,15 @@
       "kind": "non-null",
       "in_scope": true,
       "source": "synthetic",
-      "outcome": "WARNING_ONLY",
+      "outcome": "CAUGHT",
       "rank": [
         1,
         1
       ],
       "pre": {
-        "exit": 0,
-        "errors": 0,
-        "warnings": 1
+        "exit": 1,
+        "errors": 1,
+        "warnings": 0
       },
       "fix": {
         "exit": 0,
@@ -316,7 +316,7 @@
       },
       "matched": [
         {
-          "severity": "warning",
+          "severity": "error",
           "source": "open_ticket",
           "target": "Ticket.operator_name",
           "site": "sites/logic.py:5"

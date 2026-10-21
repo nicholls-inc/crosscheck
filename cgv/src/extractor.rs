@@ -283,7 +283,9 @@ impl Project {
                     .collect()
             })
             .collect();
-        for (dc, field_facts) in data_classes.iter().zip(field_facts) {
+        let links: Vec<HashMap<String, resolve::Link>> =
+            data_classes.iter().map(|dc| data_class_links(&index, &candidates, dc)).collect();
+        for ((dc, field_facts), links) in data_classes.iter().zip(field_facts).zip(links) {
             if let Some(c) = index.classes.get_mut(&dc.qualified_name) {
                 if c.kind == ClassKind::Plain {
                     c.kind = ClassKind::Data(dc.kind);
@@ -304,6 +306,7 @@ impl Project {
                             .collect();
                     }
                     c.field_facts = field_facts;
+                    c.links = links;
                 }
             }
         }
@@ -495,11 +498,45 @@ fn django_models(
         fields
     }
 
+    let own_links: HashMap<String, HashMap<String, resolve::Link>> = defs
+        .iter()
+        .filter(|(q, _, _)| django.contains(q))
+        .map(|(q, c, m)| {
+            let links = model_extractor::relations(c)
+                .into_iter()
+                .filter_map(|(field, target, nullable)| {
+                    let class = relation_class(index, &m.module, q, target, &django)?;
+                    Some((field, resolve::Link { class, nullable }))
+                })
+                .collect();
+            (q.clone(), links)
+        })
+        .collect();
+    fn inherited_links(
+        q: &str,
+        own: &HashMap<String, HashMap<String, resolve::Link>>,
+        bases: &HashMap<String, Vec<String>>,
+        visiting: &mut HashSet<String>,
+    ) -> HashMap<String, resolve::Link> {
+        let mut links = own.get(q).cloned().unwrap_or_default();
+        if !visiting.insert(q.to_string()) || visiting.len() > 64 {
+            return links;
+        }
+        for b in bases.get(q).into_iter().flatten() {
+            for (field, link) in inherited_links(b, own, bases, visiting) {
+                links.entry(field).or_insert(link);
+            }
+        }
+        visiting.remove(q);
+        links
+    }
+
     let mut all = Vec::new();
     for (q, c, m) in &defs {
         if !django.contains(q) {
             continue;
         }
+        let links = inherited_links(q, &own_links, &base_classes, &mut HashSet::new());
         let mut fields = with_inherited(q, &own, &base_classes, &mut HashSet::new());
         for f in &mut fields {
             // Inherited fields are reported under the child.
@@ -517,10 +554,101 @@ fn django_models(
                 .iter()
                 .map(|f| (f.field_name.clone(), model_extractor::requirement_facts(f)))
                 .collect();
+            info.links = links;
         }
         all.extend(fields);
     }
     all
+}
+
+/// The project model a `ForeignKey` / `OneToOneField` target names, as seen
+/// from `module` in model `own`: a class, `"self"`, a model name, or
+/// `"app_label.Model"` (the one project model `Model` in package `app_label`'s
+/// `models` module). `None` when it is not a project model or not certain.
+fn relation_class(
+    index: &ProjectIndex,
+    module: &str,
+    own: &str,
+    target: &Expr,
+    django: &HashSet<String>,
+) -> Option<String> {
+    let q = match target {
+        Expr::StringLiteral(s) => {
+            let text = s.value.to_str();
+            match text.split_once('.') {
+                _ if text == "self" => own.to_string(),
+                None => match index.resolve_dotted(module, &[text.to_string()])? {
+                    Symbol::Class(q) => q,
+                    _ => return None,
+                },
+                Some((app, name)) => {
+                    let in_app = |q: &&String| {
+                        index.class(q).is_some_and(|c| {
+                            let parts: Vec<&str> = c.module.split('.').collect();
+                            c.name == name && parts.windows(2).any(|w| w == [app, "models"])
+                        })
+                    };
+                    let mut found = django.iter().filter(in_app);
+                    let first = found.next()?.clone();
+                    if found.next().is_some() {
+                        return None;
+                    }
+                    first
+                }
+            }
+        }
+        other => match index.resolve_expr(module, other)? {
+            Symbol::Class(q) => q,
+            _ => return None,
+        },
+    };
+    django.contains(&q).then_some(q)
+}
+
+/// The fields of data class `dc` annotated with a project class: the
+/// annotation in the class that declares the field, resolved in its module.
+fn data_class_links(
+    index: &ProjectIndex,
+    candidates: &[dataclass_extractor::ClassCandidate],
+    dc: &DataClass,
+) -> HashMap<String, resolve::Link> {
+    dc.fields
+        .iter()
+        .filter_map(|f| {
+            let (decl, annotation) = declared_annotation(index, candidates, &dc.qualified_name, &f.field_name, 0)?;
+            let annotation = dataclass_extractor::unalias(annotation, &decl.aliases);
+            let class = index.annotation_class(&decl.module, annotation)?;
+            let link = resolve::Link {
+                class: class.qualified.clone(),
+                nullable: f.nullable,
+            };
+            Some((f.field_name.clone(), link))
+        })
+        .collect()
+}
+
+/// The class body annotation of `field` that data class `q` uses: its own,
+/// else the one of its bases, a later base replacing an earlier one as
+/// `dataclass_extractor` reads inherited fields.
+fn declared_annotation<'c>(
+    index: &ProjectIndex,
+    candidates: &'c [dataclass_extractor::ClassCandidate],
+    q: &str,
+    field: &str,
+    depth: usize,
+) -> Option<(&'c dataclass_extractor::ClassCandidate, &'c Expr)> {
+    let decl = candidates.iter().find(|c| dataclass_extractor::candidate_qualified(c) == q)?;
+    if let Some((_, a)) = dataclass_extractor::field_annotations(&decl.class_def).find(|(n, _)| n == field) {
+        return Some((decl, a));
+    }
+    if depth > 16 {
+        return None;
+    }
+    let bases = decl.class_def.arguments.as_ref().map(|a| &a.args[..]).unwrap_or_default();
+    bases.iter().rev().find_map(|b| match index.resolve_expr(&decl.module, b)? {
+        Symbol::Class(bq) if bq != q => declared_annotation(index, candidates, &bq, field, depth + 1),
+        _ => None,
+    })
 }
 
 /// The values a Django `choices=` expression allows: a literal list, a
@@ -1228,6 +1356,55 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    /// CG-1.28: relation targets and data class fields annotated with a class.
+    #[test]
+    fn test_links() {
+        let p = project(&[
+            (
+                "billing/models.py",
+                "from django.db import models\n\
+                 class Customer(models.Model):\n    name = models.CharField(max_length=5)\n\
+                 class Base(models.Model):\n    owner = models.ForeignKey(Customer, null=True, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Order(Base):\n    \
+                 buyer = models.ForeignKey(to=\"Customer\", on_delete=models.CASCADE)\n    \
+                 parent = models.ForeignKey(\"self\", null=flag, on_delete=models.CASCADE)\n    \
+                 peer = models.OneToOneField(\"billing.Customer\", on_delete=models.CASCADE)\n    \
+                 user = models.ForeignKey(\"auth.User\", on_delete=models.CASCADE)\n    \
+                 other = models.ForeignKey(Helper, on_delete=models.CASCADE)\n",
+            ),
+            (
+                "records.py",
+                "from dataclasses import dataclass\nfrom typing import Optional\n\
+                 @dataclass\nclass Address:\n    city: str\n\
+                 @dataclass\nclass Payload:\n    address: Address\n    billing: Optional[\"Address\"]\n    tags: list[Address]\n\
+                 @dataclass\nclass Child(Payload):\n    pass\n",
+            ),
+        ]);
+        let links = |q: &str| {
+            let mut v: Vec<String> = p.index.classes[q]
+                .links
+                .iter()
+                .map(|(f, l)| format!("{f} {} {:?}", l.class, l.nullable))
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            links("billing.models.Order"),
+            [
+                "buyer billing.models.Customer Some(false)",
+                "owner billing.models.Customer Some(true)",
+                "parent billing.models.Order None",
+                "peer billing.models.Customer Some(false)",
+            ]
+        );
+        assert_eq!(
+            links("records.Payload"),
+            ["address records.Address Some(false)", "billing records.Address Some(true)"]
+        );
+        assert_eq!(links("records.Child"), links("records.Payload"));
     }
 
     /// Round 3 D3: models inheriting from project-local bases.

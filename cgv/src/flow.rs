@@ -181,12 +181,10 @@ impl Narrowed {
         }
     }
 
-    /// A rebound variable's attributes (`obj.f`) no longer hold values
-    /// assigned to them before (`Def::Param`), and are not narrowed.
+    /// A rebound variable's attributes (`obj.f`, and `obj.fk.f` of a rebound
+    /// `obj.fk`) no longer hold values assigned to them before
+    /// (`Def::Param`), and are not narrowed.
     fn forget_attributes(&mut self, name: &str) {
-        if name.contains('.') {
-            return;
-        }
         let prefix = format!("{name}.");
         if self.names.iter().any(|n| n.starts_with(&prefix)) {
             self.names.retain(|n| !n.starts_with(&prefix));
@@ -855,16 +853,16 @@ fn none_comparison(c: &ast::ExprCompare, op: CmpOp) -> Option<String> {
     }
 }
 
-/// `obj.f` for an attribute of a variable: the flow name of the attribute
-/// (tracked like a local: `obj.f = v` rebinds it, `if obj.f is None:` narrows it).
+/// `obj.f` (or `obj.fk.f`, any depth) for an attribute chain rooted at a
+/// variable: the flow name of the attribute (tracked like a local: `obj.f = v`
+/// rebinds it, `if obj.f is None:` narrows it).
 pub fn attr_name(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Attribute(a) => match a.value.as_ref() {
-            Expr::Name(n) => Some(format!("{}.{}", n.id, a.attr)),
-            _ => None,
-        },
-        _ => None,
-    }
+    let Expr::Attribute(a) = expr else { return None };
+    let receiver = match a.value.as_ref() {
+        Expr::Name(n) => n.id.to_string(),
+        inner => attr_name(inner)?,
+    };
+    Some(format!("{receiver}.{}", a.attr))
 }
 
 /// `(obj.f, value)` pairs of an assignment whose every target is an
@@ -1610,6 +1608,16 @@ mod tests {
             calls: calls.iter().map(at).collect(),
             matches: matches.iter().map(at).collect(),
         }
+    }
+
+    #[test]
+    fn test_attribute_chains_narrow_and_rebinding_a_link_forgets_them() {
+        let src = "def f(o, c):\n    if o.fk.x is None:\n        return\n    use()\n    o.fk = c\n    use()\n    if o.fk.x:\n        use()\n    o = c\n    use()\n";
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            narrowing_at_uses(src),
+            vec![names(&["o", "o.fk", "o.fk.x"]), names(&["o"]), names(&["o", "o.fk", "o.fk.x"]), names(&[])]
+        );
     }
 
     #[test]
