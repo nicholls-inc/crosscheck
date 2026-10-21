@@ -362,11 +362,19 @@ describe("cgv_check over MCP", () => {
       expect(await calls()).toEqual([]);
     });
 
-    it("CK-5: two baseline entries that are the same file on this file system are refused, not overwritten", async () => {
+    it("CK-5: a baseline path that another entry already wrote is refused, not overwritten", async () => {
       const oid = git("rev-parse", `${base}:app/models.py`);
       const tree = join(scratch, "collide");
       expect(await buildTree(repo, base, [{ oid, path: "app/a.py" }, { oid, path: "app/a.py" }], tree)).toBe(
-        `app/a.py at ${base} is the same file as another committed path on this file system, so the baseline tree cannot hold both`
+        `app/a.py at ${base} collides with another committed path on this file system, so the baseline tree cannot hold both`
+      );
+    });
+
+    it("CK-5: a baseline path that needs a directory where a file stands is refused with the committed path", async () => {
+      const oid = git("rev-parse", `${base}:app/models.py`);
+      const tree = join(scratch, "collide-dir");
+      expect(await buildTree(repo, base, [{ oid, path: "app/a" }, { oid, path: "app/a/b.py" }], tree)).toBe(
+        `app/a/b.py at ${base} collides with another committed path on this file system, so the baseline tree cannot hold both`
       );
     });
 

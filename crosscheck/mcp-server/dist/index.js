@@ -21841,7 +21841,7 @@ async function filteredPython(root, rev, blobs) {
   const where = rev ?? "HEAD";
   const source = rev === null ? [] : ["--source", rev];
   const checked = await git(root, ["check-attr", "-z", "--stdin", ...source, "filter"], { ...NO_FETCH, input: py.join("\0") + "\0" });
-  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}${rev === null ? "" : " (reading it at a revision needs git 2.40 or later, and the no-lazy-fetch guard needs 2.44 or later)"}`];
+  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}${rev === null ? "" : " (an older git may be the cause: reading it at a revision needs git 2.40 or later, and the no-lazy-fetch guard needs 2.44 or later)"}`];
   const fields = checked.stdout.split("\0");
   const errors = [];
   for (let i = 0; i + 2 < fields.length; i += 3) {
@@ -21856,7 +21856,7 @@ async function buildTree(root, rev, blobs, tree) {
   await mkdir2(tree, { recursive: true });
   if (blobs.length === 0) return null;
   const batch = await gitBytes(root, ["cat-file", "--batch"], { ...NO_FETCH, input: blobs.map((b) => b.oid).join("\n") + "\n" });
-  if (!batch.ok) return `git could not read the blobs of ${rev} (they are read in one go, which fails above ${mibOrBytes(GIT_MAX_BUFFER)} in total)`;
+  if (!batch.ok) return `git could not read the blobs of ${rev} (they are read in one go, so the cause may be more than ${mibOrBytes(GIT_MAX_BUFFER)} of blobs in total)`;
   let at = 0;
   for (const blob of blobs) {
     const eol = batch.stdout.indexOf(10, at);
@@ -21864,12 +21864,12 @@ async function buildTree(root, rev, blobs, tree) {
     if (eol < 0 || header === null || header[1] !== blob.oid) return `git could not read ${blob.path} at ${rev}`;
     const size = Number(header[2]);
     const file = join5(tree, blob.path);
-    await mkdir2(dirname2(file), { recursive: true });
     try {
+      await mkdir2(dirname2(file), { recursive: true });
       await writeFile4(file, batch.stdout.subarray(eol + 1, eol + 1 + size), { flag: "wx" });
     } catch (err) {
-      if (err.code !== "EEXIST") throw err;
-      return `${blob.path} at ${rev} is the same file as another committed path on this file system, so the baseline tree cannot hold both`;
+      if (err.code !== "EEXIST" && err.code !== "ENOTDIR") throw err;
+      return `${blob.path} at ${rev} collides with another committed path on this file system, so the baseline tree cannot hold both`;
     }
     at = eol + 1 + size + 1;
   }
@@ -22172,7 +22172,7 @@ function createServer() {
   );
   server.tool(
     "dafny_cleanup",
-    "Remove stale Dafny, Lean and cgv_check temp directories (older than 30 minutes) from /tmp.",
+    "Remove stale Dafny, Lean and cgv_check temp directories (older than 30 minutes) from the temporary directory.",
     {},
     async () => {
       const result = await dafnyCleanup();

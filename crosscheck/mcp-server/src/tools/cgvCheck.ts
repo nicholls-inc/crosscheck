@@ -218,7 +218,7 @@ async function filteredPython(root: string, rev: string | null, blobs: Blob[]): 
   const where = rev ?? "HEAD";
   const source = rev === null ? [] : ["--source", rev];
   const checked = await git(root, ["check-attr", "-z", "--stdin", ...source, "filter"], { ...NO_FETCH, input: py.join("\0") + "\0" });
-  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}${rev === null ? "" : " (reading it at a revision needs git 2.40 or later, and the no-lazy-fetch guard needs 2.44 or later)"}`];
+  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}${rev === null ? "" : " (an older git may be the cause: reading it at a revision needs git 2.40 or later, and the no-lazy-fetch guard needs 2.44 or later)"}`];
   const fields = checked.stdout.split("\0");
   const errors: string[] = [];
   for (let i = 0; i + 2 < fields.length; i += 3) {
@@ -235,7 +235,7 @@ export async function buildTree(root: string, rev: string, blobs: Blob[], tree: 
   await mkdir(tree, { recursive: true });
   if (blobs.length === 0) return null;
   const batch = await gitBytes(root, ["cat-file", "--batch"], { ...NO_FETCH, input: blobs.map((b) => b.oid).join("\n") + "\n" });
-  if (!batch.ok) return `git could not read the blobs of ${rev} (they are read in one go, which fails above ${mibOrBytes(GIT_MAX_BUFFER)} in total)`;
+  if (!batch.ok) return `git could not read the blobs of ${rev} (they are read in one go, so the cause may be more than ${mibOrBytes(GIT_MAX_BUFFER)} of blobs in total)`;
   let at = 0;
   for (const blob of blobs) {
     const eol = batch.stdout.indexOf(0x0a, at);
@@ -243,13 +243,14 @@ export async function buildTree(root: string, rev: string, blobs: Blob[], tree: 
     if (eol < 0 || header === null || header[1] !== blob.oid) return `git could not read ${blob.path} at ${rev}`;
     const size = Number(header[2]);
     const file = join(tree, blob.path);
-    await mkdir(dirname(file), { recursive: true });
     try {
+      await mkdir(dirname(file), { recursive: true });
       // "wx": two committed paths that this file system treats as one (Foo.py and foo.py on a case-insensitive one) must not overwrite each other.
       await writeFile(file, batch.stdout.subarray(eol + 1, eol + 1 + size), { flag: "wx" });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      return `${blob.path} at ${rev} is the same file as another committed path on this file system, so the baseline tree cannot hold both`;
+      // EEXIST: another path wrote the file or the directory. ENOTDIR: a file stands where this path needs a directory.
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" && (err as NodeJS.ErrnoException).code !== "ENOTDIR") throw err;
+      return `${blob.path} at ${rev} collides with another committed path on this file system, so the baseline tree cannot hold both`;
     }
     at = eol + 1 + size + 1;
   }
