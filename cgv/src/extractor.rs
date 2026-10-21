@@ -517,7 +517,8 @@ fn django_models(
                 .iter()
                 .filter_map(|stmt| match stmt {
                     Stmt::Assign(a) if a.targets.len() == 1 => Some(&a.targets[0]),
-                    Stmt::AnnAssign(a) => Some(a.target.as_ref()),
+                    // A bare annotation (`owner: Customer`) binds no class attribute.
+                    Stmt::AnnAssign(a) if a.value.is_some() => Some(a.target.as_ref()),
                     _ => None,
                 })
                 .filter_map(|t| match t {
@@ -542,9 +543,9 @@ fn django_models(
             (q.clone(), links)
         })
         .collect();
-    /// The links of model `q` and the names of all its fields. Inheritance follows
-    /// `with_inherited`: a later base replaces an earlier one, and the model's own
-    /// declaration replaces both, so a field redeclared without a resolvable
+    /// The links of model `q` and the names of all its fields. The earliest base wins,
+    /// as in Python's method resolution order, and the model's own assignment of a
+    /// name replaces any base's, so a field redeclared without a resolvable
     /// relation drops the inherited link rather than keeping a stale one.
     fn inherited_links(
         q: &str,
@@ -561,10 +562,13 @@ fn django_models(
         if visiting.len() <= 64 {
             for b in bases.get(q).into_iter().flatten() {
                 let (b_links, b_names) = inherited_links(b, own_links, own_bound, bases, visiting);
-                for name in &b_names {
-                    links.remove(name);
+                // Python resolves bases in order: the earliest base that declares a
+                // name, or inherits it, supplies it.
+                for (name, link) in b_links {
+                    if !names.contains(&name) {
+                        links.insert(name, link);
+                    }
                 }
-                links.extend(b_links);
                 names.extend(b_names);
             }
             for name in own_bound.get(q).into_iter().flatten() {
@@ -1466,7 +1470,12 @@ mod tests {
                  class Base(models.Model):\n    owner = models.ForeignKey(Customer, on_delete=models.CASCADE)\n    \
                  note = models.ForeignKey(Customer, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
                  class Order(Base):\n    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)\n    \
-                 note = models.TextField()\n",
+                 note = models.TextField()\n\
+                 class Typed(Base):\n    owner: Customer\n\
+                 class Early(Base):\n    owner = models.ForeignKey(Other, null=True, on_delete=models.CASCADE)\n\
+                 class Late(Base):\n    pass\n\
+                 class Diamond(Early, Late):\n    pass\n\
+                 class Other(models.Model):\n    pass\n",
             ),
             (
                 "records.py",
@@ -1474,7 +1483,8 @@ mod tests {
                  @dataclass\nclass Address:\n    city: str\n\
                  @dataclass\nclass Other:\n    zip: str\n\
                  class Mixin:\n    address: Other\n\
-                 @dataclass\nclass Payload(Mixin):\n    address: Address\n",
+                 @dataclass\nclass Payload(Mixin):\n    address: Address\n\
+                 @dataclass\nclass Plain(Mixin):\n    zip: str\n",
             ),
         ]);
         let links = |q: &str| {
@@ -1485,6 +1495,11 @@ mod tests {
         assert_eq!(links("billing.models.Base"), ["note billing.models.Customer", "owner billing.models.Customer"]);
         assert_eq!(links("billing.models.Order"), Vec::<String>::new());
         assert_eq!(links("records.Payload"), ["address records.Address"]);
+        // A bare annotation is not a declaration; a diamond takes the earliest base's override.
+        assert_eq!(links("billing.models.Typed"), ["note billing.models.Customer", "owner billing.models.Customer"]);
+        assert_eq!(links("billing.models.Diamond"), ["note billing.models.Customer", "owner billing.models.Other"]);
+        // Annotations are read from data class bases only.
+        assert_eq!(links("records.Plain"), Vec::<String>::new());
     }
 
     /// Round 3 D3: models inheriting from project-local bases.
