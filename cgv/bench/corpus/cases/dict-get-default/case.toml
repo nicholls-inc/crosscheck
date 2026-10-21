@@ -1,4 +1,4 @@
-description = "data.get(key, \"\") from an untyped dict into non-Optional dataclass fields; the value can still be None if the key holds null. The checker only warns today. Expected WARNING_ONLY."
+description = "data.get(key, \"\") from an untyped dict into non-Optional dataclass fields; the value can still be None if the key holds null. A bare `dict` annotation may store None, so the read is nullable. Expected CAUGHT."
 kind = "non-null"
 in_scope = true
 source = "synthetic"

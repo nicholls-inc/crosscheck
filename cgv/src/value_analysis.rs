@@ -1281,6 +1281,10 @@ impl<'a> Scope<'a> {
                 nullable_unless(present)
             }
             "get" if args.len() == 1 && kw_is_none("default") => nullable_unless(present),
+            // `d.get(k, default)` is the stored value when `k` is a key.
+            "get" if args.len() == 2 && !present && self.dict_may_store_none(&attr.value, ctx) => {
+                ValueFacts::nullable()
+            }
             "pop" if args.len() == 2 && matches!(args[1], Expr::NoneLiteral(_)) => {
                 ValueFacts::nullable()
             }
@@ -1776,6 +1780,42 @@ impl<'a> Scope<'a> {
             .assignments
             .get(name)
             .is_some_and(|assigns| !assigns.is_empty() && assigns.iter().all(|a| constructed(a.value)))
+    }
+
+    /// Whether `expr` is a dict (`known_dict`) whose values may be None. An
+    /// annotated parameter or local may when its annotation names no value
+    /// type (`dict`, `Mapping`) or one that admits None (`Any`, `object`,
+    /// `Optional[str]`). An unannotated local may only when it is built by
+    /// dict displays and one of their values is None or may be; a local built
+    /// any other way (`dict(...)`, a comprehension, `Counter`) is not known to.
+    fn dict_may_store_none(&self, expr: &Expr, ctx: &Ctx) -> bool {
+        if !self.known_dict(expr, ctx) {
+            return false;
+        }
+        let Expr::Name(n) = expr else { return false };
+        let name = n.id.as_str();
+        let values_may_be_none = |annotation: &Expr| match strip_optional(annotation) {
+            Expr::Subscript(s) => match s.slice.as_ref() {
+                Expr::Tuple(t) if t.elts.len() == 2 => {
+                    crate::function_extractor::param_annotation_facts(&t.elts[1]).1 != Some(false)
+                }
+                _ => true,
+            },
+            _ => true,
+        };
+        if let Some(p) = self.param(name) {
+            return p.annotation.as_ref().is_some_and(|a| values_may_be_none(a));
+        }
+        let assigns = self.flow.assignments.get(name).map(Vec::as_slice).unwrap_or_default();
+        if let Some(annotation) = assigns.iter().find_map(|a| a.annotation) {
+            return values_may_be_none(annotation);
+        }
+        assigns.iter().all(|a| matches!(a.value, Expr::Dict(_)))
+            && assigns.iter().any(|a| {
+                let Expr::Dict(d) = a.value else { return false };
+                let ctx = Ctx::new(&a.narrowed);
+                d.items.iter().any(|item| item.key.is_none() || self.facts(&item.value, &ctx).nullable != Some(false))
+            })
     }
 
     /// Where the element expression of comprehension `comp` is evaluated:
@@ -2880,6 +2920,52 @@ mod tests {
             one("def f():\n    Decimal('1') / Decimal('3')\n").precision,
             None
         );
+    }
+
+    #[test]
+    fn test_get_default_from_dict_that_may_store_none() {
+        for sig in [
+            "d: dict",
+            "d: Dict[str, Any]",
+            "d: dict[str, object]",
+            "d: Mapping[str, Optional[str]]",
+            "d: dict[str, str | None]",
+            "d: Optional[dict]",
+        ] {
+            assert_eq!(one(&format!("def f({sig}):\n    d.get('k', '')\n")).nullable, Some(true), "{sig}");
+        }
+        for body in [
+            "d = {'k': None}",
+            "d = {'k': None if raw == '' else raw}",
+            "d = {'k': raw}",
+            "d = {'k': 'x', **other}",
+            "d: dict[str, str | None] = {'k': 'x'}",
+            "d: Dict[str, Any] = {'k': 'x'}",
+            "d: dict = {'k': 'x'}",
+        ] {
+            let src = format!("def f(raw, other: dict):\n    {body}\n    d.get('k', '')\n");
+            assert_eq!(one(&src).nullable, Some(true), "{body}");
+        }
+        for body in [
+            "d = {}",
+            "d = {'k': 'x'}",
+            "d = {'k': raw, 'n': len(raw)}",
+            "d = {}\n    d[raw] = d.get(raw, 0) + 1",
+            "d = dict(k=None)",
+            "d = {x: None for x in raw}",
+            "d = defaultdict(lambda: None)",
+            "d = Counter(raw)",
+            "d: dict[str, str] = {'k': None}",
+            "d: dict[str, str] = dict(k=raw)",
+        ] {
+            let src = format!("from collections import Counter, defaultdict\ndef f(raw: str):\n    {body}\n    d.get('k', '')\n");
+            assert_eq!(one(&src).nullable, None, "{body}");
+        }
+        for sig in ["d: dict[str, str]", "d", "d: Foo"] {
+            assert_eq!(one(&format!("def f({sig}):\n    d.get('k', '')\n")).nullable, None, "{sig}");
+        }
+        assert_eq!(one("def f(d: dict):\n    d = g()\n    d.get('k', '')\n").nullable, None);
+        assert_eq!(one("def f(d: dict):\n    if 'k' in d:\n        d.get('k', '')\n").nullable, None);
     }
 
     #[test]

@@ -1177,6 +1177,8 @@ pub fn simple_assign_targets(a: &ast::StmtAssign) -> Option<Vec<(String, &Expr)>
 pub struct Assignment<'a> {
     pub value: &'a Expr,
     pub narrowed: Narrowed,
+    /// The annotation of an annotated assignment (`d: dict[str, str] = ...`).
+    pub annotation: Option<&'a Expr>,
 }
 
 /// Flow-insensitive facts about a function body.
@@ -1384,6 +1386,7 @@ impl<'a> FlowVisitor<'a> for FunctionFlow<'a> {
                         self.assignments.entry(name).or_default().push(Assignment {
                             value,
                             narrowed: narrowed.clone(),
+                            annotation: None,
                         });
                     }
                 } else if let Some(pairs) = simple_attr_targets(a) {
@@ -1391,6 +1394,7 @@ impl<'a> FlowVisitor<'a> for FunctionFlow<'a> {
                         self.attr_assignments.entry(name).or_default().push(Assignment {
                             value,
                             narrowed: narrowed.clone(),
+                            annotation: None,
                         });
                     }
                 }
@@ -1403,6 +1407,7 @@ impl<'a> FlowVisitor<'a> for FunctionFlow<'a> {
                         .push(Assignment {
                             value,
                             narrowed: narrowed.clone(),
+                            annotation: Some(&a.annotation),
                         });
                 }
             }
