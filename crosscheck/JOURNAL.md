@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-21 — `byfuglien` routes a Python data-model change to `cgv_check`
+
+**Type:** feat
+**Touches:** agents/byfuglien.md, ../.assurance/protected-surface-amend/byfuglien-cgv-routing-2026-10-21.md, ../docs/TASKS.md
+**Why:** `cgv_check` (ER-1.20) had no caller, so a change to a Django model, data class or pydantic model routed through `byfuglien` got `/lightweight-verify` or `/reason` and no CGV record.
+**Links:** [intent](../intent/2026-10-21-byfuglien-cgv-routing.md), [spec](../intent/2026-10-21-byfuglien-cgv-routing-spec.md), [plan](../intent/2026-10-21-byfuglien-cgv-routing-plan.md)
+
+A new classification row sends such a change, or any `.py` change in a project that declares such fields, to `cgv_check` with the merge base of the pull request's base branch as baseline. It runs beside the other route. The report attaches CGV's record verbatim and states it as proved relative to the translated graph, with the extractor and translation not proved, and lists what exit 0 does not cover. Exit 0 under a baseline is reported as "no new error", which no theorem covers. A refusal, a missing tool or missing binaries is "CGV: not run", never a pass. The record goes in the report, not the repository. The trigger rests on the agent reading the diff, and no eval checks the route yet.
+
+---
+
 ## 2026-10-21 — `cgv_check` runs CGV on a committed Python project and returns CGV's own record
 
 **Type:** feature
