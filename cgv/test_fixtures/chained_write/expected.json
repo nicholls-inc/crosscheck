@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [
+    {
+      "path": "copy_name -> Invoice.name",
+      "contains": "no nullability postcondition"
+    }
+  ]
+}

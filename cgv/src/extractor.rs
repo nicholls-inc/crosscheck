@@ -283,7 +283,17 @@ impl Project {
                     .collect()
             })
             .collect();
-        for (dc, field_facts) in data_classes.iter().zip(field_facts) {
+        // Only data classes: a field's annotation is read from the class that declares it, and
+        // `dataclass_extractor` inherits fields from data class bases alone.
+        let data_class_names: HashSet<&str> = data_classes.iter().map(|dc| dc.qualified_name.as_str()).collect();
+        let declaring: HashMap<String, &dataclass_extractor::ClassCandidate> = candidates
+            .iter()
+            .map(|c| (dataclass_extractor::candidate_qualified(c), c))
+            .filter(|(q, _)| data_class_names.contains(q.as_str()))
+            .collect();
+        let links: Vec<HashMap<String, resolve::Link>> =
+            data_classes.iter().map(|dc| data_class_links(&index, &declaring, dc)).collect();
+        for ((dc, field_facts), links) in data_classes.iter().zip(field_facts).zip(links) {
             if let Some(c) = index.classes.get_mut(&dc.qualified_name) {
                 if c.kind == ClassKind::Plain {
                     c.kind = ClassKind::Data(dc.kind);
@@ -304,6 +314,7 @@ impl Project {
                             .collect();
                     }
                     c.field_facts = field_facts;
+                    c.links = links;
                 }
             }
         }
@@ -495,11 +506,151 @@ fn django_models(
         fields
     }
 
+    // Every name a model's class body binds: its own declaration of a field, resolvable
+    // relation or not, or a method, property or nested class, shadows what a base declared
+    // under that name.
+    fn bound_names(target: &Expr, out: &mut HashSet<String>) {
+        match target {
+            Expr::Name(n) => {
+                out.insert(n.id.to_string());
+            }
+            Expr::Tuple(t) => t.elts.iter().for_each(|e| bound_names(e, out)),
+            Expr::List(l) => l.elts.iter().for_each(|e| bound_names(e, out)),
+            Expr::Starred(s) => bound_names(&s.value, out),
+            _ => {}
+        }
+    }
+    let own_bound: HashMap<String, HashSet<String>> = defs
+        .iter()
+        .filter(|(q, _, _)| django.contains(q))
+        .map(|(q, c, _)| {
+            let mut names = HashSet::new();
+            for stmt in c.body.iter() {
+                match stmt {
+                    Stmt::Assign(a) => a.targets.iter().for_each(|t| bound_names(t, &mut names)),
+                    // A bare annotation (`owner: Customer`) binds no class attribute.
+                    Stmt::AnnAssign(a) if a.value.is_some() => bound_names(&a.target, &mut names),
+                    Stmt::FunctionDef(f) => {
+                        names.insert(f.name.to_string());
+                    }
+                    Stmt::ClassDef(k) => {
+                        names.insert(k.name.to_string());
+                    }
+                    _ => {}
+                }
+            }
+            (q.clone(), names)
+        })
+        .collect();
+    let own_links: HashMap<String, HashMap<String, resolve::Link>> = defs
+        .iter()
+        .filter(|(q, _, _)| django.contains(q))
+        .map(|(q, c, m)| {
+            let links = model_extractor::relations(c)
+                .into_iter()
+                .filter_map(|(field, target, nullable)| {
+                    let class = relation_class(index, &m.module, q, target, &django)?;
+                    Some((field, resolve::Link { class, nullable }))
+                })
+                .collect();
+            (q.clone(), links)
+        })
+        .collect();
+    // The bases of each model as Python's method resolution order sees them: a project
+    // class by its qualified name, `models.Model` as one name, any other base by its
+    // spelling (or by its position, when it has none), so C3 places it among the models.
+    let model_bases: HashMap<String, Vec<String>> = defs
+        .iter()
+        .filter(|(q, _, _)| django.contains(q))
+        .map(|(q, c, m)| {
+            let args = c.arguments.as_ref().map(|a| &a.args[..]).unwrap_or_default();
+            let bases = args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, b)| match index.resolve_expr(&m.module, b) {
+                    _ if model_extractor::is_django_root(b) => Some("django.db.models.Model".to_string()),
+                    Some(Symbol::Class(bq)) => (&bq != q).then_some(bq),
+                    _ => Some(match resolve::dotted_parts(b) {
+                        Some(parts) => format!("?{}", parts.join(".")),
+                        None => format!("?{q}#{i}"),
+                    }),
+                })
+                .collect();
+            (q.clone(), bases)
+        })
+        .collect();
+
+    // Abstract models: a `"self"` link declared on one is a link to each model that inherits it.
+    let abstract_models: HashSet<String> = defs
+        .iter()
+        .filter(|(q, c, _)| django.contains(q) && model_extractor::is_abstract(c))
+        .map(|(q, _, _)| q.clone())
+        .collect();
+
+    /// Whether model `x` lists `abstract_base` among its bases, directly or through abstract
+    /// models only.
+    fn lists(
+        x: &str,
+        abstract_base: &str,
+        bases: &HashMap<String, Vec<String>>,
+        abstract_models: &HashSet<String>,
+        depth: usize,
+    ) -> bool {
+        depth < 64
+            && bases.get(x).into_iter().flatten().any(|b| {
+                b == abstract_base || (abstract_models.contains(b) && lists(b, abstract_base, bases, abstract_models, depth + 1))
+            })
+    }
+
+    /// The links of model `q`: for each name, the declaration in the first class of its
+    /// method resolution order that assigns it. A field redeclared without a resolvable
+    /// relation therefore has no link, rather than keeping a stale inherited one. A class
+    /// that is not a project model may bind any name, so nothing after it is inherited.
+    /// A link an abstract model declares to itself (`ForeignKey("self")`, the only way to
+    /// name an abstract model) points at the model that lists it among its bases, as Django resolves it.
+    fn inherited_links(
+        q: &str,
+        own_links: &HashMap<String, HashMap<String, resolve::Link>>,
+        own_bound: &HashMap<String, HashSet<String>>,
+        bases: &HashMap<String, Vec<String>>,
+        abstract_models: &HashSet<String>,
+    ) -> HashMap<String, resolve::Link> {
+        let bases_of = |c: &str| bases.get(c).cloned().unwrap_or_default();
+        let order = c3(q, &bases_of, 0).unwrap_or_else(|| vec![q.to_string()]);
+        let mut links = HashMap::new();
+        let mut seen: HashSet<&String> = HashSet::new();
+        for (i, class) in order.iter().enumerate() {
+            let Some(names) = own_bound.get(class) else { break };
+            for name in names {
+                if seen.insert(name) {
+                    if let Some(link) = own_links.get(class).and_then(|l| l.get(name)) {
+                        let mut link = link.clone();
+                        if abstract_models.contains(class) && link.class == *class {
+                            // The model that lists the abstract one among its bases, directly or
+                            // through abstract models only, as Django copies its fields into
+                            // that model (a multi-table child of that model links to the model,
+                            // which holds the field); `q` itself when none does.
+                            link.class = order[..i]
+                                .iter()
+                                .rev()
+                                .find(|c| !abstract_models.contains(*c) && lists(c, class, bases, abstract_models, 0))
+                                .map_or(q, |c| c.as_str())
+                                .to_string();
+                        }
+                        links.insert(name.clone(), link);
+                    }
+                }
+            }
+        }
+        links
+    }
+
     let mut all = Vec::new();
     for (q, c, m) in &defs {
         if !django.contains(q) {
             continue;
         }
+        let links = inherited_links(q, &own_links, &own_bound, &model_bases, &abstract_models);
         let mut fields = with_inherited(q, &own, &base_classes, &mut HashSet::new());
         for f in &mut fields {
             // Inherited fields are reported under the child.
@@ -517,10 +668,141 @@ fn django_models(
                 .iter()
                 .map(|f| (f.field_name.clone(), model_extractor::requirement_facts(f)))
                 .collect();
+            info.links = links;
         }
         all.extend(fields);
     }
     all
+}
+
+/// The project model a `ForeignKey` / `OneToOneField` target names, as seen
+/// from `module` in model `own`: a class, `"self"`, a model name, or
+/// `"app_label.Model"` (the one project model `Model` in package `app_label`'s
+/// `models` module). `None` when it is not a project model or not certain.
+fn relation_class(
+    index: &ProjectIndex,
+    module: &str,
+    own: &str,
+    target: &Expr,
+    django: &HashSet<String>,
+) -> Option<String> {
+    let q = match target {
+        Expr::StringLiteral(s) => {
+            let text = s.value.to_str();
+            match text.split_once('.') {
+                _ if text == "self" => own.to_string(),
+                None => match index.resolve_dotted(module, &[text.to_string()])? {
+                    Symbol::Class(q) => q,
+                    _ => return None,
+                },
+                Some((app, name)) => {
+                    let in_app = |q: &&String| {
+                        index.class(q).is_some_and(|c| {
+                            let parts: Vec<&str> = c.module.split('.').collect();
+                            c.name == name && parts.windows(2).any(|w| w == [app, "models"])
+                        })
+                    };
+                    let mut found = django.iter().filter(in_app);
+                    let first = found.next()?.clone();
+                    if found.next().is_some() {
+                        return None;
+                    }
+                    first
+                }
+            }
+        }
+        other => match index.resolve_expr(module, other)? {
+            Symbol::Class(q) => q,
+            _ => return None,
+        },
+    };
+    django.contains(&q).then_some(q)
+}
+
+/// The fields of data class `dc` annotated with a project class: the
+/// annotation in the class that declares the field, resolved in its module.
+fn data_class_links(
+    index: &ProjectIndex,
+    declaring: &HashMap<String, &dataclass_extractor::ClassCandidate>,
+    dc: &DataClass,
+) -> HashMap<String, resolve::Link> {
+    dc.fields
+        .iter()
+        .filter_map(|f| {
+            let (decl, annotation) = declared_annotation(index, declaring, &dc.qualified_name, &f.field_name, 0)?;
+            let annotation = dataclass_extractor::unalias(annotation, &decl.aliases);
+            let class = index.annotation_class(&decl.module, annotation)?;
+            let link = resolve::Link {
+                class: class.qualified.clone(),
+                nullable: f.nullable,
+            };
+            Some((f.field_name.clone(), link))
+        })
+        .collect()
+}
+
+/// The class body annotation of `field` that data class `q` uses: its own, else the one
+/// of the first base in C3 order whose fields have it, as that base resolves it
+/// (`dataclasses.fields` takes each base's fields whole, the first base last).
+fn declared_annotation<'c>(
+    index: &ProjectIndex,
+    declaring: &HashMap<String, &'c dataclass_extractor::ClassCandidate>,
+    q: &str,
+    field: &str,
+    depth: usize,
+) -> Option<(&'c dataclass_extractor::ClassCandidate, &'c Expr)> {
+    let decl = *declaring.get(q)?;
+    if let Some((_, a)) = dataclass_extractor::field_annotations(&decl.class_def).find(|(n, _)| n == field) {
+        return Some((decl, a));
+    }
+    if depth > 16 {
+        return None;
+    }
+    let bases_of = |c: &str| -> Vec<String> {
+        let Some(d) = declaring.get(c) else { return Vec::new() };
+        let args = d.class_def.arguments.as_ref().map(|a| &a.args[..]).unwrap_or_default();
+        args.iter()
+            .filter_map(|b| match index.resolve_expr(&d.module, b)? {
+                Symbol::Class(bq) if bq != c && declaring.contains_key(&bq) => Some(bq),
+                _ => None,
+            })
+            .collect()
+    };
+    let order = c3(q, &bases_of, 0)?;
+    order[1..].iter().find_map(|b| declared_annotation(index, declaring, b, field, depth + 1))
+}
+
+/// The C3 linearisation of class `q`, the order Python looks a name up in, over the bases
+/// `bases_of` gives (a class with none is a leaf). `None` for a cycle, an inconsistent
+/// hierarchy, or one deeper than 64 levels.
+fn c3(q: &str, bases_of: &dyn Fn(&str) -> Vec<String>, depth: usize) -> Option<Vec<String>> {
+    if depth > 64 {
+        return None;
+    }
+    let direct = bases_of(q);
+    let mut seqs: Vec<Vec<String>> = Vec::new();
+    for b in &direct {
+        seqs.push(c3(b, bases_of, depth + 1)?);
+    }
+    seqs.push(direct);
+    let mut order = vec![q.to_string()];
+    loop {
+        seqs.retain(|s| !s.is_empty());
+        if seqs.is_empty() {
+            return Some(order);
+        }
+        let head = seqs
+            .iter()
+            .map(|s| &s[0])
+            .find(|h| !seqs.iter().any(|s| s[1..].contains(*h)))?
+            .clone();
+        for s in &mut seqs {
+            if s[0] == head {
+                s.remove(0);
+            }
+        }
+        order.push(head);
+    }
 }
 
 /// The values a Django `choices=` expression allows: a literal list, a
@@ -1228,6 +1510,169 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    /// CG-1.28: relation targets and data class fields annotated with a class.
+    #[test]
+    fn test_links() {
+        let p = project(&[
+            (
+                "billing/models.py",
+                "from django.db import models\n\
+                 class Customer(models.Model):\n    name = models.CharField(max_length=5)\n\
+                 class Base(models.Model):\n    owner = models.ForeignKey(Customer, null=True, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Order(Base):\n    \
+                 buyer = models.ForeignKey(to=\"Customer\", on_delete=models.CASCADE)\n    \
+                 parent = models.ForeignKey(\"self\", null=flag, on_delete=models.CASCADE)\n    \
+                 peer = models.OneToOneField(\"billing.Customer\", on_delete=models.CASCADE)\n    \
+                 user = models.ForeignKey(\"auth.User\", on_delete=models.CASCADE)\n    \
+                 other = models.ForeignKey(Helper, on_delete=models.CASCADE)\n",
+            ),
+            (
+                "records.py",
+                "from dataclasses import dataclass\nfrom typing import Optional\n\
+                 @dataclass\nclass Address:\n    city: str\n\
+                 @dataclass\nclass Payload:\n    address: Address\n    billing: Optional[\"Address\"]\n    tags: list[Address]\n\
+                 @dataclass\nclass Child(Payload):\n    pass\n",
+            ),
+        ]);
+        let links = |q: &str| {
+            let mut v: Vec<String> = p.index.classes[q]
+                .links
+                .iter()
+                .map(|(f, l)| format!("{f} {} {:?}", l.class, l.nullable))
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            links("billing.models.Order"),
+            [
+                "buyer billing.models.Customer Some(false)",
+                "owner billing.models.Customer Some(true)",
+                "parent billing.models.Order None",
+                "peer billing.models.Customer Some(false)",
+            ]
+        );
+        assert_eq!(
+            links("records.Payload"),
+            ["address records.Address Some(false)", "billing records.Address Some(true)"]
+        );
+        assert_eq!(links("records.Child"), links("records.Payload"));
+    }
+
+    /// CG-1.28: a model's own declaration of a field replaces an inherited link, even when
+    /// its target is not a project model; a data class inherits annotations from data class
+    /// bases only.
+    #[test]
+    fn test_links_follow_overrides() {
+        let p = project(&[
+            (
+                "billing/models.py",
+                "from django.db import models\n\
+                 class Customer(models.Model):\n    name = models.CharField(max_length=5)\n\
+                 class Base(models.Model):\n    owner = models.ForeignKey(Customer, on_delete=models.CASCADE)\n    \
+                 note = models.ForeignKey(Customer, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Order(Base):\n    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)\n    \
+                 note = models.TextField()\n\
+                 class Typed(Base):\n    owner: Customer\n\
+                 class Early(Base):\n    owner = models.ForeignKey(Other, null=True, on_delete=models.CASCADE)\n\
+                 class Late(Base):\n    pass\n\
+                 class Diamond(Early, Late):\n    pass\n\
+                 class Early2(Base):\n    pass\n\
+                 class Late2(Base):\n    owner = models.ForeignKey(Other, null=True, on_delete=models.CASCADE)\n\
+                 class Diamond2(Early2, Late2):\n    pass\n\
+                 class Tree(models.Model):\n    parent = models.ForeignKey(\"self\", null=True, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Node(Tree):\n    pass\n\
+                 class Leaf(Node):\n    pass\n\
+                 class Sibling(models.Model):\n    pass\n\
+                 class Child(Sibling, Tree):\n    pass\n\
+                 class Method(Base):\n    @property\n    def owner(self):\n        return None\n\
+                 class Chained(Base):\n    owner = note = None\n\
+                 class Tupled(Base):\n    (owner, other) = (None, None)\n\
+                 class Nested(Base):\n    class owner:\n        pass\n\
+                 class Other(models.Model):\n    pass\n",
+            ),
+            (
+                "records.py",
+                "from dataclasses import dataclass\n\
+                 @dataclass\nclass Address:\n    city: str\n\
+                 @dataclass\nclass Other:\n    zip: str\n\
+                 class Mixin:\n    address: Other\n\
+                 @dataclass\nclass Payload(Mixin):\n    address: Address\n\
+                 @dataclass\nclass Plain(Mixin):\n    zip: str\n",
+            ),
+        ]);
+        let links = |q: &str| {
+            let mut v: Vec<String> = p.index.classes[q].links.iter().map(|(f, l)| format!("{f} {}", l.class)).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(links("billing.models.Base"), ["note billing.models.Customer", "owner billing.models.Customer"]);
+        assert_eq!(links("billing.models.Order"), Vec::<String>::new());
+        assert_eq!(links("records.Payload"), ["address records.Address"]);
+        // A bare annotation is not a declaration; a diamond takes the override that comes first in C3 order.
+        assert_eq!(links("billing.models.Typed"), ["note billing.models.Customer", "owner billing.models.Customer"]);
+        assert_eq!(links("billing.models.Diamond"), ["note billing.models.Customer", "owner billing.models.Other"]);
+        assert_eq!(links("billing.models.Diamond2"), ["note billing.models.Customer", "owner billing.models.Other"]);
+        // `"self"` on an abstract model is the class of the concrete model that inherits it.
+        assert_eq!(links("billing.models.Tree"), ["parent billing.models.Tree"]);
+        assert_eq!(links("billing.models.Node"), ["parent billing.models.Node"]);
+        // The model that lists the abstract one, not a concrete sibling ahead of it.
+        assert_eq!(links("billing.models.Child"), ["parent billing.models.Child"]);
+        // A multi-table child of a concrete model links to that model, which holds the field.
+        assert_eq!(links("billing.models.Leaf"), ["parent billing.models.Node"]);
+        // A method, a property or a chained assignment hides an inherited link too.
+        assert_eq!(links("billing.models.Method"), ["note billing.models.Customer"]);
+        assert_eq!(links("billing.models.Chained"), Vec::<String>::new());
+        assert_eq!(links("billing.models.Tupled"), ["note billing.models.Customer"]);
+        assert_eq!(links("billing.models.Nested"), ["note billing.models.Customer"]);
+        // Annotations are read from data class bases only.
+        assert_eq!(links("records.Plain"), Vec::<String>::new());
+    }
+
+    /// CG-1.28 review: a data class takes an inherited annotation as `dataclasses.fields`
+    /// does, from the first base in C3 order that has the field, through that base's own
+    /// inherited fields; and a base that is not a project model, ahead of the project model
+    /// that declares a link, may declare the same name, so the link is not inherited.
+    #[test]
+    fn test_links_follow_python_lookup_order() {
+        let p = project(&[
+            (
+                "billing/models.py",
+                "from django.db import models\nfrom ext import OwnerMixin\n\
+                 class Customer(models.Model):\n    name = models.CharField(max_length=5)\n\
+                 class Base(models.Model):\n    owner = models.ForeignKey(Customer, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Local:\n    owner = None\n\
+                 class Hidden(OwnerMixin, Base):\n    pass\n\
+                 class HiddenLocal(Local, Base):\n    pass\n\
+                 class Kept(Base, OwnerMixin):\n    pass\n",
+            ),
+            (
+                "records.py",
+                "from dataclasses import dataclass\n\
+                 @dataclass\nclass Address:\n    city: str\n\
+                 @dataclass\nclass Other:\n    zip: str\n\
+                 @dataclass\nclass A:\n    x: Address\n\
+                 @dataclass\nclass B:\n    x: Other\n\
+                 @dataclass\nclass C(A, B):\n    pass\n\
+                 @dataclass\nclass Z:\n    x: Address\n\
+                 @dataclass\nclass A2(Z):\n    pass\n\
+                 @dataclass\nclass B2(Z):\n    x: Other\n\
+                 @dataclass\nclass D(A2, B2):\n    pass\n",
+            ),
+        ]);
+        let links = |q: &str| {
+            let mut v: Vec<String> = p.index.classes[q].links.iter().map(|(f, l)| format!("{f} {}", l.class)).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(links("records.C"), ["x records.Address"]);
+        // `fields(D)` takes `x` from `A2`'s fields, which `A2` inherits from `Z`.
+        assert_eq!(links("records.D"), ["x records.Address"]);
+        assert_eq!(links("billing.models.Hidden"), Vec::<String>::new());
+        assert_eq!(links("billing.models.HiddenLocal"), Vec::<String>::new());
+        assert_eq!(links("billing.models.Kept"), ["owner billing.models.Customer"]);
     }
 
     /// Round 3 D3: models inheriting from project-local bases.
