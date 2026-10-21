@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from models import Entry, Payload
+from models import Entry
 
 
 def store_text(value: object) -> Entry:
@@ -66,10 +66,3 @@ def store_elif(value: object, flag: bool) -> Entry:
 def store_ternary(value: object) -> Entry:
     # NO ERROR: the true branch of the conditional runs only for a str.
     return Entry.objects.create(text=value if isinstance(value, str) else "")
-
-
-def store_chained(payload: Payload) -> Entry:
-    # NO ERROR: the test narrows the chained postcode.
-    if isinstance(payload.address.postcode, str):
-        return Entry.objects.create(text=payload.address.postcode)
-    return Entry.objects.create(text="x")

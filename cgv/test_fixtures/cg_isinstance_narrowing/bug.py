@@ -254,3 +254,33 @@ def store_handoff_in_for_iterable(address: Address) -> Entry:
         for entry in Entry.objects.bulk_create([Entry(id=clear(address), text=address.postcode)]):
             return entry
     return Entry.objects.create(text="x")
+
+
+def store_nonlocal_rebind(value: object) -> Entry:
+    # BUG: reset() rebinds value to None through nonlocal after the test.
+    def reset() -> None:
+        nonlocal value
+        value = None
+
+    if isinstance(value, str):
+        reset()
+        return Entry.objects.create(text=value)
+    return Entry.objects.create(text="x")
+
+
+def store_lambda_after_rebind(value: object) -> object:
+    # BUG: the lambda reads value when it is called, after value is rebound to None.
+    if isinstance(value, str):
+        make = lambda: Entry.objects.create(text=value)
+        value = None
+        return make()
+    return None
+
+
+def store_generator_after_rebind(value: object) -> object:
+    # BUG: the generator reads value when it runs, after value is rebound to None.
+    if isinstance(value, str):
+        made = (Entry.objects.create(text=value) for _ in range(1))
+        value = None
+        return list(made)
+    return None

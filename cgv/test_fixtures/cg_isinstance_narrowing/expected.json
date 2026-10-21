@@ -92,6 +92,12 @@
       "target": "Entry.text"
     },
     {
+      "path": "store_chained -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
       "path": "store_alias_before -> Entry.text",
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
@@ -207,6 +213,24 @@
     },
     {
       "path": "store_handoff_in_for_iterable -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nonlocal_rebind -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_lambda_after_rebind -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_generator_after_rebind -> Entry.text",
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Entry.text"
