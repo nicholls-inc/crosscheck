@@ -9,7 +9,8 @@
 //!   of `if x is None:` / `if not x:`; conjunctions narrow every conjunct;
 //! - inside `if isinstance(x, str):` and after
 //!   `if not isinstance(x, str): return`, for the calls in
-//!   `Exits::excludes_none` only;
+//!   `Exits::excludes_none` only; on an attribute, until a caller's guard
+//!   on it would end (`Effects::hands_off`);
 //! - after `assert x is not None` / `assert x`;
 //! - inside `if x in {"a", "b"}:` (a set, list or tuple display of string,
 //!   bytes, number or bool literals), and after `if x not in (...): return`.
@@ -116,6 +117,10 @@ pub struct Narrowed {
     /// caller's guard on a longer chain `p.a.b.f` holds only while no proper
     /// prefix of it is here.
     handed_paths: HashSet<String>,
+    /// The attributes in `names` known non-None only by an `isinstance` test
+    /// (`Fact::held`). Each ends where a caller's guard on it would end
+    /// (`Effects::hands_off`), counted from the test.
+    held: HashSet<String>,
     /// The function's `Exits::excludes_none`, for `positive`.
     excludes_none: Rc<HashSet<u32>>,
 }
@@ -152,7 +157,21 @@ impl Narrowed {
                     entry.1 = true;
                 }
             }
+            self.held.remove(&name);
             self.names.insert(name);
+        }
+    }
+
+    /// Mark the names of `facts` non-None. A held fact does not weaken a
+    /// name already known non-None by another test.
+    pub fn assume(&mut self, facts: impl IntoIterator<Item = Fact>) {
+        for f in facts {
+            if !f.held {
+                self.extend([f.name]);
+            } else if !self.names.contains(&f.name) || self.held.contains(&f.name) {
+                self.names.insert(f.name.clone());
+                self.held.insert(f.name);
+            }
         }
     }
 
@@ -204,14 +223,16 @@ impl Narrowed {
     /// so other code can write the field. Reading `chain` itself does not
     /// count, nor does reading a field of it.
     pub fn link_handed(&self, chain: &str) -> bool {
-        self.handed_paths.iter().any(|h| {
-            chain.len() > h.len() && chain.starts_with(h.as_str()) && chain.as_bytes()[h.len()] == b'.'
-        })
+        self.handed_paths.iter().any(|h| is_link_of(h, chain))
     }
 
     /// The state after evaluating a node with effects `e`.
     pub fn apply(&mut self, e: &Effects) {
         self.names.retain(|n| e.keeps_member(n));
+        for h in self.held.iter().filter(|h| e.hands_off(h)) {
+            self.names.remove(h);
+        }
+        self.held.retain(|h| self.names.contains(h));
         if e.suspends {
             self.untouched.clear();
             self.links_untouched.clear();
@@ -258,6 +279,7 @@ impl Narrowed {
             out.untouched.retain(|n| b.untouched.contains(n));
             out.links_untouched.retain(|n| b.links_untouched.contains(n));
             out.handed_paths.extend(b.handed_paths.iter().cloned());
+            out.held.extend(b.held.iter().cloned());
             out.defs.retain(|name, defs| {
                 let Some(other) = b.defs.get(name) else {
                     return false;
@@ -271,7 +293,28 @@ impl Narrowed {
                 true
             });
         }
+        out.held.retain(|h| out.names.contains(h));
         Some(out)
+    }
+}
+
+/// Whether `link` (`p.a.b`) is a proper prefix of `chain` (`p.a.b.f`).
+fn is_link_of(link: &str, chain: &str) -> bool {
+    chain.len() > link.len() && chain.starts_with(link) && chain.as_bytes()[link.len()] == b'.'
+}
+
+/// A name known non-None when a test has some outcome (see `positive`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fact {
+    pub name: String,
+    /// Known by an `isinstance` test on an attribute (`p.f`, `p.a.f`), which
+    /// holds only while a caller's guard on it would (`Narrowed::held`).
+    pub held: bool,
+}
+
+impl Fact {
+    fn plain(name: impl Into<String>) -> Self {
+        Fact { name: name.into(), held: false }
     }
 }
 
@@ -317,7 +360,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects(&s.test));
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
-                body_n.extend(positive(&s.test, &n));
+                body_n.assume(positive(&s.test, &n));
                 let end = walk(&s.body, &body_n, exits, v, counts);
                 if !always_exits(&s.body, exits) {
                     ends.push(end);
@@ -326,16 +369,16 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 let mut has_else = false;
                 for clause in &s.elif_else_clauses {
                     let mut clause_n = n.clone();
-                    clause_n.extend(negated.iter().cloned());
+                    clause_n.assume(negated.iter().cloned());
                     let end = match &clause.test {
                         Some(test) => {
                             v.header(test, &clause_n);
                             let e = effects(test);
                             n.apply(&e);
-                            negated.retain(|x| e.keeps_member(x));
+                            negated.retain(|x| x.survives(&e));
                             clause_n.apply(&e);
                             let mut bn = clause_n.clone();
-                            bn.extend(positive(test, &clause_n));
+                            bn.assume(positive(test, &clause_n));
                             let end = walk(&clause.body, &bn, exits, v, counts);
                             negated.extend(negative(test, &clause_n));
                             end
@@ -352,7 +395,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 if !has_else {
                     // No branch taken: every test was false.
                     let mut fall = n.clone();
-                    fall.extend(negated);
+                    fall.assume(negated);
                     ends.push(fall);
                 }
                 if let Some(joined) = Narrowed::join(&ends) {
@@ -364,7 +407,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             Stmt::Assert(a) => {
                 v.simple(stmt, &n);
-                n.extend(positive(&a.test, &n));
+                n.assume(positive(&a.test, &n));
                 n.apply(&effects_of_stmt(stmt));
             }
             Stmt::For(f) => {
@@ -383,7 +426,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects_of_stmt(stmt));
                 v.header(&w.test, &n);
                 let mut body_n = n.clone();
-                body_n.extend(positive(&w.test, &n));
+                body_n.assume(positive(&w.test, &n));
                 walk(&w.body, &body_n, exits, v, counts);
                 walk(&w.orelse, &n, exits, v, counts);
             }
@@ -736,6 +779,19 @@ impl Effects {
         self
     }
 
+    /// Whether a caller's guard on `chain` (`p.f`, `p.a.f`) ends at a node
+    /// with these effects: code may run on any object, or is handed `p`, or,
+    /// for a chain, an attribute of `p` or a proper prefix of the chain
+    /// (`Scope::field_read_facts` reads the same conditions from the entry,
+    /// through `Narrowed::untouched`, `links_untouched` and `link_handed`).
+    pub fn hands_off(&self, chain: &str) -> bool {
+        let (root, path) = chain.split_once('.').unwrap_or((chain, ""));
+        self.suspends
+            || self.reached.contains(root)
+            || (path.contains('.')
+                && (self.handed.contains(root) || self.handed_paths.iter().any(|h| is_link_of(h, chain))))
+    }
+
     /// Whether the fact `n` (a name or a `member_key`) survives.
     pub fn keeps_member(&self, n: &str) -> bool {
         match n.split_once('[') {
@@ -952,13 +1008,14 @@ fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
 /// Names known non-None when `test` is true (attributes of variables as
 /// `obj.f`, see `attr_name`), and `member_key` facts. `n` is the state
 /// where `test` is evaluated, which knows the calls that rule out None.
-pub fn positive(test: &Expr, n: &Narrowed) -> Vec<String> {
-    let mut out: Vec<String> = match test {
-        Expr::Name(n) => vec![n.id.to_string()],
-        Expr::Attribute(_) => attr_name(test).into_iter().collect(),
+pub fn positive(test: &Expr, n: &Narrowed) -> Vec<Fact> {
+    let mut out: Vec<Fact> = match test {
+        Expr::Name(n) => vec![Fact::plain(n.id.as_str())],
+        Expr::Attribute(_) => attr_name(test).into_iter().map(Fact::plain).collect(),
         Expr::Compare(c) => none_comparison(c, CmpOp::IsNot)
             .into_iter()
             .chain(membership(c, CmpOp::In))
+            .map(Fact::plain)
             .collect(),
         // `isinstance(x, str).__eq__(y)` starts at the same offset: only the
         // call of the name itself is the one resolution marked.
@@ -967,8 +1024,8 @@ pub fn positive(test: &Expr, n: &Narrowed) -> Vec<String> {
                 && n.excludes_none.contains(&c.start().to_u32()) =>
         {
             match c.arguments.args.first() {
-                Some(Expr::Name(s)) => vec![s.id.to_string()],
-                Some(s) => attr_name(s).into_iter().collect(),
+                Some(Expr::Name(s)) => vec![Fact::plain(s.id.as_str())],
+                Some(s) => attr_name(s).into_iter().map(|name| Fact { name, held: true }).collect(),
                 None => Vec::new(),
             }
         }
@@ -978,17 +1035,18 @@ pub fn positive(test: &Expr, n: &Narrowed) -> Vec<String> {
         Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => negative(&u.operand, n),
         _ => Vec::new(),
     };
-    without_members_if_called(&mut out, test);
+    out.retain(|f| f.survives(&effects(test)));
     out
 }
 
 /// Names known non-None when `test` is false, and `member_key` facts. A
 /// false `isinstance` says nothing about None.
-pub fn negative(test: &Expr, n: &Narrowed) -> Vec<String> {
-    let mut out: Vec<String> = match test {
+pub fn negative(test: &Expr, n: &Narrowed) -> Vec<Fact> {
+    let mut out: Vec<Fact> = match test {
         Expr::Compare(c) => none_comparison(c, CmpOp::Is)
             .into_iter()
             .chain(membership(c, CmpOp::NotIn))
+            .map(Fact::plain)
             .collect(),
         Expr::BoolOp(b) if matches!(b.op, BoolOp::Or) => {
             b.values.iter().flat_map(|v| negative(v, n)).collect()
@@ -996,14 +1054,17 @@ pub fn negative(test: &Expr, n: &Narrowed) -> Vec<String> {
         Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => positive(&u.operand, n),
         _ => Vec::new(),
     };
-    without_members_if_called(&mut out, test);
+    out.retain(|f| f.survives(&effects(test)));
     out
 }
 
-/// A call in the test may remove the key again.
-fn without_members_if_called(out: &mut Vec<String>, test: &Expr) {
-    let e = effects(test);
-    out.retain(|n| e.keeps_member(n));
+impl Fact {
+    /// Whether the fact holds after a node with effects `e`, such as the
+    /// rest of its own test: a call may remove a key again, or hand off what
+    /// a held fact is about.
+    fn survives(&self, e: &Effects) -> bool {
+        e.keeps_member(&self.name) && !(self.held && e.hands_off(&self.name))
+    }
 }
 
 /// `x <op> <display of non-None literals>`: `x`, which equals one of them.

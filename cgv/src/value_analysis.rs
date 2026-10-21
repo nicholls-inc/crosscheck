@@ -236,10 +236,10 @@ impl Ctx {
         }
     }
 
-    pub fn narrow(&self, names: Vec<String>) -> Ctx {
+    pub fn narrow(&self, facts: Vec<flow::Fact>) -> Ctx {
         let mut c = self.clone();
         c.narrowed
-            .extend(names.into_iter().filter(|n| !self.shadowed.contains(n)));
+            .assume(facts.into_iter().filter(|f| !self.shadowed.contains(&f.name)));
         c
     }
 
