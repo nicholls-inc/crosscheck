@@ -367,6 +367,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     n.apply(&effects(&item.context_expr));
                     if let Some(target) = &item.optional_vars {
                         remove_all(&mut n, bound_names_in_expr(target));
+                        n.apply(&effects(target));
                     }
                     if i == 0 {
                         after = n.clone();

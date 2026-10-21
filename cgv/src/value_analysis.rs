@@ -3551,6 +3551,7 @@ mod tests {
             // chain it stores to has an unknown value.
             ("    [0 for p.a.name in [None]]\n    p.a.code\n", Some(true)),
             ("    for p.a.name in [None]:\n        pass\n    p.a.code\n", Some(true)),
+            ("    with cm() as p.a.name:\n        p.a.code\n", Some(true)),
             ("    [0 for p.a.code in [None]]\n    p.a.code\n", None),
         ] {
             let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
