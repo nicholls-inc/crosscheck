@@ -3561,6 +3561,8 @@ mod tests {
             ("    if o:\n        pass\n    else:\n        clear(p.a)\n    p.a.code\n", Some(true)),
             // `super().m()` runs the parent's method on this object, which may write the chain.
             ("    super().reset()\n    p.a.code\n", Some(true)),
+            ("    s = super()\n    s.reset()\n    p.a.code\n", Some(true)),
+            ("    x = super().total\n    p.a.code\n", Some(true)),
         ] {
             let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
@@ -3601,6 +3603,28 @@ mod tests {
         // object twice is an alias of the whole chain.
         assert_eq!(alias("f(p, p.a.name)"), None);
         assert_eq!(alias("f(p, p)"), Some(true));
+        // The guarded field itself, read as a value, is no object that can write it.
+        assert_eq!(alias("f(p, p.a.code)"), None);
+        // An expression built from the root can hold the chain.
+        assert_eq!(alias("f(p, [p.a])"), Some(true));
+        assert_eq!(alias("f(p, p.get_a())"), Some(true));
+        assert_eq!(alias("f(p, 1)"), None);
+        // An argument that `*args` takes is still an argument.
+        let rest = |call: &str| {
+            let src = format!(
+                "{records}def f(p: P, *rest):\n    rest[0].code = None\n    p.a.code\n\
+                 def g(p: P):\n    if p.a.code:\n        {call}\n"
+            );
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        assert_eq!(rest("f(p, p.a)"), Some(true));
+        assert_eq!(rest("f(p, 1)"), None);
+        // A name that only starts with the root's name is another object.
+        let other = format!(
+            "{records}def f(p: P, a: A):\n    a.code = None\n    p.a.code\n\
+             def g(p: P, p2: A):\n    if p.a.code:\n        f(p, p2)\n"
+        );
+        assert_eq!(facts_of(&[("code.py", &other)], "code.f").nullable, None);
     }
 
     /// CG-1.9: a field every caller narrows has unknown nullability, when

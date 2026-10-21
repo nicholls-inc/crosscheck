@@ -655,12 +655,20 @@ fn call_guards<'c>(
             .collect()
     };
     let mut bound: Vec<(String, &'c Expr)> = Vec::new();
+    // Every argument expression of the call, bound to a parameter or not (an
+    // argument that `*args` or `**kwargs` takes is one).
+    let mut all: Vec<&'c Expr> = Vec::new();
     let mut bind = |param: &str, arg: &'c Expr| bound.push((param.to_string(), arg));
-    if implicit == 1 {
-        if let (Some(p), Expr::Attribute(a)) = (f.params.first(), call.func.as_ref()) {
-            bind(&p.name, &a.value);
+    if let Expr::Attribute(a) = call.func.as_ref() {
+        all.push(&a.value);
+        if implicit == 1 {
+            if let Some(p) = f.params.first() {
+                bind(&p.name, &a.value);
+            }
         }
     }
+    all.extend(call.arguments.args.iter());
+    all.extend(call.arguments.keywords.iter().map(|k| &k.value));
     let params = f.params.get(implicit..).unwrap_or_default();
     let positional = params
         .iter()
@@ -678,10 +686,11 @@ fn call_guards<'c>(
         }
     }
     for &(ref param, arg) in &bound {
-        // Another argument of the same call that is the same object, or an
-        // object along the guarded chain (`f(o, o.customer)`), can be written
-        // through its own parameter: the guard on a chain `o.customer.email`
-        // does not hold in the callee.
+        // Another argument of the same call that is the same object, an object
+        // along the guarded chain (`f(o, o.customer)`), or an expression built from
+        // `o` (`f(o, [o.customer])`) can be written through its own parameter, or
+        // through `*args`: the guard on a chain `o.customer.email` does not hold in
+        // the callee.
         let aliased = |field: &str| {
             let Expr::Name(n) = arg else { return false };
             // A guard on a plain field `o.f` is not touched here: an alias of
@@ -689,16 +698,21 @@ fn call_guards<'c>(
             if !field.contains('.') {
                 return false;
             }
-            bound.iter().filter(|(_, other)| !std::ptr::eq(*other, arg)).any(|(_, other)| {
+            all.iter().filter(|other| !std::ptr::eq(**other, arg)).any(|other| {
                 let path = match other {
-                    Expr::Name(o) => o.id.to_string(),
-                    o => flow::attr_name(o).unwrap_or_default(),
+                    Expr::Name(o) => Some(o.id.to_string()),
+                    o => flow::attr_name(o),
+                };
+                let Some(path) = path else {
+                    return mentions(other, n.id.as_str());
                 };
                 match path.strip_prefix(n.id.as_str()) {
                     Some("") => true,
+                    // Only an object along the chain: the guarded field itself, read
+                    // as a value, is no object that can write it.
                     Some(rest) => rest
                         .strip_prefix('.')
-                        .is_some_and(|r| field == r || field.starts_with(&format!("{r}."))),
+                        .is_some_and(|r| field.starts_with(&format!("{r}."))),
                     None => false,
                 }
             })
@@ -708,6 +722,22 @@ fn call_guards<'c>(
         }
     }
     out
+}
+
+/// Whether `expr` reads the name `name` anywhere.
+fn mentions(expr: &Expr, name: &str) -> bool {
+    struct Mentions<'n>(&'n str, bool);
+    impl<'a> Visitor<'a> for Mentions<'_> {
+        fn visit_expr(&mut self, e: &'a Expr) {
+            if matches!(e, Expr::Name(n) if n.id.as_str() == self.0) {
+                self.1 = true;
+            }
+            visitor::walk_expr(self, e);
+        }
+    }
+    let mut m = Mentions(name, false);
+    m.visit_expr(expr);
+    m.1
 }
 
 #[derive(Clone)]

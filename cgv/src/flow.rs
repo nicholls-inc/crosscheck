@@ -805,13 +805,13 @@ impl<'a> Visitor<'a> for Effects {
             Expr::Call(c) => {
                 if let Expr::Attribute(a) = c.func.as_ref() {
                     self.reach_root(&a.value);
-                    // `super().m(...)` runs the parent's method on this method's own
-                    // object. The walk does not know which parameter that is, so it
-                    // counts as other code running on any object.
-                    if matches!(a.value.as_ref(), Expr::Call(s) if matches!(s.func.as_ref(), Expr::Name(n) if n.id.as_str() == "super"))
-                    {
-                        *self = std::mem::take(self).suspended();
-                    }
+                }
+                // `super()` hands the method's own object to the parent's code, by a
+                // method call, a property read or a stored `s = super()`. The walk
+                // does not know which parameter that is, so it counts as other code
+                // running on any object.
+                if matches!(c.func.as_ref(), Expr::Name(n) if n.id.as_str() == "super") {
+                    *self = std::mem::take(self).suspended();
                 }
                 let get_on = match c.func.as_ref() {
                     Expr::Attribute(a) if a.attr.as_str() == "get" => match a.value.as_ref() {

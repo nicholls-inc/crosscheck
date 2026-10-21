@@ -592,7 +592,7 @@ fn django_models(
     /// relation therefore has no link, rather than keeping a stale inherited one. A class
     /// that is not a project model may bind any name, so nothing after it is inherited.
     /// A link an abstract model declares to itself (`ForeignKey("self")`, the only way to
-    /// name an abstract model) points at `q` itself, as Django resolves it per child.
+    /// name an abstract model) points at the model that inherits it, as Django resolves it.
     fn inherited_links(
         q: &str,
         own_links: &HashMap<String, HashMap<String, resolve::Link>>,
@@ -604,14 +604,22 @@ fn django_models(
         let order = c3(q, &bases_of, 0).unwrap_or_else(|| vec![q.to_string()]);
         let mut links = HashMap::new();
         let mut seen: HashSet<&String> = HashSet::new();
-        for class in &order {
+        for (i, class) in order.iter().enumerate() {
             let Some(names) = own_bound.get(class) else { break };
             for name in names {
                 if seen.insert(name) {
                     if let Some(link) = own_links.get(class).and_then(|l| l.get(name)) {
                         let mut link = link.clone();
                         if abstract_models.contains(class) && link.class == *class {
-                            link.class = q.to_string();
+                            // The model that inherits the abstract one: the concrete model
+                            // closest to it in the order (a multi-table child of that model
+                            // links to the model, which holds the field), else `q` itself.
+                            link.class = order[..i]
+                                .iter()
+                                .rev()
+                                .find(|c| !abstract_models.contains(*c))
+                                .map_or(q, |c| c.as_str())
+                                .to_string();
                         }
                         links.insert(name.clone(), link);
                     }
@@ -1563,6 +1571,8 @@ mod tests {
                  class Leaf(Node):\n    pass\n\
                  class Method(Base):\n    @property\n    def owner(self):\n        return None\n\
                  class Chained(Base):\n    owner = note = None\n\
+                 class Tupled(Base):\n    (owner, other) = (None, None)\n\
+                 class Nested(Base):\n    class owner:\n        pass\n\
                  class Other(models.Model):\n    pass\n",
             ),
             (
@@ -1587,13 +1597,16 @@ mod tests {
         assert_eq!(links("billing.models.Typed"), ["note billing.models.Customer", "owner billing.models.Customer"]);
         assert_eq!(links("billing.models.Diamond"), ["note billing.models.Customer", "owner billing.models.Other"]);
         assert_eq!(links("billing.models.Diamond2"), ["note billing.models.Customer", "owner billing.models.Other"]);
-        // `"self"` on an abstract model is each child's own class, however deep.
+        // `"self"` on an abstract model is the class of the concrete model that inherits it.
         assert_eq!(links("billing.models.Tree"), ["parent billing.models.Tree"]);
         assert_eq!(links("billing.models.Node"), ["parent billing.models.Node"]);
-        assert_eq!(links("billing.models.Leaf"), ["parent billing.models.Leaf"]);
+        // A multi-table child of a concrete model links to that model, which holds the field.
+        assert_eq!(links("billing.models.Leaf"), ["parent billing.models.Node"]);
         // A method, a property or a chained assignment hides an inherited link too.
         assert_eq!(links("billing.models.Method"), ["note billing.models.Customer"]);
         assert_eq!(links("billing.models.Chained"), Vec::<String>::new());
+        assert_eq!(links("billing.models.Tupled"), ["note billing.models.Customer"]);
+        assert_eq!(links("billing.models.Nested"), ["note billing.models.Customer"]);
         // Annotations are read from data class bases only.
         assert_eq!(links("records.Plain"), Vec::<String>::new());
     }
