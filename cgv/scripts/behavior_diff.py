@@ -10,10 +10,12 @@ inputs and the disagreements per configuration and predicate.
 Subcommands (run from cgv/):
   run       Build the Lean evaluator and the pinned virtual environments, sample
             every configuration, evaluate, compare with scripts/behavior-baseline.json.
-            Exit 0 when the run uses the baseline's seed and examples and every count matches,
-            1 when one differs (or, with
-            --update-baseline, a disagreeing predicate has no tracked_by row), 2 when the
-            harness itself fails.
+            Exit 0 when every count matches, 1 when one differs (with --update-baseline,
+            when a disagreeing predicate has no tracked_by row), 2 when the harness itself
+            fails. That is the gate only for a run of every configuration with the
+            baseline's seed and examples. Any other run (another seed or example count,
+            or --configs) only fails on a disagreement the baseline does not record, and
+            prints which gate applied.
   selftest  Mutate charFieldAccepts (<= becomes <) in a scratch copy of
             BehaviorModel.lean, run against it, and exit 0 only if the run
             fails with new charFieldAccepts disagreements and nothing else moves.
@@ -459,6 +461,8 @@ def print_summary(summary, tracked):
 
 def run(args):
     work = Path(args.work_dir).resolve()
+    if args.examples < 1:
+        raise HarnessError("--examples must be at least 1")
     configs = list(dict.fromkeys(args.configs.split(","))) if args.configs else list(CONFIGS)
     for c in configs:
         if c not in CONFIGS:
@@ -516,7 +520,11 @@ def run(args):
                 staged.unlink(missing_ok=True)
             print(f"wrote {baseline_path}")
     else:
-        problems = compare(summary, baseline, args.seed, args.examples, full=set(configs) == set(CONFIGS))
+        full = set(configs) == set(CONFIGS)
+        problems = compare(summary, baseline, args.seed, args.examples, full=full)
+        if not (full and baseline.get("seed") == args.seed and baseline.get("examples") == args.examples):
+            print("NOTE partial gate: this run does not use the baseline's seed, examples and every configuration, "
+                  "so counts are not compared; only disagreements the baseline does not record fail")
     for p in problems:
         print(f"FAIL {p}")
     return 1 if problems else 0
@@ -534,7 +542,8 @@ def check_baseline_shape(baseline, path, update):
     ok = (isinstance(counts, dict) and isinstance(tracked, dict)
           and all(isinstance(note, str) for note in tracked.values())
           and all(isinstance(rows, dict) and all(isinstance(row, dict) and is_count(row.get("drawn"))
-                                                 and is_count(row.get("disagreements")) for row in rows.values())
+                                                 and is_count(row.get("disagreements"))
+                                                 and row["disagreements"] <= row["drawn"] for row in rows.values())
                   for rows in counts.values()))
     if ok and not update:
         ok = bool(counts) and is_count(baseline.get("seed")) and is_count(baseline.get("examples"))
@@ -552,12 +561,12 @@ def baseline_counts(baseline, config, predicate):
 
 def selftest(args):
     work = Path(args.work_dir).resolve()
-    model = Path(args.behavior_model).read_text()
+    model = Path(args.behavior_model).read_text(encoding="utf-8")
     if model.count(MUTATION[0]) != 1:
         raise HarnessError("the charFieldAccepts text to mutate is not in BehaviorModel.lean exactly once")
     mutant = work / "mutant" / "BehaviorModel.lean"
     mutant.parent.mkdir(parents=True, exist_ok=True)
-    mutant.write_text(model.replace(*MUTATION))
+    mutant.write_text(model.replace(*MUTATION), encoding="utf-8")
     run_args = argparse.Namespace(**{**vars(args), "behavior_model": str(mutant), "work_dir": str(work / "mutant"),
                                      "venv_dir": str(work), "update_baseline": False})
     status = run(run_args)
