@@ -81,6 +81,23 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(problems, ["c1 p: disagreements with no task row in tracked_by"])
 
 
+class PartialGateNoteTest(unittest.TestCase):
+    def note(self, seed=1, examples=10, full=True):
+        return behavior_diff.partial_gate_note(BASE, seed, examples, full)
+
+    def test_the_whole_gate_says_nothing(self):
+        self.assertIsNone(self.note())
+
+    def test_a_subset_with_the_baseline_seed_says_it_compares_the_configurations_it_ran(self):
+        self.assertIn("covers only some configurations", self.note(full=False))
+        self.assertIn("compared with the baseline", self.note(full=False))
+
+    def test_another_seed_or_example_count_says_counts_are_not_compared(self):
+        for kwargs in ({"seed": 2}, {"examples": 11}, {"seed": 2, "full": False}, {"examples": 11, "full": False}):
+            with self.subTest(**kwargs):
+                self.assertIn("counts are not compared", self.note(**kwargs))
+
+
 class BaselineShapeTest(unittest.TestCase):
     def check(self, mutate, update=False):
         base = copy.deepcopy(BASE)

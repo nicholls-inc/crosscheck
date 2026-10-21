@@ -16,8 +16,9 @@ Subcommands (run from cgv/):
             baseline's seed and examples. With the baseline's seed and examples and
             --configs, the counts of the configurations that ran are compared and the
             others are not checked. With another seed or example count, only a
-            disagreement in a direction the baseline does not record fails. A run that
-            is not the whole gate says which gate applied.
+            disagreement in a direction the baseline does not record fails. Under every
+            seed, a predicate in the baseline that a configuration which ran did not
+            draw fails. A run that is not the whole gate says which gate applied.
   selftest  Needs the baseline's seed and examples. First run the unmutated model, which
             must exit 0. Then, for one predicate of each family (char/length, decimal,
             integer range, choices, nullability, a pydantic bound), mutate it in a
@@ -132,7 +133,8 @@ def sample(config, seed, examples, out):
     # This patches private names of hypothesis 6.170.5 (behavior-requirements-*.txt); a release that renames them
     # must stop the run, not quietly change the draws.
     if not (hasattr(providers, "_get_local_constants") and hasattr(providers, "_local_constants")):
-        raise HarnessError("hypothesis no longer has the private names this harness patches; it was checked against 6.170.5")
+        raise HarnessError("hypothesis no longer has the private names this harness patches; "
+                           "it was checked against 6.170.5")
     providers._get_local_constants = lambda: providers._local_constants
 
     with open(out, "w") as fh:
@@ -495,6 +497,18 @@ def compare(summary, baseline, seed, examples, full=True):
     return problems
 
 
+def partial_gate_note(baseline, seed, examples, full):
+    """What a run that is not the whole gate must say about the gate it applied; None for the whole gate.
+    The conditions are those of compare(): `exact` is the seed and examples matching, `full` every configuration."""
+    if baseline.get("seed") != seed or baseline.get("examples") != examples:
+        return ("NOTE partial gate: this run does not use the baseline's seed and examples, so counts are not "
+                "compared; only a disagreement in a direction the baseline does not record fails")
+    if not full:
+        return ("NOTE partial gate: this run covers only some configurations; the counts of those it ran are "
+                "compared with the baseline and the others are not checked")
+    return None
+
+
 def print_summary(summary, tracked):
     print(f"{'configuration':<16} {'predicate':<26} {'drawn':>6} {'distinct':>8} {'lib-only':>8} {'model-only':>10}  row")
     for config, predicates in summary.items():
@@ -567,12 +581,9 @@ def run(args):
     else:
         full = set(configs) == set(CONFIGS)
         problems = compare(summary, baseline, args.seed, args.examples, full=full)
-        if baseline.get("seed") != args.seed or baseline.get("examples") != args.examples:
-            print("NOTE partial gate: this run does not use the baseline's seed and examples, so counts are not "
-                  "compared; only a disagreement in a direction the baseline does not record fails")
-        elif not full:
-            print("NOTE partial gate: this run covers only some configurations; the counts of those it ran are "
-                  "compared with the baseline and the others are not checked")
+        note = partial_gate_note(baseline, args.seed, args.examples, full)
+        if note:
+            print(note)
     for p in problems:
         print(f"FAIL {p}")
     return 1 if problems else 0
