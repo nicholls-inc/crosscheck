@@ -506,26 +506,39 @@ fn django_models(
         fields
     }
 
-    // Every name a model's class body assigns: its own declaration of a field, resolvable
-    // relation or not, shadows what a base declared under that name.
+    // Every name a model's class body binds: its own declaration of a field, resolvable
+    // relation or not, or a method, property or nested class, shadows what a base declared
+    // under that name.
+    fn bound_names(target: &Expr, out: &mut HashSet<String>) {
+        match target {
+            Expr::Name(n) => {
+                out.insert(n.id.to_string());
+            }
+            Expr::Tuple(t) => t.elts.iter().for_each(|e| bound_names(e, out)),
+            Expr::List(l) => l.elts.iter().for_each(|e| bound_names(e, out)),
+            Expr::Starred(s) => bound_names(&s.value, out),
+            _ => {}
+        }
+    }
     let own_bound: HashMap<String, HashSet<String>> = defs
         .iter()
         .filter(|(q, _, _)| django.contains(q))
         .map(|(q, c, _)| {
-            let names = c
-                .body
-                .iter()
-                .filter_map(|stmt| match stmt {
-                    Stmt::Assign(a) if a.targets.len() == 1 => Some(&a.targets[0]),
+            let mut names = HashSet::new();
+            for stmt in c.body.iter() {
+                match stmt {
+                    Stmt::Assign(a) => a.targets.iter().for_each(|t| bound_names(t, &mut names)),
                     // A bare annotation (`owner: Customer`) binds no class attribute.
-                    Stmt::AnnAssign(a) if a.value.is_some() => Some(a.target.as_ref()),
-                    _ => None,
-                })
-                .filter_map(|t| match t {
-                    Expr::Name(n) => Some(n.id.to_string()),
-                    _ => None,
-                })
-                .collect();
+                    Stmt::AnnAssign(a) if a.value.is_some() => bound_names(&a.target, &mut names),
+                    Stmt::FunctionDef(f) => {
+                        names.insert(f.name.to_string());
+                    }
+                    Stmt::ClassDef(k) => {
+                        names.insert(k.name.to_string());
+                    }
+                    _ => {}
+                }
+            }
             (q.clone(), names)
         })
         .collect();
@@ -567,15 +580,25 @@ fn django_models(
         })
         .collect();
 
+    // Abstract models: a `"self"` link declared on one is a link to each model that inherits it.
+    let abstract_models: HashSet<String> = defs
+        .iter()
+        .filter(|(q, c, _)| django.contains(q) && model_extractor::is_abstract(c))
+        .map(|(q, _, _)| q.clone())
+        .collect();
+
     /// The links of model `q`: for each name, the declaration in the first class of its
     /// method resolution order that assigns it. A field redeclared without a resolvable
     /// relation therefore has no link, rather than keeping a stale inherited one. A class
     /// that is not a project model may bind any name, so nothing after it is inherited.
+    /// A link an abstract model declares to itself (`ForeignKey("self")`, the only way to
+    /// name an abstract model) points at `q` itself, as Django resolves it per child.
     fn inherited_links(
         q: &str,
         own_links: &HashMap<String, HashMap<String, resolve::Link>>,
         own_bound: &HashMap<String, HashSet<String>>,
         bases: &HashMap<String, Vec<String>>,
+        abstract_models: &HashSet<String>,
     ) -> HashMap<String, resolve::Link> {
         let bases_of = |c: &str| bases.get(c).cloned().unwrap_or_default();
         let order = c3(q, &bases_of, 0).unwrap_or_else(|| vec![q.to_string()]);
@@ -586,7 +609,11 @@ fn django_models(
             for name in names {
                 if seen.insert(name) {
                     if let Some(link) = own_links.get(class).and_then(|l| l.get(name)) {
-                        links.insert(name.clone(), link.clone());
+                        let mut link = link.clone();
+                        if abstract_models.contains(class) && link.class == *class {
+                            link.class = q.to_string();
+                        }
+                        links.insert(name.clone(), link);
                     }
                 }
             }
@@ -599,7 +626,7 @@ fn django_models(
         if !django.contains(q) {
             continue;
         }
-        let links = inherited_links(q, &own_links, &own_bound, &model_bases);
+        let links = inherited_links(q, &own_links, &own_bound, &model_bases, &abstract_models);
         let mut fields = with_inherited(q, &own, &base_classes, &mut HashSet::new());
         for f in &mut fields {
             // Inherited fields are reported under the child.
@@ -1531,6 +1558,11 @@ mod tests {
                  class Early2(Base):\n    pass\n\
                  class Late2(Base):\n    owner = models.ForeignKey(Other, null=True, on_delete=models.CASCADE)\n\
                  class Diamond2(Early2, Late2):\n    pass\n\
+                 class Tree(models.Model):\n    parent = models.ForeignKey(\"self\", null=True, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Node(Tree):\n    pass\n\
+                 class Leaf(Node):\n    pass\n\
+                 class Method(Base):\n    @property\n    def owner(self):\n        return None\n\
+                 class Chained(Base):\n    owner = note = None\n\
                  class Other(models.Model):\n    pass\n",
             ),
             (
@@ -1555,6 +1587,13 @@ mod tests {
         assert_eq!(links("billing.models.Typed"), ["note billing.models.Customer", "owner billing.models.Customer"]);
         assert_eq!(links("billing.models.Diamond"), ["note billing.models.Customer", "owner billing.models.Other"]);
         assert_eq!(links("billing.models.Diamond2"), ["note billing.models.Customer", "owner billing.models.Other"]);
+        // `"self"` on an abstract model is each child's own class, however deep.
+        assert_eq!(links("billing.models.Tree"), ["parent billing.models.Tree"]);
+        assert_eq!(links("billing.models.Node"), ["parent billing.models.Node"]);
+        assert_eq!(links("billing.models.Leaf"), ["parent billing.models.Leaf"]);
+        // A method, a property or a chained assignment hides an inherited link too.
+        assert_eq!(links("billing.models.Method"), ["note billing.models.Customer"]);
+        assert_eq!(links("billing.models.Chained"), Vec::<String>::new());
         // Annotations are read from data class bases only.
         assert_eq!(links("records.Plain"), Vec::<String>::new());
     }
