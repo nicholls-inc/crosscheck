@@ -261,7 +261,7 @@ def Counterexample.toPython : Counterexample → String
     else s!"Decimal(\"{formatScaled m scale}\")"
   | .choice c ty =>
     match ty, c.toInt? with
-    | some "int", some n => toString n
+    | some "int", some n => if toString n = c then toString n else pythonStringLiteral c
     | _, _ => pythonStringLiteral c
   | .none => "None"
 

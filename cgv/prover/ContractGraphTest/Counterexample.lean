@@ -43,6 +43,16 @@ def cx (s t : Constraint) : Option String := (counterexampleOf s t).map (·.toPy
   some "-3"
 #guard cx (c .choices (cs := some ["3"])) (c .choices (cs := some ["1", "2"]) (ty := some "str")) ==
   some "\"3\""
+-- an int field whose choice text `toInt?` would rewrite ("03", "1_0", "-0", "+3")
+-- keeps the choice as a string, so the printed value is the one the target lacks
+#guard cx (c .choices (cs := some ["03"])) (c .choices (cs := some ["3"]) (ty := some "int")) ==
+  some "\"03\""
+#guard cx (c .choices (cs := some ["1_0"])) (c .choices (cs := some ["10"]) (ty := some "int")) ==
+  some "\"1_0\""
+#guard cx (c .choices (cs := some ["-0"])) (c .choices (cs := some ["0"]) (ty := some "int")) ==
+  some "\"-0\""
+#guard cx (c .choices (cs := some ["+3"])) (c .choices (cs := some ["1"]) (ty := some "int")) ==
+  some "\"+3\""
 #guard cx (c .choices (cs := some ["3"]) (ty := some "int")) (c .choices (cs := some ["1", "2"])) ==
   some "\"3\""
 #guard cx (c .choices (cs := some ["x"])) (c .choices (cs := some ["1"]) (ty := some "int")) ==
@@ -64,6 +74,9 @@ def cx (s t : Constraint) : Option String := (counterexampleOf s t).map (·.toPy
 -- excluded cases, or kinds that differ
 #guard cx (c .length (some 10)) (c .length (some 32)) == none
 #guard cx (c .type (ty := some "str")) (c .type (ty := some "int")) == none
+#guard cx (c .precision (some 2)) (c .precision (some 4)) == none
+#guard cx (c .range (some 500000)) (c .range (some 1000000)) == none
+#guard cx (c .rangeMin (some 0)) (c .rangeMin (some (-1000000))) == none
 #guard cx (c .precision (some 0)) (c .precision (some (-1))) == none
 #guard cx (c .length (some (-1))) (c .length (some (-2))) == none
 #guard cx (c .range (some 11000000)) (c .range (some 1) (scale := 0)) == none

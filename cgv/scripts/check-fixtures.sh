@@ -60,8 +60,9 @@ missing_warnings = [
                for r in warning_results)
 ]
 got = [g for g in got]
-# An expected error may pin "counterexample": at least one actual error with the
-# same key (path, guarantee, requirement, and target when given) must carry that text.
+# An expected error may pin "counterexample": every actual error with the same key
+# (path, guarantee, requirement, and target when given) must carry that text, and
+# at least one must exist.
 def actual_key(r, e):
     return (" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"],
             r["target"]["name"] if "target" in e else None)
@@ -70,7 +71,7 @@ for e in expected["errors"]:
     if "counterexample" not in e:
         continue
     carried = [r.get("counterexample") for r in errors if actual_key(r, e) == key(e)]
-    if e["counterexample"] not in carried:
+    if not carried or any(c != e["counterexample"] for c in carried):
         counterexample_failures.append((e, carried))
 ok = (want == got and code == expected["exit_code"] and not missing_warnings
       and not counterexample_failures)

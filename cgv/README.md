@@ -385,7 +385,7 @@ With `--baseline`, exit 0 means that every error the checker reported was in the
 
 ### What exit 0 promises
 
-`runChecker_sound_all` proves that exit 0 means every data path of the translated graph is stepwise sound. These qualifiers apply (see [Trust model](#trust-model) for what is trusted and not proved):
+`runChecker_sound_all` proves that exit 0 means every data path of the translated graph is stepwise sound. The binary reaches that theorem through `runCheckerCx_fst`, which shows that the report and exit code it prints are `runChecker`'s. These qualifiers apply (see [Trust model](#trust-model) for what is trusted and not proved):
 
 - **Only the paths the extractor discovered.** Extraction is not proved (see [Trust model](#trust-model)). A write the extractor does not see is not in the graph, so exit 0 says nothing about it.
 - **Writes outside the project's code are not yet reached.** This covers writes that Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a DRF serializer's `save()`), raw SQL, and fixtures. The property that blocks them is that the write happens in framework code or in the database, which the extractor does not read. The open question is how small a model of each framework's write paths can be and still be trusted.
