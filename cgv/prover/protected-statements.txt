@@ -86,30 +86,6 @@ theorem ContractGraph.runCheckerPaths_exitCode_eq_zero_iff :
 theorem ContractGraph.incompleteWith_exitCode :
   ∀ (g : ContractGraph.ContractGraph) (m : String), Eq (ContractGraph.incompleteWith g m).exitCode 2
 
-theorem ContractGraph.runCheckerCx_fst :
-  ∀ (g : ContractGraph.ContractGraph) (maxStates maxPerEdge : Nat),
-  Eq (ContractGraph.runCheckerCx g maxStates maxPerEdge).fst (ContractGraph.runChecker g maxStates maxPerEdge)
-
-theorem ContractGraph.counterexampleOf_sound :
-  ∀ {s t : ContractGraph.Constraint} {v : ContractGraph.Counterexample},
-  Eq (ContractGraph.counterexampleOf s t) (Option.some v) → And (Eq (v.admits s) Bool.true) (Eq (v.admits t) Bool.false)
-
-theorem ContractGraph.checkConstraintPair_counterexample :
-  ∀ (s t : ContractGraph.Constraint) (d : ContractGraph.DiagnosticInfo),
-  Eq (ContractGraph.checkConstraintPair s t) (ContractGraph.CheckResult.inconsistent d) →
-    Ne s.kind ContractGraph.ConstraintKind.type →
-      (Eq s.kind ContractGraph.ConstraintKind.length →
-          ∀ (b : Int), Eq s.staticBound (Option.some b) → Int.instLEInt.le 0 b) →
-        (Eq s.kind ContractGraph.ConstraintKind.precision →
-            ∀ (b : Int), Eq s.staticBound (Option.some b) → Int.instLEInt.le 1 b) →
-          (Or (Eq s.kind ContractGraph.ConstraintKind.range) (Eq s.kind ContractGraph.ConstraintKind.rangeMin) →
-              Eq s.scale t.scale) →
-            And (Eq d.sourceConstraint s)
-              (And (Eq d.targetConstraint t)
-                (Exists fun v =>
-                  And (Eq d.counterexample (Option.some v))
-                    (And (Eq (v.admits s) Bool.true) (Eq (v.admits t) Bool.false))))
-
 -- Every ContractGraph definition that a protected statement or protected definition reaches
 
 def ContractGraph.ChainFrom :
@@ -131,13 +107,7 @@ inductive ContractGraph.ConstraintKind :
 inductive ContractGraph.ContractGraph :
   Type
 
-inductive ContractGraph.Counterexample :
-  Type
-
 inductive ContractGraph.Dedupe :
-  Type
-
-inductive ContractGraph.DedupeCx :
   Type
 
 inductive ContractGraph.DepExpr :
@@ -148,10 +118,6 @@ inductive ContractGraph.DiagnosticInfo :
 
 inductive ContractGraph.Edge :
   Type
-
-def ContractGraph.EntryCx :
-  Type
-  value hash 3275184357
 
 inductive ContractGraph.ExploreOutcome :
   Type
@@ -287,10 +253,6 @@ def ContractGraph.collectEntries :
   List ContractGraph.CheckResult → optParam (Option Nat) Option.none → List ContractGraph.ResultEntry
   value hash 3935149966
 
-def ContractGraph.collectEntriesCx :
-  List ContractGraph.Edge → List ContractGraph.CheckResult → Option Nat → List ContractGraph.EntryCx
-  value hash 2000215892
-
 def ContractGraph.collectMissingPostconditionWarnings :
   ContractGraph.Node → ContractGraph.Node → List ContractGraph.CheckResult
   value hash 3166476848
@@ -326,14 +288,6 @@ def ContractGraph.countFrom :
 def ContractGraph.countPaths :
   ContractGraph.SearchSetup → ContractGraph.ContractGraph → Nat → Nat → Prod Nat Nat
   value hash 3379482471
-
-def ContractGraph.counterexampleCandidate :
-  ContractGraph.Constraint → ContractGraph.Constraint → Option ContractGraph.Counterexample
-  value hash 4011777167
-
-def ContractGraph.counterexampleOf :
-  ContractGraph.Constraint → ContractGraph.Constraint → Option ContractGraph.Counterexample
-  value hash 3454982371
 
 def ContractGraph.dedupeStep :
   List ContractGraph.ResultEntry → ContractGraph.ResultEntry → List ContractGraph.ResultEntry
@@ -412,10 +366,6 @@ def ContractGraph.functionNodes :
 def ContractGraph.guardedEntries :
   (Unit → Prod (List ContractGraph.Edge) Nat) → List ContractGraph.CheckResult → List ContractGraph.ResultEntry
   value hash 1808784769
-
-def ContractGraph.guardedEntriesCx :
-  (Unit → Prod (List ContractGraph.Edge) Nat) → List ContractGraph.CheckResult → List ContractGraph.EntryCx
-  value hash 4176861668
 
 def ContractGraph.hopPrefix :
   List ContractGraph.Edge → ContractGraph.DiagnosticInfo → Option Nat → List ContractGraph.Edge
@@ -577,10 +527,6 @@ def ContractGraph.reportStatesWith :
   ContractGraph.StateSetup → ContractGraph.Explored → Array Bool → List ContractGraph.ResultEntry
   value hash 3862464900
 
-def ContractGraph.reportStatesWithCx :
-  ContractGraph.StateSetup → ContractGraph.Explored → Array Bool → List ContractGraph.EntryCx
-  value hash 840334865
-
 def ContractGraph.reportStep :
   (Nat → Bool) →
   List ContractGraph.ResultEntry →
@@ -604,13 +550,6 @@ def ContractGraph.runChecker :
   optParam Nat ContractGraph.defaultMaxStates → optParam Nat ContractGraph.defaultMaxPerEdge → ContractGraph.CheckOutput
   value hash 2779098276
 
-def ContractGraph.runCheckerCx :
-  ContractGraph.ContractGraph →
-  optParam Nat ContractGraph.defaultMaxStates →
-    optParam Nat ContractGraph.defaultMaxPerEdge →
-      Prod ContractGraph.CheckOutput (List (Option ContractGraph.Counterexample))
-  value hash 2321213809
-
 def ContractGraph.runCheckerPaths :
   ContractGraph.ContractGraph → optParam Nat ContractGraph.defaultMaxPaths → ContractGraph.CheckOutput
   value hash 2522967413
@@ -622,12 +561,6 @@ def ContractGraph.runCheckerWith :
 def ContractGraph.runStatesWith :
   ContractGraph.StateSetup → ContractGraph.ContractGraph → ContractGraph.Explored → ContractGraph.CheckOutput
   value hash 2428278590
-
-def ContractGraph.runStatesWithCx :
-  ContractGraph.StateSetup →
-  ContractGraph.ContractGraph →
-    ContractGraph.Explored → Prod ContractGraph.CheckOutput (List (Option ContractGraph.Counterexample))
-  value hash 26689537
 
 def ContractGraph.sameFinding :
   ContractGraph.ResultEntry → ContractGraph.ResultEntry → Bool
@@ -662,10 +595,6 @@ def ContractGraph.searchSetup :
 def ContractGraph.stateEntries :
   ContractGraph.StateSetup → ContractGraph.Explored → ContractGraph.StateRec → Bool → List ContractGraph.ResultEntry
   value hash 2649124524
-
-def ContractGraph.stateEntriesCx :
-  ContractGraph.StateSetup → ContractGraph.Explored → ContractGraph.StateRec → Bool → List ContractGraph.EntryCx
-  value hash 2490334195
 
 def ContractGraph.stateSetup :
   ContractGraph.ContractGraph → ContractGraph.StateSetup
@@ -728,14 +657,6 @@ def ContractGraph.weakestIn :
 def ContractGraph.witnessWithHop :
   ContractGraph.StateSetup → ContractGraph.Explored → ContractGraph.StateRec → Prod (List ContractGraph.Edge) Nat
   value hash 1582665956
-
-def _private.ContractGraph.Counterexample.0.ContractGraph.atLeast :
-  Int → Option Int → Bool
-  value hash 1461053423
-
-def _private.ContractGraph.Counterexample.0.ContractGraph.atMost :
-  Int → Option Int → Bool
-  value hash 2418978017
 
 def ContractGraph.ChainFrom.match_1 :
   (motive : List ContractGraph.Edge → Sort u_1) →
@@ -943,43 +864,6 @@ def ContractGraph.ContractGraph.nodes :
   ContractGraph.ContractGraph → List ContractGraph.Node
   value hash 405888283
 
-def ContractGraph.Counterexample.admits :
-  ContractGraph.Counterexample → ContractGraph.Constraint → Bool
-  value hash 2371945890
-
-def ContractGraph.Counterexample.casesOn :
-  {motive : ContractGraph.Counterexample → Sort u} →
-  (t : ContractGraph.Counterexample) →
-    ((n : Nat) → motive (ContractGraph.Counterexample.str n)) →
-      ((n : Nat) → motive (ContractGraph.Counterexample.fraction n)) →
-        ((m : Int) → (scale : Nat) → motive (ContractGraph.Counterexample.scaled m scale)) →
-          ((c : String) → (ty : Option String) → motive (ContractGraph.Counterexample.choice c ty)) →
-            motive ContractGraph.Counterexample.none → motive t
-  value hash 1257345258
-
-constructor ContractGraph.Counterexample.choice :
-  String → Option String → ContractGraph.Counterexample
-
-constructor ContractGraph.Counterexample.fraction :
-  Nat → ContractGraph.Counterexample
-
-constructor ContractGraph.Counterexample.none :
-  ContractGraph.Counterexample
-
-recursor ContractGraph.Counterexample.rec :
-  {motive : ContractGraph.Counterexample → Sort u} →
-  ((n : Nat) → motive (ContractGraph.Counterexample.str n)) →
-    ((n : Nat) → motive (ContractGraph.Counterexample.fraction n)) →
-      ((m : Int) → (scale : Nat) → motive (ContractGraph.Counterexample.scaled m scale)) →
-        ((c : String) → (ty : Option String) → motive (ContractGraph.Counterexample.choice c ty)) →
-          motive ContractGraph.Counterexample.none → (t : ContractGraph.Counterexample) → motive t
-
-constructor ContractGraph.Counterexample.scaled :
-  Int → Nat → ContractGraph.Counterexample
-
-constructor ContractGraph.Counterexample.str :
-  Nat → ContractGraph.Counterexample
-
 def ContractGraph.Dedupe.arr :
   ContractGraph.Dedupe → Array ContractGraph.ResultEntry
   value hash 991439079
@@ -998,25 +882,6 @@ def ContractGraph.Dedupe.push :
 def ContractGraph.Dedupe.step :
   ContractGraph.Dedupe → ContractGraph.ResultEntry → ContractGraph.Dedupe
   value hash 2063853872
-
-def ContractGraph.DedupeCx.arr :
-  ContractGraph.DedupeCx → Array ContractGraph.EntryCx
-  value hash 4113706606
-
-def ContractGraph.DedupeCx.idx :
-  ContractGraph.DedupeCx → Std.HashMap String Nat
-  value hash 1742340281
-
-constructor ContractGraph.DedupeCx.mk :
-  Array ContractGraph.EntryCx → Std.HashMap String Nat → ContractGraph.DedupeCx
-
-def ContractGraph.DedupeCx.push :
-  ContractGraph.DedupeCx → ContractGraph.EntryCx → ContractGraph.DedupeCx
-  value hash 3456524824
-
-def ContractGraph.DedupeCx.step :
-  ContractGraph.DedupeCx → ContractGraph.EntryCx → ContractGraph.DedupeCx
-  value hash 1815914717
 
 constructor ContractGraph.DepExpr.add :
   ContractGraph.DepExpr → ContractGraph.DepExpr → ContractGraph.DepExpr
@@ -1069,10 +934,6 @@ recursor ContractGraph.DepExpr.rec :
 
 constructor ContractGraph.DepExpr.sub :
   ContractGraph.DepExpr → ContractGraph.DepExpr → ContractGraph.DepExpr
-
-def ContractGraph.DiagnosticInfo.counterexample :
-  ContractGraph.DiagnosticInfo → Option ContractGraph.Counterexample
-  value hash 3467957245
 
 def ContractGraph.DiagnosticInfo.hopSource :
   ContractGraph.DiagnosticInfo → String
@@ -1185,10 +1046,6 @@ def ContractGraph.ExploreOutcome.casesOn :
                 (raw : ContractGraph.Edge) → motive (ContractGraph.ExploreOutcome.capped ex hop pred raw)) →
           motive t
   value hash 2115140373
-
-def ContractGraph.ExploreOutcome.ctorIdx :
-  ContractGraph.ExploreOutcome → Nat
-  value hash 1115838752
 
 constructor ContractGraph.ExploreOutcome.done :
   ContractGraph.Explored → ContractGraph.ExploreOutcome
@@ -1665,43 +1522,6 @@ def ContractGraph.countFrom.match_1 :
             motive x x_1 x_2 x_3
   value hash 1178577659
 
-def ContractGraph.counterexampleCandidate._sparseCasesOn_3 :
-  {motive : ContractGraph.ConstraintKind → Sort u} →
-  (t : ContractGraph.ConstraintKind) →
-    motive ContractGraph.ConstraintKind.length →
-      motive ContractGraph.ConstraintKind.precision →
-        motive ContractGraph.ConstraintKind.range →
-          motive ContractGraph.ConstraintKind.rangeMin →
-            motive ContractGraph.ConstraintKind.nullability →
-              motive ContractGraph.ConstraintKind.choices → (Nat.hasNotBit 123 t.ctorIdx → motive t) → motive t
-  value hash 3979135979
-
-def ContractGraph.counterexampleCandidate.match_1 :
-  (motive : Option (List String) → Option (List String) → Sort u_1) →
-  (x x_1 : Option (List String)) →
-    ((sc tc : List String) → motive (Option.some sc) (Option.some tc)) →
-      ((x x_2 : Option (List String)) → motive x x_2) → motive x x_1
-  value hash 2908414293
-
-def ContractGraph.counterexampleCandidate.match_3 :
-  (motive : ContractGraph.ConstraintKind → Option Int → Sort u_1) →
-  (x : ContractGraph.ConstraintKind) →
-    (x_1 : Option Int) →
-      ((b : Int) → motive ContractGraph.ConstraintKind.length (Option.some b)) →
-        ((b : Int) → motive ContractGraph.ConstraintKind.precision (Option.some b)) →
-          ((b : Int) → motive ContractGraph.ConstraintKind.range (Option.some b)) →
-            ((b : Int) → motive ContractGraph.ConstraintKind.rangeMin (Option.some b)) →
-              ((x : Option Int) → motive ContractGraph.ConstraintKind.nullability x) →
-                ((x : Option Int) → motive ContractGraph.ConstraintKind.choices x) →
-                  ((x : ContractGraph.ConstraintKind) → (x_2 : Option Int) → motive x x_2) → motive x x_1
-  value hash 1129127731
-
-def ContractGraph.counterexampleOf.match_1 :
-  (motive : Option ContractGraph.Counterexample → Sort u_1) →
-  (x : Option ContractGraph.Counterexample) →
-    ((v : ContractGraph.Counterexample) → motive (Option.some v)) → (Unit → motive Option.none) → motive x
-  value hash 732013029
-
 def ContractGraph.depOrigin.match_1 :
   (motive : Option ContractGraph.Constraint → Sort u_1) →
   (x : Option ContractGraph.Constraint) →
@@ -2013,20 +1833,6 @@ def ContractGraph.runChecker.match_1 :
           motive x
   value hash 650287141
 
-def ContractGraph.runCheckerCx._sparseCasesOn_1 :
-  {motive : ContractGraph.ExploreOutcome → Sort u} →
-  (t : ContractGraph.ExploreOutcome) →
-    ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.done ex)) →
-      (Nat.hasNotBit 1 t.ctorIdx → motive t) → motive t
-  value hash 1026075426
-
-def ContractGraph.runCheckerCx.match_1 :
-  (motive : ContractGraph.ExploreOutcome → Sort u_1) →
-  (x : ContractGraph.ExploreOutcome) →
-    ((ex : ContractGraph.Explored) → motive (ContractGraph.ExploreOutcome.done ex)) →
-      ((x : ContractGraph.ExploreOutcome) → motive x) → motive x
-  value hash 3725689458
-
 def ContractGraph.searchFold.match_1 :
   {α : Type} →
   (motive : Nat → Nat → List Nat → Option ContractGraph.PathState → α → Sort u_1) →
@@ -2090,29 +1896,12 @@ def ContractGraph.warnsWhenMissing.match_1 :
                 (Unit → motive ContractGraph.ConstraintKind.type) → motive x
   value hash 1248468376
 
-def _private.ContractGraph.Counterexample.0.ContractGraph.atMost.match_1 :
-  (motive : Option Int → Sort u_1) →
-  (x : Option Int) → ((b : Int) → motive (Option.some b)) → (Unit → motive Option.none) → motive x
-  value hash 3390721761
-
 def ContractGraph.CheckResult.isConsistent.match_1 :
   (motive : ContractGraph.CheckResult → Sort u_1) →
   (x : ContractGraph.CheckResult) →
     (Unit → motive ContractGraph.CheckResult.consistent) →
       ((a : ContractGraph.DiagnosticInfo) → motive (ContractGraph.CheckResult.inconsistent a)) → motive x
   value hash 4238686451
-
-def ContractGraph.Counterexample.admits._sparseCasesOn_1 :
-  {α : Type u} →
-  {motive : Option α → Sort u_1} →
-    (t : Option α) → ((val : α) → motive (Option.some val)) → (Nat.hasNotBit 2 t.ctorIdx → motive t) → motive t
-  value hash 1385501301
-
-def ContractGraph.Counterexample.admits.match_1 :
-  (motive : Option (List String) → Sort u_1) →
-  (x : Option (List String)) →
-    ((cs : List String) → motive (Option.some cs)) → ((x : Option (List String)) → motive x) → motive x
-  value hash 3521607540
 
 def ContractGraph.DepExpr.brecOn.go :
   {motive : ContractGraph.DepExpr → Sort u} →
@@ -2131,12 +1920,6 @@ def ContractGraph.DepExpr.inputNames.match_1 :
             ((a b : ContractGraph.DepExpr) → motive (a.add b)) →
               ((a b : ContractGraph.DepExpr) → motive (a.sub b)) → motive x
   value hash 3435311757
-
-def ContractGraph.DiagnosticInfo.counterexample.match_1 :
-  (motive : ContractGraph.Severity → Sort u_1) →
-  (x : ContractGraph.Severity) →
-    (Unit → motive ContractGraph.Severity.error) → (Unit → motive ContractGraph.Severity.warning) → motive x
-  value hash 2473210914
 
 def ContractGraph.instDecidableEqConstraint.decEq.match_1 :
   (motive : ContractGraph.Constraint → ContractGraph.Constraint → Sort u_1) →
@@ -2373,16 +2156,6 @@ def ContractGraph.instReprConstraintKind.repr.match_1 :
               (Unit → motive ContractGraph.ConstraintKind.choices) →
                 (Unit → motive ContractGraph.ConstraintKind.rangeMin) → motive x
   value hash 3858425261
-
-def ContractGraph.instReprCounterexample.repr.match_1 :
-  (motive : ContractGraph.Counterexample → Sort u_1) →
-  (x : ContractGraph.Counterexample) →
-    ((a : Nat) → motive (ContractGraph.Counterexample.str a)) →
-      ((a : Nat) → motive (ContractGraph.Counterexample.fraction a)) →
-        ((a : Int) → (a_1 : Nat) → motive (ContractGraph.Counterexample.scaled a a_1)) →
-          ((a : String) → (a_1 : Option String) → motive (ContractGraph.Counterexample.choice a a_1)) →
-            (Unit → motive ContractGraph.Counterexample.none) → motive x
-  value hash 332414288
 
 def ContractGraph.instReprSeverity.repr.match_1 :
   (motive : ContractGraph.Severity → Sort u_1) →
