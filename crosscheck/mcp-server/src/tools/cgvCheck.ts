@@ -1,8 +1,8 @@
 import { execFile, type ExecFileException } from "node:child_process";
-import { access, constants, readFile, rm, stat } from "node:fs/promises";
-import { delimiter, isAbsolute, join } from "node:path";
+import { access, constants, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { z } from "zod";
-import { git, treeChanges } from "../git.js";
+import { git, gitBytes, treeChanges } from "../git.js";
 import { createTempDir, removeTempDir } from "../tempdir.js";
 
 // Spec: intent/2026-10-21-cgv-check-mcp-tool-spec.md (CK-1 to CK-13).
@@ -48,8 +48,15 @@ const HOW_TO_INSTALL =
   "Then set CGV_CONTRACTS and CGV_CHECKER to the paths it prints in the environment Claude Code starts in, or put both binaries on PATH. " +
   "The build needs cargo (https://rustup.rs) and elan (https://github.com/leanprover/elan).";
 
-const CGV_TIMEOUT_MS = 10 * 60 * 1000;
-const CGV_MAX_BUFFER = 512 * 1024 * 1024;
+// Internal, not part of the MCP input schema: tests inject smaller limits to reach the refusals of CK-11.
+export interface CgvLimits {
+  timeoutMs: number;
+  maxBuffer: number;
+}
+
+const MIB = 1024 * 1024;
+export const DEFAULT_LIMITS: CgvLimits = { timeoutMs: 10 * 60 * 1000, maxBuffer: 512 * MIB };
+export const TEMP_PREFIX = "cgv-check-";
 const RECORD_FORMAT = "evidence-record/1";
 
 function refuse(errors: string[]): CgvCheckOutput {
@@ -126,22 +133,29 @@ interface Run {
   stderr: string;
 }
 
-function run(file: string, args: string[], cwd: string): Promise<Run> {
-  const started = Date.now();
+const minutesOrSeconds = (ms: number) => (ms % 60000 === 0 ? `${ms / 60000} minutes` : `${ms / 1000} seconds`);
+const mibOrBytes = (n: number) => (n % MIB === 0 ? `${n / MIB} MiB` : `${n} bytes`);
+
+// Spec CK-11. The tool's own timer marks a timeout, because CGV handles SIGTERM and exits 143, which would read as an exit code.
+function run(file: string, args: string[], cwd: string, limits: CgvLimits): Promise<Run> {
   return new Promise((done) => {
-    execFile(file, args, { cwd, timeout: CGV_TIMEOUT_MS, maxBuffer: CGV_MAX_BUFFER }, (err: ExecFileException | null, stdout, stderr) => {
+    let timedOut = false;
+    const child = execFile(file, args, { cwd, maxBuffer: limits.maxBuffer }, (err: ExecFileException | null, stdout, stderr) => {
+      clearTimeout(timer);
       let failure: string | null = null;
-      let exitCode: number | null = 0;
-      if (err !== null) {
-        exitCode = typeof err.code === "number" ? err.code : null;
-        if (exitCode !== null) failure = `exited ${exitCode}`;
-        else if (err.killed && Date.now() - started >= CGV_TIMEOUT_MS) failure = "timed out after 10 minutes";
-        else if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = "produced more output than the 512 MiB limit";
-        else if (err.signal) failure = `was stopped by ${err.signal}`;
-        else failure = `could not run: ${err.message}`;
-      }
+      let exitCode: number | null = typeof err?.code === "number" ? err.code : err === null ? 0 : null;
+      if (timedOut) failure = `timed out after ${minutesOrSeconds(limits.timeoutMs)}`;
+      else if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = `produced more output than the ${mibOrBytes(limits.maxBuffer)} limit`;
+      else if (err === null || exitCode !== null) failure = null;
+      else if (err.signal) failure = `was stopped by ${err.signal}`;
+      else failure = `could not run: ${err.message}`;
+      if (failure !== null) exitCode = null;
       done({ failure, exitCode, stdout, stderr });
     });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, limits.timeoutMs);
   });
 }
 
@@ -160,35 +174,99 @@ function cgvFailed(what: string, ran: Run): string[] {
 
 const completed = (ran: Run): ran is Run & { exitCode: 0 | 1 } => ran.exitCode === 0 || ran.exitCode === 1;
 
-// Spec CK-5: a checkout, not `git archive`, which applies .gitattributes export rules that HEAD's work tree does not.
+// No lazy fetch from a promisor remote: building the baseline runs no transport or helper the repository's config names.
+const NO_FETCH = { env: { ...process.env, GIT_NO_LAZY_FETCH: "1" } };
+
+interface Blob {
+  oid: string;
+  path: string;
+}
+
+interface Tree {
+  blobs: Blob[];
+  refusals: string[];
+}
+
+// Spec CK-5: the regular files under `path` at `rev`, and a refusal for each entry the baseline tree cannot hold as committed.
+async function listTree(root: string, rev: string, path: string): Promise<Tree | string> {
+  const listed = await git(root, ["ls-tree", "-r", "-z", rev, ...(path === "." ? [] : ["--", path])], NO_FETCH);
+  if (!listed.ok) return `git could not list ${path} at ${rev}`;
+  const tree: Tree = { blobs: [], refusals: [] };
+  for (const line of listed.stdout.split("\0").filter((l) => l !== "")) {
+    const m = /^(\d{6}) \S+ ([0-9a-f]+)\t(.*)$/s.exec(line);
+    if (m === null) return `git printed an entry cgv_check cannot read at ${rev}: ${JSON.stringify(line)}`;
+    const [, mode, oid, entry] = m;
+    if (entry.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) tree.refusals.push(`${JSON.stringify(entry)} at ${rev} is not a plain relative path`);
+    else if (mode === "100644" || mode === "100755") tree.blobs.push({ oid, path: entry });
+    else if (mode === "120000") tree.refusals.push(`${entry} is a symbolic link at ${rev}; cgv_check writes no link into the baseline tree`);
+    else if (mode === "160000") tree.refusals.push(`${entry} is a submodule at ${rev}; cgv_check cannot check a submodule`);
+    else tree.refusals.push(`${entry} has mode ${mode} at ${rev}, which is not a regular file`);
+  }
+  return tree;
+}
+
+// Spec CK-5: a filter may make the checked-out bytes differ from the committed ones, so neither tree would be the committed project.
+async function filteredPython(root: string, rev: string | null, blobs: Blob[]): Promise<string[]> {
+  const py = blobs.map((b) => b.path).filter((p) => p.endsWith(".py"));
+  if (py.length === 0) return [];
+  const where = rev ?? "HEAD";
+  const source = rev === null ? [] : ["--source", rev];
+  const checked = await git(root, ["check-attr", "-z", "--stdin", ...source, "filter"], { ...NO_FETCH, input: py.join("\0") + "\0" });
+  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}`];
+  const fields = checked.stdout.split("\0");
+  const errors: string[] = [];
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    const [file, , value] = fields.slice(i, i + 3);
+    if (value !== "unspecified" && value !== "unset") {
+      errors.push(`${file} has the git filter attribute "${value}" at ${where}, so its checked-out bytes may differ from the committed ones; cgv_check refuses a filtered .py file`);
+    }
+  }
+  return errors;
+}
+
+// Spec CK-5: the baseline tree is the committed blobs, written as regular files with no checkout, filter, hook or helper.
+async function buildTree(root: string, rev: string, blobs: Blob[], tree: string): Promise<string | null> {
+  await mkdir(tree, { recursive: true });
+  if (blobs.length === 0) return null;
+  const batch = await gitBytes(root, ["cat-file", "--batch"], { ...NO_FETCH, input: blobs.map((b) => b.oid).join("\n") + "\n" });
+  if (!batch.ok) return `git could not read the blobs of ${rev}`;
+  let at = 0;
+  for (const blob of blobs) {
+    const eol = batch.stdout.indexOf(0x0a, at);
+    const header = /^([0-9a-f]+) blob (\d+)$/.exec(batch.stdout.subarray(at, eol < 0 ? undefined : eol).toString());
+    if (eol < 0 || header === null || header[1] !== blob.oid) return `git could not read ${blob.path} at ${rev}`;
+    const size = Number(header[2]);
+    const file = join(tree, blob.path);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, batch.stdout.subarray(eol + 1, eol + 1 + size));
+    at = eol + 1 + size + 1;
+  }
+  return null;
+}
+
 async function writeBaseline(
   bins: Binaries,
   root: string,
   tmp: string,
   baseline: string,
-  path: string
+  blobs: Blob[],
+  path: string,
+  limits: CgvLimits
 ): Promise<string | string[]> {
   const tree = join(tmp, "baseline-tree");
-  try {
-    const added = await git(root, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", tree, baseline]);
-    if (!added.ok) return [`git could not check out ${baseline} in ${tree}`];
-    const file = join(tmp, "baseline.json");
-    const ran = await run(
-      bins.cli,
-      ["contracts", "check", join(tree, path), "--lean-checker", bins.checker, "--output-db", join(tmp, "baseline.sqlite"), "--write-baseline", file],
-      tree
-    );
-    const what = `crosscheck-contracts at the baseline ${baseline}`;
-    if (!completed(ran)) return cgvFailed(what, ran);
-    if (!(await stat(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
-    return file;
-  } finally {
-    // No `git worktree prune`: it is repository-wide and would also drop the entries of the caller's other worktrees whose
-    // directories are missing. `remove --force` deregisters a checkout git can still validate, and fails harmlessly when `add`
-    // registered nothing. A process killed inside `add` can leave a prunable entry, which is accepted (spec CK-5).
-    await git(root, ["worktree", "remove", "--force", tree]);
-    await rm(tree, { recursive: true, force: true }).catch(() => undefined);
-  }
+  const built = await buildTree(root, baseline, blobs, tree);
+  if (built !== null) return [built];
+  const file = join(tmp, "baseline.json");
+  const ran = await run(
+    bins.cli,
+    ["contracts", "check", join(tree, path), "--lean-checker", bins.checker, "--output-db", join(tmp, "baseline.sqlite"), "--write-baseline", file],
+    tree,
+    limits
+  );
+  const what = `crosscheck-contracts at the baseline ${baseline}`;
+  if (!completed(ran)) return cgvFailed(what, ran);
+  if (!(await stat(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
+  return file;
 }
 
 async function readRecord(file: string, commit: string): Promise<JsonObject | string> {
@@ -201,17 +279,30 @@ async function readRecord(file: string, commit: string): Promise<JsonObject | st
   return record;
 }
 
-async function runCgv(bins: Binaries, root: string, commit: string, tmp: string, input: CgvCheckInput, baseline: string | null): Promise<CgvCheckOutput> {
+interface Baseline {
+  commit: string;
+  blobs: Blob[];
+}
+
+async function runCgv(
+  bins: Binaries,
+  root: string,
+  commit: string,
+  tmp: string,
+  input: CgvCheckInput,
+  baseline: Baseline | null,
+  limits: CgvLimits
+): Promise<CgvCheckOutput> {
   let baselineFile: string | null = null;
   if (baseline !== null) {
-    const written = await writeBaseline(bins, root, tmp, baseline, input.path);
+    const written = await writeBaseline(bins, root, tmp, baseline.commit, baseline.blobs, input.path, limits);
     if (Array.isArray(written)) return refuse(written);
     baselineFile = written;
   }
 
   const project = join(root, input.path);
   const check = (db: string, extra: string[]) =>
-    run(bins.cli, ["contracts", "check", project, "--lean-checker", bins.checker, "--output-db", join(tmp, db), ...extra], root);
+    run(bins.cli, ["contracts", "check", project, "--lean-checker", bins.checker, "--output-db", join(tmp, db), ...extra], root, limits);
 
   const full = await check("head.sqlite", ["--evidence-record", join(tmp, "record.json")]);
   if (!completed(full)) return refuse(cgvFailed(`crosscheck-contracts at ${commit}`, full));
@@ -227,9 +318,10 @@ async function runCgv(bins: Binaries, root: string, commit: string, tmp: string,
   let exitCode = full.exitCode;
   if (baselineFile !== null) {
     const diff = await check("diff.sqlite", ["--baseline", baselineFile]);
-    if (!completed(diff)) return refuse(cgvFailed(`crosscheck-contracts at ${commit} against the baseline ${baseline}`, diff));
+    const what = `crosscheck-contracts at ${commit} against the baseline ${baseline!.commit}`;
+    if (!completed(diff)) return refuse(cgvFailed(what, diff));
     findings = parseObject(diff.stdout);
-    if (findings === null) return refuse([`crosscheck-contracts at ${commit} against the baseline ${baseline} printed no JSON object`]);
+    if (findings === null) return refuse([`${what} printed no JSON object`]);
     exitCode = diff.exitCode;
   }
 
@@ -241,10 +333,14 @@ async function runCgv(bins: Binaries, root: string, commit: string, tmp: string,
   if (dirtyAfter === null) return refuse([`git could not read the work tree state in ${root}`]);
   if (dirtyAfter.length > 0) return refuse(dirtyAfter.map((l) => `work tree changed while CGV ran: ${l}`));
 
-  return { success: true, commit, baseline, exitCode, findings, record };
+  return { success: true, commit, baseline: baseline?.commit ?? null, exitCode, findings, record };
 }
 
-export async function cgvCheck(input: CgvCheckInput, env: NodeJS.ProcessEnv = process.env): Promise<CgvCheckOutput> {
+export async function cgvCheck(
+  input: CgvCheckInput,
+  env: NodeJS.ProcessEnv = process.env,
+  limits: CgvLimits = DEFAULT_LIMITS
+): Promise<CgvCheckOutput> {
   const inputErrors = validateCgvCheckInput(input);
   if (inputErrors.length > 0) return refuse(inputErrors);
   const bins = await findBinaries(env);
@@ -261,24 +357,35 @@ export async function cgvCheck(input: CgvCheckInput, env: NodeJS.ProcessEnv = pr
   if (dirty.length > 0) return refuse(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
   const problem = await projectProblem(root, commit, input.path);
   if (problem !== null) return refuse([problem]);
+  // At HEAD, CGV reads the work tree itself, so only the filter rule applies.
+  const headTree = await listTree(root, commit, input.path);
+  if (typeof headTree === "string") return refuse([headTree]);
+  const headFiltered = await filteredPython(root, null, headTree.blobs);
+  if (headFiltered.length > 0) return refuse(headFiltered);
 
-  let baseline: string | null = null;
+  let baseline: Baseline | null = null;
   if (input.baseline !== undefined) {
     const resolved = await git(root, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${input.baseline}^{commit}`]);
     if (!resolved.ok) return refuse([`baseline is not a commit in ${root}: ${input.baseline}`]);
-    baseline = resolved.stdout.trim();
-    const atBaseline = await projectProblem(root, baseline, input.path);
-    if (atBaseline !== null) return refuse([`at the baseline ${baseline}: ${atBaseline}`]);
+    const at = resolved.stdout.trim();
+    const atBaseline = await projectProblem(root, at, input.path);
+    if (atBaseline !== null) return refuse([`at the baseline ${at}: ${atBaseline}`]);
+    const tree = await listTree(root, at, input.path);
+    if (typeof tree === "string") return refuse([tree]);
+    if (tree.refusals.length > 0) return refuse(tree.refusals.map((e) => `at the baseline ${at}: ${e}`));
+    const filtered = await filteredPython(root, at, tree.blobs);
+    if (filtered.length > 0) return refuse(filtered);
+    baseline = { commit: at, blobs: tree.blobs };
   }
 
   let tmp: string;
   try {
-    tmp = await createTempDir("cgv-");
+    tmp = await createTempDir(TEMP_PREFIX);
   } catch (err) {
     return refuse([`could not create a temporary directory: ${(err as Error).message}`]);
   }
   try {
-    return await runCgv(bins, root, commit, tmp, input, baseline);
+    return await runCgv(bins, root, commit, tmp, input, baseline, limits);
   } catch (err) {
     return refuse([`cgv_check failed: ${(err as Error).message}`]);
   } finally {

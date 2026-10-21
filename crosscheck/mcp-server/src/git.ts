@@ -3,19 +3,26 @@ import { execFile } from "node:child_process";
 // `git ls-files -v` prints a line per tracked file, so the 1 MiB default would refuse a large repository.
 const GIT_MAX_BUFFER = 512 * 1024 * 1024;
 
-export function gitBytes(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: Buffer }> {
+export interface GitOptions {
+  input?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+export function gitBytes(cwd: string, args: string[], opts: GitOptions = {}): Promise<{ ok: boolean; stdout: Buffer }> {
   return new Promise((done) => {
-    execFile(
+    const child = execFile(
       "git",
       ["--literal-pathspecs", "-C", cwd, ...args],
-      { maxBuffer: GIT_MAX_BUFFER, encoding: "buffer" },
+      { maxBuffer: GIT_MAX_BUFFER, encoding: "buffer", env: opts.env },
       (err, stdout) => done({ ok: err === null, stdout })
     );
+    child.stdin?.on("error", () => undefined);
+    child.stdin?.end(opts.input ?? "");
   });
 }
 
-export async function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
-  const { ok, stdout } = await gitBytes(cwd, args);
+export async function git(cwd: string, args: string[], opts: GitOptions = {}): Promise<{ ok: boolean; stdout: string }> {
+  const { ok, stdout } = await gitBytes(cwd, args, opts);
   return { ok, stdout: stdout.toString() };
 }
 

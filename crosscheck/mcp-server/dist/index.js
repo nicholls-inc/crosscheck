@@ -21154,7 +21154,7 @@ var v4_default = v4;
 // src/tempdir.ts
 var DAFNY_TMP_PREFIX = "dafny-";
 var STALE_THRESHOLD_MS = 30 * 60 * 1e3;
-var TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-", "cgv-"];
+var TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-", "cgv-check-"];
 async function createTempDir(prefix) {
   const tag = prefix ?? DAFNY_TMP_PREFIX;
   const dir = await mkdtemp(join(tmpdir(), `${tag}${v4_default()}-`));
@@ -21371,18 +21371,20 @@ import { dirname, isAbsolute, join as join4, posix, relative, resolve as resolve
 // src/git.ts
 import { execFile } from "node:child_process";
 var GIT_MAX_BUFFER = 512 * 1024 * 1024;
-function gitBytes(cwd, args) {
+function gitBytes(cwd, args, opts = {}) {
   return new Promise((done) => {
-    execFile(
+    const child = execFile(
       "git",
       ["--literal-pathspecs", "-C", cwd, ...args],
-      { maxBuffer: GIT_MAX_BUFFER, encoding: "buffer" },
+      { maxBuffer: GIT_MAX_BUFFER, encoding: "buffer", env: opts.env },
       (err, stdout) => done({ ok: err === null, stdout })
     );
+    child.stdin?.on("error", () => void 0);
+    child.stdin?.end(opts.input ?? "");
   });
 }
-async function git(cwd, args) {
-  const { ok, stdout } = await gitBytes(cwd, args);
+async function git(cwd, args, opts = {}) {
+  const { ok, stdout } = await gitBytes(cwd, args, opts);
   return { ok, stdout: stdout.toString() };
 }
 async function treeChanges(root) {
@@ -21708,8 +21710,8 @@ async function dafnyEvidence(input) {
 
 // src/tools/cgvCheck.ts
 import { execFile as execFile2 } from "node:child_process";
-import { access, constants, readFile as readFile3, rm as rm2, stat as stat2 } from "node:fs/promises";
-import { delimiter, isAbsolute as isAbsolute2, join as join5 } from "node:path";
+import { access, constants, mkdir as mkdir2, readFile as readFile3, stat as stat2, writeFile as writeFile4 } from "node:fs/promises";
+import { delimiter, dirname as dirname2, isAbsolute as isAbsolute2, join as join5 } from "node:path";
 var cgvCheckInputShape = {
   repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
   path: external_exports.string().describe("The Python project to check: a directory or a .py file, relative to the work tree's top level with / separators, or . for the top level"),
@@ -21717,8 +21719,9 @@ var cgvCheckInputShape = {
 };
 var BUILD_COMMAND = 'git clone https://github.com/nicholls-inc/crosscheck && cd crosscheck/cgv && cargo build --release && (cd prover && lake build contract-graph-checker) && echo "CGV_CONTRACTS=$PWD/target/release/crosscheck-contracts CGV_CHECKER=$PWD/prover/.lake/build/bin/contract-graph-checker"';
 var HOW_TO_INSTALL = `Build both binaries with: ${BUILD_COMMAND} Then set CGV_CONTRACTS and CGV_CHECKER to the paths it prints in the environment Claude Code starts in, or put both binaries on PATH. The build needs cargo (https://rustup.rs) and elan (https://github.com/leanprover/elan).`;
-var CGV_TIMEOUT_MS = 10 * 60 * 1e3;
-var CGV_MAX_BUFFER = 512 * 1024 * 1024;
+var MIB = 1024 * 1024;
+var DEFAULT_LIMITS = { timeoutMs: 10 * 60 * 1e3, maxBuffer: 512 * MIB };
+var TEMP_PREFIX = "cgv-check-";
 var RECORD_FORMAT = "evidence-record/1";
 function refuse2(errors) {
   return { success: false, errors };
@@ -21777,22 +21780,27 @@ async function projectProblem(root, rev, path) {
   if (mode === "160000") return `${path} is a submodule at ${rev}`;
   return `${path} is neither a directory nor a .py file at ${rev}`;
 }
-function run(file, args, cwd) {
-  const started = Date.now();
+var minutesOrSeconds = (ms) => ms % 6e4 === 0 ? `${ms / 6e4} minutes` : `${ms / 1e3} seconds`;
+var mibOrBytes = (n) => n % MIB === 0 ? `${n / MIB} MiB` : `${n} bytes`;
+function run(file, args, cwd, limits) {
   return new Promise((done) => {
-    execFile2(file, args, { cwd, timeout: CGV_TIMEOUT_MS, maxBuffer: CGV_MAX_BUFFER }, (err, stdout, stderr) => {
+    let timedOut = false;
+    const child = execFile2(file, args, { cwd, maxBuffer: limits.maxBuffer }, (err, stdout, stderr) => {
+      clearTimeout(timer);
       let failure = null;
-      let exitCode = 0;
-      if (err !== null) {
-        exitCode = typeof err.code === "number" ? err.code : null;
-        if (exitCode !== null) failure = `exited ${exitCode}`;
-        else if (err.killed && Date.now() - started >= CGV_TIMEOUT_MS) failure = "timed out after 10 minutes";
-        else if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = "produced more output than the 512 MiB limit";
-        else if (err.signal) failure = `was stopped by ${err.signal}`;
-        else failure = `could not run: ${err.message}`;
-      }
+      let exitCode = typeof err?.code === "number" ? err.code : err === null ? 0 : null;
+      if (timedOut) failure = `timed out after ${minutesOrSeconds(limits.timeoutMs)}`;
+      else if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") failure = `produced more output than the ${mibOrBytes(limits.maxBuffer)} limit`;
+      else if (err === null || exitCode !== null) failure = null;
+      else if (err.signal) failure = `was stopped by ${err.signal}`;
+      else failure = `could not run: ${err.message}`;
+      if (failure !== null) exitCode = null;
       done({ failure, exitCode, stdout, stderr });
     });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, limits.timeoutMs);
   });
 }
 function parseObject(text) {
@@ -21807,25 +21815,73 @@ function cgvFailed(what, ran) {
   return [`${what} ${ran.failure ?? `exited ${ran.exitCode}`}`, ran.stderr.trim()].filter((l) => l !== "");
 }
 var completed = (ran) => ran.exitCode === 0 || ran.exitCode === 1;
-async function writeBaseline(bins, root, tmp, baseline, path) {
-  const tree = join5(tmp, "baseline-tree");
-  try {
-    const added = await git(root, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", tree, baseline]);
-    if (!added.ok) return [`git could not check out ${baseline} in ${tree}`];
-    const file = join5(tmp, "baseline.json");
-    const ran = await run(
-      bins.cli,
-      ["contracts", "check", join5(tree, path), "--lean-checker", bins.checker, "--output-db", join5(tmp, "baseline.sqlite"), "--write-baseline", file],
-      tree
-    );
-    const what = `crosscheck-contracts at the baseline ${baseline}`;
-    if (!completed(ran)) return cgvFailed(what, ran);
-    if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
-    return file;
-  } finally {
-    await git(root, ["worktree", "remove", "--force", tree]);
-    await rm2(tree, { recursive: true, force: true }).catch(() => void 0);
+var NO_FETCH = { env: { ...process.env, GIT_NO_LAZY_FETCH: "1" } };
+async function listTree(root, rev, path) {
+  const listed = await git(root, ["ls-tree", "-r", "-z", rev, ...path === "." ? [] : ["--", path]], NO_FETCH);
+  if (!listed.ok) return `git could not list ${path} at ${rev}`;
+  const tree = { blobs: [], refusals: [] };
+  for (const line of listed.stdout.split("\0").filter((l) => l !== "")) {
+    const m = /^(\d{6}) \S+ ([0-9a-f]+)\t(.*)$/s.exec(line);
+    if (m === null) return `git printed an entry cgv_check cannot read at ${rev}: ${JSON.stringify(line)}`;
+    const [, mode, oid, entry] = m;
+    if (entry.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) tree.refusals.push(`${JSON.stringify(entry)} at ${rev} is not a plain relative path`);
+    else if (mode === "100644" || mode === "100755") tree.blobs.push({ oid, path: entry });
+    else if (mode === "120000") tree.refusals.push(`${entry} is a symbolic link at ${rev}; cgv_check writes no link into the baseline tree`);
+    else if (mode === "160000") tree.refusals.push(`${entry} is a submodule at ${rev}; cgv_check cannot check a submodule`);
+    else tree.refusals.push(`${entry} has mode ${mode} at ${rev}, which is not a regular file`);
   }
+  return tree;
+}
+async function filteredPython(root, rev, blobs) {
+  const py = blobs.map((b) => b.path).filter((p) => p.endsWith(".py"));
+  if (py.length === 0) return [];
+  const where = rev ?? "HEAD";
+  const source = rev === null ? [] : ["--source", rev];
+  const checked = await git(root, ["check-attr", "-z", "--stdin", ...source, "filter"], { ...NO_FETCH, input: py.join("\0") + "\0" });
+  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}`];
+  const fields = checked.stdout.split("\0");
+  const errors = [];
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    const [file, , value] = fields.slice(i, i + 3);
+    if (value !== "unspecified" && value !== "unset") {
+      errors.push(`${file} has the git filter attribute "${value}" at ${where}, so its checked-out bytes may differ from the committed ones; cgv_check refuses a filtered .py file`);
+    }
+  }
+  return errors;
+}
+async function buildTree(root, rev, blobs, tree) {
+  await mkdir2(tree, { recursive: true });
+  if (blobs.length === 0) return null;
+  const batch = await gitBytes(root, ["cat-file", "--batch"], { ...NO_FETCH, input: blobs.map((b) => b.oid).join("\n") + "\n" });
+  if (!batch.ok) return `git could not read the blobs of ${rev}`;
+  let at = 0;
+  for (const blob of blobs) {
+    const eol = batch.stdout.indexOf(10, at);
+    const header = /^([0-9a-f]+) blob (\d+)$/.exec(batch.stdout.subarray(at, eol < 0 ? void 0 : eol).toString());
+    if (eol < 0 || header === null || header[1] !== blob.oid) return `git could not read ${blob.path} at ${rev}`;
+    const size = Number(header[2]);
+    const file = join5(tree, blob.path);
+    await mkdir2(dirname2(file), { recursive: true });
+    await writeFile4(file, batch.stdout.subarray(eol + 1, eol + 1 + size));
+    at = eol + 1 + size + 1;
+  }
+  return null;
+}
+async function writeBaseline(bins, root, tmp, baseline, blobs, path, limits) {
+  const tree = join5(tmp, "baseline-tree");
+  const built = await buildTree(root, baseline, blobs, tree);
+  if (built !== null) return [built];
+  const file = join5(tmp, "baseline.json");
+  const ran = await run(
+    bins.cli,
+    ["contracts", "check", join5(tree, path), "--lean-checker", bins.checker, "--output-db", join5(tmp, "baseline.sqlite"), "--write-baseline", file],
+    tree,
+    limits
+  );
+  const what = `crosscheck-contracts at the baseline ${baseline}`;
+  if (!completed(ran)) return cgvFailed(what, ran);
+  if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
+  return file;
 }
 async function readRecord(file, commit) {
   const text = await readFile3(file, "utf-8").catch(() => null);
@@ -21836,15 +21892,15 @@ async function readRecord(file, commit) {
   if (record2.commit !== commit) return `the evidence record names commit ${JSON.stringify(record2.commit)}, not HEAD ${commit}`;
   return record2;
 }
-async function runCgv(bins, root, commit, tmp, input, baseline) {
+async function runCgv(bins, root, commit, tmp, input, baseline, limits) {
   let baselineFile = null;
   if (baseline !== null) {
-    const written = await writeBaseline(bins, root, tmp, baseline, input.path);
+    const written = await writeBaseline(bins, root, tmp, baseline.commit, baseline.blobs, input.path, limits);
     if (Array.isArray(written)) return refuse2(written);
     baselineFile = written;
   }
   const project = join5(root, input.path);
-  const check2 = (db, extra) => run(bins.cli, ["contracts", "check", project, "--lean-checker", bins.checker, "--output-db", join5(tmp, db), ...extra], root);
+  const check2 = (db, extra) => run(bins.cli, ["contracts", "check", project, "--lean-checker", bins.checker, "--output-db", join5(tmp, db), ...extra], root, limits);
   const full = await check2("head.sqlite", ["--evidence-record", join5(tmp, "record.json")]);
   if (!completed(full)) return refuse2(cgvFailed(`crosscheck-contracts at ${commit}`, full));
   let findings = parseObject(full.stdout);
@@ -21858,9 +21914,10 @@ async function runCgv(bins, root, commit, tmp, input, baseline) {
   let exitCode = full.exitCode;
   if (baselineFile !== null) {
     const diff = await check2("diff.sqlite", ["--baseline", baselineFile]);
-    if (!completed(diff)) return refuse2(cgvFailed(`crosscheck-contracts at ${commit} against the baseline ${baseline}`, diff));
+    const what = `crosscheck-contracts at ${commit} against the baseline ${baseline.commit}`;
+    if (!completed(diff)) return refuse2(cgvFailed(what, diff));
     findings = parseObject(diff.stdout);
-    if (findings === null) return refuse2([`crosscheck-contracts at ${commit} against the baseline ${baseline} printed no JSON object`]);
+    if (findings === null) return refuse2([`${what} printed no JSON object`]);
     exitCode = diff.exitCode;
   }
   const headAfter = await git(root, ["rev-parse", "HEAD"]);
@@ -21870,9 +21927,9 @@ async function runCgv(bins, root, commit, tmp, input, baseline) {
   const dirtyAfter = await treeChanges(root);
   if (dirtyAfter === null) return refuse2([`git could not read the work tree state in ${root}`]);
   if (dirtyAfter.length > 0) return refuse2(dirtyAfter.map((l) => `work tree changed while CGV ran: ${l}`));
-  return { success: true, commit, baseline, exitCode, findings, record: record2 };
+  return { success: true, commit, baseline: baseline?.commit ?? null, exitCode, findings, record: record2 };
 }
-async function cgvCheck(input, env = process.env) {
+async function cgvCheck(input, env = process.env, limits = DEFAULT_LIMITS) {
   const inputErrors = validateCgvCheckInput(input);
   if (inputErrors.length > 0) return refuse2(inputErrors);
   const bins = await findBinaries(env);
@@ -21887,22 +21944,32 @@ async function cgvCheck(input, env = process.env) {
   if (dirty.length > 0) return refuse2(dirty.map((l) => `work tree differs from ${commit}: ${l}`));
   const problem = await projectProblem(root, commit, input.path);
   if (problem !== null) return refuse2([problem]);
+  const headTree = await listTree(root, commit, input.path);
+  if (typeof headTree === "string") return refuse2([headTree]);
+  const headFiltered = await filteredPython(root, null, headTree.blobs);
+  if (headFiltered.length > 0) return refuse2(headFiltered);
   let baseline = null;
   if (input.baseline !== void 0) {
     const resolved = await git(root, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${input.baseline}^{commit}`]);
     if (!resolved.ok) return refuse2([`baseline is not a commit in ${root}: ${input.baseline}`]);
-    baseline = resolved.stdout.trim();
-    const atBaseline = await projectProblem(root, baseline, input.path);
-    if (atBaseline !== null) return refuse2([`at the baseline ${baseline}: ${atBaseline}`]);
+    const at = resolved.stdout.trim();
+    const atBaseline = await projectProblem(root, at, input.path);
+    if (atBaseline !== null) return refuse2([`at the baseline ${at}: ${atBaseline}`]);
+    const tree = await listTree(root, at, input.path);
+    if (typeof tree === "string") return refuse2([tree]);
+    if (tree.refusals.length > 0) return refuse2(tree.refusals.map((e) => `at the baseline ${at}: ${e}`));
+    const filtered = await filteredPython(root, at, tree.blobs);
+    if (filtered.length > 0) return refuse2(filtered);
+    baseline = { commit: at, blobs: tree.blobs };
   }
   let tmp;
   try {
-    tmp = await createTempDir("cgv-");
+    tmp = await createTempDir(TEMP_PREFIX);
   } catch (err) {
     return refuse2([`could not create a temporary directory: ${err.message}`]);
   }
   try {
-    return await runCgv(bins, root, commit, tmp, input, baseline);
+    return await runCgv(bins, root, commit, tmp, input, baseline, limits);
   } catch (err) {
     return refuse2([`cgv_check failed: ${err.message}`]);
   } finally {
@@ -21911,7 +21978,7 @@ async function cgvCheck(input, env = process.env) {
 }
 
 // src/tools/leanCheck.ts
-import { writeFile as writeFile4 } from "node:fs/promises";
+import { writeFile as writeFile5 } from "node:fs/promises";
 import { join as join6 } from "node:path";
 function parseLeanOutput(stdout, stderr) {
   const combined = stdout + "\n" + stderr;
@@ -21955,7 +22022,7 @@ async function leanCheck(input) {
   const tempDir = await createTempDir("lean-");
   try {
     const programPath = join6(tempDir, "program.lean");
-    await writeFile4(programPath, input.source, "utf-8");
+    await writeFile5(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["check", "/work/program.lean"]);
     if (result.timedOut) {
       return {
@@ -21988,13 +22055,13 @@ async function leanCheck(input) {
 }
 
 // src/tools/leanRun.ts
-import { writeFile as writeFile5 } from "node:fs/promises";
+import { writeFile as writeFile6 } from "node:fs/promises";
 import { join as join7 } from "node:path";
 async function leanRun(input) {
   const tempDir = await createTempDir("lean-");
   try {
     const programPath = join7(tempDir, "program.lean");
-    await writeFile5(programPath, input.source, "utf-8");
+    await writeFile6(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["run", "/work/program.lean"]);
     return {
       success: !result.timedOut && result.exitCode === 0,
@@ -22009,13 +22076,13 @@ async function leanRun(input) {
 }
 
 // src/tools/leanTest.ts
-import { writeFile as writeFile6 } from "node:fs/promises";
+import { writeFile as writeFile7 } from "node:fs/promises";
 import { join as join8 } from "node:path";
 async function leanTest(input) {
   const tempDir = await createTempDir("lean-");
   try {
     const programPath = join8(tempDir, "program.lean");
-    await writeFile6(programPath, input.source, "utf-8");
+    await writeFile7(programPath, input.source, "utf-8");
     const result = await runLean(tempDir, ["test", "/work/program.lean"]);
     const { errors, warnings } = parseLeanOutput(result.stdout, result.stderr);
     const success = !result.timedOut && result.exitCode === 0 && errors.length === 0;

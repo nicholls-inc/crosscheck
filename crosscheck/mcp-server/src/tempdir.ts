@@ -9,7 +9,7 @@ const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 // Prefixes the cleanup sweep recognises. Each tool family registers its own
 // so /dafny_cleanup can remove stale dirs across both Dafny and Lean runs
 // without leaking implementation knowledge into individual tools.
-const TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-", "cgv-"];
+const TMP_PREFIXES = [DAFNY_TMP_PREFIX, "lean-", "cgv-check-"];
 
 export async function createTempDir(prefix?: string): Promise<string> {
   const tag = prefix ?? DAFNY_TMP_PREFIX;

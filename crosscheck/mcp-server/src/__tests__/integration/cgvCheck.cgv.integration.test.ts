@@ -98,7 +98,7 @@ describe.skipIf(!found)(title, () => {
     expect(counts.existing.errors).toBeGreaterThan(0);
   }, 120_000);
 
-  it("with a baseline whose .gitattributes marks a .py file export-ignore, finds the errors a checkout of it holds", async () => {
+  it("with a baseline whose .gitattributes marks a .py file export-ignore, finds the errors its committed files hold", async () => {
     await writeFile(join(repo, ".gitattributes"), "app/models.py export-ignore\n");
     const base = await commitFixture("bug1", "bug");
     await writeFile(join(repo, "README.md"), "unrelated\n");

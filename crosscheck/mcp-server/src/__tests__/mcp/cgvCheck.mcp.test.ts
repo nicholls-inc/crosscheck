@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../../index.js";
-import { BUILD_COMMAND } from "../../tools/cgvCheck.js";
+import { BUILD_COMMAND, cgvCheck, DEFAULT_LIMITS } from "../../tools/cgvCheck.js";
 
 // A stand-in for crosscheck-contracts. FAKE_CGV holds, per run (baseline, full, diff), the exit code,
 // stdout and stderr to give, and what to do while running. Each call is logged to FAKE_CGV_LOG.
@@ -28,6 +28,12 @@ const projectFiles = fs.statSync(project).isDirectory()
 fs.appendFileSync(process.env.FAKE_CGV_LOG, JSON.stringify({ kind, cwd: process.cwd(), args, projectFiles }) + "\\n");
 if (run.during === "commit") execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "during"]);
 if (run.during === "untracked") fs.writeFileSync("added.py", "");
+if (run.during === "kill") process.kill(process.pid, "SIGKILL");
+if (run.during === "hang") {
+  process.on("SIGTERM", () => process.exit(143));
+  setInterval(() => undefined, 1000);
+  return;
+}
 if (kind === "baseline" && run.write !== false) fs.writeFileSync(opt("--write-baseline"), '{"format":"cgv-baseline/1","findings":[]}');
 if (kind === "full" && run.record !== undefined) {
   const head = execFileSync("git", ["rev-parse", "HEAD"]).toString().trim();
@@ -163,10 +169,11 @@ describe("cgv_check over MCP", () => {
       const written = baselineRun.args[baselineRun.args.indexOf("--write-baseline") + 1];
       expect(diff.args[diff.args.indexOf("--baseline") + 1]).toBe(written);
       expect(diff.args).not.toContain("--evidence-record");
+      expect(basename(dirname(written)).startsWith("cgv-check-")).toBe(true);
       expect(existsSync(dirname(written))).toBe(false);
     });
 
-    it("checks the baseline in a checkout of it, so .gitattributes export rules do not change its files (CK-5)", async () => {
+    it("builds the baseline tree from the committed blobs, so .gitattributes export rules do not change its files (CK-5)", async () => {
       await writeFile(join(repo, ".gitattributes"), "app/models.py export-ignore\napp/views.py export-subst\n");
       await writeFile(join(repo, "app", "views.py"), "$Format:%H$\n");
       git("add", ".");
@@ -182,54 +189,30 @@ describe("cgv_check over MCP", () => {
       expect(baselineRun.projectFiles).toEqual({ "models.py": "NEW\n", "views.py": "$Format:%H$\n" });
     });
 
-    it.each([
-      ["completes", { baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } }],
-      ["fails", { baseline: { exit: 2, stderr: "boom" }, full: { exit: 0, record: {} } }],
-    ])("removes the baseline checkout when the baseline run %s (CK-12)", async (_, runs) => {
-      stubRuns(runs as Runs);
-      await call({ baseline: base });
-      const [baselineRun] = await calls();
-      expect(git("worktree", "list", "--porcelain").split("\n").filter((l) => l.startsWith("worktree "))).toEqual([`worktree ${repo}`]);
-      expect(existsSync(baselineRun.cwd)).toBe(false);
-    });
-
-    it("removes the baseline checkout when the baseline run leaves an untracked file in it, without pruning other worktrees (CK-12)", async () => {
-      const elsewhere = join(scratch, "other-worktree");
-      git("worktree", "add", "--detach", elsewhere, head);
-      await rm(elsewhere, { recursive: true });
-      stubRuns({ baseline: { exit: 0, during: "untracked" }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
-      expect(await call({ baseline: base })).toMatchObject({ success: true });
-      const [baselineRun] = await calls();
-      expect(existsSync(baselineRun.cwd)).toBe(false);
-      const listed = git("worktree", "list", "--porcelain").split("\n").filter((l) => l.startsWith("worktree "));
-      expect(listed).toEqual([`worktree ${repo}`, `worktree ${elsewhere}`]);
-    });
-
-    it("does not prune the caller's other worktrees when git cannot check the baseline out (CK-5)", async () => {
-      const elsewhere = join(scratch, "other-worktree");
-      git("worktree", "add", "--detach", elsewhere, head);
-      await rm(elsewhere, { recursive: true });
+    it("refuses when git cannot read a blob of the baseline, before any run (CK-5)", async () => {
       const blob = git("rev-parse", `${base}:app/models.py`);
-      const object = join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2));
-      expect(existsSync(object)).toBe(true);
-      await rm(object);
-      stubRuns({ baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
-      const body = await call({ baseline: base });
-      expect(body.success).toBe(false);
-      expect(body.errors[0]).toContain(`git could not check out ${base}`);
+      await rm(join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+      expect(await call({ baseline: base })).toEqual({ success: false, errors: [`git could not read app/models.py at ${base}`] });
       expect(await calls()).toEqual([]);
-      const listed = git("worktree", "list", "--porcelain").split("\n").filter((l) => l.startsWith("worktree "));
-      expect(listed).toEqual([`worktree ${repo}`, `worktree ${elsewhere}`]);
     });
 
-    it("runs no hook of the repository on the baseline checkout (CK-5)", async () => {
-      const marker = join(scratch, "hook-ran");
-      const hook = join(repo, ".git", "hooks", "post-checkout");
-      await writeFile(hook, `#!/bin/sh\ntouch "${marker}"\n`);
-      await chmod(hook, 0o755);
+    it("runs no smudge filter configured in the repository when it builds the baseline tree (CK-5)", async () => {
+      const marker = join(scratch, "smudge-ran");
+      await writeFile(join(repo, ".gitattributes"), "app/*.txt filter=probe\n");
+      await writeFile(join(repo, "app", "data.txt"), "DATA\n");
+      git("add", ".");
+      git("commit", "-q", "-m", "data");
+      const withData = git("rev-parse", "HEAD");
+      await writeFile(join(repo, "README"), "x");
+      git("add", ".");
+      git("commit", "-q", "-m", "docs");
+      git("config", "filter.probe.smudge", `touch '${marker}'; cat`);
+      git("config", "filter.probe.clean", "cat");
       stubRuns({ baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
-      expect(await call({ baseline: base })).toMatchObject({ success: true });
+      expect(await call({ baseline: withData })).toMatchObject({ success: true, baseline: withData });
       expect(existsSync(marker)).toBe(false);
+      const [baselineRun] = await calls();
+      expect(baselineRun.projectFiles).toEqual({ "models.py": "NEW\n", "views.py": "VIEWS\n", "data.txt": "DATA\n" });
     });
 
     it("with a baseline, returns no record when the full run exits 1, even though no error is new", async () => {
@@ -309,6 +292,60 @@ describe("cgv_check over MCP", () => {
       );
     });
 
+    it("CK-5: a symbolic link under the project at the baseline", async () => {
+      await symlink("models.py", join(repo, "app", "alias.py"));
+      git("add", ".");
+      git("commit", "-q", "-m", "link");
+      const linked = git("rev-parse", "HEAD");
+      await rm(join(repo, "app", "alias.py"));
+      git("add", ".");
+      git("commit", "-q", "-m", "unlink");
+      expect(await call({ baseline: linked })).toEqual(
+        refused([`at the baseline ${linked}: app/alias.py is a symbolic link at ${linked}; cgv_check writes no link into the baseline tree`])
+      );
+      expect(await calls()).toEqual([]);
+    });
+
+    it("CK-5: a submodule under the project at the baseline", async () => {
+      git("update-index", "--add", "--cacheinfo", `160000,${base},app/vendored`);
+      git("commit", "-q", "-m", "submodule");
+      const withSubmodule = git("rev-parse", "HEAD");
+      git("rm", "-q", "--cached", "app/vendored");
+      git("commit", "-q", "-m", "no submodule");
+      expect(await call({ baseline: withSubmodule })).toEqual(
+        refused([`at the baseline ${withSubmodule}: app/vendored is a submodule at ${withSubmodule}; cgv_check cannot check a submodule`])
+      );
+      expect(await calls()).toEqual([]);
+    });
+
+    it("CK-5: a .py file with a filter attribute at the baseline", async () => {
+      await writeFile(join(repo, ".gitattributes"), "app/models.py filter=probe\n");
+      git("add", ".");
+      git("commit", "-q", "-m", "filtered");
+      const filtered = git("rev-parse", "HEAD");
+      git("rm", "-q", ".gitattributes");
+      git("commit", "-q", "-m", "unfiltered");
+      expect(await call({ baseline: filtered })).toEqual(
+        refused([
+          `app/models.py has the git filter attribute "probe" at ${filtered}, so its checked-out bytes may differ from the committed ones; cgv_check refuses a filtered .py file`,
+        ])
+      );
+      expect(await calls()).toEqual([]);
+    });
+
+    it("CK-5: a .py file with a filter attribute at HEAD", async () => {
+      await writeFile(join(repo, ".gitattributes"), "*.py filter=probe\n");
+      git("add", ".");
+      git("commit", "-q", "-m", "filtered");
+      const body = await call({});
+      expect(body.success).toBe(false);
+      expect(body.errors).toEqual([
+        `app/models.py has the git filter attribute "probe" at HEAD, so its checked-out bytes may differ from the committed ones; cgv_check refuses a filtered .py file`,
+        `app/views.py has the git filter attribute "probe" at HEAD, so its checked-out bytes may differ from the committed ones; cgv_check refuses a filtered .py file`,
+      ]);
+      expect(await calls()).toEqual([]);
+    });
+
     it("CK-5: a baseline run that does not complete", async () => {
       stubRuns({ baseline: { exit: 2, stderr: "Error: parse failed\n" }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
       expect(await call({ baseline: base })).toEqual(
@@ -362,6 +399,38 @@ describe("cgv_check over MCP", () => {
     it("CK-8: the work tree changed while CGV ran", async () => {
       stubRuns({ full: { exit: 1, during: "untracked" } });
       expect(await call({})).toEqual(refused(["work tree changed while CGV ran: ?? added.py"]));
+    });
+  });
+
+  describe("limits (CK-11)", () => {
+    const check = (limits: Partial<typeof DEFAULT_LIMITS>) => cgvCheck({ repoPath: repo, path: "app" }, process.env, { ...DEFAULT_LIMITS, ...limits });
+
+    it("refuses a run that outlasts the time limit as a timeout, though CGV exits 143 on SIGTERM", async () => {
+      stubRuns({ full: { exit: 0, during: "hang" } });
+      expect(await check({ timeoutMs: 500 })).toEqual({ success: false, errors: [`crosscheck-contracts at ${head} timed out after 0.5 seconds`] });
+    });
+
+    it("refuses a run that prints more than the output limit", async () => {
+      stubRuns({ full: { exit: 0, record: {}, stdout: "x".repeat(100) } });
+      expect(await check({ maxBuffer: 10 })).toEqual({
+        success: false,
+        errors: [`crosscheck-contracts at ${head} produced more output than the 10 bytes limit`],
+      });
+    });
+
+    it("refuses a run that a signal stops", async () => {
+      stubRuns({ full: { exit: 0, during: "kill" } });
+      expect(await check({})).toEqual({ success: false, errors: [`crosscheck-contracts at ${head} was stopped by SIGKILL`] });
+    });
+
+    it("refuses a binary that cannot be started", async () => {
+      const broken = join(bin, "broken-cli");
+      await writeFile(broken, "#!/no/such/interpreter\n");
+      await chmod(broken, 0o755);
+      vi.stubEnv("CGV_CONTRACTS", broken);
+      const body = await check({});
+      expect(body.success).toBe(false);
+      expect(body.success === false && body.errors).toEqual([expect.stringMatching(new RegExp(`^crosscheck-contracts at ${head} could not run: .*ENOENT`))]);
     });
   });
 });
