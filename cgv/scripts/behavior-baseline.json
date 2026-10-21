@@ -37,199 +37,246 @@
     "django42-base": {
       "charFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "choicesAccepts": {
         "drawn": 1000,
-        "disagreements": 125
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
       },
       "decimalFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 28
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
       },
       "maxValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "maxValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "notNullAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "nullableAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "positiveIntFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 103
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 112
       }
     },
     "django42-sqlite": {
       "charFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "choicesAccepts": {
         "drawn": 1000,
-        "disagreements": 125
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
       },
       "decimalFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 28
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
       },
       "maxValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "maxValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "notNullAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "nullableAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "positiveIntFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 500
+        "library_accepts_model_rejects": 499,
+        "model_accepts_library_rejects": 0
       }
     },
     "django52-base": {
       "charFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "choicesAccepts": {
         "drawn": 1000,
-        "disagreements": 125
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
       },
       "decimalFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 28
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
       },
       "maxValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "maxValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "notNullAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "nullableAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "positiveIntFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 103
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 112
       }
     },
     "django52-sqlite": {
       "charFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "choicesAccepts": {
         "drawn": 1000,
-        "disagreements": 125
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
       },
       "decimalFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 28
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
       },
       "maxValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "maxValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "notNullAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "nullableAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "positiveIntFieldAccepts": {
         "drawn": 1000,
-        "disagreements": 9
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 8
       }
     },
     "pydantic": {
       "annotationAcceptsNull": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "annotationAcceptsNumeric": {
         "drawn": 1000,
-        "disagreements": 66
+        "library_accepts_model_rejects": 73,
+        "model_accepts_library_rejects": 0
       },
       "maxValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "minValueAcceptsMicros": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "pydanticDecimalAccepts": {
         "drawn": 1000,
-        "disagreements": 88
+        "library_accepts_model_rejects": 60,
+        "model_accepts_library_rejects": 27
       },
       "pydanticLeAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       },
       "pydanticMaxLengthAccepts": {
         "drawn": 1000,
-        "disagreements": 0
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
       }
     }
   },

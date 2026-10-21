@@ -16,9 +16,11 @@ Subcommands (run from cgv/):
             baseline's seed and examples. Any other run (another seed or example count,
             or --configs) only fails on a disagreement the baseline does not record, and
             prints which gate applied.
-  selftest  Mutate charFieldAccepts (<= becomes <) in a scratch copy of
-            BehaviorModel.lean, run against it, and exit 0 only if the run
-            fails with new charFieldAccepts disagreements and nothing else moves.
+  selftest  For each predicate family (char/length, decimal, integer range,
+            choices, nullability, a pydantic bound), mutate one predicate in a
+            scratch copy of BehaviorModel.lean and run against it. Exit 0 only if
+            every mutant makes the run exit 1 and moves exactly the counts of the
+            predicates it changes.
   sample    Internal. Draw inputs and run one library configuration inside its
             virtual environment.
 
@@ -61,10 +63,37 @@ CONFIGS = {
     "pydantic": ("django52", "pydantic", None),
 }
 
-MUTATION = (
-    "def charFieldAccepts (maxLength : Nat) (actualLength : Nat) : Prop :=\n  actualLength ≤ maxLength",
-    "def charFieldAccepts (maxLength : Nat) (actualLength : Nat) : Prop :=\n  actualLength < maxLength",
-)
+DIRECTIONS = ("library_accepts_model_rejects", "model_accepts_library_rejects")
+GATED = ("drawn", *DIRECTIONS)
+
+# (family, text in BehaviorModel.lean, its replacement, predicates whose counts the mutant must move).
+# pydanticDecimalAccepts is defined as decimalFieldAccepts, so the decimal mutant moves both.
+MUTANTS = [
+    ("char/length",
+     "def charFieldAccepts (maxLength : Nat) (actualLength : Nat) : Prop :=\n  actualLength ≤ maxLength",
+     "def charFieldAccepts (maxLength : Nat) (actualLength : Nat) : Prop :=\n  actualLength < maxLength",
+     {"charFieldAccepts"}),
+    ("decimal",
+     "  fractionalDigits ≤ decimalPlaces ∧",
+     "  fractionalDigits < decimalPlaces ∧",
+     {"decimalFieldAccepts", "pydanticDecimalAccepts"}),
+    ("integer range",
+     "def maxValueAccepts (limit : Int) (value : Int) : Prop :=\n  value ≤ limit",
+     "def maxValueAccepts (limit : Int) (value : Int) : Prop :=\n  value < limit",
+     {"maxValueAccepts"}),
+    ("choices",
+     "  value ∈ validChoices",
+     "  value ∉ validChoices",
+     {"choicesAccepts"}),
+    ("nullability",
+     "def nullableAccepts (_isNull : Bool) : Prop :=\n  True",
+     "def nullableAccepts (isNull : Bool) : Prop :=\n  isNull = false",
+     {"nullableAccepts"}),
+    ("pydantic bound",
+     "def pydanticLeAccepts (limit : Int) (value : Int) : Prop :=\n  value ≤ limit",
+     "def pydanticLeAccepts (limit : Int) (value : Int) : Prop :=\n  value < limit",
+     {"pydanticLeAccepts"}),
+]
 
 
 class HarnessError(Exception):
@@ -92,6 +121,11 @@ def sample(config, seed, examples, out):
         probes = pydantic_probes()
     import hypothesis
     from hypothesis import HealthCheck, Phase, given, settings
+    from hypothesis.internal.conjecture import providers
+
+    # Hypothesis mixes literals from local source files, this script among them, into its draws, so editing
+    # any string or number here would change the inputs and the baseline. Keep only its built-in constants.
+    providers._get_local_constants = lambda: providers._local_constants
 
     with open(out, "w") as fh:
         for name, strategy, verdict in probes:
@@ -415,8 +449,10 @@ def summarise(cases, verdicts):
             "library_accepts": sum(c["library"] for c, _ in rows),
             "model_accepts": sum(model for _, model in rows),
             "disagreements": len(library_only) + len(model_only),
-            "library_accepts_model_rejects": shortest(library_only),
-            "model_accepts_library_rejects": shortest(model_only),
+            "library_accepts_model_rejects": len(library_only),
+            "model_accepts_library_rejects": len(model_only),
+            "examples": {"library_accepts_model_rejects": shortest(library_only),
+                         "model_accepts_library_rejects": shortest(model_only)},
         }
     return summary
 
@@ -440,23 +476,24 @@ def compare(summary, baseline, seed, examples, full=True):
             if exact:
                 if known is None:
                     problems.append(f"{config} {predicate}: not in the baseline")
-                elif (known["drawn"], known["disagreements"]) != (row["drawn"], row["disagreements"]):
-                    problems.append(f"{config} {predicate}: {row['drawn']} drawn and {row['disagreements']} "
-                                    f"disagreements, baseline {known['drawn']} and {known['disagreements']}")
-            elif row["disagreements"] and not (known and known["disagreements"]):
-                problems.append(f"{config} {predicate}: {row['disagreements']} disagreements, none in the baseline")
+                else:
+                    problems += [f"{config} {predicate}: {key} {row[key]}, baseline {known[key]}"
+                                 for key in GATED if row[key] != known[key]]
+            else:
+                problems += [f"{config} {predicate}: {key} {row[key]}, none in the baseline"
+                             for key in DIRECTIONS if row[key] and not (known and known[key])]
             if row["disagreements"] and predicate not in tracked:
                 problems.append(f"{config} {predicate}: disagreements with no task row in tracked_by")
     return problems
 
 
 def print_summary(summary, tracked):
-    print(f"{'configuration':<16} {'predicate':<26} {'drawn':>6} {'distinct':>8} {'disagree':>8}  row")
+    print(f"{'configuration':<16} {'predicate':<26} {'drawn':>6} {'distinct':>8} {'lib-only':>8} {'model-only':>10}  row")
     for config, predicates in summary.items():
         for predicate, row in predicates.items():
             note = tracked.get(predicate, "") if row["disagreements"] else ""
             print(f"{config:<16} {predicate:<26} {row['drawn']:>6} {row['distinct']:>8} "
-                  f"{row['disagreements']:>8}  {note}")
+                  f"{row[DIRECTIONS[0]]:>8} {row[DIRECTIONS[1]]:>10}  {note}")
 
 
 def run(args):
@@ -501,7 +538,7 @@ def run(args):
     print(f"seed {args.seed}, {args.examples} examples per predicate, {len(cases)} cases; "
           f"report in {work / 'report.json'}")
     if args.update_baseline:
-        counts = {config: {p: {"drawn": r["drawn"], "disagreements": r["disagreements"]}
+        counts = {config: {p: {key: r[key] for key in GATED}
                            for p, r in predicates.items()} for config, predicates in summary.items()}
         baseline = {"seed": args.seed, "examples": args.examples, "versions": versions, "counts": counts,
                     "tracked_by": baseline.get("tracked_by", {})}
@@ -541,9 +578,9 @@ def check_baseline_shape(baseline, path, update):
     tracked = baseline.get("tracked_by", {}) if isinstance(baseline, dict) else None
     ok = (isinstance(counts, dict) and isinstance(tracked, dict)
           and all(isinstance(note, str) for note in tracked.values())
-          and all(isinstance(rows, dict) and all(isinstance(row, dict) and is_count(row.get("drawn"))
-                                                 and is_count(row.get("disagreements"))
-                                                 and row["disagreements"] <= row["drawn"] for row in rows.values())
+          and all(isinstance(rows, dict) and all(isinstance(row, dict) and all(is_count(row.get(k)) for k in GATED)
+                                                 and sum(row[k] for k in DIRECTIONS) <= row["drawn"]
+                                                 for row in rows.values())
                   for rows in counts.values()))
     if ok and not update:
         ok = bool(counts) and is_count(baseline.get("seed")) and is_count(baseline.get("examples"))
@@ -552,35 +589,45 @@ def check_baseline_shape(baseline, path, update):
                            "the tracked_by object and rerun --update-baseline")
 
 
-def baseline_counts(baseline, config, predicate):
+def gated_counts(baseline, config, predicate):
     try:
-        return baseline["counts"][config][predicate]["disagreements"]
+        known = baseline["counts"][config][predicate]
     except KeyError:
         raise HarnessError(f"baseline has no entry for {config} {predicate}; run --update-baseline") from None
+    return tuple(known[key] for key in GATED)
 
 
 def selftest(args):
     work = Path(args.work_dir).resolve()
     model = Path(args.behavior_model).read_text(encoding="utf-8")
-    if model.count(MUTATION[0]) != 1:
-        raise HarnessError("the charFieldAccepts text to mutate is not in BehaviorModel.lean exactly once")
-    mutant = work / "mutant" / "BehaviorModel.lean"
-    mutant.parent.mkdir(parents=True, exist_ok=True)
-    mutant.write_text(model.replace(*MUTATION), encoding="utf-8")
-    run_args = argparse.Namespace(**{**vars(args), "behavior_model": str(mutant), "work_dir": str(work / "mutant"),
-                                     "venv_dir": str(work), "update_baseline": False})
-    status = run(run_args)
-    report = json.loads((work / "mutant" / "report.json").read_text(encoding="utf-8"))
     baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
-    moved = {(config, predicate) for config, predicates in report["summary"].items()
-             for predicate, row in predicates.items()
-             if row["disagreements"] != baseline_counts(baseline, config, predicate)}
-    django = {(config, "charFieldAccepts") for config in report["summary"] if config.startswith("django")}
-    if status == 1 and moved == django:
-        print(f"selftest passed: the mutant moved exactly {sorted(moved)}")
-        return 0
-    print(f"selftest FAILED: exit {status}, changed counts {sorted(moved)}, expected {sorted(django)}")
-    return 1
+    results = []
+    for family, old, new, predicates in MUTANTS:
+        if model.count(old) != 1:
+            raise HarnessError(f"the {family} mutant's text is not in BehaviorModel.lean exactly once: {old!r}")
+        slug = family.replace(" ", "-").replace("/", "-")
+        mutant = work / f"mutant-{slug}" / "BehaviorModel.lean"
+        mutant.parent.mkdir(parents=True, exist_ok=True)
+        mutant.write_text(model.replace(old, new), encoding="utf-8")
+        print(f"== mutant {family}: {new.splitlines()[-1].strip()}")
+        run_args = argparse.Namespace(**{**vars(args), "behavior_model": str(mutant), "work_dir": str(mutant.parent),
+                                         "venv_dir": str(work), "update_baseline": False})
+        status = run(run_args)
+        summary = json.loads((mutant.parent / "report.json").read_text(encoding="utf-8"))["summary"]
+        moved = {(config, predicate) for config, rows in summary.items() for predicate, row in rows.items()
+                 if tuple(row[key] for key in GATED) != gated_counts(baseline, config, predicate)}
+        expected = {(config, predicate) for config, rows in summary.items() for predicate in rows
+                    if predicate in predicates}
+        results.append((family, status == 1 and moved == expected, status, moved, expected))
+    for family, killed, status, moved, expected in results:
+        detail = "" if killed else f"; exit {status}, expected {sorted(expected)}"
+        print(f"{'killed' if killed else 'SURVIVED':<8} {family:<15} moved {sorted(moved)}{detail}")
+    survived = [family for family, killed, *_ in results if not killed]
+    if survived:
+        print(f"selftest FAILED: {', '.join(survived)} not killed as expected")
+        return 1
+    print(f"selftest passed: all {len(results)} mutants killed")
+    return 0
 
 
 def main():
