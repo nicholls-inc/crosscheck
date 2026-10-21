@@ -8,6 +8,13 @@
 //! - A `match` over every member of an enum: the subject is a parameter
 //!   annotated with a project enum, and unguarded value patterns name every member.
 //!
+//! It also decides which calls rule out None (`Exits::excludes_none`): a call
+//! of the builtin `isinstance` with two positional arguments, whose second is
+//! a builtin class in `NON_NONE_CLASSES`, or a tuple or `|` union of such
+//! specs. A name counts as the builtin when neither the function nor its
+//! module binds it and the module has no star import. A call inside a
+//! `lambda` never counts, since the lambda's parameters may bind the names.
+//!
 //! The rules trust the type checker as parameter annotations already do: a
 //! `NoReturn` function never returns, and a parameter annotated `E` holds a
 //! member of `E`. Anything the rules do not recognise is assumed to complete.
@@ -15,7 +22,7 @@
 use std::collections::HashSet;
 
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Pattern, Stmt};
+use ruff_python_ast::{self as ast, Expr, Operator, Pattern, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::flow::{bound_names, Exits};
@@ -48,6 +55,14 @@ const ENUM_BASES: [(&str, &str); 11] = [
     ("django.db.models.enums", "Choices"),
     ("builtins", "str"),
     ("builtins", "int"),
+];
+
+/// Builtin classes of which None is never an instance. `object` is absent,
+/// and so is every project or library class: a `runtime_checkable` Protocol,
+/// an ABC or a metaclass with `__instancecheck__` may accept None.
+const NON_NONE_CLASSES: [&str; 12] = [
+    "str", "bytes", "bytearray", "int", "float", "complex", "bool", "list", "tuple", "dict", "set",
+    "frozenset",
 ];
 
 /// The statements of `f`'s body (at every nesting level, not inside nested
@@ -113,6 +128,41 @@ impl Cx<'_> {
             }
         }
         true
+    }
+
+    /// Whether `name`, read in the function, is the builtin: neither the
+    /// function nor its module binds it, and no star import may.
+    fn is_builtin(&self, name: &str) -> bool {
+        let m = self.module;
+        !self.local.contains(name)
+            && !m.defs.contains_key(name)
+            && !m.imports.contains_key(name)
+            && !m.rebound.contains(name)
+            && m.star_imports.is_empty()
+    }
+
+    /// Whether `call` is `isinstance(s, spec)` of the builtin, true only
+    /// when `s` is not None.
+    fn excludes_none(&self, call: &ast::ExprCall) -> bool {
+        let args = &call.arguments;
+        matches!(call.func.as_ref(), Expr::Name(f) if f.id.as_str() == "isinstance")
+            && self.is_builtin("isinstance")
+            && args.keywords.is_empty()
+            && args.args.len() == 2
+            && !matches!(args.args[0], Expr::Starred(_))
+            && self.spec_excludes_none(&args.args[1])
+    }
+
+    /// Whether `isinstance` with the class spec `spec` is false for None.
+    fn spec_excludes_none(&self, spec: &Expr) -> bool {
+        match spec {
+            Expr::Name(n) => NON_NONE_CLASSES.contains(&n.id.as_str()) && self.is_builtin(n.id.as_str()),
+            Expr::Tuple(t) => !t.elts.is_empty() && t.elts.iter().all(|e| self.spec_excludes_none(e)),
+            Expr::BinOp(b) if matches!(b.op, Operator::BitOr) => {
+                self.spec_excludes_none(&b.left) && self.spec_excludes_none(&b.right)
+            }
+            _ => false,
+        }
     }
 
     /// Whether the expression statement `expr` is a call that never returns.
@@ -400,6 +450,17 @@ impl<'a> Visitor<'a> for ExitFinder<'_> {
         }
         visitor::walk_stmt(self, stmt);
     }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Lambda(_) => return,
+            Expr::Call(c) if self.cx.excludes_none(c) => {
+                self.exits.excludes_none.insert(expr.start().to_u32());
+            }
+            _ => {}
+        }
+        visitor::walk_expr(self, expr);
+    }
 }
 
 #[cfg(test)]
@@ -463,6 +524,56 @@ mod tests {
         assert_eq!(marked(&files, "h").0, Vec::<String>::new());
         let rebound = "import sys\nsys = make()\n\ndef f(x):\n    sys.exit(1)\n";
         assert_eq!(calls(rebound, "f"), Vec::<String>::new());
+    }
+
+    /// The text from each call in `excludes_none` of `code.<func>` to the end of its line.
+    fn excludes_none(files: &[(&str, &str)], func: &str) -> Vec<String> {
+        let p = Project::from_sources(files.iter().map(|(p, s)| (p.to_string(), s.to_string())).collect());
+        let f = p.index.function(&format!("code.{func}")).expect("function");
+        let src = files.iter().find(|(p, _)| *p == "code.py").unwrap().1;
+        let mut o: Vec<u32> = f.exits.excludes_none.iter().copied().collect();
+        o.sort();
+        o.into_iter().map(|at| src[at as usize..].lines().next().unwrap().to_string()).collect()
+    }
+
+    #[test]
+    fn test_isinstance_with_builtin_classes_excludes_none() {
+        let src = "class Text:\n    pass\n\ndef f(x, o, t):\n    a = isinstance(x, str)\n    a = isinstance(x, (str, int))\n    a = isinstance(x, (str, (bytes, float)))\n    a = isinstance(x, str | bytes | dict)\n    a = isinstance(o.a.b, bool)\n    a = isinstance(x, object)\n    a = isinstance(x, (str, type(None)))\n    a = isinstance(x, str | None)\n    a = isinstance(x, ())\n    a = isinstance(x, Text)\n    a = isinstance(x, t)\n    a = isinstance(x, NoneType)\n    a = isinstance(x, (str, *t))\n    a = isinstance(x, str, t)\n    a = isinstance(x, classinfo=str)\n    a = isinstance(*t)\n    a = builtins.isinstance(x, str)\n    a = lambda: isinstance(x, str)\n    a = [y for y in x if isinstance(y, str)]\n";
+        assert_eq!(
+            excludes_none(&[("code.py", src)], "f"),
+            [
+                "isinstance(x, str)",
+                "isinstance(x, (str, int))",
+                "isinstance(x, (str, (bytes, float)))",
+                "isinstance(x, str | bytes | dict)",
+                "isinstance(o.a.b, bool)",
+                "isinstance(y, str)]",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_isinstance_or_class_name_bound_by_the_function_or_module() {
+        let none = Vec::<String>::new();
+        let local = "def f(x, str):\n    a = isinstance(x, str)\n\ndef g(x):\n    isinstance = h\n    a = isinstance(x, str)\n\ndef k(x, ys):\n    a = isinstance(x, int)\n    b = [int for int in ys]\n\ndef m(x):\n    a = isinstance(x, int)\n";
+        for func in ["f", "g", "k"] {
+            assert_eq!(excludes_none(&[("code.py", local)], func), none, "{func}");
+        }
+        assert_eq!(excludes_none(&[("code.py", local)], "m"), ["isinstance(x, int)"]);
+        for module in [
+            "def isinstance(v, t): return True\n",
+            "from helpers import isinstance\n",
+            "from builtins import isinstance\n",
+            "from helpers import *\n",
+            "str = type(None)\n",
+            "class str: pass\n",
+            "from helpers import str\n",
+            "def g():\n    global str\n    str = None\n",
+            "if x:\n    str = None\n",
+        ] {
+            let src = format!("{module}\ndef f(x):\n    a = isinstance(x, str)\n");
+            assert_eq!(excludes_none(&[("code.py", &src)], "f"), none, "{module}");
+        }
     }
 
     #[test]

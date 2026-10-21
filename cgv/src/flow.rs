@@ -7,6 +7,9 @@
 //!   (also `if not x: ...`), when the `if` has no `elif` / `else`;
 //! - inside `if x is not None:` / `if x:` bodies, and in the `else` branch
 //!   of `if x is None:` / `if not x:`; conjunctions narrow every conjunct;
+//! - inside `if isinstance(x, str):` and after
+//!   `if not isinstance(x, str): return`, for the calls in
+//!   `Exits::excludes_none` only;
 //! - after `assert x is not None` / `assert x`;
 //! - inside `if x in {"a", "b"}:` (a set, list or tuple display of string,
 //!   bytes, number or bool literals), and after `if x not in (...): return`.
@@ -45,21 +48,26 @@
 //! definition set is not known takes the join of every assignment.
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, ExprContext, Pattern, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
 
-/// Statements of one function body that never complete, by start byte
-/// offset (filled by `resolve::function_exits`, which can see what a call
-/// resolves to and what members an enum has). Any other statement is
-/// assumed to complete.
+/// What resolution decided about the nodes of one function body, by start
+/// byte offset (filled by `exits::function_exits`, which can see what a name
+/// resolves to and what members an enum has): the statements that never
+/// complete, and the calls that rule out None. Any other statement is assumed
+/// to complete, and any other call narrows nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Exits {
     /// Expression statements whose call never returns.
     pub calls: HashSet<u32>,
     /// `match` statements whose cases cover every member of the subject's enum.
     pub matches: HashSet<u32>,
+    /// `isinstance(s, spec)` calls that are true only when `s` is not None:
+    /// the builtin `isinstance`, with a spec of builtin classes that exclude None.
+    pub excludes_none: HashSet<u32>,
 }
 
 impl Exits {
@@ -108,6 +116,8 @@ pub struct Narrowed {
     /// caller's guard on a longer chain `p.a.b.f` holds only while no proper
     /// prefix of it is here.
     handed_paths: HashSet<String>,
+    /// The function's `Exits::excludes_none`, for `positive`.
+    excludes_none: Rc<HashSet<u32>>,
 }
 
 impl Narrowed {
@@ -283,7 +293,11 @@ pub fn walk_block<'a, V: FlowVisitor<'a>>(
     exits: &Exits,
     v: &mut V,
 ) -> Narrowed {
-    walk(stmts, narrowed, exits, v, &mut HashMap::new())
+    let mut start = narrowed.clone();
+    if !exits.excludes_none.is_empty() {
+        start.excludes_none = Rc::new(exits.excludes_none.clone());
+    }
+    walk(stmts, &start, exits, v, &mut HashMap::new())
 }
 
 /// `counts`: simple assignments seen so far per name (the next `Def::Assign` index).
@@ -303,12 +317,12 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects(&s.test));
                 let mut ends = Vec::new();
                 let mut body_n = n.clone();
-                body_n.extend(positive(&s.test));
+                body_n.extend(positive(&s.test, &n));
                 let end = walk(&s.body, &body_n, exits, v, counts);
                 if !always_exits(&s.body, exits) {
                     ends.push(end);
                 }
-                let mut negated = negative(&s.test);
+                let mut negated = negative(&s.test, &n);
                 let mut has_else = false;
                 for clause in &s.elif_else_clauses {
                     let mut clause_n = n.clone();
@@ -321,9 +335,9 @@ fn walk<'a, V: FlowVisitor<'a>>(
                             negated.retain(|x| e.keeps_member(x));
                             clause_n.apply(&e);
                             let mut bn = clause_n.clone();
-                            bn.extend(positive(test));
+                            bn.extend(positive(test, &clause_n));
                             let end = walk(&clause.body, &bn, exits, v, counts);
-                            negated.extend(negative(test));
+                            negated.extend(negative(test, &clause_n));
                             end
                         }
                         None => {
@@ -350,7 +364,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             }
             Stmt::Assert(a) => {
                 v.simple(stmt, &n);
-                n.extend(positive(&a.test));
+                n.extend(positive(&a.test, &n));
                 n.apply(&effects_of_stmt(stmt));
             }
             Stmt::For(f) => {
@@ -369,7 +383,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects_of_stmt(stmt));
                 v.header(&w.test, &n);
                 let mut body_n = n.clone();
-                body_n.extend(positive(&w.test));
+                body_n.extend(positive(&w.test, &n));
                 walk(&w.body, &body_n, exits, v, counts);
                 walk(&w.orelse, &n, exits, v, counts);
             }
@@ -936,8 +950,9 @@ fn remove_all(n: &mut Narrowed, names: HashSet<String>) {
 }
 
 /// Names known non-None when `test` is true (attributes of variables as
-/// `obj.f`, see `attr_name`), and `member_key` facts.
-pub fn positive(test: &Expr) -> Vec<String> {
+/// `obj.f`, see `attr_name`), and `member_key` facts. `n` is the state
+/// where `test` is evaluated, which knows the calls that rule out None.
+pub fn positive(test: &Expr, n: &Narrowed) -> Vec<String> {
     let mut out: Vec<String> = match test {
         Expr::Name(n) => vec![n.id.to_string()],
         Expr::Attribute(_) => attr_name(test).into_iter().collect(),
@@ -945,27 +960,35 @@ pub fn positive(test: &Expr) -> Vec<String> {
             .into_iter()
             .chain(membership(c, CmpOp::In))
             .collect(),
-        Expr::BoolOp(b) if matches!(b.op, BoolOp::And) => {
-            b.values.iter().flat_map(positive).collect()
+        Expr::Call(c) if n.excludes_none.contains(&c.start().to_u32()) => {
+            match c.arguments.args.first() {
+                Some(Expr::Name(s)) => vec![s.id.to_string()],
+                Some(s) => attr_name(s).into_iter().collect(),
+                None => Vec::new(),
+            }
         }
-        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => negative(&u.operand),
+        Expr::BoolOp(b) if matches!(b.op, BoolOp::And) => {
+            b.values.iter().flat_map(|v| positive(v, n)).collect()
+        }
+        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => negative(&u.operand, n),
         _ => Vec::new(),
     };
     without_members_if_called(&mut out, test);
     out
 }
 
-/// Names known non-None when `test` is false, and `member_key` facts.
-pub fn negative(test: &Expr) -> Vec<String> {
+/// Names known non-None when `test` is false, and `member_key` facts. A
+/// false `isinstance` says nothing about None.
+pub fn negative(test: &Expr, n: &Narrowed) -> Vec<String> {
     let mut out: Vec<String> = match test {
         Expr::Compare(c) => none_comparison(c, CmpOp::Is)
             .into_iter()
             .chain(membership(c, CmpOp::NotIn))
             .collect(),
         Expr::BoolOp(b) if matches!(b.op, BoolOp::Or) => {
-            b.values.iter().flat_map(negative).collect()
+            b.values.iter().flat_map(|v| negative(v, n)).collect()
         }
-        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => positive(&u.operand),
+        Expr::UnaryOp(u) if matches!(u.op, UnaryOp::Not) => positive(&u.operand, n),
         _ => Vec::new(),
     };
     without_members_if_called(&mut out, test);
@@ -1774,7 +1797,18 @@ mod tests {
         Exits {
             calls: calls.iter().map(at).collect(),
             matches: matches.iter().map(at).collect(),
+            ..Exits::default()
         }
+    }
+
+    /// Narrowing at each `use()` with every `isinstance(` call of `src` in
+    /// `Exits::excludes_none`, as `exits::function_exits` marks the builtin.
+    fn narrowing_with_isinstance(src: &str) -> Vec<Vec<String>> {
+        let exits = Exits {
+            excludes_none: src.match_indices("isinstance(").map(|(at, _)| at as u32).collect(),
+            ..Exits::default()
+        };
+        narrowing_with_exits(src, &exits)
     }
 
     #[test]
@@ -1909,6 +1943,63 @@ mod tests {
         assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new()]);
         let src = "def f(d, k):\n    if k in d:\n        with m:\n            pass\n        probe.get()\n";
         assert_eq!(narrowing_at_uses(src), vec![vec!["d[k]".to_string()]]);
+    }
+
+    #[test]
+    fn test_isinstance_narrows_in_the_true_branch_only() {
+        let src = "def f(x, c):\n    if isinstance(x, str):\n        use()\n    else:\n        use()\n    use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![vec!["x".to_string()], vec![], vec![]]);
+        // A call that resolution did not mark narrows nothing.
+        assert_eq!(narrowing_at_uses(src), vec![Vec::<String>::new(), vec![], vec![]]);
+    }
+
+    #[test]
+    fn test_isinstance_negated_and_composed() {
+        let src = "def f(x, y, c):\n    if not isinstance(x, str):\n        use()\n        return\n    use()\n    if isinstance(y, int) or c:\n        use()\n    if isinstance(y, int) and c:\n        use()\n    if not isinstance(y, int) or c:\n        use()\n    else:\n        use()\n";
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            narrowing_with_isinstance(src),
+            vec![
+                names(&[]),
+                names(&["x"]),
+                names(&["x"]),
+                names(&["c", "x", "y"]),
+                names(&["x"]),
+                names(&["x", "y"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_isinstance_assert_while_and_elif() {
+        let src = "def f(x, y, c):\n    while isinstance(y, str):\n        use()\n    use()\n    if c:\n        use()\n    elif isinstance(y, str):\n        use()\n    assert isinstance(x, str)\n    use()\n";
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            narrowing_with_isinstance(src),
+            vec![names(&["y"]), names(&[]), names(&["c"]), names(&["y"]), names(&["x"])]
+        );
+    }
+
+    #[test]
+    fn test_isinstance_narrows_what_is_not_none_narrows() {
+        // A chained subject is the same flow name as for `is not None`, so a
+        // rebinding or a write of a link ends both narrowings the same way.
+        for subject in ["x", "o.a", "o.a.b.c"] {
+            for tail in ["", "    o.a = c\n    use()\n", "    o = c\n    use()\n", "    x = c\n    use()\n", "    g(o.a)\n    use()\n"] {
+                let body = |test: &str| format!("def f(x, o, c):\n    if not ({test}):\n        return\n    use()\n{tail}");
+                let by_isinstance = narrowing_with_isinstance(&body(&format!("isinstance({subject}, str)")));
+                let by_none_test = narrowing_at_uses(&body(&format!("{subject} is not None")));
+                assert_eq!(by_isinstance, by_none_test, "{subject} / {tail}");
+                assert!(by_isinstance[0].contains(&subject.to_string()), "{subject}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_isinstance_narrows_only_a_name_or_a_chain() {
+        // `d[0]` dereferences `d`, which narrows it whatever the test.
+        let src = "def f(x, d):\n    if isinstance(d[0], str):\n        use()\n    if isinstance(g(x), str):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![vec!["d".to_string()], vec!["d".to_string()]]);
     }
 
     #[test]

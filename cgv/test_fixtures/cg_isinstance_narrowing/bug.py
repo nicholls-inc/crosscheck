@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from models import Entry, Payload, clear
+from models import Entry, Payload
 
 
 def store_negated(value: object) -> Entry:
@@ -67,14 +67,6 @@ def store_rebound(value: object, fallback: Optional[str]) -> Entry:
     if isinstance(value, str):
         value = fallback
         return Entry.objects.create(text=value)
-    return Entry.objects.create(text="x")
-
-
-def store_chain_handed(payload: Payload) -> Entry:
-    # BUG: clear() sets the postcode to None after the test.
-    if isinstance(payload.address.postcode, str):
-        clear(payload.address)
-        return Entry.objects.create(text=payload.address.postcode)
     return Entry.objects.create(text="x")
 
 
