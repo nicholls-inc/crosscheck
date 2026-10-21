@@ -22,7 +22,7 @@ Intent: `intent/2026-10-21-queue-housekeeping.md`. Spec: `intent/2026-10-21-queu
 ## Proof
 - `node --test scripts/ci/*.test.mjs` passes.
 - `BASE_REF=main PR_BODY='Task: PB-1.53' node scripts/ci/task-queue.mjs check` passes.
-- `nextTask` from `scripts/ci/task-queue.mjs`, run on the branch's queue and the output of `git ls-remote --heads origin 'task/*'`, prints CG-1.28.
+- The first open rows of `docs/TASKS.md` are CG-1.28, CG-1.35, ER-1.20, TB-1.14, VA-1.19, CG-1.29, CG-1.14, CG-1.37, ER-1.21, RQ-1.1, CG-1.51, in that order, and `nextTask` from `scripts/ci/task-queue.mjs`, run on the branch's queue with no claims, gives CG-1.28. This proves row order, not live `next` output: this run's sibling lanes claimed `task/CG-1.28`, `task/CG-1.35`, `task/TB-1.14` and `task/CG-1.29`, so live `next` prints the first unclaimed row instead.
 - `node scripts/ci/tier-gate.mjs` passes with the pull request body, `Tier: 3`, and the changed file list.
 - `node scripts/ci/pre-commit.mjs` passes on each commit.
 - `grep -rn "time budget" crosscheck --include='*.md'` finds no kernel-replay statement outside `crosscheck/JOURNAL.md`.

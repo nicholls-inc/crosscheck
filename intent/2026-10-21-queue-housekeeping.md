@@ -19,7 +19,7 @@ The maintainer, in chat on 2026-10-21, told the coordinating agent to do this ho
 - Each open issue whose work a merged pull request completed, and whose queue rows are all done, is closed with a comment that names the pull request. This is a GitHub action, not part of the diff.
 
 ## Affected users and systems
-- Agents that run "pick up next task": `node scripts/ci/task-queue.mjs next` prints CG-1.28 after the merge.
+- Agents that run "pick up next task": the first open rows of `docs/TASKS.md` are CG-1.28, CG-1.35, ER-1.20, TB-1.14, VA-1.19, CG-1.29, CG-1.14, CG-1.37, ER-1.21, RQ-1.1, CG-1.51, in that order, and the queue's `nextTask` rule applied to the branch's queue with no claims gives CG-1.28. Live `next` output also depends on claims: this run's sibling lanes claimed `task/CG-1.28`, `task/CG-1.35`, `task/TB-1.14` and `task/CG-1.29`, so live `next` prints the first unclaimed row instead.
 - Readers of the roadmap and of the two Crosscheck docs.
 - `docs/assurance/ROADMAP.md` is a protected surface, so the pull request is Tier 3 with a governance note.
 
