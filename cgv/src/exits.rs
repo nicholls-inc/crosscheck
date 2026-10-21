@@ -19,6 +19,8 @@
 //! name. A name counts as the builtin when neither the function nor its
 //! module binds it and the module has no star import. A call inside a
 //! `lambda` never counts, since the lambda's parameters may bind the names.
+//! Module-level code (the pseudo function `<module m>`) never counts either: any
+//! function may rebind a module variable through `global`.
 //!
 //! The rules trust the type checker as parameter annotations already do: a
 //! `NoReturn` function never returns, and a parameter annotated `E` holds a
@@ -31,7 +33,7 @@ use ruff_python_ast::{self as ast, Expr, Operator, Pattern, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::flow::{bound_names, names_in_expr, Exits};
-use crate::function_extractor::{FunctionInfo, ParamKind};
+use crate::function_extractor::{module_function_name, FunctionInfo, ParamKind};
 use crate::resolve::{dotted_parts, ClassInfo, Import, ModuleInfo, ProjectIndex, Symbol};
 
 /// Standard library functions that never return, as `(module, name)`.
@@ -79,12 +81,18 @@ pub fn function_exits(index: &ProjectIndex, f: &FunctionInfo) -> Exits {
     let bound = bound_names(&f.body);
     let mut local = bound.clone();
     local.extend(f.params.iter().map(|p| p.name.clone()));
+    let mut unsettled = unsettled(&f.body);
+    if f.name == module_function_name(&f.module) {
+        // A module's variables are rebindable by any function through `global`,
+        // and the pseudo function's body holds no `def` to show it.
+        unsettled.extend(local.iter().cloned());
+    }
     let mut v = ExitFinder {
         cx: Cx {
             index,
             module,
             local,
-            unsettled: unsettled(&f.body),
+            unsettled,
         },
         f,
         bound,
@@ -626,6 +634,14 @@ mod tests {
             assert_eq!(excludes_none(&[("code.py", src)], func), ["isinstance(y, str)"], "{func}");
         }
         assert_eq!(excludes_none(&[("code.py", src)], "list_comprehension"), ["isinstance(x, str)"]);
+    }
+
+    #[test]
+    fn test_isinstance_in_module_level_code_excludes_nothing() {
+        let src = "def reset():\n    global x\n    x = None\n\nx = 1\nif isinstance(x, str):\n    reset()\n";
+        let p = Project::from_sources(vec![("code.py".to_string(), src.to_string())]);
+        let f = p.index.function("<module code>").expect("module function");
+        assert!(f.exits.excludes_none.is_empty());
     }
 
     #[test]

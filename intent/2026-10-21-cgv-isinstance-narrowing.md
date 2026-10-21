@@ -12,7 +12,7 @@ def store(value: object) -> Entry:
     ...
 ```
 
-Reproduced on `origin/main` 4b84581 with the new fixture `cgv/test_fixtures/cg_isinstance_narrowing/`. Every one of the ten functions in its `ok.py` gives a false error.
+Reproduced on `origin/main` 4b84581 with the new fixture `cgv/test_fixtures/cg_isinstance_narrowing/`. Every one of the ten functions of its first `ok.py` gives a false error; nine remain in `ok.py` and the tenth, `store_chained`, moved to `unreached.py`.
 
 ## Proposed outcome
 The data shape is one set of call sites, `Exits::excludes_none` in `cgv/src/flow.rs`. It holds the start offset of each call in a function body that is true only when its first argument, a name, is not None. `exits::function_exits` fills it, because only it can see what a name resolves to. `flow` reads the set and does no resolution itself, as for the other members of `Exits`. `walk_block` copies the set into the `Narrowed` state it walks with, so `flow::positive` sees it both in statement tests and in the expression contexts of `value_analysis` (`and`, `or`, `a if c else b`).

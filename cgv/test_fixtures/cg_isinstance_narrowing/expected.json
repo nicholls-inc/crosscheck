@@ -234,6 +234,12 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Entry.text"
+    },
+    {
+      "path": "<module module_level> -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
     }
   ]
 }
