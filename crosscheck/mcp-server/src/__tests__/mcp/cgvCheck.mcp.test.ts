@@ -205,6 +205,21 @@ describe("cgv_check over MCP", () => {
       expect(listed).toEqual([`worktree ${repo}`, `worktree ${elsewhere}`]);
     });
 
+    it("does not prune the caller's other worktrees when git cannot check the baseline out (CK-5)", async () => {
+      const elsewhere = join(scratch, "other-worktree");
+      git("worktree", "add", "--detach", elsewhere, head);
+      await rm(elsewhere, { recursive: true });
+      const blob = git("rev-parse", `${base}:app/models.py`);
+      await rm(join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+      stubRuns({ baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
+      const body = await call({ baseline: base });
+      expect(body.success).toBe(false);
+      expect(body.errors[0]).toContain(`git could not check out ${base}`);
+      expect(await calls()).toEqual([]);
+      const listed = git("worktree", "list", "--porcelain").split("\n").filter((l) => l.startsWith("worktree "));
+      expect(listed).toEqual([`worktree ${repo}`, `worktree ${elsewhere}`]);
+    });
+
     it("runs no hook of the repository on the baseline checkout (CK-5)", async () => {
       const marker = join(scratch, "hook-ran");
       const hook = join(repo, ".git", "hooks", "post-checkout");
