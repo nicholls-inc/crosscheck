@@ -286,6 +286,12 @@ impl Narrowed {
         }
     }
 
+    /// Whether any name is known non-None only by an `isinstance` test, so that
+    /// `forget_before` has something to forget.
+    pub fn has_isinstance_facts(&self) -> bool {
+        !self.iso.is_empty() || !self.held.is_empty()
+    }
+
     /// The state in which a statement or a test with effects `e` is evaluated:
     /// its operands are read against the state before it, so what `e` does to
     /// an `isinstance` narrowing in an operand that follows (a walrus in an
@@ -2062,6 +2068,34 @@ mod tests {
         narrowing_with_exits(src, &exits)
     }
 
+    /// Narrowing at each header expression that is a call of `use(...)`, with
+    /// every `isinstance(` call of `src` in `Exits::excludes_none`.
+    fn narrowing_header_uses(src: &str) -> Vec<Vec<String>> {
+        struct V(Vec<Vec<String>>);
+        impl<'a> FlowVisitor<'a> for V {
+            fn simple(&mut self, _: &'a Stmt, _: &Narrowed) {}
+            fn header(&mut self, e: &'a Expr, n: &Narrowed) {
+                if matches!(e, Expr::Call(c) if matches!(c.func.as_ref(), Expr::Name(f) if f.id.as_str() == "use")) {
+                    let mut names: Vec<String> = n.names().cloned().collect();
+                    names.sort();
+                    self.0.push(names);
+                }
+            }
+        }
+        let exits = Exits {
+            excludes_none: src.match_indices("isinstance(").map(|(at, _)| at as u32).collect(),
+            ..Exits::default()
+        };
+        let params = src
+            .strip_prefix("def ")
+            .and_then(|rest| rest.split_once('(')?.1.split_once(')'))
+            .map(|(list, _)| list.split(',').map(str::trim).filter(|p| !p.is_empty()).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let mut v = V(Vec::new());
+        walk_block(&body(src), &Narrowed::with_params(params), &exits, &mut v);
+        v.0
+    }
+
     #[test]
     fn test_attribute_chains_narrow_and_rebinding_a_link_forgets_them() {
         let src = "def f(o, c):\n    if o.fk.x is None:\n        return\n    use()\n    o.fk = c\n    use()\n    if o.fk.x:\n        use()\n    o = c\n    use()\n";
@@ -2415,12 +2449,25 @@ mod tests {
         // A suspension anywhere in the statement ends it too.
         let src = "async def f(o, c):\n    if isinstance(o.a, str):\n        use(await c, o.a)\n";
         assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
-        // The same in an assert, and in the test of an if and of an elif, which
-        // are read before the branch (`use` is observed by the header here).
+        // The same in an assert.
         let src = "def f(o, c):\n    assert isinstance(o.a, str)\n    use(clear(o), o.a)\n";
         assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
-        let src = "def f(o, c):\n    assert isinstance(o.a, str)\n    if use(clear(o), o.a):\n        pass\n    elif use(clear(o), o.a):\n        pass\n";
-        assert!(narrowing_with_isinstance(src).iter().all(|at| !at.contains(&"o.a".to_string())));
+        // And in the header of an if, an elif (with a plain test before it, so
+        // that only the elif's own `forget_before` can end it), a for, a with
+        // and a match: `use` is observed by the header here, but only a statement
+        // call is recorded, so the headers use a bare `probe` statement afterwards.
+        for (stmt, name) in [
+            ("if use(clear(o), o.a):\n        pass", "if"),
+            ("if c:\n        pass\n    elif use(clear(o), o.a):\n        pass", "elif"),
+            ("for _ in use(clear(o), o.a):\n        pass", "for"),
+            ("with use(clear(o), o.a):\n        pass", "with"),
+            ("match use(clear(o), o.a):\n        case _:\n            pass", "match"),
+        ] {
+            let src = format!("def f(o, c):\n    assert isinstance(o.a, str)\n    {stmt}\n");
+            let seen = narrowing_header_uses(&src);
+            assert!(!seen.is_empty(), "{name}: the header was not observed");
+            assert!(seen.iter().all(|at| !at.contains(&"o.a".to_string())), "{name}");
+        }
     }
 
     #[test]
