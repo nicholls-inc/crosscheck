@@ -30,6 +30,11 @@
       "path": "from_local -> Payer.name",
       "source_guarantee": "nullable",
       "target_requirement": "non-null"
+    },
+    {
+      "path": "from_annotated_local -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
     }
   ],
   "warnings": [
@@ -47,6 +52,34 @@
     },
     {
       "path": "key_in -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "local_literal -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "local_counter -> local_counter.<return>",
+      "contains": "null"
+    },
+    {
+      "path": "local_dict_call -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "local_comprehension -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "local_defaultdict -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "local_counter_class -> local_counter_class.<return>",
+      "contains": "null"
+    },
+    {
+      "path": "annotated_local -> Payer.name",
       "contains": "null"
     }
   ]

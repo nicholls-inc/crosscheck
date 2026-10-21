@@ -2920,7 +2920,33 @@ mod tests {
         ] {
             assert_eq!(one(&format!("def f({sig}):\n    d.get('k', '')\n")).nullable, Some(true), "{sig}");
         }
-        assert_eq!(one("def f():\n    d = {}\n    d.get('k', '')\n").nullable, Some(true));
+        for body in [
+            "d = {'k': None}",
+            "d = {'k': None if raw == '' else raw}",
+            "d = {'k': raw}",
+            "d = {'k': 'x', **other}",
+            "d: dict[str, str | None] = {'k': 'x'}",
+            "d: Dict[str, Any] = {'k': 'x'}",
+            "d: dict = {'k': 'x'}",
+        ] {
+            let src = format!("def f(raw, other: dict):\n    {body}\n    d.get('k', '')\n");
+            assert_eq!(one(&src).nullable, Some(true), "{body}");
+        }
+        for body in [
+            "d = {}",
+            "d = {'k': 'x'}",
+            "d = {'k': raw, 'n': len(raw)}",
+            "d = {}\n    d[raw] = d.get(raw, 0) + 1",
+            "d = dict(k=None)",
+            "d = {x: None for x in raw}",
+            "d = defaultdict(lambda: None)",
+            "d = Counter(raw)",
+            "d: dict[str, str] = {'k': None}",
+            "d: dict[str, str] = dict(k=raw)",
+        ] {
+            let src = format!("from collections import Counter, defaultdict\ndef f(raw: str):\n    {body}\n    d.get('k', '')\n");
+            assert_eq!(one(&src).nullable, None, "{body}");
+        }
         for sig in ["d: dict[str, str]", "d", "d: Foo"] {
             assert_eq!(one(&format!("def f({sig}):\n    d.get('k', '')\n")).nullable, None, "{sig}");
         }

@@ -28,3 +28,8 @@ def from_optional_dict(data: Optional[dict]) -> Payer:
 def from_local(raw: str) -> Payer:
     fields = {"name": None if raw == "" else raw}
     return Payer(name=fields.get("name", ""), city="x")
+
+
+def from_annotated_local(raw: str) -> Payer:
+    fields: dict[str, str | None] = {"name": raw}
+    return Payer(name=fields.get("name", ""), city="x")
