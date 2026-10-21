@@ -1,0 +1,89 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "store_negated -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_none_type -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_object -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_union_none -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_or -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_param_shadow -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_local_isinstance -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_other_name -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_rebound -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_chain_handed -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_chain_unguarded -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_shadowed -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_shadowed_type -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_project_class -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    }
+  ]
+}
