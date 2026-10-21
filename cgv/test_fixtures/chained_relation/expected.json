@@ -1,0 +1,29 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "bill -> Invoice.email",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Invoice.email"
+    },
+    {
+      "path": "bill_shipment -> Invoice.email",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Invoice.email"
+    },
+    {
+      "path": "bill_short -> Invoice.short",
+      "source_guarantee": "length ≤ 40",
+      "target_requirement": "length ≤ 10",
+      "target": "Invoice.short"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "bill_referrer_unguarded -> Invoice.name",
+      "contains": "no nullability postcondition"
+    }
+  ]
+}

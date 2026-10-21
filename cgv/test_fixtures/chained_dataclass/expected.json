@@ -1,0 +1,23 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "label -> Label.postcode",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.postcode"
+    },
+    {
+      "path": "label_inner -> Label.postcode",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.postcode"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "label_billing_unguarded -> Label.city",
+      "contains": "no nullability postcondition"
+    }
+  ]
+}
