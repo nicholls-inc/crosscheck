@@ -31,7 +31,7 @@ Task ER-1.21. ER-1.20 (#138) added `cgv_check`, and no agent calls it, so a Pyth
 
 ### Authority
 
-- **Authoriser:** hnipps, who granted full autonomy for this run in chat on 2026-10-21. That grant authorizes agent work and merges. It does not resolve the judgment items below. The maintainer's merge is the approval.
+- **Authoriser:** hnipps, who granted full autonomy for this run in chat on 2026-10-21. That chat grant, made to the coordinating agent, authorized agents to build and review this change. Under rule 4 of `.claude/rules/protected-surfaces.md`, a pull request with unresolved REQUIRES HUMAN VERIFICATION markers must not merge, so this one waits for the maintainer, who is the authoriser. The grant does not resolve the judgment items below.
 - **Role:** Maintainer
 
 ### Diff Plan
@@ -65,7 +65,7 @@ Mechanical items.
 - [ ] No unresolved human-verification marker is left.
   Command: `grep -c "REQUIRES HUMAN VERIFICATION:"` on this file, minus this item's own line. Output: 6. The maintainer resolves them; agents must not tick them.
 
-Judgment items. A human decides these. The maintainer's full-autonomy grant authorizes agent merges, not ticks (`.claude/rules/protected-surfaces.md`, Amendment pattern, rule 4), so they stay open.
+Judgment items. A human decides these. The maintainer's full-autonomy grant authorized agents to build and review this change, not to tick these markers. Under rule 4 (`.claude/rules/protected-surfaces.md`, Amendment pattern) the pull request must not merge while any is unresolved, so they stay open and the merge waits for the maintainer.
 
 - [ ] REQUIRES HUMAN VERIFICATION: Rationale is anchored to a concrete trigger (not "cleanup" or "robustness").
 - [ ] REQUIRES HUMAN VERIFICATION: Governing roadmap item ER-1 actually covers this change.
