@@ -80,16 +80,26 @@ pub struct Plan {
     pub not_reached: BTreeMap<NotReached, usize>,
 }
 
+/// The largest `"x" * n` a module may build when it is imported.
+const MAX_REPEAT: usize = 1_000_000;
+
 /// Whether `text` is a counterexample of WX-4, and if so whether it is
 /// fractional.
 pub fn recognise(text: &str) -> Option<bool> {
     let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
     let integer = |s: &str| digits(s.strip_prefix('-').unwrap_or(s));
-    if text == "None" || integer(text) {
+    // A Python integer literal has no leading zero: `007` is a SyntaxError.
+    let literal = |s: &str| {
+        let magnitude = s.strip_prefix('-').unwrap_or(s);
+        digits(magnitude) && (magnitude == "0" || !magnitude.starts_with('0'))
+    };
+    if text == "None" || literal(text) {
         return Some(false);
     }
     if let Some(n) = text.strip_prefix("\"x\" * ") {
-        return digits(n).then_some(false);
+        // The module builds the string when pytest imports it, so a huge count
+        // would exhaust memory at collection.
+        return (literal(n) && n.parse::<usize>().is_ok_and(|n| n <= MAX_REPEAT)).then_some(false);
     }
     if let Some(d) = text.strip_prefix("Decimal(\"").and_then(|r| r.strip_suffix("\")")) {
         return match d.split_once('.') {
@@ -102,17 +112,25 @@ pub fn recognise(text: &str) -> Option<bool> {
     while let Some(c) = chars.next() {
         match c {
             '\\' => {
-                let width = match chars.next()? {
+                let escape = chars.next()?;
+                let width = match escape {
                     '\\' | '"' => 0,
                     'x' => 2,
                     'u' => 4,
                     'U' => 8,
                     _ => return None,
                 };
+                let mut code = 0u32;
                 for _ in 0..width {
-                    if !matches!(chars.next()?, '0'..='9' | 'a'..='f') {
+                    let digit = chars.next()?;
+                    if !matches!(digit, '0'..='9' | 'a'..='f') {
                         return None;
                     }
+                    code = code * 16 + digit.to_digit(16)?;
+                }
+                // Python rejects a `\U` escape above the last code point at compile time.
+                if escape == 'U' && code > 0x10ffff {
+                    return None;
                 }
             }
             '"' => return None,
@@ -280,17 +298,41 @@ pub fn write(dir: &Path, plan: &Plan, app_root: &Path) -> std::io::Result<()> {
     if plan.modules.is_empty() {
         return Ok(());
     }
-    let root = std::path::absolute(app_root)?;
+    // A bare file name has the empty path for its root, which cannot be made absolute.
+    let root = std::path::absolute(if app_root.as_os_str().is_empty() { Path::new(".") } else { app_root })?;
     let helper = format!(
         "{MARKER}\n\nAPP_ROOT = {}\nDJANGO_MODULES = [{}]\n\n{HELPER_SOURCE}",
         py_str(&root.to_string_lossy()),
         plan.django_modules.iter().map(|m| py_str(m)).collect::<Vec<_>>().join(", ")
     );
-    std::fs::write(dir.join(HELPER_FILE), helper)?;
+    write_new(&dir.join(HELPER_FILE), &helper)?;
     for module in &plan.modules {
-        std::fs::write(dir.join(&module.file_name), &module.contents)?;
+        write_new(&dir.join(&module.file_name), &module.contents)?;
     }
     Ok(())
+}
+
+/// Create `path`, and fail when anything already occupies it. The clear loop
+/// has removed every earlier generated file, so what remains at a name of
+/// ours is a file of the user's or a symbolic link, and `create_new` neither
+/// truncates the one nor follows the other.
+fn write_new(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                std::io::Error::new(
+                    e.kind(),
+                    format!("{} exists and was not written by this generator; move it aside", path.display()),
+                )
+            } else {
+                e
+            }
+        })?;
+    file.write_all(contents.as_bytes())
 }
 
 /// The stderr line of WX-1.
@@ -391,6 +433,12 @@ mod tests {
             "",
             "x",
             "\"x\" * -1",
+            "007",
+            "-01",
+            "\"x\" * 012",
+            "\"x\" * 1000001",
+            "\"x\" * 99999999999999999999999",
+            "\"\\U00110000\"",
             "Decimal(\"1e5\")",
             "Decimal(\".5\")",
             "\"a\" + __import__(\"os\")",
@@ -518,6 +566,53 @@ mod tests {
             .collect();
         assert_eq!(left.len(), 2, "{left:?}");
         assert!(own.exists());
+    }
+
+    #[test]
+    fn write_refuses_to_replace_a_file_it_did_not_write() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let own = dir.path().join(HELPER_FILE);
+        std::fs::write(&own, "mine\n").unwrap();
+        let out = output(vec![result("f", "Order.code", "length ≤ 12", Some("\"x\" * 12"))]);
+        let plan = plan(&out, &origins(&[("Order.code", 7, FieldLibrary::Django)]));
+        let err = write(dir.path(), &plan, Path::new("/app")).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read_to_string(&own).unwrap(), "mine\n");
+
+        // A module name of ours that the user's file already holds.
+        std::fs::remove_file(&own).unwrap();
+        let theirs = dir.path().join("test_cgv_witness_001_order_code.py");
+        std::fs::write(&theirs, "def test_mine(): pass\n").unwrap();
+        assert!(write(dir.path(), &plan, Path::new("/app")).is_err());
+        assert_eq!(std::fs::read_to_string(&theirs).unwrap(), "def test_mine(): pass\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_does_not_follow_a_symbolic_link() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        let victim = outside.path().join("conftest.py");
+        std::fs::write(&victim, "keep\n").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.path().join(HELPER_FILE)).unwrap();
+        let dangling = outside.path().join("never_created.py");
+        std::os::unix::fs::symlink(&dangling, dir.path().join("test_cgv_witness_001_order_code.py")).unwrap();
+
+        let out = output(vec![result("f", "Order.code", "length ≤ 12", Some("\"x\" * 12"))]);
+        let plan = plan(&out, &origins(&[("Order.code", 7, FieldLibrary::Django)]));
+        assert!(write(dir.path(), &plan, Path::new("/app")).is_err());
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep\n");
+        assert!(!dangling.exists());
+    }
+
+    #[test]
+    fn write_accepts_the_empty_root_of_a_bare_file_name() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let out = output(vec![result("f", "Order.code", "length ≤ 12", Some("\"x\" * 12"))]);
+        let plan = plan(&out, &origins(&[("Order.code", 7, FieldLibrary::Django)]));
+        write(dir.path(), &plan, Path::new("")).unwrap();
+        let helper = std::fs::read_to_string(dir.path().join(HELPER_FILE)).unwrap();
+        assert!(!helper.contains("APP_ROOT = \"\"\n"), "{helper}");
     }
 
     #[test]
