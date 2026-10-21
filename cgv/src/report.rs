@@ -55,6 +55,10 @@ pub struct CheckResult {
     pub target_requirement: String,
     pub verification_level: String,
     pub suggestion: String,
+    /// Python source text of a value the source admits and the target
+    /// rejects (WT-8); present only on some errors.
+    #[serde(default)]
+    pub counterexample: Option<String>,
 }
 
 impl CheckerOutput {
@@ -394,6 +398,9 @@ fn render_result(result: &CheckResult) -> String {
         lines.push("       Note: invisible to pairwise checking.".to_string());
     }
     lines.push(format!("       Suggestion: {}", result.suggestion));
+    if let (Class::Error, Some(text)) = (class, &result.counterexample) {
+        lines.push(format!("       counterexample: {text}"));
+    }
 
     lines.join("\n") + "\n"
 }
@@ -408,8 +415,50 @@ mod tests {
 
     const CLEAN_JSON: &str = r#"{"summary": {"contracts_checked": 4, "edges_checked": 2, "paths_checked": 1}, "results": [], "exit_code": 0}"#;
 
+    fn with_counterexample(json: &str, text: &str) -> String {
+        json.replacen(
+            "\"suggestion\":",
+            &format!("\"counterexample\": \"{text}\", \"suggestion\":"),
+            1,
+        )
+    }
+
     fn no_edges() -> BTreeMap<String, usize> {
         BTreeMap::new()
+    }
+
+    #[test]
+    fn counterexample_is_the_last_line_of_an_error_block() {
+        let json = with_counterexample(BUG1_JSON, "Decimal(\\\"0.000001\\\")");
+        let output = parse(&json).expect("should parse");
+        assert_eq!(
+            output.results[0].counterexample.as_deref(),
+            Some("Decimal(\"0.000001\")")
+        );
+        let text = render_text(&output, WarningDisplay::Default, &no_edges());
+        let block: Vec<&str> = text.lines().skip_while(|l| !l.starts_with("ERROR")).collect();
+        let block = &block[..block.iter().position(|l| l.is_empty()).unwrap()];
+        assert_eq!(
+            block.last().copied(),
+            Some("       counterexample: Decimal(\"0.000001\")")
+        );
+        assert!(block[block.len() - 2].starts_with("       Suggestion:"));
+    }
+
+    #[test]
+    fn error_without_counterexample_prints_no_such_line() {
+        let output = parse(BUG1_JSON).expect("should parse");
+        assert_eq!(output.results[0].counterexample, None);
+        let text = render_text(&output, WarningDisplay::Default, &no_edges());
+        assert!(!text.contains("counterexample"), "got:\n{text}");
+    }
+
+    #[test]
+    fn warning_never_prints_a_counterexample() {
+        let json = with_counterexample(&TRANSITIVE_JSON.replace("\"severity\": \"error\"", "\"severity\": \"warning\""), "11");
+        let output = parse(&json).expect("should parse");
+        let text = render_text(&output, WarningDisplay::Default, &no_edges());
+        assert!(!text.contains("counterexample:"), "got:\n{text}");
     }
 
     #[test]
