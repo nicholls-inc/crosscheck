@@ -43,3 +43,12 @@ def bill_caller_guarded(order: Order) -> None:
 def bill_when_known(order: Order) -> None:
     if order.customer.email:
         bill_caller_guarded(order)
+
+
+def bill_after_rebind(order: Order, other: Order) -> None:
+    # NOT AN ERROR: the guard narrowed the old customer; the link now points at
+    # another one, so the narrowing is forgotten and the read is unknown: a warning.
+    if order.customer.email is None:
+        return
+    order.customer = other.customer
+    Invoice.objects.create(email=order.customer.email, name="x", short="x")

@@ -98,6 +98,10 @@ pub struct Narrowed {
     /// (see `Effects::reached`): their fields still hold the values the
     /// caller passed.
     untouched: HashSet<String>,
+    /// Parameters of which no attribute (`p.a`) has been handed to other
+    /// code as a value on any path here (see `Effects::handed`): code that
+    /// holds `p.a` can write `p.a.f`, which `untouched` does not see.
+    links_untouched: HashSet<String>,
 }
 
 impl Narrowed {
@@ -171,13 +175,23 @@ impl Narrowed {
         self.untouched.contains(name)
     }
 
+    /// Whether no attribute of parameter `name` (`name.a`) has been handed
+    /// to other code as a value on any path to here: a caller's guard on a
+    /// chain `name.a.f` holds only then.
+    pub fn links_untouched(&self, name: &str) -> bool {
+        self.links_untouched.contains(name)
+    }
+
     /// The state after evaluating a node with effects `e`.
     pub fn apply(&mut self, e: &Effects) {
         self.names.retain(|n| e.keeps_member(n));
         if e.suspends {
             self.untouched.clear();
+            self.links_untouched.clear();
         } else {
             self.untouched.retain(|p| !e.reached.contains(p));
+            self.links_untouched
+                .retain(|p| !e.reached.contains(p) && !e.handed.contains(p));
         }
     }
 
@@ -202,6 +216,7 @@ impl Narrowed {
         for p in params {
             n.defs.insert(p.to_string(), vec![(Def::Param, false)]);
             n.untouched.insert(p.to_string());
+            n.links_untouched.insert(p.to_string());
         }
         n
     }
@@ -213,6 +228,7 @@ impl Narrowed {
         for b in rest {
             out.names.retain(|n| b.names.contains(n));
             out.untouched.retain(|n| b.untouched.contains(n));
+            out.links_untouched.retain(|n| b.links_untouched.contains(n));
             out.defs.retain(|name, defs| {
                 let Some(other) = b.defs.get(name) else {
                     return false;
@@ -642,6 +658,11 @@ pub struct Effects {
     /// as `x.f` or in an `is` test (an argument, a receiver `x.m(...)`, a
     /// value stored or returned, an operand that runs `x`'s dunders).
     pub reached: HashSet<String>,
+    /// Names `x` of which an attribute `x.a` is read as a value (an
+    /// argument, a stored or returned value) rather than only as the
+    /// receiver of a further attribute: the object `x.a` is then in other
+    /// code's hands, which can write its fields.
+    pub handed: HashSet<String>,
     /// It suspends (`await`, `yield`, `async for`, `async with`, an async
     /// comprehension): other code may then run on any object.
     suspends: bool,
@@ -718,8 +739,26 @@ impl<'a> Visitor<'a> for Effects {
             Expr::Name(n) if matches!(n.ctx, ExprContext::Load) => {
                 self.reached.insert(n.id.to_string());
             }
-            // `x.f` reads a field of `x` and hands `x` to nothing.
-            Expr::Attribute(a) if matches!(a.value.as_ref(), Expr::Name(_)) => return,
+            // `x.f` reads a field of `x` and hands `x` to nothing, but it hands
+            // the object `x.f` to whatever uses it as a value.
+            Expr::Attribute(a) => {
+                if let Expr::Name(n) = a.value.as_ref() {
+                    if matches!(a.ctx, ExprContext::Load) {
+                        self.handed.insert(n.id.to_string());
+                    }
+                    return;
+                }
+                // `x.a.f` reads a field of `x.a`: `x.a` is only the receiver.
+                let mut base = a.value.as_ref();
+                while let Expr::Attribute(inner) = base {
+                    if matches!(inner.value.as_ref(), Expr::Name(_)) {
+                        return;
+                    }
+                    base = inner.value.as_ref();
+                }
+                self.visit_expr(base);
+                return;
+            }
             // An identity test runs no code of its operands.
             Expr::Compare(c) if c.ops.iter().all(|op| matches!(op, CmpOp::Is | CmpOp::IsNot)) => {
                 for e in std::iter::once(c.left.as_ref()).chain(c.comparators.iter()) {
@@ -1617,6 +1656,19 @@ mod tests {
         assert_eq!(
             narrowing_at_uses(src),
             vec![names(&["o", "o.fk", "o.fk.x"]), names(&["o"]), names(&["o", "o.fk", "o.fk.x"]), names(&[])]
+        );
+    }
+
+    #[test]
+    fn test_rebinding_a_middle_link_forgets_its_chains_and_no_others() {
+        let src = "def f(o, c):\n    if o.a.b.x is None:\n        return\n    if o.other.x is None:\n        return\n    use()\n    o.a = c\n    use()\n";
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            narrowing_at_uses(src),
+            vec![
+                names(&["o", "o.a", "o.a.b", "o.a.b.x", "o.other", "o.other.x"]),
+                names(&["o", "o.other", "o.other.x"]),
+            ]
         );
     }
 

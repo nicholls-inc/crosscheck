@@ -728,8 +728,10 @@ impl<'a> Scope<'a> {
             f.params.iter().any(|p| p.name == root)
                 && !self.flow.assignments.contains_key(root)
                 && !self.flow.opaque.contains(root)
-                // No call can have written the field since the entry.
+                // No call can have written the field since the entry, nor, for
+                // a chain, been handed an object along it (`helper(p.a)`).
                 && ctx.narrowed.untouched(root)
+                && (!path.contains('.') || ctx.narrowed.links_untouched(root))
                 && self
                     .caller_guards
                     .and_then(|g| g.get(&f.qualified_name)?.get(root))
@@ -3508,6 +3510,21 @@ mod tests {
         assert_eq!(facts_of(&[("code.py", &guarded)], "code.f").nullable, None);
         let unguarded = format!("{guarded}def h(p: P):\n    f(p)\n");
         assert_eq!(facts_of(&[("code.py", &unguarded)], "code.f").nullable, Some(true));
+        // The guard on `p.a.code` holds only while no code holds `p.a`: it
+        // can write `p.a.code = None`, which the entry state does not show.
+        for (body, want) in [
+            ("    p.a.code\n", None),
+            // Reading fields of the link, or passing a value read from it, hands nothing over.
+            ("    p.a.name\n    p.a.code\n", None),
+            ("    print(p.a.code)\n    p.a.code\n", None),
+            ("    clear(p)\n    p.a.code\n", Some(true)),
+            ("    clear(p.a)\n    p.a.code\n", Some(true)),
+            ("    x = p.a\n    x.code = None\n    p.a.code\n", Some(true)),
+            ("    keep(p.a.name, p.a)\n    p.a.code\n", Some(true)),
+        ] {
+            let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
+            assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
+        }
     }
 
     /// CG-1.9: a field every caller narrows has unknown nullability, when

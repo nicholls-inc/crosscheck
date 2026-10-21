@@ -18,6 +18,12 @@
       "source_guarantee": "length ≤ 40",
       "target_requirement": "length ≤ 10",
       "target": "Invoice.short"
+    },
+    {
+      "path": "bill_handed -> Invoice.email",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Invoice.email"
     }
   ],
   "warnings": [
@@ -27,6 +33,10 @@
     },
     {
       "path": "bill_caller_guarded -> Invoice.email",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_after_rebind -> Invoice.email",
       "contains": "no nullability postcondition"
     }
   ]
