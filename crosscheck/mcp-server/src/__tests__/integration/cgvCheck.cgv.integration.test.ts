@@ -1,3 +1,6 @@
+// Runs locally only today: no CI job builds the CGV binaries, so this file always skips in CI (ER-1.22 adds it).
+// From the repository root:
+// (cd cgv && cargo build --release && cd prover && lake build contract-graph-checker) && cd crosscheck/mcp-server && npx vitest run src/__tests__/integration/cgvCheck.cgv.integration.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -89,6 +92,20 @@ describe.skipIf(!found)(title, () => {
     git("commit", "-q", "-m", "docs");
     const result = await cgvCheck({ repoPath: repo, path: "app", baseline: "HEAD~1" }, env);
     expect(result).toMatchObject({ success: true, baseline: base, exitCode: 0, record: null, findings: { results: [] } });
+    if (!result.success) throw new Error("expected success");
+    const counts = result.findings.baseline as { new: { errors: number }; existing: { errors: number } };
+    expect(counts.new.errors).toBe(0);
+    expect(counts.existing.errors).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("with a baseline whose .gitattributes marks a .py file export-ignore, finds the errors a checkout of it holds", async () => {
+    await writeFile(join(repo, ".gitattributes"), "app/models.py export-ignore\n");
+    const base = await commitFixture("bug1", "bug");
+    await writeFile(join(repo, "README.md"), "unrelated\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "docs");
+    const result = await cgvCheck({ repoPath: repo, path: "app", baseline: base }, env);
+    expect(result).toMatchObject({ success: true, baseline: base, exitCode: 0, findings: { results: [] } });
     if (!result.success) throw new Error("expected success");
     const counts = result.findings.baseline as { new: { errors: number }; existing: { errors: number } };
     expect(counts.new.errors).toBe(0);

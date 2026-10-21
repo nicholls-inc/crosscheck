@@ -1,5 +1,5 @@
 import { execFile, type ExecFileException } from "node:child_process";
-import { access, constants, mkdir, readFile, stat } from "node:fs/promises";
+import { access, constants, readFile, rm, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { git, treeChanges } from "../git.js";
@@ -157,6 +157,7 @@ function cgvFailed(what: string, ran: Run): string[] {
 
 const completed = (ran: Run): ran is Run & { exitCode: 0 | 1 } => ran.exitCode === 0 || ran.exitCode === 1;
 
+// Spec CK-5: a checkout, not `git archive`, which applies .gitattributes export rules that HEAD's work tree does not.
 async function writeBaseline(
   bins: Binaries,
   root: string,
@@ -164,23 +165,25 @@ async function writeBaseline(
   baseline: string,
   path: string
 ): Promise<string | string[]> {
-  const tar = join(tmp, "baseline.tar");
   const tree = join(tmp, "baseline-tree");
-  await mkdir(tree);
-  const archive = await git(root, ["archive", "--format=tar", `--output=${tar}`, baseline, ...(path === "." ? [] : ["--", path])]);
-  if (!archive.ok) return [`git could not archive ${path} at ${baseline}`];
-  const untar = await run("tar", ["-xf", tar, "-C", tree], tmp);
-  if (untar.failure !== null) return cgvFailed(`could not extract ${path} at ${baseline}: tar`, untar);
-  const file = join(tmp, "baseline.json");
-  const ran = await run(
-    bins.cli,
-    ["contracts", "check", join(tree, path), "--lean-checker", bins.checker, "--output-db", join(tmp, "baseline.sqlite"), "--write-baseline", file],
-    tree
-  );
-  const what = `crosscheck-contracts at the baseline ${baseline}`;
-  if (!completed(ran)) return cgvFailed(what, ran);
-  if (!(await stat(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
-  return file;
+  try {
+    const added = await git(root, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", tree, baseline]);
+    if (!added.ok) return [`git could not check out ${baseline} in ${tree}`];
+    const file = join(tmp, "baseline.json");
+    const ran = await run(
+      bins.cli,
+      ["contracts", "check", join(tree, path), "--lean-checker", bins.checker, "--output-db", join(tmp, "baseline.sqlite"), "--write-baseline", file],
+      tree
+    );
+    const what = `crosscheck-contracts at the baseline ${baseline}`;
+    if (!completed(ran)) return cgvFailed(what, ran);
+    if (!(await stat(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
+    return file;
+  } finally {
+    await git(root, ["worktree", "remove", "--force", tree]);
+    await rm(tree, { recursive: true, force: true }).catch(() => undefined);
+    await git(root, ["worktree", "prune"]);
+  }
 }
 
 async function readRecord(file: string, commit: string): Promise<JsonObject | string> {

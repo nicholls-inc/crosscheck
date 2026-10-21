@@ -166,6 +166,33 @@ describe("cgv_check over MCP", () => {
       expect(existsSync(dirname(written))).toBe(false);
     });
 
+    it("checks the baseline in a checkout of it, so .gitattributes export rules do not change its files (CK-5)", async () => {
+      await writeFile(join(repo, ".gitattributes"), "app/models.py export-ignore\napp/views.py export-subst\n");
+      await writeFile(join(repo, "app", "views.py"), "$Format:%H$\n");
+      git("add", ".");
+      git("commit", "-q", "-m", "attributes");
+      const attributed = git("rev-parse", "HEAD");
+      await writeFile(join(repo, "README"), "x");
+      git("add", ".");
+      git("commit", "-q", "-m", "docs");
+      stubRuns({ baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
+      expect(await call({ baseline: attributed })).toMatchObject({ success: true, baseline: attributed });
+      const [baselineRun] = await calls();
+      expect(baselineRun.kind).toBe("baseline");
+      expect(baselineRun.projectFiles).toEqual({ "models.py": "NEW\n", "views.py": "$Format:%H$\n" });
+    });
+
+    it.each([
+      ["completes", { baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } }],
+      ["fails", { baseline: { exit: 2, stderr: "boom" }, full: { exit: 0, record: {} } }],
+    ])("removes the baseline checkout when the baseline run %s (CK-12)", async (_, runs) => {
+      stubRuns(runs as Runs);
+      await call({ baseline: base });
+      const [baselineRun] = await calls();
+      expect(git("worktree", "list", "--porcelain").split("\n").filter((l) => l.startsWith("worktree "))).toEqual([`worktree ${repo}`]);
+      expect(existsSync(baselineRun.cwd)).toBe(false);
+    });
+
     it("with a baseline, returns no record when the full run exits 1, even though no error is new", async () => {
       stubRuns({ baseline: { exit: 1 }, full: { exit: 1 }, diff: { exit: 0 } });
       expect(await call({ baseline: base })).toMatchObject({ success: true, exitCode: 0, record: null });

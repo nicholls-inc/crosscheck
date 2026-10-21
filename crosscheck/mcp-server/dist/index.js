@@ -21708,7 +21708,7 @@ async function dafnyEvidence(input) {
 
 // src/tools/cgvCheck.ts
 import { execFile as execFile2 } from "node:child_process";
-import { access, constants, mkdir as mkdir2, readFile as readFile3, stat as stat2 } from "node:fs/promises";
+import { access, constants, readFile as readFile3, rm as rm2, stat as stat2 } from "node:fs/promises";
 import { delimiter, isAbsolute as isAbsolute2, join as join5 } from "node:path";
 var cgvCheckInputShape = {
   repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
@@ -21805,23 +21805,25 @@ function cgvFailed(what, ran) {
 }
 var completed = (ran) => ran.exitCode === 0 || ran.exitCode === 1;
 async function writeBaseline(bins, root, tmp, baseline, path) {
-  const tar = join5(tmp, "baseline.tar");
   const tree = join5(tmp, "baseline-tree");
-  await mkdir2(tree);
-  const archive = await git(root, ["archive", "--format=tar", `--output=${tar}`, baseline, ...path === "." ? [] : ["--", path]]);
-  if (!archive.ok) return [`git could not archive ${path} at ${baseline}`];
-  const untar = await run("tar", ["-xf", tar, "-C", tree], tmp);
-  if (untar.failure !== null) return cgvFailed(`could not extract ${path} at ${baseline}: tar`, untar);
-  const file = join5(tmp, "baseline.json");
-  const ran = await run(
-    bins.cli,
-    ["contracts", "check", join5(tree, path), "--lean-checker", bins.checker, "--output-db", join5(tmp, "baseline.sqlite"), "--write-baseline", file],
-    tree
-  );
-  const what = `crosscheck-contracts at the baseline ${baseline}`;
-  if (!completed(ran)) return cgvFailed(what, ran);
-  if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
-  return file;
+  try {
+    const added = await git(root, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", tree, baseline]);
+    if (!added.ok) return [`git could not check out ${baseline} in ${tree}`];
+    const file = join5(tmp, "baseline.json");
+    const ran = await run(
+      bins.cli,
+      ["contracts", "check", join5(tree, path), "--lean-checker", bins.checker, "--output-db", join5(tmp, "baseline.sqlite"), "--write-baseline", file],
+      tree
+    );
+    const what = `crosscheck-contracts at the baseline ${baseline}`;
+    if (!completed(ran)) return cgvFailed(what, ran);
+    if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
+    return file;
+  } finally {
+    await git(root, ["worktree", "remove", "--force", tree]);
+    await rm2(tree, { recursive: true, force: true }).catch(() => void 0);
+    await git(root, ["worktree", "prune"]);
+  }
 }
 async function readRecord(file, commit) {
   const text = await readFile3(file, "utf-8").catch(() => null);
