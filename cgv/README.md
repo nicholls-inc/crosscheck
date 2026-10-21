@@ -209,7 +209,7 @@ cd prover && lake build
 cd prover && lake build ContractGraph ContractGraph.Main
 ```
 
-`lake build` verifies the soundness theorems — per edge and per path (`checkEdge_sound`, `checkEdgeAll_sound`, `checkPath_sound(_noErrors)`), completeness of the search (`enumeratePaths_complete`, `closedStates_checkPath`) and the end-to-end `runChecker_sound_all` (exit 0 ⇒ every data path is stepwise sound) — and the test modules in `ContractGraphTest/` (BugReport1, DataflowV2, DedupeTest, NoErrorsSoundness, NullableDemo, Round3, Round5, Round6, SoundnessDemo, StateSearch, TransitiveDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
+`lake build` verifies the soundness theorems — per edge and per path (`checkEdge_sound`, `checkEdgeAll_sound`, `checkPath_sound(_noErrors)`), completeness of the search (`enumeratePaths_complete`, `closedStates_checkPath`) and the end-to-end `runChecker_sound_all` (exit 0 ⇒ every data path is stepwise sound), with `runCheckerCx_fst`, which shows that the report the binary prints is `runChecker`'s — and the test modules in `ContractGraphTest/` (BugReport1, DataflowV2, DedupeTest, NoErrorsSoundness, NullableDemo, Round3, Round5, Round6, SoundnessDemo, StateSearch, TransitiveDemo). If any proof has a gap (`sorry`), `lake build` will report a warning.
 
 ### Full pipeline on every fixture
 
