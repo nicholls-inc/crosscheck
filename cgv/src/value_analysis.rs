@@ -2481,16 +2481,17 @@ fn declared_field_facts(class: &ClassInfo, field: &str) -> ValueFacts {
     }
 }
 
-/// The declared facts of field `field` of `class` read through a link
-/// (`obj.link.field`), except that a declared non-null is unknown: a write
-/// through a chain or an alias (`a.b.f = None`, `x = a.b; x.f = None`) is not
-/// yet checked against the field, so the stored value may be None (CG-1.52).
+/// What a read of field `field` of `class` through a link (`obj.link.field`)
+/// gives when nothing else is known: nullable when the field is declared
+/// nullable, else nothing. A write through a chain or an alias (`a.b.f = v`,
+/// `x = a.b; x.f = v`) is not yet checked against the field, so the stored
+/// value may break any declared guarantee (CG-1.52).
 fn linked_declared_facts(class: &ClassInfo, field: &str) -> ValueFacts {
-    let mut facts = declared_field_facts(class, field);
-    if facts.nullable == Some(false) {
-        facts.nullable = None;
+    if declared_field_facts(class, field).nullable == Some(true) {
+        ValueFacts::nullable()
+    } else {
+        ValueFacts::default()
     }
-    facts
 }
 
 /// The possible values of a string literal after a case-mapping method,
@@ -3504,6 +3505,15 @@ mod tests {
         ] {
             assert_eq!(f(body), want, "{body}");
         }
+        // For the same reason no other declared guarantee carries through a link.
+        let limited = "from pydantic import BaseModel, Field\nclass A(BaseModel):\n    \
+                       name: str = Field(max_length=4)\nclass P(BaseModel):\n    a: A\n";
+        let read = |body: &str| {
+            let facts = facts_of(&[("code.py", &format!("{limited}{body}"))], "code.f");
+            (facts.max_length, facts.type_name)
+        };
+        assert_eq!(read("def f(a: A):\n    a.name\n"), (Some(4), Some("str".to_string())));
+        assert_eq!(read("def f(p: P):\n    p.a.name\n"), (None, None));
         // CG-1.9 lowering: every caller narrows the chain.
         let reader = format!("{records}def f(p: P):\n    p.a.code\n");
         let guarded = format!("{reader}def g(p: P):\n    if p.a.code:\n        f(p)\n");
