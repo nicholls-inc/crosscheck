@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from models import Entry, Payload, clear
+from models import Address, Entry, Payload, clear
 
 
 def store_negated(value: object) -> Entry:
@@ -89,4 +89,64 @@ def store_chain_handed(payload: Payload) -> Entry:
     if isinstance(payload.address.postcode, str):
         clear(payload.address)
         return Entry.objects.create(text=payload.address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_alias_before(payload: Payload) -> Entry:
+    # BUG: other is the payload before the test, so code can write through it after.
+    other = payload
+    if isinstance(payload.address.postcode, str):
+        other.address.postcode = None
+        return Entry.objects.create(text=payload.address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_link_alias_before(payload: Payload) -> Entry:
+    # BUG: addr is the address before the test, so code can write through it after.
+    addr = payload.address
+    if isinstance(payload.address.postcode, str):
+        addr.postcode = None
+        return Entry.objects.create(text=payload.address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_param_alias_before(address: Address) -> Entry:
+    # BUG: other is the address before the test, so code can write through it after.
+    other = address
+    if isinstance(address.postcode, str):
+        other.postcode = None
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_closure_before(payload: Payload) -> Entry:
+    # BUG: reset() clears the address, and it was made before the test.
+    reset = lambda: clear(payload.address)
+    if isinstance(payload.address.postcode, str):
+        reset()
+        return Entry.objects.create(text=payload.address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_walrus_in_test(value: object, fallback: Optional[str]) -> Entry:
+    # BUG: the walrus rebinds value to an Optional inside the test.
+    if isinstance(value, str) and (value := fallback) is None:
+        return Entry.objects.create(text=value)
+    return Entry.objects.create(text="x")
+
+
+def store_dict_write(address: Address) -> Entry:
+    # BUG: the write goes through __dict__ and names no attribute.
+    if isinstance(address.postcode, str):
+        address.__dict__["postcode"] = None
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_dict_alias_before(address: Address) -> Entry:
+    # BUG: fields is the attribute table before the test, so code can write through it after.
+    fields = address.__dict__
+    if isinstance(address.postcode, str):
+        fields["postcode"] = None
+        return Entry.objects.create(text=address.postcode)
     return Entry.objects.create(text="x")
