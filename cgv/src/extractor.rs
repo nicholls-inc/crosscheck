@@ -1530,6 +1530,50 @@ mod tests {
         assert_eq!(links("records.Plain"), Vec::<String>::new());
     }
 
+    /// CG-1.28 review: a data class takes an inherited annotation as `dataclasses.fields`
+    /// does, from the first base in C3 order that has the field, through that base's own
+    /// inherited fields; and a base that is not a project model, ahead of the project model
+    /// that declares a link, may declare the same name, so the link is not inherited.
+    #[test]
+    fn test_links_follow_python_lookup_order() {
+        let p = project(&[
+            (
+                "billing/models.py",
+                "from django.db import models\nfrom ext import OwnerMixin\n\
+                 class Customer(models.Model):\n    name = models.CharField(max_length=5)\n\
+                 class Base(models.Model):\n    owner = models.ForeignKey(Customer, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
+                 class Local:\n    owner = None\n\
+                 class Hidden(OwnerMixin, Base):\n    pass\n\
+                 class HiddenLocal(Local, Base):\n    pass\n\
+                 class Kept(Base, OwnerMixin):\n    pass\n",
+            ),
+            (
+                "records.py",
+                "from dataclasses import dataclass\n\
+                 @dataclass\nclass Address:\n    city: str\n\
+                 @dataclass\nclass Other:\n    zip: str\n\
+                 @dataclass\nclass A:\n    x: Address\n\
+                 @dataclass\nclass B:\n    x: Other\n\
+                 @dataclass\nclass C(A, B):\n    pass\n\
+                 @dataclass\nclass Z:\n    x: Address\n\
+                 @dataclass\nclass A2(Z):\n    pass\n\
+                 @dataclass\nclass B2(Z):\n    x: Other\n\
+                 @dataclass\nclass D(A2, B2):\n    pass\n",
+            ),
+        ]);
+        let links = |q: &str| {
+            let mut v: Vec<String> = p.index.classes[q].links.iter().map(|(f, l)| format!("{f} {}", l.class)).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(links("records.C"), ["x records.Address"]);
+        // `fields(D)` takes `x` from `A2`'s fields, which `A2` inherits from `Z`.
+        assert_eq!(links("records.D"), ["x records.Address"]);
+        assert_eq!(links("billing.models.Hidden"), Vec::<String>::new());
+        assert_eq!(links("billing.models.HiddenLocal"), Vec::<String>::new());
+        assert_eq!(links("billing.models.Kept"), ["owner billing.models.Customer"]);
+    }
+
     /// Round 3 D3: models inheriting from project-local bases.
     #[test]
     fn test_django_inheritance() {
