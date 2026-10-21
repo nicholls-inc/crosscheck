@@ -88,7 +88,7 @@ export function createServer(): McpServer {
 
   server.tool(
     "dafny_cleanup",
-    "Remove stale Dafny/Lean temp directories (older than 30 minutes) from /tmp.",
+    "Remove stale Dafny, Lean and cgv_check temp directories (older than 30 minutes) from /tmp.",
     {},
     async () => {
       const result = await dafnyCleanup();

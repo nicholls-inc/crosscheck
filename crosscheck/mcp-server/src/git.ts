@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 
 // `git ls-files -v` prints a line per tracked file, so the 1 MiB default would refuse a large repository.
-const GIT_MAX_BUFFER = 512 * 1024 * 1024;
+export const GIT_MAX_BUFFER = 512 * 1024 * 1024;
 
 export interface GitOptions {
   input?: string;

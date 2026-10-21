@@ -21819,7 +21819,7 @@ var NO_FETCH = { env: { ...process.env, GIT_NO_LAZY_FETCH: "1" } };
 async function listTree(root, rev, path) {
   const listed = await git(root, ["ls-tree", "-r", "-z", rev, ...path === "." ? [] : ["--", path]], NO_FETCH);
   if (!listed.ok) return `git could not list ${path} at ${rev}`;
-  const tree = { blobs: [], refusals: [] };
+  const tree = { blobs: [], refusals: [], submodules: [] };
   for (const line of listed.stdout.split("\0").filter((l) => l !== "")) {
     const m = /^(\d{6}) \S+ ([0-9a-f]+)\t(.*)$/s.exec(line);
     if (m === null) return `git printed an entry cgv_check cannot read at ${rev}: ${JSON.stringify(line)}`;
@@ -21827,8 +21827,11 @@ async function listTree(root, rev, path) {
     if (entry.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) tree.refusals.push(`${JSON.stringify(entry)} at ${rev} is not a plain relative path`);
     else if (mode === "100644" || mode === "100755") tree.blobs.push({ oid, path: entry });
     else if (mode === "120000") tree.refusals.push(`${entry} is a symbolic link at ${rev}; cgv_check writes no link into the baseline tree`);
-    else if (mode === "160000") tree.refusals.push(`${entry} is a submodule at ${rev}; cgv_check cannot check a submodule`);
-    else tree.refusals.push(`${entry} has mode ${mode} at ${rev}, which is not a regular file`);
+    else if (mode === "160000") {
+      const refusal = `${entry} is a submodule at ${rev}; cgv_check cannot check a submodule`;
+      tree.refusals.push(refusal);
+      tree.submodules.push(refusal);
+    } else tree.refusals.push(`${entry} has mode ${mode} at ${rev}, which is not a regular file`);
   }
   return tree;
 }
@@ -21838,7 +21841,7 @@ async function filteredPython(root, rev, blobs) {
   const where = rev ?? "HEAD";
   const source = rev === null ? [] : ["--source", rev];
   const checked = await git(root, ["check-attr", "-z", "--stdin", ...source, "filter"], { ...NO_FETCH, input: py.join("\0") + "\0" });
-  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}`];
+  if (!checked.ok) return [`git could not read the filter attribute of the .py files at ${where}${rev === null ? "" : " (reading it at a revision needs git 2.40 or later, and the no-lazy-fetch guard needs 2.44 or later)"}`];
   const fields = checked.stdout.split("\0");
   const errors = [];
   for (let i = 0; i + 2 < fields.length; i += 3) {
@@ -21853,7 +21856,7 @@ async function buildTree(root, rev, blobs, tree) {
   await mkdir2(tree, { recursive: true });
   if (blobs.length === 0) return null;
   const batch = await gitBytes(root, ["cat-file", "--batch"], { ...NO_FETCH, input: blobs.map((b) => b.oid).join("\n") + "\n" });
-  if (!batch.ok) return `git could not read the blobs of ${rev}`;
+  if (!batch.ok) return `git could not read the blobs of ${rev} (they are read in one go, which fails above ${mibOrBytes(GIT_MAX_BUFFER)} in total)`;
   let at = 0;
   for (const blob of blobs) {
     const eol = batch.stdout.indexOf(10, at);
@@ -21862,7 +21865,12 @@ async function buildTree(root, rev, blobs, tree) {
     const size = Number(header[2]);
     const file = join5(tree, blob.path);
     await mkdir2(dirname2(file), { recursive: true });
-    await writeFile4(file, batch.stdout.subarray(eol + 1, eol + 1 + size));
+    try {
+      await writeFile4(file, batch.stdout.subarray(eol + 1, eol + 1 + size), { flag: "wx" });
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      return `${blob.path} at ${rev} is the same file as another committed path on this file system, so the baseline tree cannot hold both`;
+    }
     at = eol + 1 + size + 1;
   }
   return null;
@@ -21946,6 +21954,7 @@ async function cgvCheck(input, env = process.env, limits = DEFAULT_LIMITS) {
   if (problem !== null) return refuse2([problem]);
   const headTree = await listTree(root, commit, input.path);
   if (typeof headTree === "string") return refuse2([headTree]);
+  if (headTree.submodules.length > 0) return refuse2(headTree.submodules.map((e) => `at HEAD ${commit}: ${e}`));
   const headFiltered = await filteredPython(root, null, headTree.blobs);
   if (headFiltered.length > 0) return refuse2(headFiltered);
   let baseline = null;
@@ -22163,7 +22172,7 @@ function createServer() {
   );
   server.tool(
     "dafny_cleanup",
-    "Remove stale Dafny/Lean temp directories (older than 30 minutes) from /tmp.",
+    "Remove stale Dafny, Lean and cgv_check temp directories (older than 30 minutes) from /tmp.",
     {},
     async () => {
       const result = await dafnyCleanup();

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../../index.js";
-import { BUILD_COMMAND, cgvCheck, DEFAULT_LIMITS } from "../../tools/cgvCheck.js";
+import { BUILD_COMMAND, buildTree, cgvCheck, DEFAULT_LIMITS } from "../../tools/cgvCheck.js";
 
 // A stand-in for crosscheck-contracts. FAKE_CGV holds, per run (baseline, full, diff), the exit code,
 // stdout and stderr to give, and what to do while running. Each call is logged to FAKE_CGV_LOG.
@@ -263,6 +263,11 @@ describe("cgv_check over MCP", () => {
       expect(await call({})).toEqual(refused([`work tree differs from ${head}: skip-worktree hides changes to app/views.py`]));
     });
 
+    it("CK-3: a file marked assume-unchanged", async () => {
+      git("update-index", "--assume-unchanged", "app/views.py");
+      expect(await call({})).toEqual(refused([`work tree differs from ${head}: assume-unchanged hides changes to app/views.py`]));
+    });
+
     it.each([
       ["missing", "not committed: missing"],
       ["app/views.txt", "not committed: app/views.txt"],
@@ -316,6 +321,53 @@ describe("cgv_check over MCP", () => {
         refused([`at the baseline ${withSubmodule}: app/vendored is a submodule at ${withSubmodule}; cgv_check cannot check a submodule`])
       );
       expect(await calls()).toEqual([]);
+    });
+
+    it("CK-4: a submodule at path", async () => {
+      git("update-index", "--add", "--cacheinfo", `160000,${base},vendored`);
+      git("commit", "-q", "-m", "submodule");
+      const now = git("rev-parse", "HEAD");
+      await mkdir(join(repo, "vendored"));
+      expect(await call({ path: "vendored" })).toEqual(refused([`vendored is a submodule at ${now}`]));
+      expect(await call({ baseline: base, path: "vendored" })).toEqual(refused([`vendored is a submodule at ${now}`]));
+      expect(await calls()).toEqual([]);
+    });
+
+    it("CK-5: a submodule under the project at HEAD, with no baseline, because CGV walks into its work tree", async () => {
+      git("update-index", "--add", "--cacheinfo", `160000,${base},app/vendored`);
+      git("commit", "-q", "-m", "submodule");
+      const now = git("rev-parse", "HEAD");
+      await mkdir(join(repo, "app", "vendored"));
+      expect(await call({})).toEqual(
+        refused([`at HEAD ${now}: app/vendored is a submodule at ${now}; cgv_check cannot check a submodule`])
+      );
+      expect(await calls()).toEqual([]);
+    });
+
+    // git hash-object --literally writes trees that git add and git mktree would refuse to build.
+    it("CK-5: a baseline entry with a path segment of ..", async () => {
+      const blob = git("rev-parse", `${base}:app/models.py`);
+      const raw = (entries: Array<[string, string]>, oid: (n: string) => string) =>
+        Buffer.concat(entries.map(([mode, name]) => Buffer.concat([Buffer.from(`${mode} ${name}\0`), Buffer.from(oid(name), "hex")])));
+      const write = (type: string, body: Buffer) =>
+        execFileSync("git", ["-C", repo, "hash-object", "-w", "-t", type, "--literally", "--stdin"], { input: body }).toString().trim();
+      const inner = write("tree", raw([["100644", ".."]], () => blob));
+      const outer = write("tree", raw([["40000", "app"]], () => inner));
+      const crafted = git("commit-tree", outer, "-m", "crafted");
+      const body = await call({ baseline: crafted });
+      expect(body.success).toBe(false);
+      expect(body.errors).toEqual([
+        `at the baseline ${crafted}: "app/.." at ${crafted} is not a plain relative path`,
+      ]);
+      expect(await calls()).toEqual([]);
+    });
+
+    it("CK-5: two baseline entries that are the same file on this file system are refused, not overwritten", async () => {
+      const oid = git("rev-parse", `${base}:app/models.py`);
+      const tree = join(scratch, "collide");
+      expect(await buildTree(repo, base, [{ oid, path: "app/a.py" }, { oid, path: "app/a.py" }], tree)).toBe(
+        `app/a.py at ${base} is the same file as another committed path on this file system, so the baseline tree cannot hold both`
+      );
     });
 
     it("CK-5: a .py file with a filter attribute at the baseline", async () => {
