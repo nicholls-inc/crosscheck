@@ -20,7 +20,7 @@ The full check also lists the axioms of every theorem and breaks two premises on
 formal-verification/requirements/check.sh
 ```
 
-It fails if any theorem uses an axiom other than `propext`, `Classical.choice` and `Quot.sound` (so a `sorry` fails it). It then builds two broken copies of `Requirements/PriceAmount.lean` in a temporary directory. In one, A2 says the currency has no minor unit. In the other, S1 allows three decimal places. Each copy must fail inside `requirement_holds`:
+It fails if any of the six theorems listed in `Axioms.lean` uses an axiom other than `propext`, `Classical.choice` and `Quot.sound` (so a `sorry` in one of them fails it). A new theorem has to be added to `Axioms.lean` and to the count in `check.sh` to be covered. It then builds two broken copies of `Requirements/PriceAmount.lean` in a temporary directory. In one, A2 says the currency has no minor unit. In the other, S1 allows three decimal places. Each copy must fail with a build error inside `requirement_holds`. That shows the proof is sensitive to those two clauses only. That A1, A3 and S2 are needed is shown by the `*_needed` theorems, which `check.sh` does not mutate:
 
 ```text
 'Requirements.PriceAmount.requirement_holds' depends on axioms: [propext, Quot.sound]
@@ -45,11 +45,11 @@ In Lean this is `Requirement`. It speaks of the stored prices, the currency, and
 
 ### 2. The spec of the code boundary
 
-> **S1.** Every amount the application writes to `Price.amount` has at most two decimal places.
+> **S1.** Every amount the application writes to `Price.amount` on the data paths that CGV checks has at most two decimal places.
 >
-> **S2.** Every amount the application writes to `Price.amount` is between -999.99 and 999.99.
+> **S2.** Every amount the application writes to `Price.amount` on the data paths that CGV checks is between -999.99 and 999.99.
 
-In Lean these are `SpecPrecision`, `SpecRange` and `Spec`. They are the two contracts that CGV extracts from the field.
+In Lean these are `SpecPrecision`, `SpecRange` and `Spec`. They are two of the three contracts that CGV extracts from the field. The third is an implicit non-null contract. It is not modelled: `Dec` has no NULL, so `Requirement` speaks of stored prices that are not NULL, and that is not yet stated as a clause or an assumption.
 
 ### 3. The assumptions about the world
 
@@ -65,7 +65,7 @@ None of these can be proved, by design. Each is a fact about the world, so it is
 
 `requirement_holds` proves `Spec w → StoredWasWritten w → CurrencyHasCents w → ProviderLimit w → Requirement w` for every world `w`. It has no `sorry`, and it uses only `propext` and `Quot.sound`.
 
-Five more theorems (`storedWasWritten_needed`, `currencyHasCents_needed`, `providerLimit_needed`, `specPrecision_needed`, `specRange_needed`) show that each premise is needed. For each one, they build a world where the other four hold and R fails. For example, with a currency whose exponent is 0, as for JPY, a stored `0.01` is not a whole number of minor units.
+Five more theorems (`storedWasWritten_needed`, `currencyHasCents_needed`, `providerLimit_needed`, `specPrecision_needed`, `specRange_needed`) show that each premise is needed. For each one, they build a world where the other four hold and R fails. "Needed" means the premise cannot be dropped, not that its constants are tight. S2's 999.99 is far inside A3's limit, and `requirement_holds` only uses A3 up to 99,999 minor units. For example, with a currency whose exponent is 0, as for JPY, a stored `0.01` is not a whole number of minor units.
 
 ### 5. The trace from a CGV contract to the requirement
 
@@ -79,12 +79,12 @@ cargo build --release && (cd prover && lake build)
   --exclude bad.py --lean-checker ./prover/.lake/build/bin/contract-graph-checker
 ```
 
-This exits 0. Without `--exclude bad.py`, it exits 1 and reports three range errors. Two of them are on `Price.amount` (`123456.78` and `-1000`). Those writes break S2, so for the full fixture `Spec` does not hold and this proof says nothing about the requirement. The `example`s at the end of `PriceAmount.lean` evaluate S1 and S2 on the fixture's values, and they agree with CGV's verdicts.
+This exits 0 and reports `0 unverified`. Both matter, because CGV counts a hop whose source gives no guarantee as unverified instead of as an error, so exit 0 alone does not show that every write is checked. Without `--exclude bad.py`, it exits 1 and reports three range errors. Two of them are on `Price.amount` (`123456.78` and `-1000`). Those writes break S2, so for the full fixture `Spec` does not hold and this proof says nothing about the requirement. The `example`s at the end of `PriceAmount.lean` evaluate S1 and S2 on the fixture's values, and they agree with CGV's verdicts on those values. Nothing mechanical ties them to CGV's output yet.
 
 | Link | From → to | Evidence | Strength |
 | --- | --- | --- | --- |
-| 1 | The code → CGV's contracts hold on every checked data path | CGV exit 0 on the command above, and `runChecker_sound_all` in `cgv/prover/ContractGraph/Main.lean` | Proved, relative to the trusted base: the Lean kernel, the Rust extractor, `Translation.lean` and `BehaviorModel.lean`. Extraction is not proved (issue #16). |
-| 2 | CGV's contracts → `Spec` (S1 and S2) | The two clauses were written by reading the contracts in CGV's database: `precision` with `decimal_places = 2`, and `range` from -999.99 to 999.99. The four `example`s check them on four fixture values. | Judged. No theorem relates `Spec` to CGV's Lean definitions. RQ-1.2 makes this link proved. |
+| 1 | The code → CGV's contracts hold on every checked data path | CGV exit 0 with `0 unverified` on the command above, and `runChecker_sound_all` in `cgv/prover/ContractGraph/Main.lean` | Proved, relative to the trusted base: the Lean kernel, the Rust extractor, `Translation.lean` and `BehaviorModel.lean`. Extraction is not proved (issue #16). |
+| 2 | CGV's contracts → `Spec` (S1 and S2) | The two clauses were written by reading the contracts in CGV's database: `precision` with `decimal_places = 2`, and `range` from -999.99 to 999.99. The four `example`s check them on four fixture values. | Judged by the authoring agent, and not yet judged by a person. No theorem relates `Spec` to CGV's Lean definitions. RQ-1.2 makes this link proved. |
 | 3 | `Spec` and A1 to A3 → R | `requirement_holds`, rerun by `lake build` | Proved, relative to the assumptions and the Lean kernel |
 | 4 | A1 to A3 are true of the world | The observations in the table above | Observed, and not yet observed for this example |
 | 5 | R achieves the goal | A person who knows payments reads R | Judged, and not yet judged |
@@ -93,4 +93,5 @@ This exits 0. Without `--exclude bad.py`, it exits 1 and reports three range err
 
 - The provider also refuses charges below a minimum. R does not say that a stored price is above the minimum, because the field contract does not serve that. It would be a second requirement, served by a different spec.
 - On PostgreSQL, the column type `numeric(5, 2)` also bounds what is stored. That is a second route to R, through an assumption about the database instead of a spec of the code. This example takes the route through the code, because that route is the one CGV checks.
+- `Dec` has a natural number of places, so it does not represent a `Decimal` with a positive exponent such as `Decimal('1E+3')`, nor NaN or Infinity. The fixture writes none of them. How CGV and Django treat them is not yet reached here.
 - Nothing in CI reruns this package yet. RQ-1.3 adds it.
