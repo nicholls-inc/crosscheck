@@ -4,6 +4,15 @@ This is the repo-root journal — the broadest shard in the sharded-journal arch
 
 ---
 
+## 2026-10-21 - CGV errors carry a proved counterexample, paired outside the protected reporting
+
+**Type:** feature
+**Touches:** cgv/prover/ContractGraph/Counterexample.lean, cgv/prover/ContractGraph/Main.lean, cgv/prover/ContractGraphTest/Counterexample.lean, cgv/src/report.rs, cgv/scripts/check-fixtures.sh, cgv/tests/e2e_counterexample.rs, cgv/test_fixtures/*/expected.json, docs/TASKS.md
+**Why:** A reader of a CGV error had no value to run to check it (issue #8, CG-1.35).
+**Links:** [intent](intent/2026-10-21-error-counterexample.md), [spec](intent/2026-10-07-error-witness-spec.md)
+
+The split's intent expected a defaulted `counterexample` field on `ResultEntry` to leave the statement manifest unchanged. It does not: the manifest records the constructor's type and the value hash of every reporting function `runChecker` calls. So `main` calls `runCheckerCx`, which mirrors the reporting functions on (entry, counterexample) pairs, and `runCheckerCx_fst` proves its output is `runChecker`'s. A later field that the report needs can follow the same route instead of a Tier 3 change. The counterexample's strength is proved relative to the translated constraints; no library has run it yet (CG-1.37).
+
 ## 2026-10-07 - Every slash-reference in Crosscheck's live Markdown resolves, and the skill catalogue is generated
 
 **Type:** feature

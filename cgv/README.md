@@ -120,6 +120,7 @@ prover/                     Lean checker + proofs
 │   ├── Search.lean         Pruned, indexed search with budget; completeness
 │   ├── StateSearch.lean    State-based breadth-first checker (runChecker), closedStates_checkPath
 │   ├── Diagnostics.lean    Structured error reporting
+│   ├── Counterexample.lean A value each error's source admits and its target rejects, with proof
 │   └── Main.lean           Entry point, JSON output, runChecker_sound_all
 └── ContractGraphTest/      #guard test modules (one per feature round)
 
@@ -297,6 +298,8 @@ A syntax error in any file stops the run (exit 2) unless `--allow-parse-errors` 
 
 The text report prints each error and each warning as a block. A missing guarantee, where a hop's source has no guarantee of the constraint kind that its target requires, is not a finding, so by default the report does not print it. It counts it as an unverified requirement in the `COVERAGE BY MODULE` section, which gives, for each top-level module, the edges checked and the unverified requirements by kind, and in the `RESULT:` line. `--warnings` also prints each unverified requirement as an `UNVERIFIED` block ("no nullability guarantee for the value `f` passes to `T`"). `--no-warnings` hides the warning blocks as well. Every hidden block is still counted. An incomplete run (exit 2) has no coverage section. The JSON output keeps every warning unchanged. The rules are UC-1 to UC-10 in `intent/2026-10-07-cgv-unverified-coverage-spec.md`.
 
+An error of kind `length`, `precision`, `range`, `range_min`, `choices` or `nullability` carries a counterexample: a Python value that the source constraint admits and the target constraint rejects, such as `"x" * 64` against `length ≤ 32`, `Decimal("0.0001")` against `precision ≤ 3`, or `None` against a non-null field. The JSON gives it as `"counterexample"` and the text report prints it as the last line of the error block. Its strength is proved, relative to the translated constraints: `checkConstraintPair_counterexample` in `prover/ContractGraph/Counterexample.lean` shows that the source bound admits it and the target bound rejects it. No library has run it. Whether Django or pydantic rejects it is not yet tested (CG-1.37), and neither is whether the code can produce it (CG-1.39). The value satisfies the one source constraint the error names, not every constraint on the source. A `type` error, a warning, and three cases that have no such value (a composed length bound below 0, a precision bound below 1, and range bounds of different scales) carry none. The rules are WT-1 to WT-12 in `intent/2026-10-07-error-witness-spec.md`.
+
 ```
 $ ./target/release/crosscheck-contracts contracts check test_fixtures/transitive/ \
     --lean-checker ./prover/.lake/build/bin/contract-graph-checker --format text
@@ -313,6 +316,7 @@ ERROR  utils.py:6 → models.py:5
        Path verification level: ASSUMED
        Note: invisible to pairwise checking.
        Suggestion: Source guarantees ≤ 4, target requires ≤ 3. Either tighten the source or widen the target.
+       counterexample: Decimal("0.0001")
 
 WARNING  utils.py:16 → models.py:5
        split_energy guarantees precision (dependent)
