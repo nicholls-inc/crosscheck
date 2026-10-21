@@ -370,11 +370,15 @@ describe("cgv_check over MCP", () => {
       );
     });
 
-    it("CK-5: a baseline path that needs a directory where a file stands is refused with the committed path", async () => {
+    // One level below the file Node raises EEXIST, two levels below it raises ENOTDIR: both are collisions.
+    it.each([
+      ["app/a/b.py", "EEXIST"],
+      ["app/a/b/c.py", "ENOTDIR"],
+    ])("CK-5: a baseline path %s that needs a directory where a file stands is refused with the committed path (%s)", async (child) => {
       const oid = git("rev-parse", `${base}:app/models.py`);
       const tree = join(scratch, "collide-dir");
-      expect(await buildTree(repo, base, [{ oid, path: "app/a" }, { oid, path: "app/a/b.py" }], tree)).toBe(
-        `app/a/b.py at ${base} collides with another committed path on this file system, so the baseline tree cannot hold both`
+      expect(await buildTree(repo, base, [{ oid, path: "app/a" }, { oid, path: child }], tree)).toBe(
+        `${child} at ${base} collides with another committed path on this file system, so the baseline tree cannot hold both`
       );
     });
 
