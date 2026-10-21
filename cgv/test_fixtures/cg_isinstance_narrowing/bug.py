@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from models import Entry, Payload
+from models import Entry, Payload, clear
 
 
 def store_negated(value: object) -> Entry:
@@ -81,4 +81,12 @@ def store_method_of_result(value: object, other: Optional[str]) -> Entry:
     # BUG: the test is a method of the isinstance result, true for any other.
     if isinstance(value, str).__round__(other):
         return Entry.objects.create(text=other)
+    return Entry.objects.create(text="x")
+
+
+def store_chain_handed(payload: Payload) -> Entry:
+    # BUG: clear() is handed the address after the test and sets the postcode to None.
+    if isinstance(payload.address.postcode, str):
+        clear(payload.address)
+        return Entry.objects.create(text=payload.address.postcode)
     return Entry.objects.create(text="x")

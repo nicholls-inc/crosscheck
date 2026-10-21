@@ -1990,7 +1990,7 @@ mod tests {
         // A chained subject is the same flow name as for `is not None`, so a
         // rebinding or a write of a link ends both narrowings the same way.
         for subject in ["x", "o.a", "o.a.b.c"] {
-            for tail in ["", "    o.a = c\n    use()\n", "    o = c\n    use()\n", "    x = c\n    use()\n", "    g(o.a)\n    use()\n"] {
+            for tail in ["", "    o.a = c\n    use()\n", "    o = c\n    use()\n", "    x = c\n    use()\n"] {
                 let body = |test: &str| format!("def f(x, o, c):\n    if not ({test}):\n        return\n    use()\n{tail}");
                 let by_isinstance = narrowing_with_isinstance(&body(&format!("isinstance({subject}, str)")));
                 let by_none_test = narrowing_at_uses(&body(&format!("{subject} is not None")));
@@ -1998,6 +1998,36 @@ mod tests {
                 assert!(by_isinstance[0].contains(&subject.to_string()), "{subject}");
             }
         }
+    }
+
+    #[test]
+    fn test_isinstance_on_an_attribute_ends_where_a_caller_guard_ends() {
+        // From the test on, the conditions of a caller's guard on `p.f` or
+        // `p.a.f` (`Scope::field_read_facts`): no code handed the root, and for
+        // a chain neither an attribute of the root nor a proper prefix.
+        let cases = [
+            ("o.a.b", "clear(o.a)", false),
+            ("o.a.b.c", "clear(o.a.b)", false),
+            ("o.a.b", "clear(o)", false),
+            ("o.a.b", "o.a.reset()", false),
+            ("o.a.b", "super().reset()", false),
+            ("o.a", "clear(o)", false),
+            ("o.a", "o.reset()", false),
+            ("o.a.b", "keep(o.a.b)", true),
+            ("o.a.b", "clear(c)", true),
+            ("o.a", "clear(o.a)", true),
+        ];
+        for (subject, call, kept) in cases {
+            let src = format!("def f(o, c):\n    if isinstance({subject}, str):\n        {call}\n        use()\n");
+            let at_use = narrowing_with_isinstance(&src);
+            assert_eq!(at_use[0].contains(&subject.to_string()), kept, "{subject} / {call}");
+        }
+        // An `is not None` test on the same subject keeps its narrowing.
+        let src = "def f(o, c):\n    if isinstance(o.a.b, str) and o.a.b is not None:\n        clear(o.a)\n        use()\n";
+        assert!(narrowing_with_isinstance(src)[0].contains(&"o.a.b".to_string()));
+        // A branch that hands the link off ends the narrowing after the join.
+        let src = "def f(o, c):\n    assert isinstance(o.a.b, str)\n    if c:\n        clear(o.a)\n    use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![Vec::<String>::new()]);
     }
 
     #[test]

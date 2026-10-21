@@ -68,6 +68,12 @@
       "target": "Entry.text"
     },
     {
+      "path": "store_chain_handed -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
       "path": "store_shadowed -> Entry.text",
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
