@@ -43,3 +43,13 @@ class Holder:
 class Statement(BaseModel):
     name: str = Field(max_length=10)
     balance: Decimal = Field(max_digits=12, decimal_places=2)
+
+
+class Resetter:
+    def reset(self) -> None:
+        self.address.postcode = None
+
+
+@dataclass
+class Parcel(Resetter):
+    address: Address

@@ -1,6 +1,6 @@
-"""CG-1.28: a field read through a relation carries the field's contracts."""
+"""CG-1.28: a nullable field read through a relation gives an error where the target is non-null."""
 
-from models import Invoice, Ledger, Order, Shipment
+from models import Customer, Invoice, Ledger, Order, Shipment
 
 
 def bill(order: Order) -> None:
@@ -55,3 +55,27 @@ def bill_nested(order: Order) -> None:
 def bill_nested_when_known(order: Order) -> None:
     if order.customer.email:
         bill_nested(order)
+
+
+def bill_deep_handed(shipment: Shipment) -> None:
+    # BUG: the only caller narrows the chained field three levels deep, but this
+    # function hands the customer, an object along the chain, to code that clears it.
+    clear_email(shipment.order.customer)
+    Invoice.objects.create(email=shipment.order.customer.email, name="x", short="x")
+
+
+def bill_deep_when_known(shipment: Shipment) -> None:
+    if shipment.order.customer.email:
+        bill_deep_handed(shipment)
+
+
+def bill_aliased(order: Order, customer: Customer) -> None:
+    # BUG: the only caller passes the order's own customer as `customer`, so this
+    # write clears the chained field the caller narrowed.
+    customer.email = None
+    Invoice.objects.create(email=order.customer.email, name="x", short="x")
+
+
+def bill_aliased_when_known(order: Order) -> None:
+    if order.customer.email:
+        bill_aliased(order, order.customer)

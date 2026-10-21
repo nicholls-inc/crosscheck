@@ -631,7 +631,12 @@ impl GuardCollector<'_, '_> {
 /// For one call of `f`, each parameter's narrowed argument fields: the
 /// fields `a.f` and chains `a.link.f` narrowed here for an argument that is
 /// a name `a`.
-fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ctx) -> HashMap<String, HashSet<String>> {
+fn call_guards<'c>(
+    f: &FunctionInfo,
+    implicit: usize,
+    call: &'c ast::ExprCall,
+    ctx: &Ctx,
+) -> HashMap<String, HashSet<String>> {
     let mut out: HashMap<String, HashSet<String>> =
         f.params.iter().map(|p| (p.name.clone(), HashSet::new())).collect();
     let splatted = call.arguments.args.iter().any(|a| matches!(a, Expr::Starred(_)))
@@ -649,11 +654,8 @@ fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ct
             .map(str::to_string)
             .collect()
     };
-    let mut bind = |param: &str, arg: &Expr| {
-        if let Some(fields) = out.get_mut(param) {
-            *fields = narrowed_fields(arg);
-        }
-    };
+    let mut bound: Vec<(String, &'c Expr)> = Vec::new();
+    let mut bind = |param: &str, arg: &'c Expr| bound.push((param.to_string(), arg));
     if implicit == 1 {
         if let (Some(p), Expr::Attribute(a)) = (f.params.first(), call.func.as_ref()) {
             bind(&p.name, &a.value);
@@ -673,6 +675,36 @@ fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ct
             .any(|p| p.name == name.as_str() && matches!(p.kind, ParamKind::Normal | ParamKind::KeywordOnly))
         {
             bind(name.as_str(), &kw.value);
+        }
+    }
+    for &(ref param, arg) in &bound {
+        // Another argument of the same call that is the same object, or an
+        // object along the guarded chain (`f(o, o.customer)`), can be written
+        // through its own parameter: the guard on a chain `o.customer.email`
+        // does not hold in the callee.
+        let aliased = |field: &str| {
+            let Expr::Name(n) = arg else { return false };
+            // A guard on a plain field `o.f` is not touched here: an alias of
+            // `o` itself is an older gap (see the README on aliases).
+            if !field.contains('.') {
+                return false;
+            }
+            bound.iter().filter(|(_, other)| !std::ptr::eq(*other, arg)).any(|(_, other)| {
+                let path = match other {
+                    Expr::Name(o) => o.id.to_string(),
+                    o => flow::attr_name(o).unwrap_or_default(),
+                };
+                match path.strip_prefix(n.id.as_str()) {
+                    Some("") => true,
+                    Some(rest) => rest
+                        .strip_prefix('.')
+                        .is_some_and(|r| field == r || field.starts_with(&format!("{r}."))),
+                    None => false,
+                }
+            })
+        };
+        if let Some(fields) = out.get_mut(param) {
+            *fields = narrowed_fields(arg).into_iter().filter(|field| !aliased(field)).collect();
         }
     }
     out

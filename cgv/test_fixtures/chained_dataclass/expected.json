@@ -12,6 +12,12 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Label.postcode"
+    },
+    {
+      "path": "Courier.label_after_reset -> Label.postcode",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Label.postcode"
     }
   ],
   "warnings": [
@@ -26,6 +32,14 @@
     {
       "path": "statement -> Statement.balance",
       "contains": "precision"
+    },
+    {
+      "path": "label_guarded -> Label.city",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "label_billing -> Label.city",
+      "contains": "no nullability postcondition"
     }
   ]
 }

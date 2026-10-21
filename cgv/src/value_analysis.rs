@@ -729,9 +729,11 @@ impl<'a> Scope<'a> {
                 && !self.flow.assignments.contains_key(root)
                 && !self.flow.opaque.contains(root)
                 // No call can have written the field since the entry, nor, for
-                // a chain, been handed an object along it (`helper(p.a)`).
+                // a chain, been handed an object along it (`helper(p.a)`,
+                // `helper(p.a.b)`).
                 && ctx.narrowed.untouched(root)
-                && (!path.contains('.') || ctx.narrowed.links_untouched(root))
+                && (!path.contains('.')
+                    || (ctx.narrowed.links_untouched(root) && !ctx.narrowed.link_handed(&name)))
                 && self
                     .caller_guards
                     .and_then(|g| g.get(&f.qualified_name)?.get(root))
@@ -3553,10 +3555,52 @@ mod tests {
             ("    for p.a.name in [None]:\n        pass\n    p.a.code\n", Some(true)),
             ("    with cm() as p.a.name:\n        p.a.code\n", Some(true)),
             ("    [0 for p.a.code in [None]]\n    p.a.code\n", None),
+            // The walk joins the paths of a branch: code that held `p.a` on one path may have written it.
+            ("    if o:\n        clear(p.a)\n    p.a.code\n", Some(true)),
+            ("    if o:\n        clear(p.a)\n    else:\n        pass\n    p.a.code\n", Some(true)),
+            ("    if o:\n        pass\n    else:\n        clear(p.a)\n    p.a.code\n", Some(true)),
+            // `super().m()` runs the parent's method on this object, which may write the chain.
+            ("    super().reset()\n    p.a.code\n", Some(true)),
         ] {
             let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
         }
+        // The same hand-offs, one link deeper: `q.p.a` is an object along the chain `q.p.a.code`.
+        let deep = format!("{records}@dataclass\nclass Q:\n    p: P\n");
+        for (body, want) in [
+            ("    q.p.a.code\n", None),
+            // Reading the chain's own fields, or a value read from it, hands nothing over.
+            ("    q.p.a.name\n    q.p.a.code\n", None),
+            ("    print(q.p.a.code)\n    q.p.a.code\n", None),
+            ("    if q.p.a is None:\n        return\n    q.p.a.code\n", None),
+            ("    clear(q.p.a)\n    q.p.a.code\n", Some(true)),
+            ("    x = q.p.a\n    x.code = None\n    q.p.a.code\n", Some(true)),
+            ("    return q.p.a\n    q.p.a.code\n", Some(true)),
+            ("    keep(q.p.a.name, q.p.a)\n    q.p.a.code\n", Some(true)),
+            ("    if o:\n        clear(q.p.a)\n    q.p.a.code\n", Some(true)),
+            ("    clear(q.p)\n    q.p.a.code\n", Some(true)),
+            ("    def fill():\n        clear(q.p.a)\n    fill()\n    q.p.a.code\n", Some(true)),
+        ] {
+            let src = format!("{deep}def f(q: Q):\n{body}def g(q: Q):\n    if q.p.a.code:\n        f(q)\n");
+            assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");
+        }
+        // A call that passes the root and an object along the guarded chain as two
+        // arguments can write the chain through the second parameter.
+        let alias = |call: &str| {
+            let src = format!(
+                "{records}def f(p: P, a: A):\n    a.code = None\n    p.a.code\n\
+                 def g(p: P, o: A):\n    if p.a.code:\n        {call}\n"
+            );
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        assert_eq!(alias("f(p, o)"), None);
+        assert_eq!(alias("f(p, p.a)"), Some(true));
+        assert_eq!(alias("f(p, a=p.a)"), Some(true));
+        assert_eq!(alias("f(p, p.b)"), None);
+        // A value read from the chain is not an object along it, and the same
+        // object twice is an alias of the whole chain.
+        assert_eq!(alias("f(p, p.a.name)"), None);
+        assert_eq!(alias("f(p, p)"), Some(true));
     }
 
     /// CG-1.9: a field every caller narrows has unknown nullability, when

@@ -102,6 +102,12 @@ pub struct Narrowed {
     /// code as a value on any path here (see `Effects::handed`): code that
     /// holds `p.a` can write `p.a.f`, which `untouched` does not see.
     links_untouched: HashSet<String>,
+    /// The chains `p.a.b` (two or more attributes deep) read as a value
+    /// somewhere on a path here (see `Effects::handed_paths`): the object
+    /// `p.a.b` may be in other code's hands, which can write its fields. A
+    /// caller's guard on a longer chain `p.a.b.f` holds only while no proper
+    /// prefix of it is here.
+    handed_paths: HashSet<String>,
 }
 
 impl Narrowed {
@@ -182,6 +188,17 @@ impl Narrowed {
         self.links_untouched.contains(name)
     }
 
+    /// Whether an object along `chain` (`p.a.b.f`, a name and attributes) has
+    /// been read as a value on some path to here: a proper prefix of `chain`
+    /// of two or more attributes (`p.a.b`) was passed on, stored or returned,
+    /// so other code can write the field. Reading `chain` itself does not
+    /// count, nor does reading a field of it.
+    pub fn link_handed(&self, chain: &str) -> bool {
+        self.handed_paths.iter().any(|h| {
+            chain.len() > h.len() && chain.starts_with(h.as_str()) && chain.as_bytes()[h.len()] == b'.'
+        })
+    }
+
     /// The state after evaluating a node with effects `e`.
     pub fn apply(&mut self, e: &Effects) {
         self.names.retain(|n| e.keeps_member(n));
@@ -192,6 +209,7 @@ impl Narrowed {
             self.untouched.retain(|p| !e.reached.contains(p));
             self.links_untouched
                 .retain(|p| !e.reached.contains(p) && !e.handed.contains(p));
+            self.handed_paths.extend(e.handed_paths.iter().cloned());
         }
     }
 
@@ -229,6 +247,7 @@ impl Narrowed {
             out.names.retain(|n| b.names.contains(n));
             out.untouched.retain(|n| b.untouched.contains(n));
             out.links_untouched.retain(|n| b.links_untouched.contains(n));
+            out.handed_paths.extend(b.handed_paths.iter().cloned());
             out.defs.retain(|name, defs| {
                 let Some(other) = b.defs.get(name) else {
                     return false;
@@ -444,6 +463,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 let inner = effects_of_stmt(stmt);
                 v.reached.extend(inner.reached);
                 v.handed.extend(inner.handed);
+                v.handed_paths.extend(inner.handed_paths);
                 n.apply(&v);
                 n.remove(f.name.as_str());
             }
@@ -672,6 +692,11 @@ pub struct Effects {
     /// (`simple_attr_targets`, `x.f += v`): a comprehension or `for` target,
     /// or any store in a nested function or class body.
     pub handed: HashSet<String>,
+    /// The chains `x.a.b` (two or more attributes deep) read as a value, each
+    /// as `x.a.b`: unlike `x.a`, nothing here says whether the last
+    /// attribute holds an object or a plain value, so only a guard on a longer
+    /// chain through it is lost (`Narrowed::link_handed`), not every guard on `x`.
+    pub handed_paths: HashSet<String>,
     /// It suspends (`await`, `yield`, `async for`, `async with`, an async
     /// comprehension): other code may then run on any object.
     suspends: bool,
@@ -780,6 +805,13 @@ impl<'a> Visitor<'a> for Effects {
             Expr::Call(c) => {
                 if let Expr::Attribute(a) = c.func.as_ref() {
                     self.reach_root(&a.value);
+                    // `super().m(...)` runs the parent's method on this method's own
+                    // object. The walk does not know which parameter that is, so it
+                    // counts as other code running on any object.
+                    if matches!(a.value.as_ref(), Expr::Call(s) if matches!(s.func.as_ref(), Expr::Name(n) if n.id.as_str() == "super"))
+                    {
+                        *self = std::mem::take(self).suspended();
+                    }
                 }
                 let get_on = match c.func.as_ref() {
                     Expr::Attribute(a) if a.attr.as_str() == "get" => match a.value.as_ref() {
@@ -828,7 +860,17 @@ impl<'a> Visitor<'a> for Effects {
                     }
                     return;
                 }
-                // `x.a.f` reads a field of `x.a`: `x.a` is only the receiver.
+                // `x.a.f` reads a field of `x.a`: `x.a` is only the receiver. The
+                // object `x.a.f` is in other code's hands, though: when `x.a.f` is
+                // itself a link, code that holds it can write the fields of the
+                // chains through it.
+                if matches!(a.ctx, ExprContext::Load) {
+                    if let Some(path) = attr_name(expr) {
+                        if path.split('.').next().is_some_and(|root| self.outer(root)) {
+                            self.handed_paths.insert(path);
+                        }
+                    }
+                }
                 let mut base = a.value.as_ref();
                 while let Expr::Attribute(inner) = base {
                     if matches!(inner.value.as_ref(), Expr::Name(_)) {
@@ -1747,13 +1789,13 @@ mod tests {
 
     #[test]
     fn test_rebinding_a_middle_link_forgets_its_chains_and_no_others() {
-        let src = "def f(o, c):\n    if o.a.b.x is None:\n        return\n    if o.other.x is None:\n        return\n    use()\n    o.a = c\n    use()\n";
+        let src = "def f(o, c):\n    if o.a.b.x is None:\n        return\n    if o.ab.x is None:\n        return\n    if o.other.x is None:\n        return\n    use()\n    o.a = c\n    use()\n";
         let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
             narrowing_at_uses(src),
             vec![
-                names(&["o", "o.a", "o.a.b", "o.a.b.x", "o.other", "o.other.x"]),
-                names(&["o", "o.other", "o.other.x"]),
+                names(&["o", "o.a", "o.a.b", "o.a.b.x", "o.ab", "o.ab.x", "o.other", "o.other.x"]),
+                names(&["o", "o.ab", "o.ab.x", "o.other", "o.other.x"]),
             ]
         );
     }

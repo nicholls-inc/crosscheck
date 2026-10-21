@@ -1,6 +1,6 @@
-"""CG-1.28: a field read through a nested data class carries the field's contracts."""
+"""CG-1.28: a nullable field read through a nested data class gives an error where the target is non-null."""
 
-from records import Label, Outer, Payload
+from records import Label, Outer, Parcel, Payload
 
 
 def label(payload: Payload) -> Label:
@@ -11,3 +11,17 @@ def label(payload: Payload) -> Label:
 def label_inner(outer: Outer) -> Label:
     # BUG: the same through a nested pydantic model.
     return Label(postcode=outer.inner.code, city="x")
+
+
+class Courier(Parcel):
+    def label_after_reset(self) -> Label:
+        # BUG: the only caller narrows the chained field, but the parent's method
+        # runs on this object first and clears it.
+        super().reset()
+        return Label(postcode=self.address.postcode, city="x")
+
+
+def label_when_known(courier: Courier) -> Label:
+    if courier.address.postcode:
+        return courier.label_after_reset()
+    return Label(postcode="x", city="x")

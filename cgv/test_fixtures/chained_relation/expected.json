@@ -24,6 +24,18 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Invoice.email"
+    },
+    {
+      "path": "bill_deep_handed -> Invoice.email",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Invoice.email"
+    },
+    {
+      "path": "bill_aliased -> Invoice.email",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Invoice.email"
     }
   ],
   "warnings": [
@@ -54,6 +66,14 @@
     {
       "path": "post_balance -> Ledger.balance",
       "contains": "precision"
+    },
+    {
+      "path": "bill_guarded -> Invoice.name",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_referrer -> Invoice.name",
+      "contains": "no nullability postcondition"
     }
   ]
 }
