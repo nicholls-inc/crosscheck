@@ -1,0 +1,245 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "store_negated -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_none_type -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_object -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_union_none -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_or -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_param_shadow -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_local_isinstance -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_other_name -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_rebound -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_chain_unguarded -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_method_of_result -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_chain_handed -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_shadowed -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_shadowed_type -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_project_class -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_chained -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_alias_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_link_alias_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_param_alias_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_closure_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_walrus_in_test -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_dict_write -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_dict_alias_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_def_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_def_after -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_dict_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_class_body_after -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_walrus_in_later_operand -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_walrus_in_argument -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_argument -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_dict_after -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_and_operand -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_walrus_in_and_operand -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_ternary -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_if_test -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_for_iterable -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nonlocal_rebind -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_lambda_after_rebind -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_generator_after_rebind -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "<module module_level> -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    }
+  ]
+}

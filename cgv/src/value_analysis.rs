@@ -247,8 +247,8 @@ impl Ctx {
     /// `v` was truthy (`and`) or falsy (`or`), and its effects took place.
     pub fn after_operand(&self, v: &Expr, op: BoolOp) -> Ctx {
         let mut c = match op {
-            BoolOp::And => self.narrow(flow::positive(v)),
-            BoolOp::Or => self.narrow(flow::negative(v)),
+            BoolOp::And => self.narrow(flow::positive(v, &self.narrowed)),
+            BoolOp::Or => self.narrow(flow::negative(v, &self.narrowed)),
         };
         c.narrowed.apply(&flow::effects(v));
         c
@@ -258,7 +258,12 @@ impl Ctx {
     pub fn branch(&self, test: &Expr, taken: bool) -> Ctx {
         let mut c = self.clone();
         c.narrowed.apply(&flow::effects(test));
-        c.narrow(if taken { flow::positive(test) } else { flow::negative(test) })
+        let names = if taken {
+            flow::positive(test, &self.narrowed)
+        } else {
+            flow::negative(test, &self.narrowed)
+        };
+        c.narrow(names)
     }
 
     pub fn shadow(&self, names: impl IntoIterator<Item = String>) -> Ctx {

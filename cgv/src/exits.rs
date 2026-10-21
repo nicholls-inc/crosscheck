@@ -8,6 +8,20 @@
 //! - A `match` over every member of an enum: the subject is a parameter
 //!   annotated with a project enum, and unguarded value patterns name every member.
 //!
+//! It also decides which calls rule out None (`Exits::excludes_none`): a call
+//! of the builtin `isinstance` with two positional arguments, whose first is
+//! a name of the function that only its own statements rebind (see
+//! `unsettled`) and whose second is a builtin class in `NON_NONE_CLASSES`, or
+//! a tuple or `|` union of such specs. `flow` then narrows that name as it
+//! narrows `v` after `v is not None`, and that narrowing ends at the
+//! statements that rebind `v`. An attribute (`p.f`) is never narrowed this
+//! way: a call can write it, and so can code that holds `p` under another
+//! name. A name counts as the builtin when neither the function nor its
+//! module binds it and the module has no star import. A call inside a
+//! `lambda` never counts, since the lambda's parameters may bind the names.
+//! Module-level code (the pseudo function `<module m>`) never counts either: any
+//! function may rebind a module variable through `global`.
+//!
 //! The rules trust the type checker as parameter annotations already do: a
 //! `NoReturn` function never returns, and a parameter annotated `E` holds a
 //! member of `E`. Anything the rules do not recognise is assumed to complete.
@@ -15,11 +29,11 @@
 use std::collections::HashSet;
 
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Pattern, Stmt};
+use ruff_python_ast::{self as ast, Expr, Operator, Pattern, Stmt};
 use ruff_text_size::Ranged;
 
-use crate::flow::{bound_names, Exits};
-use crate::function_extractor::{FunctionInfo, ParamKind};
+use crate::flow::{bound_names, names_in_expr, Exits};
+use crate::function_extractor::{module_function_name, FunctionInfo, ParamKind};
 use crate::resolve::{dotted_parts, ClassInfo, Import, ModuleInfo, ProjectIndex, Symbol};
 
 /// Standard library functions that never return, as `(module, name)`.
@@ -50,6 +64,14 @@ const ENUM_BASES: [(&str, &str); 11] = [
     ("builtins", "int"),
 ];
 
+/// Builtin classes of which None is never an instance. `object` is absent,
+/// and so is every project or library class: a `runtime_checkable` Protocol,
+/// an ABC or a metaclass with `__instancecheck__` may accept None.
+const NON_NONE_CLASSES: [&str; 12] = [
+    "str", "bytes", "bytearray", "int", "float", "complex", "bool", "list", "tuple", "dict", "set",
+    "frozenset",
+];
+
 /// The statements of `f`'s body (at every nesting level, not inside nested
 /// `def` / `class`) that never complete.
 pub fn function_exits(index: &ProjectIndex, f: &FunctionInfo) -> Exits {
@@ -59,11 +81,18 @@ pub fn function_exits(index: &ProjectIndex, f: &FunctionInfo) -> Exits {
     let bound = bound_names(&f.body);
     let mut local = bound.clone();
     local.extend(f.params.iter().map(|p| p.name.clone()));
+    let mut unsettled = unsettled(&f.body);
+    if f.name == module_function_name(&f.module) {
+        // A module's variables are rebindable by any function through `global`,
+        // and the pseudo function's body holds no `def` to show it.
+        unsettled.extend(local.iter().cloned());
+    }
     let mut v = ExitFinder {
         cx: Cx {
             index,
             module,
             local,
+            unsettled,
         },
         f,
         bound,
@@ -82,6 +111,9 @@ struct Cx<'i> {
     module: &'i ModuleInfo,
     /// Names the function binds itself (parameters included).
     local: HashSet<String>,
+    /// Names that something other than a statement of the function may
+    /// rebind (`unsettled`).
+    unsettled: HashSet<String>,
 }
 
 impl Cx<'_> {
@@ -113,6 +145,43 @@ impl Cx<'_> {
             }
         }
         true
+    }
+
+    /// Whether `name`, read in the function, is the builtin: neither the
+    /// function nor its module binds it, and no star import may.
+    fn is_builtin(&self, name: &str) -> bool {
+        let m = self.module;
+        !self.local.contains(name)
+            && !m.defs.contains_key(name)
+            && !m.imports.contains_key(name)
+            && !m.rebound.contains(name)
+            && m.star_imports.is_empty()
+    }
+
+    /// Whether `call` is `isinstance(v, spec)` of the builtin, true only
+    /// when the name `v` is not None, and `v` is a name of the function that
+    /// only its own statements rebind.
+    fn excludes_none(&self, call: &ast::ExprCall) -> bool {
+        let args = &call.arguments;
+        matches!(call.func.as_ref(), Expr::Name(f) if f.id.as_str() == "isinstance")
+            && self.is_builtin("isinstance")
+            && args.keywords.is_empty()
+            && args.args.len() == 2
+            && matches!(&args.args[0], Expr::Name(v)
+                if self.local.contains(v.id.as_str()) && !self.unsettled.contains(v.id.as_str()))
+            && self.spec_excludes_none(&args.args[1])
+    }
+
+    /// Whether `isinstance` with the class spec `spec` is false for None.
+    fn spec_excludes_none(&self, spec: &Expr) -> bool {
+        match spec {
+            Expr::Name(n) => NON_NONE_CLASSES.contains(&n.id.as_str()) && self.is_builtin(n.id.as_str()),
+            Expr::Tuple(t) => !t.elts.is_empty() && t.elts.iter().all(|e| self.spec_excludes_none(e)),
+            Expr::BinOp(b) if matches!(b.op, Operator::BitOr) => {
+                self.spec_excludes_none(&b.left) && self.spec_excludes_none(&b.right)
+            }
+            _ => false,
+        }
     }
 
     /// Whether the expression statement `expr` is a call that never returns.
@@ -315,6 +384,79 @@ fn library_name(index: &ProjectIndex, class: &ClassInfo, expr: &Expr) -> Option<
     Some((m.to_string(), n.to_string()))
 }
 
+/// The names of a function body that a narrowing by `isinstance` may outlive,
+/// because they change other than at a statement of the body that binds them
+/// (where every narrowing of a name ends):
+/// - a walrus target, which rebinds the name in the middle of an expression,
+///   between a test and a read the walk takes as one step;
+/// - a name declared `global` or `nonlocal` in the body, which any call may
+///   rebind, and one a nested function or class declares `nonlocal`;
+/// - a name read in a `lambda` body or a generator expression, which runs
+///   later, after a statement may have rebound it;
+/// - a comprehension variable, which `bound_names` counts as the function's own
+///   although the same name read outside the comprehension may be a global.
+///
+/// The rule is coarse: one such use anywhere in the body stops every
+/// `isinstance` test on the name from narrowing it, a source of false
+/// errors, not of missed ones.
+fn unsettled(body: &[Stmt]) -> HashSet<String> {
+    struct U {
+        names: HashSet<String>,
+        nested: u32,
+    }
+    impl U {
+        /// A comprehension variable is local to the comprehension, yet `bound_names`
+        /// counts it as bound by the function, so the same name read outside may be a
+        /// global that a callee rebinds.
+        fn comprehension_targets(&mut self, generators: &[ast::Comprehension]) {
+            for g in generators {
+                self.names.extend(names_in_expr(&g.target));
+            }
+        }
+    }
+    impl<'a> Visitor<'a> for U {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            match stmt {
+                Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
+                    self.nested += 1;
+                    visitor::walk_stmt(self, stmt);
+                    self.nested -= 1;
+                    return;
+                }
+                Stmt::Global(g) if self.nested == 0 => {
+                    self.names.extend(g.names.iter().map(|n| n.id.to_string()));
+                }
+                Stmt::Nonlocal(n) => self.names.extend(n.names.iter().map(|n| n.id.to_string())),
+                _ => {}
+            }
+            visitor::walk_stmt(self, stmt);
+        }
+
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            match expr {
+                Expr::Named(n) => {
+                    if let Expr::Name(t) = n.target.as_ref() {
+                        self.names.insert(t.id.to_string());
+                    }
+                }
+                Expr::Lambda(l) => self.names.extend(names_in_expr(&l.body)),
+                Expr::Generator(g) => {
+                    self.names.extend(names_in_expr(expr));
+                    self.comprehension_targets(&g.generators);
+                }
+                Expr::ListComp(c) => self.comprehension_targets(&c.generators),
+                Expr::SetComp(c) => self.comprehension_targets(&c.generators),
+                Expr::DictComp(c) => self.comprehension_targets(&c.generators),
+                _ => {}
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut u = U { names: HashSet::new(), nested: 0 };
+    body.iter().for_each(|s| u.visit_stmt(s));
+    u.names
+}
+
 struct ExitFinder<'i> {
     cx: Cx<'i>,
     f: &'i FunctionInfo,
@@ -400,6 +542,17 @@ impl<'a> Visitor<'a> for ExitFinder<'_> {
         }
         visitor::walk_stmt(self, stmt);
     }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Lambda(_) => return,
+            Expr::Call(c) if self.cx.excludes_none(c) => {
+                self.exits.excludes_none.insert(expr.start().to_u32());
+            }
+            _ => {}
+        }
+        visitor::walk_expr(self, expr);
+    }
 }
 
 #[cfg(test)]
@@ -463,6 +616,74 @@ mod tests {
         assert_eq!(marked(&files, "h").0, Vec::<String>::new());
         let rebound = "import sys\nsys = make()\n\ndef f(x):\n    sys.exit(1)\n";
         assert_eq!(calls(rebound, "f"), Vec::<String>::new());
+    }
+
+    /// The text from each call in `excludes_none` of `code.<func>` to the end of its line.
+    fn excludes_none(files: &[(&str, &str)], func: &str) -> Vec<String> {
+        let p = Project::from_sources(files.iter().map(|(p, s)| (p.to_string(), s.to_string())).collect());
+        let f = p.index.function(&format!("code.{func}")).expect("function");
+        let src = files.iter().find(|(p, _)| *p == "code.py").unwrap().1;
+        let mut o: Vec<u32> = f.exits.excludes_none.iter().copied().collect();
+        o.sort();
+        o.into_iter().map(|at| src[at as usize..].lines().next().unwrap().to_string()).collect()
+    }
+
+    #[test]
+    fn test_isinstance_with_builtin_classes_excludes_none() {
+        let src = "class Text:\n    pass\n\ndef f(x, o, t):\n    a = isinstance(x, str)\n    a = isinstance(x, (str, int))\n    a = isinstance(x, (str, (bytes, float)))\n    a = isinstance(x, str | bytes | dict)\n    a = isinstance(o.a.b, bool)\n    a = isinstance(o.a, bool)\n    a = isinstance(x, object)\n    a = isinstance(x, (str, type(None)))\n    a = isinstance(x, str | None)\n    a = isinstance(x, ())\n    a = isinstance(x, Text)\n    a = isinstance(x, t)\n    a = isinstance(x, NoneType)\n    a = isinstance(x, (str, *t))\n    a = isinstance(x, str, t)\n    a = isinstance(x, classinfo=str)\n    a = isinstance(*t)\n    a = builtins.isinstance(x, str)\n    a = lambda: isinstance(t, str)\n    a = [y for y in x if isinstance(y, str)]\n";
+        assert_eq!(
+            excludes_none(&[("code.py", src)], "f"),
+            [
+                "isinstance(x, str)",
+                "isinstance(x, (str, int))",
+                "isinstance(x, (str, (bytes, float)))",
+                "isinstance(x, str | bytes | dict)",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_isinstance_on_a_name_that_changes_outside_a_statement_excludes_nothing() {
+        // Each function rebinds or reads `x` where the narrowing could outlive
+        // the change; `y` beside it is still narrowed.
+        let src = "G = None\n\ndef walrus(x, y, c):\n    a = isinstance(x, str) and (x := c)\n    a = isinstance(y, str)\n\ndef walrus_nested(x, y, c):\n    a = isinstance(y, str)\n    b = [(x := v) for v in c]\n    a = isinstance(x, str)\n\ndef nonlocal_rebind(x, y, c):\n    def g():\n        nonlocal x\n        x = None\n    a = isinstance(x, str)\n    a = isinstance(y, str)\n\ndef global_name(y, c):\n    global G\n    a = isinstance(G, str)\n    a = isinstance(y, str)\n\ndef module_name(y, c):\n    a = isinstance(G, str)\n    a = isinstance(y, str)\n\ndef lambda_body(x, y, c):\n    cb = lambda: use(x)\n    a = isinstance(x, str)\n    a = isinstance(y, str)\n\ndef generator(x, y, c):\n    g = (use(x) for _ in c)\n    a = isinstance(x, str)\n    a = isinstance(y, str)\n\ndef list_comprehension(x, y, c):\n    g = [use(x) for _ in c]\n    a = isinstance(x, str)\n\ndef comprehension_variable(y, c):\n    g = [G for G in c]\n    a = isinstance(G, str)\n    a = isinstance(y, str)\n";
+        for func in ["walrus", "walrus_nested", "nonlocal_rebind", "global_name", "module_name", "lambda_body", "generator"] {
+            assert_eq!(excludes_none(&[("code.py", src)], func), ["isinstance(y, str)"], "{func}");
+        }
+        assert_eq!(excludes_none(&[("code.py", src)], "list_comprehension"), ["isinstance(x, str)"]);
+        assert_eq!(excludes_none(&[("code.py", src)], "comprehension_variable"), ["isinstance(y, str)"]);
+    }
+
+    #[test]
+    fn test_isinstance_in_module_level_code_excludes_nothing() {
+        let src = "def reset():\n    global x\n    x = None\n\nx = 1\nif isinstance(x, str):\n    reset()\n";
+        let p = Project::from_sources(vec![("code.py".to_string(), src.to_string())]);
+        let f = p.index.function("<module code>").expect("module function");
+        assert!(f.exits.excludes_none.is_empty());
+    }
+
+    #[test]
+    fn test_isinstance_or_class_name_bound_by_the_function_or_module() {
+        let none = Vec::<String>::new();
+        let local = "def f(x, str):\n    a = isinstance(x, str)\n\ndef g(x):\n    isinstance = h\n    a = isinstance(x, str)\n\ndef k(x, ys):\n    a = isinstance(x, int)\n    b = [int for int in ys]\n\ndef m(x):\n    a = isinstance(x, int)\n";
+        for func in ["f", "g", "k"] {
+            assert_eq!(excludes_none(&[("code.py", local)], func), none, "{func}");
+        }
+        assert_eq!(excludes_none(&[("code.py", local)], "m"), ["isinstance(x, int)"]);
+        for module in [
+            "def isinstance(v, t): return True\n",
+            "from helpers import isinstance\n",
+            "from builtins import isinstance\n",
+            "from helpers import *\n",
+            "str = type(None)\n",
+            "class str: pass\n",
+            "from helpers import str\n",
+            "def g():\n    global str\n    str = None\n",
+            "if x:\n    str = None\n",
+        ] {
+            let src = format!("{module}\ndef f(x):\n    a = isinstance(x, str)\n");
+            assert_eq!(excludes_none(&[("code.py", &src)], "f"), none, "{module}");
+        }
     }
 
     #[test]
