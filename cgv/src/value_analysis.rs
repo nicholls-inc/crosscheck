@@ -3521,6 +3521,13 @@ mod tests {
             ("    clear(p.a)\n    p.a.code\n", Some(true)),
             ("    x = p.a\n    x.code = None\n    p.a.code\n", Some(true)),
             ("    keep(p.a.name, p.a)\n    p.a.code\n", Some(true)),
+            // An identity test runs no code and hands nothing over.
+            ("    if p.a is None:\n        return\n    p.a.code\n", None),
+            ("    if p.a.name is not None:\n        p.a.code\n", None),
+            // A nested function runs when it is called: it may hand over or write the chain.
+            ("    def fill():\n        clear(p.a)\n    fill()\n    p.a.code\n", Some(true)),
+            ("    def fill():\n        p.a.code = None\n    fill()\n    p.a.code\n", Some(true)),
+            ("    class K:\n        def m(self):\n            p.a.code = None\n    p.a.code\n", Some(true)),
         ] {
             let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");

@@ -52,3 +52,16 @@ def bill_after_rebind(order: Order, other: Order) -> None:
         return
     order.customer = other.customer
     Invoice.objects.create(email=order.customer.email, name="x", short="x")
+
+
+def bill_checked(order: Order) -> None:
+    # NOT AN ERROR: an identity test on the link runs no code, so the only caller's
+    # guard on the chained field still holds: a warning (CG-1.9).
+    if order.customer is None:
+        return
+    Invoice.objects.create(email=order.customer.email, name="x", short="x")
+
+
+def bill_checked_when_known(order: Order) -> None:
+    if order.customer.email:
+        bill_checked(order)

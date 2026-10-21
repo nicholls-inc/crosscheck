@@ -24,6 +24,12 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Invoice.email"
+    },
+    {
+      "path": "bill_nested -> Invoice.email",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Invoice.email"
     }
   ],
   "warnings": [
@@ -37,6 +43,10 @@
     },
     {
       "path": "bill_after_rebind -> Invoice.email",
+      "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_checked -> Invoice.email",
       "contains": "no nullability postcondition"
     }
   ]

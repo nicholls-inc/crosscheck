@@ -32,3 +32,18 @@ def bill_handed(order: Order) -> None:
 def bill_when_known(order: Order) -> None:
     if order.customer.email:
         bill_handed(order)
+
+
+def bill_nested(order: Order) -> None:
+    # BUG: the nested function clears the chained field when it is called, so the
+    # caller's guard no longer holds.
+    def clear() -> None:
+        order.customer.email = None
+
+    clear()
+    Invoice.objects.create(email=order.customer.email, name="x", short="x")
+
+
+def bill_nested_when_known(order: Order) -> None:
+    if order.customer.email:
+        bill_nested(order)

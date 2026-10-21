@@ -439,12 +439,19 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     v.visit_expr(r);
                 }
                 v.reached.extend(effects_of_stmt(stmt).reached);
+                // The body runs when the function is called: whatever it does
+                // with an attribute chain of a name, it may do to an object
+                // handed to it.
+                v.handed.extend(captured_roots(stmt));
                 n.apply(&v);
                 n.remove(f.name.as_str());
             }
             Stmt::ClassDef(c) => {
                 // The class body, its bases and decorators run at the definition.
-                n.apply(&effects_of_stmt(stmt));
+                let mut e = effects_of_stmt(stmt);
+                // Its methods run later, like a nested function's body.
+                e.handed.extend(captured_roots(stmt));
+                n.apply(&e);
                 n.remove(c.name.as_str());
             }
             _ => {
@@ -762,8 +769,14 @@ impl<'a> Visitor<'a> for Effects {
             // An identity test runs no code of its operands.
             Expr::Compare(c) if c.ops.iter().all(|op| matches!(op, CmpOp::Is | CmpOp::IsNot)) => {
                 for e in std::iter::once(c.left.as_ref()).chain(c.comparators.iter()) {
-                    if !matches!(e, Expr::Name(_)) {
-                        self.visit_expr(e);
+                    // `x` and `x.a.b` run no code and hand nothing over; the base
+                    // of any other chain is evaluated.
+                    let mut base = e;
+                    while let Expr::Attribute(a) = base {
+                        base = a.value.as_ref();
+                    }
+                    if !matches!(base, Expr::Name(_)) {
+                        self.visit_expr(base);
                     }
                 }
                 return;
@@ -785,6 +798,28 @@ impl<'a> Visitor<'a> for Effects {
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+/// The names at the root of an attribute chain (`x` of `x.a.f`) anywhere in `stmt`.
+fn captured_roots(stmt: &Stmt) -> HashSet<String> {
+    struct Roots(HashSet<String>);
+    impl<'a> Visitor<'a> for Roots {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Attribute(a) = expr {
+                let mut base = a.value.as_ref();
+                while let Expr::Attribute(inner) = base {
+                    base = inner.value.as_ref();
+                }
+                if let Expr::Name(n) = base {
+                    self.0.insert(n.id.to_string());
+                }
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut v = Roots(HashSet::new());
+    v.visit_stmt(stmt);
+    v.0
 }
 
 /// The effects of evaluating `expr`.
