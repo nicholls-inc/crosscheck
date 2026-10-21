@@ -543,58 +543,47 @@ fn django_models(
             (q.clone(), links)
         })
         .collect();
-    /// The C3 linearisation of model `q` over the project models in `own_bound`, the
-    /// order Python looks a name up in. `None` for a cycle or an inconsistent hierarchy.
-    fn mro(
-        q: &str,
-        own_bound: &HashMap<String, HashSet<String>>,
-        bases: &HashMap<String, Vec<String>>,
-        depth: usize,
-    ) -> Option<Vec<String>> {
-        if depth > 64 {
-            return None;
-        }
-        let direct: Vec<String> =
-            bases.get(q).into_iter().flatten().filter(|b| own_bound.contains_key(*b)).cloned().collect();
-        let mut seqs: Vec<Vec<String>> = Vec::new();
-        for b in &direct {
-            seqs.push(mro(b, own_bound, bases, depth + 1)?);
-        }
-        seqs.push(direct);
-        let mut order = vec![q.to_string()];
-        loop {
-            seqs.retain(|s| !s.is_empty());
-            if seqs.is_empty() {
-                return Some(order);
-            }
-            let head = seqs
+    // The bases of each model as Python's method resolution order sees them: a project
+    // class by its qualified name, `models.Model` as one name, any other base by its
+    // spelling (or by its position, when it has none), so C3 places it among the models.
+    let model_bases: HashMap<String, Vec<String>> = defs
+        .iter()
+        .filter(|(q, _, _)| django.contains(q))
+        .map(|(q, c, m)| {
+            let args = c.arguments.as_ref().map(|a| &a.args[..]).unwrap_or_default();
+            let bases = args
                 .iter()
-                .map(|s| &s[0])
-                .find(|h| !seqs.iter().any(|s| s[1..].contains(*h)))?
-                .clone();
-            for s in &mut seqs {
-                if s[0] == head {
-                    s.remove(0);
-                }
-            }
-            order.push(head);
-        }
-    }
+                .enumerate()
+                .filter_map(|(i, b)| match index.resolve_expr(&m.module, b) {
+                    _ if model_extractor::is_django_root(b) => Some("django.db.models.Model".to_string()),
+                    Some(Symbol::Class(bq)) => (&bq != q).then_some(bq),
+                    _ => Some(match resolve::dotted_parts(b) {
+                        Some(parts) => format!("?{}", parts.join(".")),
+                        None => format!("?{q}#{i}"),
+                    }),
+                })
+                .collect();
+            (q.clone(), bases)
+        })
+        .collect();
 
     /// The links of model `q`: for each name, the declaration in the first class of its
     /// method resolution order that assigns it. A field redeclared without a resolvable
-    /// relation therefore has no link, rather than keeping a stale inherited one.
+    /// relation therefore has no link, rather than keeping a stale inherited one. A class
+    /// that is not a project model may bind any name, so nothing after it is inherited.
     fn inherited_links(
         q: &str,
         own_links: &HashMap<String, HashMap<String, resolve::Link>>,
         own_bound: &HashMap<String, HashSet<String>>,
         bases: &HashMap<String, Vec<String>>,
     ) -> HashMap<String, resolve::Link> {
-        let order = mro(q, own_bound, bases, 0).unwrap_or_else(|| vec![q.to_string()]);
+        let bases_of = |c: &str| bases.get(c).cloned().unwrap_or_default();
+        let order = c3(q, &bases_of, 0).unwrap_or_else(|| vec![q.to_string()]);
         let mut links = HashMap::new();
         let mut seen: HashSet<&String> = HashSet::new();
         for class in &order {
-            for name in own_bound.get(class).into_iter().flatten() {
+            let Some(names) = own_bound.get(class) else { break };
+            for name in names {
                 if seen.insert(name) {
                     if let Some(link) = own_links.get(class).and_then(|l| l.get(name)) {
                         links.insert(name.clone(), link.clone());
@@ -610,7 +599,7 @@ fn django_models(
         if !django.contains(q) {
             continue;
         }
-        let links = inherited_links(q, &own_links, &own_bound, &base_classes);
+        let links = inherited_links(q, &own_links, &own_bound, &model_bases);
         let mut fields = with_inherited(q, &own, &base_classes, &mut HashSet::new());
         for f in &mut fields {
             // Inherited fields are reported under the child.
@@ -701,9 +690,9 @@ fn data_class_links(
         .collect()
 }
 
-/// The class body annotation of `field` that data class `q` uses: its own,
-/// else the one of its bases, a later base replacing an earlier one as
-/// `dataclass_extractor` reads inherited fields.
+/// The class body annotation of `field` that data class `q` uses: its own, else the one
+/// of the first base in C3 order whose fields have it, as that base resolves it
+/// (`dataclasses.fields` takes each base's fields whole, the first base last).
 fn declared_annotation<'c>(
     index: &ProjectIndex,
     declaring: &HashMap<String, &'c dataclass_extractor::ClassCandidate>,
@@ -718,11 +707,51 @@ fn declared_annotation<'c>(
     if depth > 16 {
         return None;
     }
-    let bases = decl.class_def.arguments.as_ref().map(|a| &a.args[..]).unwrap_or_default();
-    bases.iter().rev().find_map(|b| match index.resolve_expr(&decl.module, b)? {
-        Symbol::Class(bq) if bq != q => declared_annotation(index, declaring, &bq, field, depth + 1),
-        _ => None,
-    })
+    let bases_of = |c: &str| -> Vec<String> {
+        let Some(d) = declaring.get(c) else { return Vec::new() };
+        let args = d.class_def.arguments.as_ref().map(|a| &a.args[..]).unwrap_or_default();
+        args.iter()
+            .filter_map(|b| match index.resolve_expr(&d.module, b)? {
+                Symbol::Class(bq) if bq != c && declaring.contains_key(&bq) => Some(bq),
+                _ => None,
+            })
+            .collect()
+    };
+    let order = c3(q, &bases_of, 0)?;
+    order[1..].iter().find_map(|b| declared_annotation(index, declaring, b, field, depth + 1))
+}
+
+/// The C3 linearisation of class `q`, the order Python looks a name up in, over the bases
+/// `bases_of` gives (a class with none is a leaf). `None` for a cycle, an inconsistent
+/// hierarchy, or one deeper than 64 levels.
+fn c3(q: &str, bases_of: &dyn Fn(&str) -> Vec<String>, depth: usize) -> Option<Vec<String>> {
+    if depth > 64 {
+        return None;
+    }
+    let direct = bases_of(q);
+    let mut seqs: Vec<Vec<String>> = Vec::new();
+    for b in &direct {
+        seqs.push(c3(b, bases_of, depth + 1)?);
+    }
+    seqs.push(direct);
+    let mut order = vec![q.to_string()];
+    loop {
+        seqs.retain(|s| !s.is_empty());
+        if seqs.is_empty() {
+            return Some(order);
+        }
+        let head = seqs
+            .iter()
+            .map(|s| &s[0])
+            .find(|h| !seqs.iter().any(|s| s[1..].contains(*h)))?
+            .clone();
+        for s in &mut seqs {
+            if s[0] == head {
+                s.remove(0);
+            }
+        }
+        order.push(head);
+    }
 }
 
 /// The values a Django `choices=` expression allows: a literal list, a
