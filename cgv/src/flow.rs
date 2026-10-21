@@ -438,21 +438,18 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 if let Some(r) = &f.returns {
                     v.visit_expr(r);
                 }
-                v.reached.extend(effects_of_stmt(stmt).reached);
                 // The body runs when the function is called: the chains it hands
                 // on, and those it writes, are as good as handed at the definition.
                 let inner = effects_of_stmt(stmt);
+                v.reached.extend(inner.reached);
                 v.handed.extend(inner.handed);
-                v.handed.extend(written_roots(stmt));
                 n.apply(&v);
                 n.remove(f.name.as_str());
             }
             Stmt::ClassDef(c) => {
-                // The class body, its bases and decorators run at the definition.
-                let mut e = effects_of_stmt(stmt);
-                // Its methods run later, like a nested function's body.
-                e.handed.extend(written_roots(stmt));
-                n.apply(&e);
+                // The class body, its bases and decorators run at the definition,
+                // and its methods later, like a nested function's body.
+                n.apply(&effects_of_stmt(stmt));
                 n.remove(c.name.as_str());
             }
             _ => {
@@ -669,11 +666,19 @@ pub struct Effects {
     /// Names `x` of which an attribute `x.a` is read as a value (an
     /// argument, a stored or returned value) rather than only as the
     /// receiver of a further attribute: the object `x.a` is then in other
-    /// code's hands, which can write its fields.
+    /// code's hands, which can write its fields. Also the roots of the chains
+    /// it stores to or deletes other than by an assignment the walk tracks
+    /// (`simple_attr_targets`, `x.f += v`): a comprehension or `for` target,
+    /// or any store in a nested function or class body.
     pub handed: HashSet<String>,
     /// It suspends (`await`, `yield`, `async for`, `async with`, an async
     /// comprehension): other code may then run on any object.
     suspends: bool,
+    /// The parameters of each enclosing nested function or lambda: inside
+    /// it, such a name is not the one the walk tracks.
+    shadowed: Vec<HashSet<String>>,
+    /// How many function or class bodies enclose the node.
+    nested: usize,
 }
 
 impl Effects {
@@ -701,12 +706,27 @@ impl Effects {
 
     fn reach_root(&mut self, expr: &Expr) {
         match expr {
-            Expr::Name(n) => {
+            Expr::Name(n) if self.outer(n.id.as_str()) => {
                 self.reached.insert(n.id.to_string());
             }
             Expr::Attribute(a) => self.reach_root(&a.value),
             _ => {}
         }
+    }
+
+    /// Whether `name` here is the walked function's own, not a parameter of
+    /// a nested function or lambda.
+    fn outer(&self, name: &str) -> bool {
+        !self.shadowed.iter().any(|s| s.contains(name))
+    }
+
+    /// Visit a body that runs later, as a function of `params`.
+    fn visit_nested(&mut self, params: HashSet<String>, visit: impl FnOnce(&mut Self)) {
+        self.shadowed.push(params);
+        self.nested += 1;
+        visit(self);
+        self.nested -= 1;
+        self.shadowed.pop();
     }
 }
 
@@ -719,6 +739,36 @@ impl<'a> Visitor<'a> for Effects {
             }
             Stmt::For(f) if f.is_async => *self = std::mem::take(self).suspended(),
             Stmt::With(w) if w.is_async => *self = std::mem::take(self).suspended(),
+            // The walk tracks these stores itself.
+            Stmt::Assign(a) if self.nested == 0 && simple_attr_targets(a).is_some() => {
+                return self.visit_expr(&a.value);
+            }
+            Stmt::AugAssign(a) if self.nested == 0 && attr_name(&a.target).is_some() => {
+                return self.visit_expr(&a.value);
+            }
+            // Decorators, defaults and annotations run at the definition, in this scope.
+            Stmt::FunctionDef(f) => {
+                f.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                if let Some(t) = &f.type_params {
+                    self.visit_type_params(t);
+                }
+                self.visit_parameters(&f.parameters);
+                if let Some(r) = &f.returns {
+                    self.visit_annotation(r);
+                }
+                let params = f.parameters.iter().map(|p| p.name().id.to_string()).collect();
+                return self.visit_nested(params, |v| v.visit_body(&f.body));
+            }
+            Stmt::ClassDef(c) => {
+                c.decorator_list.iter().for_each(|d| self.visit_decorator(d));
+                if let Some(t) = &c.type_params {
+                    self.visit_type_params(t);
+                }
+                if let Some(a) = &c.arguments {
+                    self.visit_arguments(a);
+                }
+                return self.visit_nested(HashSet::new(), |v| v.visit_body(&c.body));
+            }
             _ => {}
         }
         visitor::walk_stmt(self, stmt);
@@ -745,13 +795,34 @@ impl<'a> Visitor<'a> for Effects {
                 }
             }
             Expr::Name(n) if matches!(n.ctx, ExprContext::Load) => {
-                self.reached.insert(n.id.to_string());
+                if self.outer(n.id.as_str()) {
+                    self.reached.insert(n.id.to_string());
+                }
+            }
+            Expr::Lambda(l) => {
+                let mut params = HashSet::new();
+                if let Some(p) = &l.parameters {
+                    self.visit_parameters(p);
+                    params = p.iter().map(|p| p.name().id.to_string()).collect();
+                }
+                return self.visit_nested(params, |v| v.visit_expr(&l.body));
             }
             // `x.f` reads a field of `x` and hands `x` to nothing, but it hands
             // the object `x.f` to whatever uses it as a value.
             Expr::Attribute(a) => {
+                if matches!(a.ctx, ExprContext::Store | ExprContext::Del) {
+                    let mut base = a.value.as_ref();
+                    while let Expr::Attribute(inner) = base {
+                        base = inner.value.as_ref();
+                    }
+                    if let Expr::Name(n) = base {
+                        if self.outer(n.id.as_str()) {
+                            self.handed.insert(n.id.to_string());
+                        }
+                    }
+                }
                 if let Expr::Name(n) = a.value.as_ref() {
-                    if matches!(a.ctx, ExprContext::Load) {
+                    if matches!(a.ctx, ExprContext::Load) && self.outer(n.id.as_str()) {
                         self.handed.insert(n.id.to_string());
                     }
                     return;
@@ -799,48 +870,6 @@ impl<'a> Visitor<'a> for Effects {
         }
         visitor::walk_expr(self, expr);
     }
-}
-
-/// The names at the root of an attribute chain that `stmt` writes or deletes
-/// (`x` of `x.a.f = v`), except a name that a function inside it takes as its own parameter.
-fn written_roots(stmt: &Stmt) -> HashSet<String> {
-    struct Roots {
-        out: HashSet<String>,
-        shadowed: Vec<HashSet<String>>,
-    }
-    impl<'a> Visitor<'a> for Roots {
-        fn visit_stmt(&mut self, stmt: &'a Stmt) {
-            if let Stmt::FunctionDef(f) = stmt {
-                self.shadowed
-                    .push(f.parameters.iter().map(|p| p.name().id.to_string()).collect());
-                visitor::walk_stmt(self, stmt);
-                self.shadowed.pop();
-            } else {
-                visitor::walk_stmt(self, stmt);
-            }
-        }
-
-        fn visit_expr(&mut self, expr: &'a Expr) {
-            if let Expr::Attribute(a) = expr {
-                if matches!(a.ctx, ExprContext::Store | ExprContext::Del) {
-                    let mut base = a.value.as_ref();
-                    while let Expr::Attribute(inner) = base {
-                        base = inner.value.as_ref();
-                    }
-                    if let Expr::Name(n) = base {
-                        let name = n.id.to_string();
-                        if !self.shadowed.iter().any(|s| s.contains(&name)) {
-                            self.out.insert(name);
-                        }
-                    }
-                }
-            }
-            visitor::walk_expr(self, expr);
-        }
-    }
-    let mut v = Roots { out: HashSet::new(), shadowed: Vec::new() };
-    v.visit_stmt(stmt);
-    v.out
 }
 
 /// The effects of evaluating `expr`.
