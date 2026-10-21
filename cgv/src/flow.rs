@@ -439,10 +439,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     v.visit_expr(r);
                 }
                 v.reached.extend(effects_of_stmt(stmt).reached);
-                // The body runs when the function is called: whatever it does
-                // with an attribute chain of a name, it may do to an object
-                // handed to it.
-                v.handed.extend(captured_roots(stmt));
+                // The body runs when the function is called: the chains it hands
+                // on, and those it writes, are as good as handed at the definition.
+                let inner = effects_of_stmt(stmt);
+                v.handed.extend(inner.handed);
+                v.handed.extend(written_roots(stmt));
                 n.apply(&v);
                 n.remove(f.name.as_str());
             }
@@ -450,7 +451,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 // The class body, its bases and decorators run at the definition.
                 let mut e = effects_of_stmt(stmt);
                 // Its methods run later, like a nested function's body.
-                e.handed.extend(captured_roots(stmt));
+                e.handed.extend(written_roots(stmt));
                 n.apply(&e);
                 n.remove(c.name.as_str());
             }
@@ -800,26 +801,46 @@ impl<'a> Visitor<'a> for Effects {
     }
 }
 
-/// The names at the root of an attribute chain (`x` of `x.a.f`) anywhere in `stmt`.
-fn captured_roots(stmt: &Stmt) -> HashSet<String> {
-    struct Roots(HashSet<String>);
+/// The names at the root of an attribute chain that `stmt` writes or deletes
+/// (`x` of `x.a.f = v`), except a name that a function inside it takes as its own parameter.
+fn written_roots(stmt: &Stmt) -> HashSet<String> {
+    struct Roots {
+        out: HashSet<String>,
+        shadowed: Vec<HashSet<String>>,
+    }
     impl<'a> Visitor<'a> for Roots {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if let Stmt::FunctionDef(f) = stmt {
+                self.shadowed
+                    .push(f.parameters.iter().map(|p| p.name().id.to_string()).collect());
+                visitor::walk_stmt(self, stmt);
+                self.shadowed.pop();
+            } else {
+                visitor::walk_stmt(self, stmt);
+            }
+        }
+
         fn visit_expr(&mut self, expr: &'a Expr) {
             if let Expr::Attribute(a) = expr {
-                let mut base = a.value.as_ref();
-                while let Expr::Attribute(inner) = base {
-                    base = inner.value.as_ref();
-                }
-                if let Expr::Name(n) = base {
-                    self.0.insert(n.id.to_string());
+                if matches!(a.ctx, ExprContext::Store | ExprContext::Del) {
+                    let mut base = a.value.as_ref();
+                    while let Expr::Attribute(inner) = base {
+                        base = inner.value.as_ref();
+                    }
+                    if let Expr::Name(n) = base {
+                        let name = n.id.to_string();
+                        if !self.shadowed.iter().any(|s| s.contains(&name)) {
+                            self.out.insert(name);
+                        }
+                    }
                 }
             }
             visitor::walk_expr(self, expr);
         }
     }
-    let mut v = Roots(HashSet::new());
+    let mut v = Roots { out: HashSet::new(), shadowed: Vec::new() };
     v.visit_stmt(stmt);
-    v.0
+    v.out
 }
 
 /// The effects of evaluating `expr`.

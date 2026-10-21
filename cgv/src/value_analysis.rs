@@ -3528,6 +3528,9 @@ mod tests {
             ("    def fill():\n        clear(p.a)\n    fill()\n    p.a.code\n", Some(true)),
             ("    def fill():\n        p.a.code = None\n    fill()\n    p.a.code\n", Some(true)),
             ("    class K:\n        def m(self):\n            p.a.code = None\n    p.a.code\n", Some(true)),
+            // A nested function that only reads the chain, or writes a chain of its own parameter, hands nothing.
+            ("    def fmt():\n        return p.a.name\n    fmt()\n    p.a.code\n", None),
+            ("    def cb(p):\n        p.a.code = None\n    cb(1)\n    p.a.code\n", None),
         ] {
             let src = format!("{records}def f(p: P):\n{body}def g(p: P):\n    if p.a.code:\n        f(p)\n");
             assert_eq!(facts_of(&[("code.py", &src)], "code.f").nullable, want, "{body}");

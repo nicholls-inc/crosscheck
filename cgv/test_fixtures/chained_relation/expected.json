@@ -48,6 +48,10 @@
     {
       "path": "bill_checked -> Invoice.email",
       "contains": "no nullability postcondition"
+    },
+    {
+      "path": "bill_formatted -> Invoice.email",
+      "contains": "no nullability postcondition"
     }
   ]
 }

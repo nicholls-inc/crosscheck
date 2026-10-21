@@ -65,3 +65,18 @@ def bill_checked(order: Order) -> None:
 def bill_checked_when_known(order: Order) -> None:
     if order.customer.email:
         bill_checked(order)
+
+
+def bill_formatted(order: Order) -> None:
+    # NOT AN ERROR: the nested function only reads the chain, so the only caller's
+    # guard on the chained field still holds: a warning (CG-1.9).
+    def label() -> str:
+        return order.customer.name
+
+    label()
+    Invoice.objects.create(email=order.customer.email, name="x", short="x")
+
+
+def bill_formatted_when_known(order: Order) -> None:
+    if order.customer.email:
+        bill_formatted(order)
