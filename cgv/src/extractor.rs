@@ -543,42 +543,66 @@ fn django_models(
             (q.clone(), links)
         })
         .collect();
-    /// The links of model `q` and the names of all its fields. The earliest base wins,
-    /// as in Python's method resolution order, and the model's own assignment of a
-    /// name replaces any base's, so a field redeclared without a resolvable
-    /// relation drops the inherited link rather than keeping a stale one.
+    /// The C3 linearisation of model `q` over the project models in `own_bound`, the
+    /// order Python looks a name up in. `None` for a cycle or an inconsistent hierarchy.
+    fn mro(
+        q: &str,
+        own_bound: &HashMap<String, HashSet<String>>,
+        bases: &HashMap<String, Vec<String>>,
+        depth: usize,
+    ) -> Option<Vec<String>> {
+        if depth > 64 {
+            return None;
+        }
+        let direct: Vec<String> =
+            bases.get(q).into_iter().flatten().filter(|b| own_bound.contains_key(*b)).cloned().collect();
+        let mut seqs: Vec<Vec<String>> = Vec::new();
+        for b in &direct {
+            seqs.push(mro(b, own_bound, bases, depth + 1)?);
+        }
+        seqs.push(direct);
+        let mut order = vec![q.to_string()];
+        loop {
+            seqs.retain(|s| !s.is_empty());
+            if seqs.is_empty() {
+                return Some(order);
+            }
+            let head = seqs
+                .iter()
+                .map(|s| &s[0])
+                .find(|h| !seqs.iter().any(|s| s[1..].contains(*h)))?
+                .clone();
+            for s in &mut seqs {
+                if s[0] == head {
+                    s.remove(0);
+                }
+            }
+            order.push(head);
+        }
+    }
+
+    /// The links of model `q`: for each name, the declaration in the first class of its
+    /// method resolution order that assigns it. A field redeclared without a resolvable
+    /// relation therefore has no link, rather than keeping a stale inherited one.
     fn inherited_links(
         q: &str,
         own_links: &HashMap<String, HashMap<String, resolve::Link>>,
         own_bound: &HashMap<String, HashSet<String>>,
         bases: &HashMap<String, Vec<String>>,
-        visiting: &mut HashSet<String>,
-    ) -> (HashMap<String, resolve::Link>, HashSet<String>) {
+    ) -> HashMap<String, resolve::Link> {
+        let order = mro(q, own_bound, bases, 0).unwrap_or_else(|| vec![q.to_string()]);
         let mut links = HashMap::new();
-        let mut names = HashSet::new();
-        if !visiting.insert(q.to_string()) {
-            return (links, names);
-        }
-        if visiting.len() <= 64 {
-            for b in bases.get(q).into_iter().flatten() {
-                let (b_links, b_names) = inherited_links(b, own_links, own_bound, bases, visiting);
-                // Python resolves bases in order: the earliest base that declares a
-                // name, or inherits it, supplies it.
-                for (name, link) in b_links {
-                    if !names.contains(&name) {
-                        links.insert(name, link);
+        let mut seen: HashSet<&String> = HashSet::new();
+        for class in &order {
+            for name in own_bound.get(class).into_iter().flatten() {
+                if seen.insert(name) {
+                    if let Some(link) = own_links.get(class).and_then(|l| l.get(name)) {
+                        links.insert(name.clone(), link.clone());
                     }
                 }
-                names.extend(b_names);
             }
-            for name in own_bound.get(q).into_iter().flatten() {
-                links.remove(name);
-                names.insert(name.clone());
-            }
-            links.extend(own_links.get(q).cloned().unwrap_or_default());
         }
-        visiting.remove(q);
-        (links, names)
+        links
     }
 
     let mut all = Vec::new();
@@ -586,7 +610,7 @@ fn django_models(
         if !django.contains(q) {
             continue;
         }
-        let (links, _) = inherited_links(q, &own_links, &own_bound, &base_classes, &mut HashSet::new());
+        let links = inherited_links(q, &own_links, &own_bound, &base_classes);
         let mut fields = with_inherited(q, &own, &base_classes, &mut HashSet::new());
         for f in &mut fields {
             // Inherited fields are reported under the child.
@@ -1475,6 +1499,9 @@ mod tests {
                  class Early(Base):\n    owner = models.ForeignKey(Other, null=True, on_delete=models.CASCADE)\n\
                  class Late(Base):\n    pass\n\
                  class Diamond(Early, Late):\n    pass\n\
+                 class Early2(Base):\n    pass\n\
+                 class Late2(Base):\n    owner = models.ForeignKey(Other, null=True, on_delete=models.CASCADE)\n\
+                 class Diamond2(Early2, Late2):\n    pass\n\
                  class Other(models.Model):\n    pass\n",
             ),
             (
@@ -1498,6 +1525,7 @@ mod tests {
         // A bare annotation is not a declaration; a diamond takes the earliest base's override.
         assert_eq!(links("billing.models.Typed"), ["note billing.models.Customer", "owner billing.models.Customer"]);
         assert_eq!(links("billing.models.Diamond"), ["note billing.models.Customer", "owner billing.models.Other"]);
+        assert_eq!(links("billing.models.Diamond2"), ["note billing.models.Customer", "owner billing.models.Other"]);
         // Annotations are read from data class bases only.
         assert_eq!(links("records.Plain"), Vec::<String>::new());
     }
