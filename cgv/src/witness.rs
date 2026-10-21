@@ -605,6 +605,27 @@ mod tests {
         assert!(!dangling.exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn write_does_not_write_through_a_symbolic_link_at_a_module_path() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        // The helper path stays clean, so write() gets past it to the module file.
+        let victim = outside.path().join("conftest.py");
+        std::fs::write(&victim, "keep\n").unwrap();
+        let module_path = dir.path().join("test_cgv_witness_001_order_code.py");
+        std::os::unix::fs::symlink(&victim, &module_path).unwrap();
+
+        let out = output(vec![result("f", "Order.code", "length ≤ 12", Some("\"x\" * 12"))]);
+        let plan = plan(&out, &origins(&[("Order.code", 7, FieldLibrary::Django)]));
+        assert_eq!(plan.modules[0].file_name, "test_cgv_witness_001_order_code.py");
+        let err = write(dir.path(), &plan, Path::new("/app")).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(dir.path().join(HELPER_FILE).is_file(), "the helper was written, so the module guard was reached");
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep\n");
+        assert!(module_path.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+
     #[test]
     fn write_accepts_the_empty_root_of_a_bare_file_name() {
         let dir = tempfile::TempDir::new().unwrap();
