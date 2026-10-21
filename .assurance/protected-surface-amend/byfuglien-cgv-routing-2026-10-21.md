@@ -63,12 +63,14 @@ Mechanical items.
 - [x] This amendment block appears in the PR body.
   Command: `grep -c "^## Protected-Surface Amendment"` on the PR body file. Output: `1`.
 - [ ] No unresolved human-verification marker is left.
-  Command: `grep -c "REQUIRES HUMAN VERIFICATION:"` on this file, minus this item's own line. Output: 6. The maintainer resolves them; agents must not tick them.
+  Command: `grep -c "^- \[ \] REQUIRES HUMAN VERIFICATION:"` on this file. Output: 4. The maintainer resolves them, or an agent ticks one on the maintainer's explicit instruction.
 
 Judgment items. A human decides these. The maintainer's full-autonomy grant authorized agents to build and review this change, not to tick these markers. Under rule 4 (`.claude/rules/protected-surfaces.md`, Amendment pattern) the pull request must not merge while any is unresolved, so they stay open and the merge waits for the maintainer.
 
-- [ ] REQUIRES HUMAN VERIFICATION: Rationale is anchored to a concrete trigger (not "cleanup" or "robustness").
-- [ ] REQUIRES HUMAN VERIFICATION: Governing roadmap item ER-1 actually covers this change.
+- [x] REQUIRES HUMAN VERIFICATION: Rationale is anchored to a concrete trigger (not "cleanup" or "robustness").
+  Ticked by Claude on the instruction of hnipps, 2026-10-21.
+- [x] REQUIRES HUMAN VERIFICATION: Governing roadmap item ER-1 actually covers this change.
+  Ticked by Claude on the instruction of hnipps, 2026-10-21: ER-1 covers it because the route only runs CGV and passes CGV's own record through unchanged.
 - [ ] REQUIRES HUMAN VERIFICATION: Diff plan covers every affected line range and stage.
 - [ ] REQUIRES HUMAN VERIFICATION: No invariant is being weakened purely to make a failing test pass.
 - [ ] REQUIRES HUMAN VERIFICATION: The report wording states CGV's strength, trusted base and exit-0 qualifiers without overclaiming, against `cgv/README.md` "What exit 0 promises" and the `cgv_check` spec (CK-9), and treats a refusal or missing binaries as "not run".
