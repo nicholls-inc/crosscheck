@@ -7,9 +7,11 @@
 
 ### Change Description
 
-1. `.github/workflows/cgv-ci.yml`: after the `Fixtures (extractor + checker against expected.json)` step, two steps run `python3 scripts/witness_tests.py run` and `python3 scripts/witness_tests.py selftest` from `cgv/`. They install Django 4.2.30 or 5.2.18 with pydantic 2.13.5 and pytest 8.4.2 from hash-pinned requirements files into two virtual environments, generate the witness modules of every fixture with `contracts check --witness-tests`, run them, and fail unless every generated test fails for the stated reason (`CGV-WITNESS REJECTED`) or is withheld for a named gap, and unless a counterexample replaced by an accepted value makes the run fail (WX-12).
+1. `.github/workflows/cgv-ci.yml`: after the `Fixtures (extractor + checker against expected.json)` step, `actions/setup-python@v5` installs Python 3.12, and two steps run `python3 scripts/witness_tests.py run` and `python3 scripts/witness_tests.py selftest` from `cgv/`. They install Django 4.2.30 or 5.2.18 with pydantic 2.13.5 and pytest 8.4.2 from hash-pinned requirements files into two virtual environments, generate the witness modules of every fixture with `contracts check --witness-tests`, run them, and fail unless every generated test fails for the stated reason (`CGV-WITNESS REJECTED`) or is withheld for a named gap, and unless a counterexample replaced by an accepted value makes the run fail (WX-12).
 
 No existing step changes. No step calls an LLM or reads a secret.
+
+The edit is not in this branch's commits. GitHub refused the agent's push of a commit that touches `.github/workflows/`, because its token lacks the `workflow` scope. The exact diff is in the pull request body. The maintainer pushes it to this branch before merging, or the pull request merges without CI running the witness tests and the CG-1.37 row is not done.
 
 ### Rationale
 
@@ -30,7 +32,7 @@ Task CG-1.37. Each CGV error now carries a counterexample that Lean proves relat
 
 | # | File | Section | Action |
 |---|------|---------|--------|
-| 1 | `.github/workflows/cgv-ci.yml` | after the fixture step | two steps added |
+| 1 | `.github/workflows/cgv-ci.yml` | after the fixture step | three steps added |
 
 ### Test / Coverage Impact
 
@@ -43,5 +45,5 @@ Task CG-1.37. Each CGV error now carries a counterexample that Lean proves relat
 - [ ] REQUIRES HUMAN VERIFICATION: the maintainer accepts that CGV CI now installs Django, pydantic and pytest from PyPI on each run, pinned by hash.
 - [ ] REQUIRES HUMAN VERIFICATION: CG-1 covers a CI step that runs generated tests.
 - [x] Authoriser is a named human.
-- [x] The diff plan names every changed protected file. `git diff --name-only origin/main...HEAD` lists `.github/workflows/cgv-ci.yml` as the only path under the protected globs.
+- [ ] REQUIRES HUMAN VERIFICATION: the maintainer pushed the workflow diff of the pull request body to this branch. Until then `git diff --name-only origin/main...HEAD` lists no path under the protected globs, and the diff plan names one.
 - [x] No check is weakened: the existing steps are unchanged.
