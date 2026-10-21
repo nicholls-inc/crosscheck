@@ -587,12 +587,27 @@ fn django_models(
         .map(|(q, _, _)| q.clone())
         .collect();
 
+    /// Whether model `x` lists `abstract_base` among its bases, directly or through abstract
+    /// models only.
+    fn lists(
+        x: &str,
+        abstract_base: &str,
+        bases: &HashMap<String, Vec<String>>,
+        abstract_models: &HashSet<String>,
+        depth: usize,
+    ) -> bool {
+        depth < 64
+            && bases.get(x).into_iter().flatten().any(|b| {
+                b == abstract_base || (abstract_models.contains(b) && lists(b, abstract_base, bases, abstract_models, depth + 1))
+            })
+    }
+
     /// The links of model `q`: for each name, the declaration in the first class of its
     /// method resolution order that assigns it. A field redeclared without a resolvable
     /// relation therefore has no link, rather than keeping a stale inherited one. A class
     /// that is not a project model may bind any name, so nothing after it is inherited.
     /// A link an abstract model declares to itself (`ForeignKey("self")`, the only way to
-    /// name an abstract model) points at the model that inherits it, as Django resolves it.
+    /// name an abstract model) points at the model that lists it among its bases, as Django resolves it.
     fn inherited_links(
         q: &str,
         own_links: &HashMap<String, HashMap<String, resolve::Link>>,
@@ -611,13 +626,14 @@ fn django_models(
                     if let Some(link) = own_links.get(class).and_then(|l| l.get(name)) {
                         let mut link = link.clone();
                         if abstract_models.contains(class) && link.class == *class {
-                            // The model that inherits the abstract one: the concrete model
-                            // closest to it in the order (a multi-table child of that model
-                            // links to the model, which holds the field), else `q` itself.
+                            // The model that lists the abstract one among its bases, directly or
+                            // through abstract models only, as Django copies its fields into
+                            // that model (a multi-table child of that model links to the model,
+                            // which holds the field); `q` itself when none does.
                             link.class = order[..i]
                                 .iter()
                                 .rev()
-                                .find(|c| !abstract_models.contains(*c))
+                                .find(|c| !abstract_models.contains(*c) && lists(c, class, bases, abstract_models, 0))
                                 .map_or(q, |c| c.as_str())
                                 .to_string();
                         }
@@ -1569,6 +1585,8 @@ mod tests {
                  class Tree(models.Model):\n    parent = models.ForeignKey(\"self\", null=True, on_delete=models.CASCADE)\n    class Meta:\n        abstract = True\n\
                  class Node(Tree):\n    pass\n\
                  class Leaf(Node):\n    pass\n\
+                 class Sibling(models.Model):\n    pass\n\
+                 class Child(Sibling, Tree):\n    pass\n\
                  class Method(Base):\n    @property\n    def owner(self):\n        return None\n\
                  class Chained(Base):\n    owner = note = None\n\
                  class Tupled(Base):\n    (owner, other) = (None, None)\n\
@@ -1600,6 +1618,8 @@ mod tests {
         // `"self"` on an abstract model is the class of the concrete model that inherits it.
         assert_eq!(links("billing.models.Tree"), ["parent billing.models.Tree"]);
         assert_eq!(links("billing.models.Node"), ["parent billing.models.Node"]);
+        // The model that lists the abstract one, not a concrete sibling ahead of it.
+        assert_eq!(links("billing.models.Child"), ["parent billing.models.Child"]);
         // A multi-table child of a concrete model links to that model, which holds the field.
         assert_eq!(links("billing.models.Leaf"), ["parent billing.models.Node"]);
         // A method, a property or a chained assignment hides an inherited link too.

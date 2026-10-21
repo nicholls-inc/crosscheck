@@ -3608,6 +3608,9 @@ mod tests {
         // An expression built from the root can hold the chain.
         assert_eq!(alias("f(p, [p.a])"), Some(true));
         assert_eq!(alias("f(p, p.get_a())"), Some(true));
+        // Any expression that reads the root ends the guard, a harmless one included: the
+        // walk has no class to tell a link from a plain value (a false error, never a missed one).
+        assert_eq!(alias("f(p, len(p.a.name))"), Some(true));
         assert_eq!(alias("f(p, 1)"), None);
         // An argument that `*args` takes is still an argument.
         let rest = |call: &str| {
