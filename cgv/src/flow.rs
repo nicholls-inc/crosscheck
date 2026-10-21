@@ -286,6 +286,31 @@ impl Narrowed {
         }
     }
 
+    /// The state in which a statement or a test with effects `e` is evaluated:
+    /// its operands are read against the state before it, so what `e` does to
+    /// an `isinstance` narrowing in an operand that follows (a walrus in an
+    /// argument, `clear(p)` in an earlier argument) is applied first. A held
+    /// fact ends when `e` reaches its root, suspends or reads its `__dict__`,
+    /// but not for a mere read of the chain (`handed`), which the evaluation
+    /// of the statement's own use performs.
+    pub fn forget_before(&mut self, e: &Effects) {
+        let gone: Vec<String> = self
+            .held
+            .iter()
+            .filter(|h| {
+                let root = h.split('.').next().unwrap_or(h);
+                e.suspends || e.reached.contains(root) || e.exposes.contains(root)
+            })
+            .cloned()
+            .collect();
+        for name in gone {
+            self.names.remove(&name);
+            self.held.remove(&name);
+            self.iso.remove(&name);
+        }
+        self.forget_rebound_isinstance_facts(e);
+    }
+
     /// The state after evaluating a node with effects `e`.
     pub fn apply(&mut self, e: &Effects) {
         self.names.retain(|n| e.keeps_member(n));
@@ -294,6 +319,7 @@ impl Narrowed {
         }
         self.held.retain(|h| self.names.contains(h));
         self.forget_rebound_isinstance_facts(e);
+        self.iso.retain(|h| self.names.contains(h));
         self.exposed.extend(e.exposes.iter().cloned());
         if e.suspends {
             self.untouched.clear();
@@ -427,6 +453,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
             Stmt::If(s) => {
                 v.header(&s.test, &n);
                 n.extend(dereferenced(&s.test));
+                n.forget_before(&effects(&s.test));
                 let before = n.clone();
                 n.apply(&effects(&s.test));
                 let mut ends = Vec::new();
@@ -447,6 +474,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                             let e = effects(test);
                             n.apply(&e);
                             negated.retain(|x| x.survives(&e));
+                            clause_n.forget_before(&e);
                             let before = clause_n.clone();
                             clause_n.apply(&e);
                             let mut bn = clause_n.clone();
@@ -478,6 +506,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 }
             }
             Stmt::Assert(a) => {
+                n.forget_before(&effects_of_stmt(stmt));
                 v.simple(stmt, &n);
                 n.assume(positive(&a.test, &n));
                 n.apply(&effects_of_stmt(stmt));
@@ -604,6 +633,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.remove(c.name.as_str());
             }
             _ => {
+                n.forget_before(&effects_of_stmt(stmt));
                 v.simple(stmt, &n);
                 n.extend(stmt_dereferences(stmt));
                 n.apply(&effects_of_stmt(stmt));
@@ -829,9 +859,8 @@ pub struct Effects {
     pub handed_paths: HashSet<String>,
     /// The roots `x` of which a field may be written by code that no later
     /// node names: `x.__dict__` or `x.a.__dict__` read (the table can be
-    /// indexed), a store to `x.f` the walk does not track (in a nested
-    /// function or class body, or as a `for` or comprehension target), and a
-    /// `nonlocal x` in a nested body.
+    /// indexed), a store to `x.f` in a nested function or class body or as a
+    /// comprehension target, and a `nonlocal x` in a nested body.
     pub exposes: HashSet<String>,
     /// The names a walrus in it binds.
     rebinds: HashSet<String>,
@@ -879,6 +908,28 @@ impl Effects {
         match n.split_once('[') {
             None => true,
             Some((container, _)) => !self.mutates && self.gets.iter().all(|g| g == container),
+        }
+    }
+
+    /// A comprehension target `x.f` writes a field of `x` on each iteration,
+    /// and no statement binds it for the walk (`bound_names`).
+    fn expose_target(&mut self, target: &Expr) {
+        match target {
+            Expr::Attribute(a) => {
+                let mut base = a.value.as_ref();
+                while let Expr::Attribute(inner) = base {
+                    base = inner.value.as_ref();
+                }
+                if let Expr::Name(n) = base {
+                    if self.outer(n.id.as_str()) {
+                        self.exposes.insert(n.id.to_string());
+                    }
+                }
+            }
+            Expr::Tuple(t) => t.elts.iter().for_each(|e| self.expose_target(e)),
+            Expr::List(l) => l.elts.iter().for_each(|e| self.expose_target(e)),
+            Expr::Starred(st) => self.expose_target(&st.value),
+            _ => {}
         }
     }
 
@@ -1020,10 +1071,11 @@ impl<'a> Visitor<'a> for Effects {
                     if let Expr::Name(n) = base {
                         if self.outer(n.id.as_str()) {
                             self.handed.insert(n.id.to_string());
-                            // A store the walk does not track (a nested body,
-                            // a `for` or comprehension target) writes a field
-                            // of the root that no later node names.
-                            self.exposes.insert(n.id.to_string());
+                            // A store in a nested body writes a field of the
+                            // root when the body runs, which no node names.
+                            if self.nested > 0 {
+                                self.exposes.insert(n.id.to_string());
+                            }
                         }
                     }
                 }
@@ -1088,6 +1140,7 @@ impl<'a> Visitor<'a> for Effects {
                 if generators.iter().any(|g| g.is_async) {
                     *self = std::mem::take(self).suspended();
                 }
+                generators.iter().for_each(|g| self.expose_target(&g.target));
             }
             _ => {}
         }
@@ -2331,6 +2384,48 @@ mod tests {
         // A name that an `is not None` test also narrows keeps that narrowing.
         let src = "def f(x, c):\n    if x is not None and isinstance(x, str):\n        y = (z := c)\n        use()\n";
         assert!(narrowing_with_isinstance(src)[0].contains(&"x".to_string()));
+    }
+
+    #[test]
+    fn test_a_walrus_or_a_hand_off_in_the_same_statement_ends_an_isinstance_narrowing() {
+        // `use(...)` observes the state its own operands are read against.
+        let cases = [
+            ("o.a", "use(clear(o), o.a)", false),
+            ("o.a", "use(o.a, clear(o))", false),
+            ("o.a", "use(o.__dict__, o.a)", false),
+            ("o.a", "use(o.a)", true),
+            ("o.a", "use(clear(c), o.a)", true),
+            ("x", "use((x := c), x)", false),
+            ("x", "use(x, (x := c))", false),
+            ("x", "use((z := c), x)", true),
+            ("o.a", "use((o := c), o.a)", false),
+        ];
+        for (subject, stmt, narrowed) in cases {
+            let src = format!("def f(x, o, c):\n    if isinstance({subject}, str):\n        {stmt}\n");
+            assert_eq!(narrowing_with_isinstance(&src)[0].contains(&subject.to_string()), narrowed, "{subject} / {stmt}");
+        }
+        // The same in an assert and in an elif test.
+        let src = "def f(o, c):\n    assert isinstance(o.a, str)\n    use(clear(o), o.a)\n";
+        assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
+    }
+
+    #[test]
+    fn test_a_tracked_store_before_the_test_does_not_stop_an_isinstance_narrowing() {
+        // The walk follows these stores through `bound_names`, so they only
+        // forget what they write.
+        for before in ["    o.b: int = 0\n", "    o.b, o.d = c, c\n", "    for o.b in c:\n        pass\n", "    with c as o.b:\n        pass\n", "    o.b += c\n"] {
+            let src = format!("def f(o, c):\n{before}    if isinstance(o.a, str):\n        use()\n");
+            assert!(narrowing_with_isinstance(&src)[0].contains(&"o.a".to_string()), "{before:?}");
+        }
+        // After the test, a store to the subject itself ends it.
+        for after in ["o.a: str = c", "o.a, o.d = c, c", "o.a += c", "del o.a"] {
+            let src = format!("def f(o, c):\n    if isinstance(o.a, str):\n        {after}\n        use()\n");
+            assert!(!narrowing_with_isinstance(&src)[0].contains(&"o.a".to_string()), "{after}");
+        }
+        for after in ["for o.a in c:\n            pass", "with c as o.a:\n            pass"] {
+            let src = format!("def f(o, c):\n    if isinstance(o.a, str):\n        {after}\n        use()\n");
+            assert!(!narrowing_with_isinstance(&src)[0].contains(&"o.a".to_string()), "{after}");
+        }
     }
 
     #[test]

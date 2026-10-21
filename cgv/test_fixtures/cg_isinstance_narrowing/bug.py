@@ -198,3 +198,28 @@ def store_class_body_after(address: Address) -> Entry:
 def store_walrus_in_later_operand(value: object, fallback: Optional[str]) -> object:
     # BUG: the walrus in a later operand rebinds value to an Optional.
     return isinstance(value, str) and ((value := fallback) or True) and Entry.objects.create(text=value)
+
+
+def store_walrus_in_argument(value: object, fallback: Optional[str]) -> Entry:
+    # BUG: the walrus in an argument rebinds value before the text argument reads it.
+    if isinstance(value, str):
+        return Entry.objects.create(id=(value := fallback), text=value)
+    return Entry.objects.create(text="x")
+
+
+def store_handoff_in_argument(address: Address) -> Entry:
+    # BUG: clear() in an earlier argument sets the postcode to None before text reads it.
+    if isinstance(address.postcode, str):
+        return Entry.objects.create(id=clear(address), text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_nested_dict_after(address: Address) -> Entry:
+    # BUG: reset() writes through __dict__, and it is defined inside the branch.
+    if isinstance(address.postcode, str):
+        def reset() -> None:
+            address.__dict__["postcode"] = None
+
+        reset()
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
