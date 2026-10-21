@@ -335,9 +335,8 @@ def pydantic_probes():
     ]
 
 
-
 def lean_command():
-    proxy = Path.home() / ".elan" / "bin" / "lean"
+    proxy = Path(os.environ.get("ELAN_HOME", Path.home() / ".elan")) / "bin" / "lean"
     found = str(proxy) if proxy.exists() else shutil.which("lean")
     if not found or not Path(found).exists():
         raise HarnessError("lean not found: install elan, https://github.com/leanprover/elan")
@@ -423,15 +422,14 @@ def compare(summary, baseline, seed, examples, full=True):
     problems = []
     exact = baseline.get("seed") == seed and baseline.get("examples") == examples
     tracked = baseline.get("tracked_by", {})
-    if exact:
-        for config, predicates in baseline.get("counts", {}).items():
-            if config not in summary:
-                if full:
-                    problems.append(f"{config}: in the baseline but not run")
-                continue
-            for predicate in predicates:
-                if predicate not in summary[config]:
-                    problems.append(f"{config} {predicate}: in the baseline but not drawn by this run")
+    for config, predicates in baseline.get("counts", {}).items():
+        if config not in summary:
+            if full:
+                problems.append(f"{config}: in the baseline but not run")
+            continue
+        for predicate in predicates:
+            if predicate not in summary[config]:
+                problems.append(f"{config} {predicate}: in the baseline but not drawn by this run")
     for config, predicates in summary.items():
         for predicate, row in predicates.items():
             known = baseline.get("counts", {}).get(config, {}).get(predicate)
@@ -460,10 +458,24 @@ def print_summary(summary, tracked):
 def run(args):
     work = Path(args.work_dir).resolve()
     work.mkdir(parents=True, exist_ok=True)
-    configs = args.configs.split(",") if args.configs else list(CONFIGS)
+    configs = list(dict.fromkeys(args.configs.split(","))) if args.configs else list(CONFIGS)
     for c in configs:
         if c not in CONFIGS:
             raise HarnessError(f"unknown configuration {c}; known: {', '.join(CONFIGS)}")
+    baseline_path = Path(args.baseline)
+    if args.update_baseline:
+        if set(configs) != set(CONFIGS):
+            raise HarnessError("--update-baseline needs every configuration; drop --configs")
+        if Path(args.behavior_model).resolve() != DEFAULT_MODEL.resolve():
+            raise HarnessError("--update-baseline only accepts the default BehaviorModel.lean path")
+        if (args.seed, args.examples) != (DEFAULT_SEED, DEFAULT_EXAMPLES):
+            raise HarnessError("--update-baseline only accepts the default --seed and --examples")
+    if baseline_path.exists():
+        baseline = json.loads(baseline_path.read_text())
+    elif args.update_baseline:
+        baseline = {}
+    else:
+        raise HarnessError(f"baseline {baseline_path} not found; create it with --update-baseline")
     olean_root = build_model(Path(args.behavior_model).resolve(), work)
     cases, versions = [], {}
     for config in configs:
@@ -475,18 +487,6 @@ def run(args):
         versions[config] = json.loads(Path(str(out) + ".versions").read_text())
     verdicts = evaluate(cases, olean_root)
     summary = summarise(cases, verdicts)
-    baseline_path = Path(args.baseline)
-    if args.update_baseline:
-        if args.configs:
-            raise HarnessError("--update-baseline needs every configuration; drop --configs")
-        if Path(args.behavior_model).resolve() != DEFAULT_MODEL.resolve():
-            raise HarnessError("--update-baseline only accepts the committed BehaviorModel.lean")
-    if baseline_path.exists():
-        baseline = json.loads(baseline_path.read_text())
-    elif args.update_baseline:
-        baseline = {}
-    else:
-        raise HarnessError(f"baseline {baseline_path} not found; create it with --update-baseline")
     report = {"seed": args.seed, "examples": args.examples, "behavior_model": str(args.behavior_model),
               "versions": versions, "summary": summary}
     (work / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
@@ -498,19 +498,31 @@ def run(args):
                            for p, r in predicates.items()} for config, predicates in summary.items()}
         baseline = {"seed": args.seed, "examples": args.examples, "versions": versions, "counts": counts,
                     "tracked_by": baseline.get("tracked_by", {})}
-        problems = compare(summary, baseline, args.seed, args.examples)
-        if not problems:
-            staged = baseline_path.with_suffix(baseline_path.suffix + ".tmp")
-            staged.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n")
-            os.replace(staged, baseline_path)
-            print(f"wrote {baseline_path}")
+        problems = [f"{config} {predicate}: disagreements with no task row in tracked_by"
+                    for config, predicates in summary.items() for predicate, row in predicates.items()
+                    if row["disagreements"] and predicate not in baseline["tracked_by"]]
+        if problems:
+            print(f"not writing {baseline_path}: add a tracked_by row for each predicate below by hand first")
         else:
-            print(f"not writing {baseline_path}")
+            staged = baseline_path.with_suffix(baseline_path.suffix + ".tmp")
+            try:
+                staged.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n")
+                os.replace(staged, baseline_path)
+            finally:
+                staged.unlink(missing_ok=True)
+            print(f"wrote {baseline_path}")
     else:
-        problems = compare(summary, baseline, args.seed, args.examples, full=len(configs) == len(CONFIGS))
+        problems = compare(summary, baseline, args.seed, args.examples, full=set(configs) == set(CONFIGS))
     for p in problems:
         print(f"FAIL {p}")
     return 1 if problems else 0
+
+
+def baseline_counts(baseline, config, predicate):
+    try:
+        return baseline["counts"][config][predicate]["disagreements"]
+    except KeyError:
+        raise HarnessError(f"baseline has no entry for {config} {predicate}; run --update-baseline") from None
 
 
 def selftest(args):
@@ -528,7 +540,7 @@ def selftest(args):
     baseline = json.loads(Path(args.baseline).read_text())
     moved = {(config, predicate) for config, predicates in report["summary"].items()
              for predicate, row in predicates.items()
-             if row["disagreements"] != baseline["counts"][config][predicate]["disagreements"]}
+             if row["disagreements"] != baseline_counts(baseline, config, predicate)}
     django = {(config, "charFieldAccepts") for config in report["summary"] if config.startswith("django")}
     if status == 1 and moved == django:
         print(f"selftest passed: the mutant moved exactly {sorted(moved)}")
@@ -563,7 +575,7 @@ def main():
             sample(args.config, args.seed, args.examples, args.out)
             return 0
         return run(args) if args.command == "run" else selftest(args)
-    except (HarnessError, subprocess.CalledProcessError, OSError, ValueError, KeyError) as e:
+    except (HarnessError, subprocess.CalledProcessError, OSError, json.JSONDecodeError) as e:
         print(f"ERROR {e}", file=sys.stderr)
         return 2
 
