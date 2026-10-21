@@ -12,15 +12,19 @@ Subcommands (run from cgv/):
             every configuration, evaluate, compare with scripts/behavior-baseline.json.
             Exit 0 when every count matches, 1 when one differs (with --update-baseline,
             when a disagreeing predicate has no tracked_by row), 2 when the harness itself
-            fails. That is the gate only for a run of every configuration with the
-            baseline's seed and examples. Any other run (another seed or example count,
-            or --configs) only fails on a disagreement the baseline does not record, and
-            prints which gate applied.
-  selftest  For each predicate family (char/length, decimal, integer range,
-            choices, nullability, a pydantic bound), mutate one predicate in a
+            fails. That is the whole gate only for a run of every configuration with the
+            baseline's seed and examples. With the baseline's seed and examples and
+            --configs, the counts of the configurations that ran are compared and the
+            others are not checked. With another seed or example count, only a
+            disagreement in a direction the baseline does not record fails. A run that
+            is not the whole gate says which gate applied.
+  selftest  Needs the baseline's seed and examples. First run the unmutated model, which
+            must exit 0. Then, for one predicate of each family (char/length, decimal,
+            integer range, choices, nullability, a pydantic bound), mutate it in a
             scratch copy of BehaviorModel.lean and run against it. Exit 0 only if
             every mutant makes the run exit 1 and moves exactly the counts of the
-            predicates it changes.
+            predicates it changes. A predicate with no mutant is covered by the
+            baseline counts alone.
   sample    Internal. Draw inputs and run one library configuration inside its
             virtual environment.
 
@@ -125,6 +129,10 @@ def sample(config, seed, examples, out):
 
     # Hypothesis mixes literals from local source files, this script among them, into its draws, so editing
     # any string or number here would change the inputs and the baseline. Keep only its built-in constants.
+    # This patches private names of hypothesis 6.170.5 (behavior-requirements-*.txt); a release that renames them
+    # must stop the run, not quietly change the draws.
+    if not (hasattr(providers, "_get_local_constants") and hasattr(providers, "_local_constants")):
+        raise HarnessError("hypothesis no longer has the private names this harness patches; it was checked against 6.170.5")
     providers._get_local_constants = lambda: providers._local_constants
 
     with open(out, "w") as fh:
@@ -559,9 +567,12 @@ def run(args):
     else:
         full = set(configs) == set(CONFIGS)
         problems = compare(summary, baseline, args.seed, args.examples, full=full)
-        if not (full and baseline.get("seed") == args.seed and baseline.get("examples") == args.examples):
-            print("NOTE partial gate: this run does not use the baseline's seed, examples and every configuration, "
-                  "so counts are not compared; only disagreements the baseline does not record fail")
+        if baseline.get("seed") != args.seed or baseline.get("examples") != args.examples:
+            print("NOTE partial gate: this run does not use the baseline's seed and examples, so counts are not "
+                  "compared; only a disagreement in a direction the baseline does not record fails")
+        elif not full:
+            print("NOTE partial gate: this run covers only some configurations; the counts of those it ran are "
+                  "compared with the baseline and the others are not checked")
     for p in problems:
         print(f"FAIL {p}")
     return 1 if problems else 0
@@ -601,6 +612,16 @@ def selftest(args):
     work = Path(args.work_dir).resolve()
     model = Path(args.behavior_model).read_text(encoding="utf-8")
     baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+    if (baseline.get("seed"), baseline.get("examples")) != (args.seed, args.examples):
+        raise HarnessError("selftest compares the counts that moved with the baseline, so it needs the baseline's "
+                           f"seed {baseline.get('seed')} and examples {baseline.get('examples')}")
+    print("== control: the unmutated model")
+    control_args = argparse.Namespace(**{**vars(args), "work_dir": str(work / "control"), "venv_dir": str(work),
+                                         "update_baseline": False})
+    control_status = run(control_args)
+    if control_status != 0:
+        print(f"selftest FAILED: the unmutated model exits {control_status}, so a mutant's exit 1 proves nothing")
+        return 1
     results = []
     for family, old, new, predicates in MUTANTS:
         if model.count(old) != 1:

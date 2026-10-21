@@ -8,7 +8,7 @@ From `cgv/`, with Python 3.12 and elan on the machine:
 
 ```bash
 python3 scripts/behavior_diff.py run        # exit 0: every count equals scripts/behavior-baseline.json
-python3 scripts/behavior_diff.py selftest   # exit 0: six mutants, one per predicate family, each make the run fail
+python3 scripts/behavior_diff.py selftest   # exit 0: the unmutated model passes and each of six mutants, one per predicate family, makes the run fail
 ```
 
 - Seed `20261021`, 1000 draws per configuration and predicate, 47,000 cases in all.
@@ -46,7 +46,7 @@ Ten of the 15 predicates agree with the library on every draw. Five disagree. Ev
 
 "Model too wide" means the model accepts a value the library rejects. A requirement read from the model can then pass a write that fails at runtime. "Model too narrow" means the model rejects a value the library accepts, which can give a false error.
 
-1. **Zero counts as a whole digit (TB-1.39).** `decimalFieldAccepts` and `pydanticDecimalAccepts`, model too wide, 27 per configuration. `Decimal("0")` (or `0E+2`) in a field with `max_digits == decimal_places`, such as `max_digits=2, decimal_places=2`. Django's `DecimalValidator` and pydantic count the zero as one integer digit and reject it. The model's text does not say how digits are counted. Under the plain reading the harness uses (zero has no integer digits), the model accepts it. `Decimal("0.00")` is accepted by both libraries and by the model. The `max_digits` spec of TB-1.13 already names this quirk for the extractor's range.
+1. **Zero counts as a whole digit (TB-1.39).** `decimalFieldAccepts` and `pydanticDecimalAccepts`, model too wide, 27 per configuration. `Decimal("0")` in a field with `max_digits == decimal_places`, such as `max_digits=2, decimal_places=2`. Django's `DecimalValidator` and pydantic count the zero as one integer digit and reject it. The model's text does not say how digits are counted. Under the plain reading the harness uses (zero has no integer digits), the model accepts it. `Decimal("0.00")` is accepted by both libraries and by the model. The `max_digits` spec of TB-1.13 already names this quirk for the extractor's range.
 2. **pydantic drops trailing zeros (CG-1.17).** `pydanticDecimalAccepts`, model too narrow, 60 cases. pydantic accepts `Decimal("0.00")` for `max_digits=1, decimal_places=0`, because it counts digits after `normalize()`. CG-1.17 already records this, and this run confirms it.
 3. **`PositiveIntegerField` bounds come from the backend (TB-1.40).** `positiveIntFieldAccepts` says "≥ 0" with no upper bound. On Django 4.2 with SQLite, the field accepts every negative value drawn (499, model too narrow), because SQLite's backend gives no integer range and the field has no validator of its own. With the base ranges, which PostgreSQL uses, both versions reject values above 2,147,483,647 (112, model too wide). Django 5.2 on SQLite rejects values above 2^63 - 1 (8, model too wide).
 4. **An empty value skips the choices check (TB-1.41).** `choicesAccepts`, 151 per configuration, in both directions. Django checks choices only for a value outside `empty_values`, and `blank` decides `""`. With `blank=False`, `""` is rejected even when it is a listed choice (117, model too wide). With `blank=True`, `""` is accepted when it is not listed (34, model too narrow).
@@ -54,7 +54,7 @@ Ten of the 15 predicates agree with the library on every draw. Five disagree. Ev
 
 ## Self-test
 
-`selftest` runs the harness against six mutants of `BehaviorModel.lean`, one per predicate family, each in a scratch copy. Each must make the run exit 1 and move the counts of exactly the predicates it changes. All six are killed.
+`selftest` first runs the harness against the unmutated `BehaviorModel.lean`, which must exit 0. It then runs it against six mutants, one predicate for each of six families, each in a scratch copy. Each must make the run exit 1 and move the counts of exactly the predicates it changes. All six are killed. The other predicates (`minValueAccepts`, `maxValueAcceptsMicros`, `minValueAcceptsMicros`, `positiveIntFieldAccepts`, `notNullAccepts`, `pydanticMaxLengthAccepts`, `annotationAcceptsNull`, `annotationAcceptsNumeric`) have no mutant; the baseline counts alone cover them. `selftest` needs the baseline's seed and example count, because it compares the counts that moved with the baseline.
 
 | Family | Mutant | Counts that moved |
 | --- | --- | --- |

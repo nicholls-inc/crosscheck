@@ -13,7 +13,7 @@ asgiref==3.12.1 \
 django==4.2.30 \
     --hash=sha256:4d07aaf1c62f9984842b67c2874ebbf7056a17be253860299b93ae1881faad65 \
     --hash=sha256:4ebc7a434e3819db6cf4b399fb5b3f536310a30e8486f08b66886840be84b37c
-    # via -r ../../.scratch/in42.txt
+    # via -r in.txt
 hypothesis==6.170.5 \
     --hash=sha256:00cd8be0093ce30197dcd1bbac34a06bfacb15dbc1b03ccef58498dc0bb38dee \
     --hash=sha256:01ab2e0ffb72baad5c0ebc6157540d3f6e5c35f6b9cc082debf358cd9070d383 \
@@ -93,11 +93,11 @@ hypothesis==6.170.5 \
     --hash=sha256:f518c2d20a869b7d9c47f23f6eeb66230f0739e540e0fa1e1b3bba5a57d22bc5 \
     --hash=sha256:f8b1b32bc75c4ebfad9ca863d903db387ec127cc06a9a0ffa7b58158762c6ea5 \
     --hash=sha256:fb9a95b98c793b50bb6a4bf5b7029bbb496dc1fc81932eead8cf4e6432f955d0
-    # via -r ../../.scratch/in42.txt
+    # via -r in.txt
 pydantic==2.13.5 \
     --hash=sha256:346a034f080da3755d8e9cb5e00e8b07de1d39e4f6e2c87d8ab7cafa0b269a73 \
     --hash=sha256:51a9c5f7b2f8e636f04c6cada605d9b6a3bf1348fdf945a3d8869b19bba0ee08
-    # via -r ../../.scratch/in42.txt
+    # via -r in.txt
 pydantic-core==2.46.5 \
     --hash=sha256:013d6f3483d81e02e7c328831808f336c8596ee33b4bd4026b9ffb1e960b8942 \
     --hash=sha256:03b9666e41e35d8909852ba191a0607520f81b74eaf12ccf8737005dbb313821 \
