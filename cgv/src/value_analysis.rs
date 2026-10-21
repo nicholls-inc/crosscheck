@@ -1782,18 +1782,19 @@ impl<'a> Scope<'a> {
             .is_some_and(|assigns| !assigns.is_empty() && assigns.iter().all(|a| constructed(a.value)))
     }
 
-    /// Whether `expr` is a dict (`known_dict`) whose values may be None: a
-    /// local, or a parameter whose annotation names no value type (`dict`,
-    /// `Mapping`) or one that admits None (`Any`, `object`, `Optional[str]`).
+    /// Whether `expr` is a dict (`known_dict`) whose values may be None. An
+    /// annotated parameter or local may when its annotation names no value
+    /// type (`dict`, `Mapping`) or one that admits None (`Any`, `object`,
+    /// `Optional[str]`). An unannotated local may only when it is built by
+    /// dict displays and one of their values is None or may be; a local built
+    /// any other way (`dict(...)`, a comprehension, `Counter`) is not known to.
     fn dict_may_store_none(&self, expr: &Expr, ctx: &Ctx) -> bool {
         if !self.known_dict(expr, ctx) {
             return false;
         }
         let Expr::Name(n) = expr else { return false };
-        let Some(annotation) = self.param(n.id.as_str()).and_then(|p| p.annotation.as_ref()) else {
-            return true;
-        };
-        match strip_optional(annotation) {
+        let name = n.id.as_str();
+        let values_may_be_none = |annotation: &Expr| match strip_optional(annotation) {
             Expr::Subscript(s) => match s.slice.as_ref() {
                 Expr::Tuple(t) if t.elts.len() == 2 => {
                     crate::function_extractor::param_annotation_facts(&t.elts[1]).1 != Some(false)
@@ -1801,7 +1802,20 @@ impl<'a> Scope<'a> {
                 _ => true,
             },
             _ => true,
+        };
+        if let Some(p) = self.param(name) {
+            return p.annotation.as_ref().is_some_and(|a| values_may_be_none(a));
         }
+        let assigns = self.flow.assignments.get(name).map(Vec::as_slice).unwrap_or_default();
+        if let Some(annotation) = assigns.iter().find_map(|a| a.annotation) {
+            return values_may_be_none(annotation);
+        }
+        assigns.iter().all(|a| matches!(a.value, Expr::Dict(_)))
+            && assigns.iter().any(|a| {
+                let Expr::Dict(d) = a.value else { return false };
+                let ctx = Ctx::new(&a.narrowed);
+                d.items.iter().any(|item| item.key.is_none() || self.facts(&item.value, &ctx).nullable != Some(false))
+            })
     }
 
     /// Where the element expression of comprehension `comp` is evaluated:
