@@ -236,10 +236,10 @@ impl Ctx {
         }
     }
 
-    pub fn narrow(&self, facts: Vec<flow::Fact>) -> Ctx {
+    pub fn narrow(&self, names: Vec<String>) -> Ctx {
         let mut c = self.clone();
         c.narrowed
-            .assume(facts.into_iter().filter(|f| !self.shadowed.contains(&f.name)));
+            .extend(names.into_iter().filter(|n| !self.shadowed.contains(n)));
         c
     }
 
@@ -264,22 +264,6 @@ impl Ctx {
             flow::negative(test, &self.narrowed)
         };
         c.narrow(names)
-    }
-
-    /// Where the call `call` is read: its own walrus or hand-off of a root, in
-    /// any argument, ends an `isinstance` narrowing before the arguments are
-    /// read (`Narrowed::forget_before`). A call that is handed the root itself
-    /// (`fill(o)` under `isinstance(o.a, str)`) loses the narrowing for its own
-    /// arguments too: the walk cannot tell an argument that is read before the
-    /// hand-off from one that is read after it, so it takes the safe side. With
-    /// no `isinstance` fact held there is nothing to forget.
-    pub fn before_call(&self, call: &Expr) -> Ctx {
-        let mut c = self.clone();
-        if !c.narrowed.has_isinstance_facts() {
-            return c;
-        }
-        c.narrowed.forget_before(&flow::effects(call));
-        c
     }
 
     pub fn shadow(&self, names: impl IntoIterator<Item = String>) -> Ctx {
