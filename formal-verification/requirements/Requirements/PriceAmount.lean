@@ -8,8 +8,9 @@ middle link for one CGV-checked field, `Price.amount` in
 * `Requirement` is stated in terms of the world: the prices in the database and
   what the payment provider accepts.
 * `Spec` is stated at the code boundary: the values the application writes to
-  `Price.amount`. Its two clauses are the two contracts CGV extracts from
-  `DecimalField(max_digits=5, decimal_places=2)`.
+  `Price.amount`. Its two clauses are two of the three contracts CGV extracts from
+  `DecimalField(max_digits=5, decimal_places=2)`: precision and range. The
+  third, non-null, is not modelled (see `README.md`).
 * `StoredWasWritten`, `CurrencyHasCents` and `ProviderLimit` are assumptions
   about the world. No proof can establish them. Each is observed or not, and
   `README.md` says how.

@@ -20,16 +20,16 @@ The full check also lists the axioms of every theorem and breaks two premises on
 formal-verification/requirements/check.sh
 ```
 
-It fails if any of the six theorems listed in `Axioms.lean` uses an axiom other than `propext`, `Classical.choice` and `Quot.sound` (so a `sorry` in one of them fails it). A new theorem has to be added to `Axioms.lean` and to the count in `check.sh` to be covered. It then builds two broken copies of `Requirements/PriceAmount.lean` in a temporary directory. In one, A2 says the currency has no minor unit. In the other, S1 allows three decimal places. Each copy must fail with a build error inside `requirement_holds`. That shows the proof is sensitive to those two clauses only. That A1, A3 and S2 are needed is shown by the `*_needed` theorems, which `check.sh` does not mutate:
+It fails if any of the six theorems listed in `Axioms.lean` uses an axiom other than `propext`, `Classical.choice` and `Quot.sound` (so a `sorry` in one of them fails it). A new theorem has to be added to `Axioms.lean` and to the count in `check.sh` to be covered. It then builds two broken copies of `Requirements/PriceAmount.lean` in a temporary directory. In one, A2 says the currency has no minor unit. In the other, S1 allows three decimal places. Each copy must fail with a build error inside `requirement_holds`. So `check.sh` shows two mutations, each of which breaks the proof. It does not show that these are the only clauses the proof depends on. That each of A1, A3, S1, S2 and A2 is needed is shown by the `*_needed` theorems, which `check.sh` builds and lists axioms for but does not mutate:
 
 ```text
 'Requirements.PriceAmount.requirement_holds' depends on axioms: [propext, Quot.sound]
 ...
 ok: only propext, Classical.choice and Quot.sound
 ok: A2 with a currency of exponent 0 breaks requirement_holds:
-error: Requirements/PriceAmount.lean:102:28: omega could not prove the goal:
+error: Requirements/PriceAmount.lean:103:28: omega could not prove the goal:
 ok: S1 with three decimal places breaks requirement_holds:
-error: Requirements/PriceAmount.lean:101:15: omega could not prove the goal:
+error: Requirements/PriceAmount.lean:102:15: omega could not prove the goal:
 all RQ-1.1 checks passed
 ```
 
@@ -76,7 +76,20 @@ Rerun CGV on it from `cgv/`:
 ```bash
 cargo build --release && (cd prover && lake build)
 ./target/release/crosscheck-contracts contracts check test_fixtures/tb_max_digits/ \
-  --exclude bad.py --lean-checker ./prover/.lake/build/bin/contract-graph-checker
+  --exclude bad.py --lean-checker ./prover/.lake/build/bin/contract-graph-checker --format text
+```
+
+It prints:
+
+```text
+CONTRACTS CHECKED: 14
+EDGES CHECKED: 6
+STATES CHECKED: 6
+
+COVERAGE BY MODULE
+  ok: 6 edges checked, 0 requirements unverified
+
+RESULT: 0 errors, 0 warnings, 0 unverified. Exit code 0.
 ```
 
 This exits 0 and reports `0 unverified`. Both matter, because CGV counts a hop whose source gives no guarantee as unverified instead of as an error, so exit 0 alone does not show that every write is checked. Without `--exclude bad.py`, it exits 1 and reports three range errors. Two of them are on `Price.amount` (`123456.78` and `-1000`). Those writes break S2, so for the full fixture `Spec` does not hold and this proof says nothing about the requirement. The `example`s at the end of `PriceAmount.lean` evaluate S1 and S2 on the fixture's values, and they agree with CGV's verdicts on those values. Nothing mechanical ties them to CGV's output yet.
