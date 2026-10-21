@@ -90,6 +90,26 @@ theorem ContractGraph.runCheckerCx_fst :
   ∀ (g : ContractGraph.ContractGraph) (maxStates maxPerEdge : Nat),
   Eq (ContractGraph.runCheckerCx g maxStates maxPerEdge).fst (ContractGraph.runChecker g maxStates maxPerEdge)
 
+theorem ContractGraph.counterexampleOf_sound :
+  ∀ {s t : ContractGraph.Constraint} {v : ContractGraph.Counterexample},
+  Eq (ContractGraph.counterexampleOf s t) (Option.some v) → And (Eq (v.admits s) Bool.true) (Eq (v.admits t) Bool.false)
+
+theorem ContractGraph.checkConstraintPair_counterexample :
+  ∀ (s t : ContractGraph.Constraint) (d : ContractGraph.DiagnosticInfo),
+  Eq (ContractGraph.checkConstraintPair s t) (ContractGraph.CheckResult.inconsistent d) →
+    Ne s.kind ContractGraph.ConstraintKind.type →
+      (Eq s.kind ContractGraph.ConstraintKind.length →
+          ∀ (b : Int), Eq s.staticBound (Option.some b) → Int.instLEInt.le 0 b) →
+        (Eq s.kind ContractGraph.ConstraintKind.precision →
+            ∀ (b : Int), Eq s.staticBound (Option.some b) → Int.instLEInt.le 1 b) →
+          (Or (Eq s.kind ContractGraph.ConstraintKind.range) (Eq s.kind ContractGraph.ConstraintKind.rangeMin) →
+              Eq s.scale t.scale) →
+            And (Eq d.sourceConstraint s)
+              (And (Eq d.targetConstraint t)
+                (Exists fun v =>
+                  And (Eq d.counterexample (Option.some v))
+                    (And (Eq (v.admits s) Bool.true) (Eq (v.admits t) Bool.false))))
+
 -- Every ContractGraph definition that a protected statement or protected definition reaches
 
 def ContractGraph.ChainFrom :

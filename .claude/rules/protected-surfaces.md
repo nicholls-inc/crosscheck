@@ -87,6 +87,7 @@ not in the machine-readable list.
 | `runChecker_sound`, `runChecker_sound_all` | `cgv/prover/ContractGraph/Main.lean` |
 | `runChecker_exitCode_eq_zero_iff`, `runCheckerPaths_exitCode_eq_zero_iff`, `incompleteWith_exitCode` | `cgv/prover/ContractGraph/Main.lean` |
 | `runCheckerCx_fst` | `cgv/prover/ContractGraph/Main.lean` |
+| `counterexampleOf_sound`, `checkConstraintPair_counterexample` | `cgv/prover/ContractGraph/Counterexample.lean` |
 
 Renaming or deleting any of these counts as changing it. When a new soundness
 theorem becomes part of the end-to-end guarantee, add it to this table in the
