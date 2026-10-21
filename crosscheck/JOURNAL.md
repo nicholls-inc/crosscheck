@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-21 — `cgv_check` runs CGV on a committed Python project and returns CGV's own record
+
+**Type:** feature
+**Touches:** mcp-server/src/tools/cgvCheck.ts, mcp-server/src/git.ts, mcp-server/src/tools/evidence.ts, mcp-server/src/index.ts, mcp-server/src/__tests__/, mcp-server/dist/index.js, README.md, ../CLAUDE.md, ../docs/TASKS.md
+**Why:** No Crosscheck tool ran CGV, so ER-1.21 had no way to route a Python model change to CGV and attach its evidence record.
+**Links:** [intent](../intent/2026-10-21-cgv-check-mcp-tool.md), [spec](../intent/2026-10-21-cgv-check-mcp-tool-spec.md)
+
+The task asked for one run with `--baseline` and `--evidence-record`, and CGV refuses that pair on purpose (BL-1): exit 0 under a baseline does not carry `runChecker_sound_all`. So the tool runs CGV at HEAD with `--evidence-record`, and with a baseline revision it also writes a baseline from a `git archive` of that revision and runs CGV again with `--baseline`. The record is always CGV's file from the run without a baseline, so it is `null` while any error remains, even one the baseline holds. The findings are CGV's JSON as printed, so new fields such as #133's `counterexample` pass through. The baseline is a revision, not a file, so the tool makes it with the same binaries and options. The whole work tree must match HEAD, as for `dafny_evidence`. CGV runs on the host, and the options other than the path and the baseline are not inputs yet. The git helpers moved from `evidence.ts` to `git.ts` unchanged. The integration test runs the real binaries on `plain_python_clean` and `bug1`, checks the record with `scripts/check-evidence-record.mjs` and runs its rerun command, and skips with the build command when the binaries are absent.
+
+---
+
 ## 2026-10-21 — `/assurance-layer-audit` names CGV as Layer 3 reach for Python
 
 **Type:** fix

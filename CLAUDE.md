@@ -32,7 +32,7 @@ Two rules from `docs/VISION.md` apply to every session:
 
 Crosschecks Claude's code claims using Dafny formal verification for provably correct Python/Go code, plus semi-formal reasoning for structured code analysis.
 
-- **MCP server** (`crosscheck/mcp-server/`): TypeScript server exposing seven tools across two engines — Dafny (`dafny_verify`, `dafny_evidence` for an evidence record of a committed file, `dafny_compile`, `dafny_cleanup`) and Lean (`lean_check` for the `/lean-spec`, `/lean-impl`, `/correspondence-review`, and `/drt-oracle` build gates; `lean_run` for `/lean-impl` smoke checks and `/drt-oracle`'s per-def Lean runner; `lean_test` as a compile-time `#guard` path for fixture sanity checks)
+- **MCP server** (`crosscheck/mcp-server/`): TypeScript server exposing eight tools across three engines — Dafny (`dafny_verify`, `dafny_evidence` for an evidence record of a committed file, `dafny_compile`, `dafny_cleanup`), Lean (`lean_check` for the `/lean-spec`, `/lean-impl`, `/correspondence-review`, and `/drt-oracle` build gates; `lean_run` for `/lean-impl` smoke checks and `/drt-oracle`'s per-def Lean runner; `lean_test` as a compile-time `#guard` path for fixture sanity checks) and CGV (`cgv_check` for CGV's findings JSON and evidence record on a committed Python project, optionally against a baseline revision)
 - **Docker isolation**: Dafny 4.11.0 in a sandboxed container (no network, 512MB memory, 120s timeout); Lean 4 + Mathlib in a sister container with Mathlib oleans pre-warmed (no network, 2GB memory, 240s timeout)
 - **Formal verification skills** (`crosscheck/skills/`): `/spec-iterate`, `/generate-verified`, `/extract-code`, `/lightweight-verify`
 - **Lean executable-model + DRT-oracle pipeline** (`crosscheck/skills/`): `/informal-spec`, `/lean-spec`, `/lean-impl`, `/correspondence-review`, `/drt-oracle`
@@ -61,6 +61,7 @@ npm run test:e2e         # End-to-end tests (requires Docker)
 - Zod for runtime validation of tool inputs
 - Tests use vitest with fast-check for property-based testing
 - Docker images configured via `DAFNY_DOCKER_IMAGE` (default `crosscheck-dafny:latest`) and `LEAN_DOCKER_IMAGE` (default `crosscheck-lean:latest`); Lean memory/cpu via `LEAN_DOCKER_MEMORY` / `LEAN_DOCKER_CPUS`
+- CGV runs on the host, not in Docker. `cgv_check` finds its binaries through `CGV_CONTRACTS` and `CGV_CHECKER`, or else `crosscheck-contracts` and `contract-graph-checker` on `PATH`
 
 ### Dafny limitations to keep in mind
 

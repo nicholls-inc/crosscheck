@@ -154,7 +154,7 @@ claude --plugin-dir ./crosscheck
 
 ## MCP tools
 
-The plugin exposes seven MCP tools across two engines:
+The plugin exposes eight MCP tools across three engines:
 
 | Tool | Engine | Description |
 |------|--------|-------------|
@@ -165,6 +165,13 @@ The plugin exposes seven MCP tools across two engines:
 | `lean_check` | Lean | Parse + typecheck Lean 4 source via `lake build` (Mathlib pre-warmed; build gate for `/lean-spec`, `/lean-impl`, `/correspondence-review`, and `/drt-oracle`) |
 | `lean_run` | Lean | Build + execute a Lean 4 file's `main : IO Unit` (`/lean-impl` smoke checks; `/drt-oracle` per-def runner) |
 | `lean_test` | Lean | Run a Lean 4 test harness over a module (compile-time `#guard` path for fixture sanity checks; aliased to `lake build`) |
+| `cgv_check` | CGV | Run CGV's `contracts check` on a committed Python project and return CGV's findings JSON and CGV's evidence record. With a baseline revision, the findings are only those the baseline does not match. The record comes from the run without a baseline, so it is `null` while any error remains ([spec](../intent/2026-10-21-cgv-check-mcp-tool-spec.md)) |
+
+`cgv_check` runs CGV on the host, not in Docker. It finds the binaries through `CGV_CONTRACTS` and `CGV_CHECKER`, or else `crosscheck-contracts` and `contract-graph-checker` on `PATH`. To build both from a fresh clone and print the two variables to set:
+
+```bash
+git clone https://github.com/nicholls-inc/crosscheck && cd crosscheck/cgv && cargo build --release && (cd prover && lake build contract-graph-checker) && echo "CGV_CONTRACTS=$PWD/target/release/crosscheck-contracts CGV_CHECKER=$PWD/prover/.lake/build/bin/contract-graph-checker"
+```
 
 Build the Lean image once before the Lean tools work (subsequent runs reuse the cached image):
 
