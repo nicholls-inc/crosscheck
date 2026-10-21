@@ -1,0 +1,6 @@
+name = "Requirements"
+version = "0.1.0"
+defaultTargets = ["Requirements"]
+
+[[lean_lib]]
+name = "Requirements"
