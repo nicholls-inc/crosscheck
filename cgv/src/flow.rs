@@ -960,7 +960,12 @@ pub fn positive(test: &Expr, n: &Narrowed) -> Vec<String> {
             .into_iter()
             .chain(membership(c, CmpOp::In))
             .collect(),
-        Expr::Call(c) if n.excludes_none.contains(&c.start().to_u32()) => {
+        // `isinstance(x, str).__eq__(y)` starts at the same offset: only the
+        // call of the name itself is the one resolution marked.
+        Expr::Call(c)
+            if matches!(c.func.as_ref(), Expr::Name(f) if f.id.as_str() == "isinstance")
+                && n.excludes_none.contains(&c.start().to_u32()) =>
+        {
             match c.arguments.args.first() {
                 Some(Expr::Name(s)) => vec![s.id.to_string()],
                 Some(s) => attr_name(s).into_iter().collect(),
@@ -1997,6 +2002,9 @@ mod tests {
 
     #[test]
     fn test_isinstance_narrows_only_a_name_or_a_chain() {
+        // A call on the result starts at the marked offset but is not the test.
+        let src = "def f(x, y):\n    if isinstance(x, str).__eq__(y):\n        use()\n";
+        assert_eq!(narrowing_with_isinstance(src), vec![Vec::<String>::new()]);
         // `d[0]` dereferences `d`, which narrows it whatever the test.
         let src = "def f(x, d):\n    if isinstance(d[0], str):\n        use()\n    if isinstance(g(x), str):\n        use()\n";
         assert_eq!(narrowing_with_isinstance(src), vec![vec!["d".to_string()], vec!["d".to_string()]]);

@@ -75,3 +75,10 @@ def store_chain_unguarded(payload: Payload) -> Entry:
     if isinstance(payload.address, object):
         return Entry.objects.create(text=payload.address.postcode)
     return Entry.objects.create(text="x")
+
+
+def store_method_of_result(value: object, other: Optional[str]) -> Entry:
+    # BUG: the test is a method of the isinstance result, true for any other.
+    if isinstance(value, str).__round__(other):
+        return Entry.objects.create(text=other)
+    return Entry.objects.create(text="x")
