@@ -1522,7 +1522,7 @@ mod tests {
         assert_eq!(links("billing.models.Base"), ["note billing.models.Customer", "owner billing.models.Customer"]);
         assert_eq!(links("billing.models.Order"), Vec::<String>::new());
         assert_eq!(links("records.Payload"), ["address records.Address"]);
-        // A bare annotation is not a declaration; a diamond takes the earliest base's override.
+        // A bare annotation is not a declaration; a diamond takes the override that comes first in C3 order.
         assert_eq!(links("billing.models.Typed"), ["note billing.models.Customer", "owner billing.models.Customer"]);
         assert_eq!(links("billing.models.Diamond"), ["note billing.models.Customer", "owner billing.models.Other"]);
         assert_eq!(links("billing.models.Diamond2"), ["note billing.models.Customer", "owner billing.models.Other"]);

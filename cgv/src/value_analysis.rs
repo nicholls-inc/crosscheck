@@ -3467,6 +3467,49 @@ mod tests {
         assert_eq!(g("def f(k):\n    R.get(k)\n"), Some(true));
     }
 
+    /// CG-1.28: each branch of `linked_field_facts`, through a data class
+    /// field `a: A` and an `Optional` one `b`.
+    #[test]
+    fn test_linked_field_facts() {
+        let records = "from dataclasses import dataclass\nfrom typing import Optional\n\
+                       @dataclass\nclass A:\n    name: str\n    code: Optional[str]\n    \
+                       @property\n    def label(self) -> Optional[str]:\n        return self.code\n\
+                       @dataclass\nclass P:\n    a: A\n    b: Optional[A]\n";
+        let f = |body: &str| {
+            let src = format!("{records}def f(p: P, o, ps: list[P]):\n{body}");
+            facts_of(&[("code.py", &src)], "code.f").nullable
+        };
+        for (body, want) in [
+            // A declared non-null field read through a link is unknown: a
+            // write through a chain or an alias is not checked yet (CG-1.52).
+            ("    p.a.name\n", None),
+            ("    p.a.code\n", Some(true)),
+            ("    p.b.code\n", Some(true)),
+            ("    if p.b is not None:\n        p.b.code\n", Some(true)),
+            // A narrowed chain is non-null.
+            ("    if p.a.name is None:\n        return\n    p.a.name\n", Some(false)),
+            ("    if p.a.code:\n        p.a.code\n", Some(false)),
+            // A value the function stores into the chain.
+            ("    p.a.code = 'x'\n    p.a.code\n", Some(false)),
+            ("    p.b.code = 'x'\n    p.b.code\n", Some(false)),
+            // A link the function assigns holds a value of any class.
+            ("    p.a = o\n    p.a.code\n", None),
+            // Not a field: a property computes a new value on each read.
+            ("    if p.a.label:\n        p.a.label\n", None),
+            // A comprehension variable: the declared facts, lowered the same way.
+            ("    max(x.a.code for x in ps)\n", Some(true)),
+            ("    max(x.a.name for x in ps)\n", None),
+        ] {
+            assert_eq!(f(body), want, "{body}");
+        }
+        // CG-1.9 lowering: every caller narrows the chain.
+        let reader = format!("{records}def f(p: P):\n    p.a.code\n");
+        let guarded = format!("{reader}def g(p: P):\n    if p.a.code:\n        f(p)\n");
+        assert_eq!(facts_of(&[("code.py", &guarded)], "code.f").nullable, None);
+        let unguarded = format!("{guarded}def h(p: P):\n    f(p)\n");
+        assert_eq!(facts_of(&[("code.py", &unguarded)], "code.f").nullable, Some(true));
+    }
+
     /// CG-1.9: a field every caller narrows has unknown nullability, when
     /// the project shows every caller.
     #[test]
