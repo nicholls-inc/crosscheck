@@ -58,8 +58,8 @@ Mechanical items.
   Command: `grep -n "TB-1 — Status" docs/assurance/ROADMAP.md`. Output: `135:**TB-1 — Status: In progress.** Serves rule 2. Scope: CGV's extraction from`.
 - [x] Diff plan names every changed protected file.
   Command: `git diff --name-only origin/task/CG-1.35...HEAD`, filtered by the globs in `.claude/rules/protected-surfaces.md`. Output: `.claude/rules/protected-surfaces.md`, `cgv/prover/protected-statements.txt`, `cgv/prover/scripts/ProtectedStatements.lean`. The diff plan names the same three. `origin/task/CG-1.35` changes no protected file against `origin/main`, so the list is the same after the pull request is retargeted to `main`.
-- [ ] This amendment block appears in the PR body.
-  Command: `gh pr view PRNUM --json body -q .body | grep -c '^## Protected-Surface Amendment'`. Output: `1`.
+- [x] This amendment block appears in the PR body.
+  Command: `gh pr view 140 --json body -q .body | grep -c '^## Protected-Surface Amendment'`. Output: `1`.
 - [ ] No unresolved human-verification marker is left.
   Command: `grep -c "^- \[ \] REQUIRES HUMAN VERIFICATION:"` on this file. Output: 6. This item is ticked once the maintainer resolves the six markers below.
 
