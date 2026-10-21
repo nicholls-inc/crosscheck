@@ -210,7 +210,9 @@ describe("cgv_check over MCP", () => {
       git("worktree", "add", "--detach", elsewhere, head);
       await rm(elsewhere, { recursive: true });
       const blob = git("rev-parse", `${base}:app/models.py`);
-      await rm(join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+      const object = join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2));
+      expect(existsSync(object)).toBe(true);
+      await rm(object);
       stubRuns({ baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
       const body = await call({ baseline: base });
       expect(body.success).toBe(false);

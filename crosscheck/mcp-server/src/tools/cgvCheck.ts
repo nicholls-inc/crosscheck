@@ -1,5 +1,5 @@
 import { execFile, type ExecFileException } from "node:child_process";
-import { access, constants, readFile, realpath, rm, stat } from "node:fs/promises";
+import { access, constants, readFile, rm, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { git, treeChanges } from "../git.js";
@@ -183,17 +183,10 @@ async function writeBaseline(
     if (!(await stat(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
     return file;
   } finally {
-    const removed = await git(root, ["worktree", "remove", "--force", tree]);
+    // No `git worktree prune`: it is repository-wide and would also drop the entries of the caller's other worktrees whose
+    // directories are missing. `remove --force` deregisters this checkout, and fails harmlessly when `add` registered nothing.
+    await git(root, ["worktree", "remove", "--force", tree]);
     await rm(tree, { recursive: true, force: true }).catch(() => undefined);
-    // `prune` is repository-wide: it also drops the entries of the caller's other worktrees whose directories are missing.
-    // So it runs only when git still lists this checkout after `remove` failed (for example `worktree add` died half-way).
-    // When `add` registered nothing, `remove` fails too, and there is nothing to prune.
-    if (!removed.ok) {
-      const listed = await git(root, ["worktree", "list", "--porcelain"]);
-      const real = join(await realpath(tmp).catch(() => tmp), "baseline-tree");
-      const registered = listed.stdout.split("\n").some((l) => l === `worktree ${tree}` || l === `worktree ${real}`);
-      if (!listed.ok || registered) await git(root, ["worktree", "prune"]);
-    }
   }
 }
 

@@ -21708,7 +21708,7 @@ async function dafnyEvidence(input) {
 
 // src/tools/cgvCheck.ts
 import { execFile as execFile2 } from "node:child_process";
-import { access, constants, readFile as readFile3, realpath as realpath2, rm as rm2, stat as stat2 } from "node:fs/promises";
+import { access, constants, readFile as readFile3, rm as rm2, stat as stat2 } from "node:fs/promises";
 import { delimiter, isAbsolute as isAbsolute2, join as join5 } from "node:path";
 var cgvCheckInputShape = {
   repoPath: external_exports.string().describe("Absolute path inside the git work tree"),
@@ -21823,14 +21823,8 @@ async function writeBaseline(bins, root, tmp, baseline, path) {
     if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
     return file;
   } finally {
-    const removed = await git(root, ["worktree", "remove", "--force", tree]);
+    await git(root, ["worktree", "remove", "--force", tree]);
     await rm2(tree, { recursive: true, force: true }).catch(() => void 0);
-    if (!removed.ok) {
-      const listed = await git(root, ["worktree", "list", "--porcelain"]);
-      const real = join5(await realpath2(tmp).catch(() => tmp), "baseline-tree");
-      const registered = listed.stdout.split("\n").some((l) => l === `worktree ${tree}` || l === `worktree ${real}`);
-      if (!listed.ok || registered) await git(root, ["worktree", "prune"]);
-    }
   }
 }
 async function readRecord(file, commit) {
