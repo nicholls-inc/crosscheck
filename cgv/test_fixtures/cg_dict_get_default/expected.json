@@ -1,0 +1,53 @@
+{
+  "exit_code": 1,
+  "errors": [
+    {
+      "path": "from_dict -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "from_dict_any -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "from_optional_values -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "from_union_values -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "from_optional_dict -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    },
+    {
+      "path": "from_local -> Payer.name",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "str_values -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "untyped -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "environment -> Payer.name",
+      "contains": "null"
+    },
+    {
+      "path": "key_in -> Payer.name",
+      "contains": "null"
+    }
+  ]
+}
