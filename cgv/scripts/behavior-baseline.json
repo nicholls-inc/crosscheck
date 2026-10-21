@@ -1,0 +1,290 @@
+{
+  "seed": 20261021,
+  "examples": 1000,
+  "versions": {
+    "django42-sqlite": {
+      "python": "3.12.11",
+      "django": "4.2.30",
+      "pydantic": "2.13.5",
+      "hypothesis": "6.170.5"
+    },
+    "django42-base": {
+      "python": "3.12.11",
+      "django": "4.2.30",
+      "pydantic": "2.13.5",
+      "hypothesis": "6.170.5"
+    },
+    "django52-sqlite": {
+      "python": "3.12.11",
+      "django": "5.2.18",
+      "pydantic": "2.13.5",
+      "hypothesis": "6.170.5"
+    },
+    "django52-base": {
+      "python": "3.12.11",
+      "django": "5.2.18",
+      "pydantic": "2.13.5",
+      "hypothesis": "6.170.5"
+    },
+    "pydantic": {
+      "python": "3.12.11",
+      "django": "5.2.18",
+      "pydantic": "2.13.5",
+      "hypothesis": "6.170.5"
+    }
+  },
+  "counts": {
+    "django42-base": {
+      "charFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "choicesAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
+      },
+      "decimalFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
+      },
+      "maxValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "maxValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "notNullAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "nullableAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "positiveIntFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 112
+      }
+    },
+    "django42-sqlite": {
+      "charFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "choicesAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
+      },
+      "decimalFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
+      },
+      "maxValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "maxValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "notNullAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "nullableAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "positiveIntFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 499,
+        "model_accepts_library_rejects": 0
+      }
+    },
+    "django52-base": {
+      "charFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "choicesAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
+      },
+      "decimalFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
+      },
+      "maxValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "maxValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "notNullAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "nullableAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "positiveIntFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 112
+      }
+    },
+    "django52-sqlite": {
+      "charFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "choicesAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 34,
+        "model_accepts_library_rejects": 117
+      },
+      "decimalFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 27
+      },
+      "maxValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "maxValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "notNullAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "nullableAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "positiveIntFieldAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 8
+      }
+    },
+    "pydantic": {
+      "annotationAcceptsNull": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "annotationAcceptsNumeric": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 73,
+        "model_accepts_library_rejects": 0
+      },
+      "maxValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "minValueAcceptsMicros": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "pydanticDecimalAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 60,
+        "model_accepts_library_rejects": 27
+      },
+      "pydanticLeAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      },
+      "pydanticMaxLengthAccepts": {
+        "drawn": 1000,
+        "library_accepts_model_rejects": 0,
+        "model_accepts_library_rejects": 0
+      }
+    }
+  },
+  "tracked_by": {
+    "decimalFieldAccepts": "TB-1.39",
+    "pydanticDecimalAccepts": "CG-1.17, TB-1.39",
+    "positiveIntFieldAccepts": "TB-1.40",
+    "choicesAccepts": "TB-1.41",
+    "annotationAcceptsNumeric": "TB-1.42"
+  }
+}
