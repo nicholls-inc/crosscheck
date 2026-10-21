@@ -9,6 +9,7 @@ import ContractGraph.Composition
 import ContractGraph.Diagnostics
 import ContractGraph.Search
 import ContractGraph.StateSearch
+import ContractGraph.Counterexample
 
 namespace ContractGraph
 
@@ -38,8 +39,13 @@ def guaranteeAt (r : ResultEntry) : SiteLocation :=
   if r.severity == "error" then { file := r.guaranteeAtFile, line := r.guaranteeAtLine }
   else { file := r.target.file, line := r.target.line }
 
-/-- Format a ResultEntry as JSON. -/
-def resultEntryToJson (r : ResultEntry) : String :=
+/-- `"counterexample"` (WT-8): the key, when the entry has one. -/
+def counterexampleJson : Option Counterexample → String
+  | some v => s!", \"counterexample\": \"{jsonEscape v.toPython}\""
+  | none => ""
+
+/-- Format a ResultEntry, and its counterexample if it has one, as JSON. -/
+def resultEntryToJson (r : ResultEntry) (cx : Option Counterexample := none) : String :=
   s!"\{\"status\": \"{r.status}\", " ++
   s!"\"severity\": \"{r.severity}\", " ++
   s!"\"source\": {sourceLocationToJson r.source}, " ++
@@ -52,11 +58,11 @@ def resultEntryToJson (r : ResultEntry) : String :=
   s!"\"source_guarantee\": \"{jsonEscape r.sourceGuarantee}\", " ++
   s!"\"target_requirement\": \"{jsonEscape r.targetRequirement}\", " ++
   s!"\"verification_level\": \"{r.verificationLevel}\", " ++
-  s!"\"suggestion\": \"{jsonEscape r.suggestion}\"}"
+  s!"\"suggestion\": \"{jsonEscape r.suggestion}\"{counterexampleJson cx}}"
 
-/-- Format CheckOutput as JSON. -/
-def outputToJson (output : CheckOutput) : String :=
-  let resultsJson := output.results.map resultEntryToJson
+/-- Format CheckOutput as JSON; `cxs[i]` is the counterexample of result `i`. -/
+def outputToJson (output : CheckOutput) (cxs : List (Option Counterexample) := []) : String :=
+  let resultsJson := output.results.zipIdx.map fun (r, i) => resultEntryToJson r (cxs.getD i none)
   s!"\{\"summary\": \{" ++
   s!"\"contracts_checked\": {output.summary.contractsChecked}, " ++
   s!"\"edges_checked\": {output.summary.edgesChecked}, " ++
@@ -816,6 +822,181 @@ theorem runChecker_sound (g : ContractGraph) {maxStates maxPerEdge : Nat}
     ∀ p, IsDataPath g p → p ∈ enumeratePaths g ∧ stepwiseSound p :=
   fun p hp => ⟨enumeratePaths_complete g p hp, runChecker_sound_all g h p hp⟩
 
+/-! ## Counterexamples
+
+`runCheckerCx` is `runChecker` with each reported entry paired with the
+counterexample of the diagnostic it was built from (`DiagnosticInfo.counterexample`).
+`ResultEntry` and the reporting functions are reached by the protected
+statements, so the pairing is built alongside them, not inside them, and
+`runCheckerCx_fst` proves that the output is `runChecker`'s. A finding that
+deduplication merges keeps the counterexample of the entry it keeps (WT-8). -/
+
+/-- An entry and its counterexample. -/
+abbrev EntryCx := ResultEntry × Option Counterexample
+
+/-- `collectEntries`, with each entry's counterexample. -/
+def collectEntriesCx (path : List Edge) (results : List CheckResult) (hopLen : Option Nat) :
+    List EntryCx :=
+  if results.all (·.isConsistent) then [] else
+  let witness := pathNamesOf path
+  let head := path.head?.map (·.source)
+  results.filterMap fun r =>
+    match r with
+    | .consistent => none
+    | .inconsistent diag =>
+      let reported := hopPrefix path diag hopLen
+      let pathNames := pathNamesOf reported
+      some ({ buildResultEntry { diag with path := pathNames } pathNames
+               (pathVerificationLevel reported) head with witness := witness },
+            diag.counterexample)
+
+theorem collectEntriesCx_fst (path : List Edge) (results : List CheckResult) (hopLen : Option Nat) :
+    (collectEntriesCx path results hopLen).map Prod.fst = collectEntries path results hopLen := by
+  unfold collectEntriesCx collectEntries
+  split
+  · rfl
+  · rw [List.map_filterMap]
+    congr 1
+    funext r
+    cases r <;> rfl
+
+/-- `guardedEntries`, with each entry's counterexample. -/
+def guardedEntriesCx (path : Unit → List Edge × Nat) (rs : List CheckResult) : List EntryCx :=
+  if rs.all (·.isConsistent) then [] else
+    let p := path ()
+    collectEntriesCx p.1 rs (some p.2)
+
+/-- `stateEntries`, with each entry's counterexample. -/
+def stateEntriesCx (st : StateSetup) (ex : Explored) (r : StateRec) (warn : Bool) : List EntryCx :=
+  guardedEntriesCx (fun _ => witnessWithHop st ex r)
+    (if warn then checkHop r.hop else dropWarnings (checkHop r.hop))
+
+theorem guardedEntriesCx_fst (path : Unit → List Edge × Nat) (rs : List CheckResult) :
+    (guardedEntriesCx path rs).map Prod.fst = guardedEntries path rs := by
+  unfold guardedEntriesCx guardedEntries
+  split
+  · rfl
+  · exact collectEntriesCx_fst _ _ _
+
+theorem stateEntriesCx_fst (st : StateSetup) (ex : Explored) (r : StateRec) (warn : Bool) :
+    (stateEntriesCx st ex r warn).map Prod.fst = stateEntries st ex r warn :=
+  guardedEntriesCx_fst _ _
+
+/-- `Dedupe`, with each entry's counterexample. -/
+structure DedupeCx where
+  arr : Array EntryCx := #[]
+  idx : Std.HashMap String Nat := ∅
+
+/-- The `Dedupe` without the counterexamples. -/
+def DedupeCx.view (d : DedupeCx) : Dedupe := { arr := d.arr.map Prod.fst, idx := d.idx }
+
+def DedupeCx.push (d : DedupeCx) (r : EntryCx) : DedupeCx :=
+  { arr := d.arr.push r, idx := d.idx.insert (findingKey r.1) d.arr.size }
+
+/-- `Dedupe.step` on the entries, carrying each kept entry's counterexample. -/
+def DedupeCx.step (d : DedupeCx) (r : EntryCx) : DedupeCx :=
+  match d.idx[findingKey r.1]? with
+  | some i =>
+    if h : i < d.arr.size then
+      if sameFinding d.arr[i].1 r.1 then
+        if r.1.path.length < d.arr[i].1.path.length then { d with arr := d.arr.set i r h } else d
+      else d.push r
+    else d.push r
+  | none => d.push r
+
+theorem DedupeCx.step_view (d : DedupeCx) (r : EntryCx) :
+    (d.step r).view = d.view.step r.1 := by
+  have hpush : (d.push r).view = d.view.push r.1 := by
+    simp [DedupeCx.push, DedupeCx.view, Dedupe.push]
+  unfold DedupeCx.step Dedupe.step
+  simp only [DedupeCx.view] at hpush ⊢
+  split
+  · rename_i i hi
+    by_cases h : i < d.arr.size
+    · have h' : i < (d.arr.map Prod.fst).size := by simpa using h
+      rw [dif_pos h, dif_pos h']
+      simp only [Array.getElem_map]
+      split
+      · split
+        · simp [Array.map_set]
+        · rfl
+      · exact hpush
+    · have h' : ¬ i < (d.arr.map Prod.fst).size := by simpa using h
+      rw [dif_neg h, dif_neg h']
+      exact hpush
+  · exact hpush
+
+theorem DedupeCx.foldl_step_view (rs : List EntryCx) (d : DedupeCx) :
+    (rs.foldl DedupeCx.step d).view = (rs.map Prod.fst).foldl Dedupe.step d.view := by
+  induction rs generalizing d with
+  | nil => rfl
+  | cons r rs ih => simp [List.foldl, ih, DedupeCx.step_view]
+
+/-- `reportStatesWith`, with each entry's counterexample. -/
+def reportStatesWithCx (st : StateSetup) (ex : Explored) (flags : Array Bool) : List EntryCx :=
+  (ex.recs.toList.zipIdx.foldl (fun d (r, i) => (stateEntriesCx st ex r (flags.getD i true)).foldl
+    DedupeCx.step d) {}).arr.toList
+
+theorem reportStatesWithCx_fst (st : StateSetup) (ex : Explored) (flags : Array Bool) :
+    (reportStatesWithCx st ex flags).map Prod.fst = reportStatesWith st ex flags := by
+  unfold reportStatesWithCx reportStatesWith
+  suffices h : ∀ (xs : List (StateRec × Nat)) (d : DedupeCx),
+      (xs.foldl (fun d (r, i) => (stateEntriesCx st ex r (flags.getD i true)).foldl
+        DedupeCx.step d) d).view =
+      xs.foldl (fun d (r, i) => (stateEntries st ex r (flags.getD i true)).foldl
+        Dedupe.step d) d.view by
+    have := congrArg (fun d : Dedupe => d.arr.toList) (h ex.recs.toList.zipIdx {})
+    simpa [DedupeCx.view] using this
+  intro xs
+  induction xs with
+  | nil => intro d; rfl
+  | cons x xs ih =>
+    intro d
+    simp only [List.foldl]
+    rw [ih, DedupeCx.foldl_step_view, stateEntriesCx_fst]
+
+/-- `runStatesWith`, with each entry's counterexample. -/
+def runStatesWithCx (st : StateSetup) (graph : ContractGraph) (ex : Explored) :
+    CheckOutput × List (Option Counterexample) :=
+  let rs := reportStatesWithCx st ex (warnFlags st ex (suffixHeadSet graph))
+  let results := rs.map Prod.fst
+  ({ summary := {
+       contractsChecked := countContracts graph.nodes
+       edgesChecked := graph.edges.length
+       pathsChecked := ex.recs.size
+       statesChecked := ex.recs.size
+     }
+     results := results
+     exitCode := if results.any (·.severity == "error") then 1 else 0 },
+   rs.map Prod.snd)
+
+/-- `runChecker`, with the counterexample of each reported entry, in order. -/
+def runCheckerCx (graph : ContractGraph) (maxStates : Nat := defaultMaxStates)
+    (maxPerEdge : Nat := defaultMaxPerEdge) : CheckOutput × List (Option Counterexample) :=
+  let st := stateSetup graph
+  match explore st graph maxStates maxPerEdge with
+  | .done ex =>
+    if closedStates st.setup graph ex then runStatesWithCx st graph ex
+    else (runChecker graph maxStates maxPerEdge, [])
+  | _ => (runChecker graph maxStates maxPerEdge, [])
+
+/-- The output of `runCheckerCx` is the output of `runChecker`, so the
+    soundness theorems about `runChecker` are about what the binary prints. -/
+theorem runCheckerCx_fst (g : ContractGraph) (maxStates maxPerEdge : Nat) :
+    (runCheckerCx g maxStates maxPerEdge).1 = runChecker g maxStates maxPerEdge := by
+  unfold runCheckerCx
+  simp only
+  split
+  · rename_i ex hex
+    split
+    · rename_i hc
+      unfold runChecker
+      simp only [hex, hc, if_true]
+      unfold runStatesWithCx runStatesWith reportStates
+      simp only [reportStatesWithCx_fst]
+    · rfl
+  · rfl
+
 /-! ## Command line -/
 
 /-- Checker options. -/
@@ -877,9 +1058,8 @@ def main (args : List String) : IO UInt32 := do
           pure none
         let some graph := read | return 2
         -- Run the checker pipeline
-        let output := runChecker graph opts.maxStates opts.maxPerEdge
-        -- Output JSON to stdout
-        IO.println (outputToJson output)
+        let (output, cxs) := runCheckerCx graph opts.maxStates opts.maxPerEdge
+        IO.println (outputToJson output cxs)
         return output.exitCode.toUInt32
 
 end ContractGraph
