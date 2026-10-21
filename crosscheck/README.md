@@ -173,7 +173,7 @@ The plugin exposes eight MCP tools across three engines:
 git clone https://github.com/nicholls-inc/crosscheck && cd crosscheck/cgv && cargo build --release && (cd prover && lake build contract-graph-checker) && echo "CGV_CONTRACTS=$PWD/target/release/crosscheck-contracts CGV_CHECKER=$PWD/prover/.lake/build/bin/contract-graph-checker"
 ```
 
-No CI job builds the CGV binaries yet, so the `cgv_check` tests that run the real binaries (`src/__tests__/integration/cgvCheck.cgv.integration.test.ts`) run locally only and always skip in CI. To run them, from the repository root:
+The mcp-server CI job does not build or receive the CGV binaries yet (the CGV CI job builds them but runs no mcp-server tests), so the `cgv_check` tests that run the real binaries (`src/__tests__/integration/cgvCheck.cgv.integration.test.ts`) run locally only and always skip in CI. To run them, from the repository root:
 
 ```bash
 (cd cgv && cargo build --release && cd prover && lake build contract-graph-checker) && cd crosscheck/mcp-server && npx vitest run src/__tests__/integration/cgvCheck.cgv.integration.test.ts

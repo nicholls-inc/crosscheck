@@ -1,4 +1,4 @@
-// Runs locally only today: no CI job builds the CGV binaries, so this file always skips in CI (ER-1.22 adds it).
+// Runs locally only today: the mcp-server CI job does not build or receive the CGV binaries, so this file always skips in CI (ER-1.22 adds it).
 // From the repository root:
 // (cd cgv && cargo build --release && cd prover && lake build contract-graph-checker) && cd crosscheck/mcp-server && npx vitest run src/__tests__/integration/cgvCheck.cgv.integration.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

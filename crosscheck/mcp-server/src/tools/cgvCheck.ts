@@ -58,6 +58,9 @@ function refuse(errors: string[]): CgvCheckOutput {
 
 export function validateCgvCheckInput(input: CgvCheckInput): string[] {
   const errors: string[] = [];
+  for (const [name, value] of Object.entries(input)) {
+    if (typeof value === "string" && value.includes("\0")) errors.push(`${name} must not contain a NUL byte`);
+  }
   if (!isAbsolute(input.repoPath)) errors.push(`repoPath must be absolute: ${input.repoPath}`);
   if (
     input.path !== "." &&
@@ -180,9 +183,11 @@ async function writeBaseline(
     if (!(await stat(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
     return file;
   } finally {
-    await git(root, ["worktree", "remove", "--force", tree]);
+    const removed = await git(root, ["worktree", "remove", "--force", tree]);
     await rm(tree, { recursive: true, force: true }).catch(() => undefined);
-    await git(root, ["worktree", "prune"]);
+    // `prune` is repository-wide: it also drops the entries of the caller's other worktrees whose directories are missing.
+    // So it runs only when `remove` did not deregister this checkout (for example `worktree add` died half-way).
+    if (!removed.ok) await git(root, ["worktree", "prune"]);
   }
 }
 

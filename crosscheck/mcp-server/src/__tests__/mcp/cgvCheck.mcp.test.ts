@@ -193,6 +193,28 @@ describe("cgv_check over MCP", () => {
       expect(existsSync(baselineRun.cwd)).toBe(false);
     });
 
+    it("removes the baseline checkout when the baseline run leaves an untracked file in it, without pruning other worktrees (CK-12)", async () => {
+      const elsewhere = join(scratch, "other-worktree");
+      git("worktree", "add", "--detach", elsewhere, head);
+      await rm(elsewhere, { recursive: true });
+      stubRuns({ baseline: { exit: 0, during: "untracked" }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
+      expect(await call({ baseline: base })).toMatchObject({ success: true });
+      const [baselineRun] = await calls();
+      expect(existsSync(baselineRun.cwd)).toBe(false);
+      const listed = git("worktree", "list", "--porcelain").split("\n").filter((l) => l.startsWith("worktree "));
+      expect(listed).toEqual([`worktree ${repo}`, `worktree ${elsewhere}`]);
+    });
+
+    it("runs no hook of the repository on the baseline checkout (CK-5)", async () => {
+      const marker = join(scratch, "hook-ran");
+      const hook = join(repo, ".git", "hooks", "post-checkout");
+      await writeFile(hook, `#!/bin/sh\ntouch "${marker}"\n`);
+      await chmod(hook, 0o755);
+      stubRuns({ baseline: { exit: 0 }, full: { exit: 0, record: {} }, diff: { exit: 0 } });
+      expect(await call({ baseline: base })).toMatchObject({ success: true });
+      expect(existsSync(marker)).toBe(false);
+    });
+
     it("with a baseline, returns no record when the full run exits 1, even though no error is new", async () => {
       stubRuns({ baseline: { exit: 1 }, full: { exit: 1 }, diff: { exit: 0 } });
       expect(await call({ baseline: base })).toMatchObject({ success: true, exitCode: 0, record: null });

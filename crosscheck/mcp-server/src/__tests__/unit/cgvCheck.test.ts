@@ -30,8 +30,17 @@ describe("validateCgvCheckInput (CK-1)", () => {
     expect(validateCgvCheckInput(input)).toEqual([error]);
   });
 
+  it.each(["repoPath", "path", "baseline"] as const)("refuses a NUL byte in %s", (field) => {
+    const input = { repoPath: "/repo", path: "app", baseline: "main", [field]: field === "repoPath" ? "/re\0po" : `x\0y` };
+    expect(validateCgvCheckInput(input)).toEqual([`${field} must not contain a NUL byte`]);
+  });
+
   it("reports every broken rule", () => {
-    expect(validateCgvCheckInput({ repoPath: "r", path: "../x", baseline: "-b" })).toHaveLength(3);
+    expect(validateCgvCheckInput({ repoPath: "r", path: "../x", baseline: "-b" })).toEqual([
+      "repoPath must be absolute: r",
+      `path must be . or a relative path with / separators and no empty, "." or ".." segment: ../x`,
+      `baseline must be a git revision that is not blank, holds no white space and does not start with "-": -b`,
+    ]);
   });
 });
 

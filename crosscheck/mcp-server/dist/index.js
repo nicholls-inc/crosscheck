@@ -21725,6 +21725,9 @@ function refuse2(errors) {
 }
 function validateCgvCheckInput(input) {
   const errors = [];
+  for (const [name, value] of Object.entries(input)) {
+    if (typeof value === "string" && value.includes("\0")) errors.push(`${name} must not contain a NUL byte`);
+  }
   if (!isAbsolute2(input.repoPath)) errors.push(`repoPath must be absolute: ${input.repoPath}`);
   if (input.path !== "." && (input.path.includes("\\") || input.path.split("/").some((s) => s === "" || s === "." || s === ".."))) {
     errors.push(`path must be . or a relative path with / separators and no empty, "." or ".." segment: ${input.path}`);
@@ -21820,9 +21823,9 @@ async function writeBaseline(bins, root, tmp, baseline, path) {
     if (!(await stat2(file).catch(() => null))?.isFile()) return [`${what} exited ${ran.exitCode} and wrote no baseline file`];
     return file;
   } finally {
-    await git(root, ["worktree", "remove", "--force", tree]);
+    const removed = await git(root, ["worktree", "remove", "--force", tree]);
     await rm2(tree, { recursive: true, force: true }).catch(() => void 0);
-    await git(root, ["worktree", "prune"]);
+    if (!removed.ok) await git(root, ["worktree", "prune"]);
   }
 }
 async function readRecord(file, commit) {
