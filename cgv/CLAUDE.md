@@ -40,6 +40,9 @@ scripts/bench.py run [--out RESULT.json] [--compare bench/baseline.json]
 
 # Benchmark harness unit tests
 python3 -m unittest discover -s scripts/tests
+
+# BehaviorModel.lean against pinned Django and pydantic (needs python3.12 and elan; TB-1.14)
+python3 scripts/behavior_diff.py run && python3 scripts/behavior_diff.py selftest
 ```
 
 `lake build` type-checks all proofs and the `ContractGraphTest` modules (their `#guard` lines fail the build if checker behaviour changes).
