@@ -83,7 +83,7 @@ Classify the user's request to determine which skill to invoke.
 | General code reasoning | Any other code reasoning question | `/reason` |
 | Python data-model change | The change touches a declaration of a Django model, data class, attrs class, pydantic model, `NamedTuple` or `TypedDict`, or any `.py` file of a project that declares one | `cgv_check` with the pull request's base as baseline (see "CGV check" in Phase 3) |
 
-The Python data-model row runs beside the request's other route and replaces none. Do not try to decide which functions write to a model: CGV's extractor finds them, so route whenever the row matches.
+The Python data-model row runs beside the request's other route and replaces none: announce it in Phase 1 with the skill, and run it without offering it as a secondary. Do not try to decide which functions write to a model: CGV's extractor finds them, so route whenever the row matches.
 
 When a request spans multiple categories (e.g., "verify this algorithm and trace how it's called"), address the primary intent first, then offer the secondary skill.
 
@@ -142,7 +142,7 @@ For a Python data-model change, call `cgv_check` with:
 
 - `repoPath`: the absolute path of the work tree.
 - `path`: the deepest directory that holds every changed `.py` file and a `manage.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, relative to the top level. Use `.` when there is none.
-- `baseline`: the merge base with the pull request's base branch, `git merge-base HEAD origin/<base>` (read `<base>` with `gh pr view --json baseRefName` or from the caller). When no base branch can be read, leave `baseline` out and say in the report that the findings are not against a base. Do not guess `main` or `HEAD~1`.
+- `baseline`: the merge base with the pull request's base branch, `git merge-base HEAD origin/<base>` (read `<base>` with `gh pr view --json baseRefName` or from the caller). Check `<base>` with `git check-ref-format --branch` and pass it as one quoted argument. `origin/<base>` is the local remote-tracking ref and can be stale, so fetch it first when the network allows, and say in the report when it was not fetched. When the merge base equals `HEAD`, or no base branch can be read, leave `baseline` out and say in the report that the findings are not against a base. Do not guess `main` or `HEAD~1`.
 
 Do not commit, stash or reset the user's work to make the call succeed.
 
@@ -150,18 +150,20 @@ Do not commit, stash or reset the user's work to make the call succeed.
 
 **Result.** On `success: true`, report `commit`, `baseline`, `exitCode`, and each error and warning in `findings`. Read `exitCode` this way:
 
-- With a baseline, exit 1 means at least one error is new relative to the base, and exit 0 means no error is new. Exit 0 under a baseline is a comparison of findings. No theorem covers it, so say so.
+- With a baseline, exit 1 means at least one error is new relative to the base, and exit 0 means no error is new. Exit 0 under a baseline is a comparison of findings. No theorem covers it, so say so. A finding matches a baseline entry by class, source, target, failing hop, guarantee, requirement, site file and the text of the site's line, with no line number, so an error removed and an equal one added at the same key is matched and not reported. That case is not yet reached: the key holds no position. Say so beside "no error is new".
 - Without a baseline, exit 1 means CGV found at least one error.
 - A warning marks a requirement CGV could not show. It is an unknown path, not a consistent one.
 
-**Record.** When `record` is not `null`, attach it to the report verbatim as a JSON block. State its claim as the record does: strength `proved`, relative to the translated graph built from what the extractor found at that commit, with the trusted base the record lists. The extractor and `Translation.lean` are not proved, and `BehaviorModel.lean` is trusted. When `record` is `null`, say that CGV wrote no record because an error remains at HEAD, even when the baseline comparison exits 0.
+**Record.** When `record` is not `null`, attach it to the report verbatim as a JSON block. State its claim as the record does: strength `proved`, relative to the translated graph built from what the extractor found at that commit, with the trusted base the record lists. The extractor and `Translation.lean` are not proved, and `BehaviorModel.lean` is trusted, not proved. When `record` is `null`, say that CGV wrote no record because an error remains at HEAD, even when the baseline comparison exits 0.
 
 **What exit 0 does not cover.** Name these in every report with a CGV result (`cgv/README.md`, "What exit 0 promises"):
 
 - paths the extractor did not discover;
 - writes outside the project's code, which are not yet reached: writes Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a serializer's `save()`), raw SQL and fixtures;
 - data paths that do not end at a model node;
-- the real behaviour of Django and pydantic: the claim is relative to the translated constraints, and for data class, attrs, `NamedTuple` and `TypedDict` fields it holds only for a type-correct program.
+- the real behaviour of Django and pydantic: the claim is relative to the translated constraints, and for data class, attrs, `NamedTuple` and `TypedDict` fields it holds only for a type-correct program;
+- a warning can rest on the project's callers: exit 0 no longer says such a read is non-None, and the caller rule assumes the project shows every caller;
+- a missing guarantee is a warning, not an error: CGV warns and still exits 0, and `stepwiseSound` is vacuously true for that hop. A record next to warnings does not cover the paths the warnings name.
 
 Never call a CGV result "verified", "safe" or a "pass", and never state a strength the record does not carry.
 
@@ -183,8 +185,8 @@ Every result must pass these quality gates before delivery:
 **For CGV output (`cgv_check`):**
 - **Not run is explicit** — a refusal, a missing tool or missing binaries reads "CGV: not run" with the tool's errors, and nothing in the report treats it as a pass
 - **Record verbatim** — a non-null `record` is attached unchanged; a null one is explained
-- **Baseline kept apart** — exit 0 under a baseline is reported as "no new error", not as the record's claim
-- **Strength and trusted base** — the claim is stated as `proved` relative to the translated graph, with the extractor, `Translation.lean` and `BehaviorModel.lean` named as not proved, and the exit-0 qualifiers listed
+- **Baseline kept apart** — exit 0 under a baseline is reported as "no new error" with the same-key caveat, not as the record's claim
+- **Strength and trusted base** — the claim is stated as `proved` relative to the translated graph, with the extractor and `Translation.lean` named as not proved, `BehaviorModel.lean` named as trusted, not proved, and the exit-0 qualifiers listed
 - **No "verified"** — the word, and "safe" or "pass", is not applied to a CGV result
 
 **For semi-formal reasoning output:**

@@ -30,5 +30,5 @@ Intent: `intent/2026-10-21-byfuglien-cgv-routing.md`. Spec: `intent/2026-10-21-b
 
 - `go vet ./...`, `go test ./...` and `go run . ..` in `crosscheck/conformance` pass: the agent keeps its frontmatter and routes to no phantom skill.
 - `grep -n "cgv_check" crosscheck/agents/byfuglien.md` shows the classification row, the procedure and the gate.
-- `grep -n -i "verified" crosscheck/agents/byfuglien.md` shows no line that applies the word to a CGV result.
+- `grep -n -i "verified" crosscheck/agents/byfuglien.md` lists lines that quote the word in order to ban it; read each by hand and confirm none applies it to a CGV result. This is a manual prose check, not a mechanical one.
 - `node --test scripts/ci/*.test.mjs`, `node scripts/ci/skill-references.mjs`, `BASE_REF=main PR_BODY='Task: ER-1.21' node scripts/ci/task-queue.mjs check`, and `node scripts/ci/tier-gate.mjs` with the PR body pass.
