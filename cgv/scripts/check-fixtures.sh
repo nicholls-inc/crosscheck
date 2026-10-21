@@ -62,8 +62,10 @@ missing_warnings = [
 got = [g for g in got]
 # An expected error may pin "counterexample": every actual error with the same key
 # (path, guarantee, requirement, and target when given) must carry that text, and
-# at least one must exist. This is sound while the key text fixes both constraints,
-# so errors that share a key share a counterexample.
+# at least one must exist. For every kind but choices the key text fixes both
+# constraints, so errors that share a key share a counterexample. A choices
+# counterexample also depends on the target's field type, so a choices pin should
+# name its target.
 def actual_key(r, e):
     return (" -> ".join(r["path"]), r["source_guarantee"], r["target_requirement"],
             r["target"]["name"] if "target" in e else None)
