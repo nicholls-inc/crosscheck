@@ -4,6 +4,17 @@ Journal for the Crosscheck plugin. Decisions that affect skills, agents, the MCP
 
 ---
 
+## 2026-10-21 — `/assurance-layer-audit` names CGV as Layer 3 reach for Python
+
+**Type:** fix
+**Touches:** skills/assurance-layer-audit/SKILL.md, ../.assurance/protected-surface-amend/cgv-layer-3-python-2026-10-21.md, ../docs/TASKS.md
+**Why:** The skill told a Python repository that Layer 3 has only runtime contract libraries, "not formal", while CGV checks Python data paths with a checker proved sound over its graph. It also said a Python repo "loses most of Layer 1", which its own Step 4 and `/extract-code` contradict.
+**Links:** [intent](../intent/2026-10-21-cgv-layer-3-python.md), [spec](../intent/2026-10-21-cgv-layer-3-python-spec.md), [plan](../intent/2026-10-21-cgv-layer-3-python-plan.md)
+
+The Python bullet names CGV for data paths into Django model, data class, attrs, pydantic, `NamedTuple` and `TypedDict` fields, with the strength, trusted base and exit-0 qualifiers of `cgv/README.md`, and the rest of Python's Layer 3 is not yet reached. TypeScript gets its own not-yet-reached bullet. Layer 1 reaches pure, sequential Dafny code extracted to Python or Go, so the checklist keeps "unreachable without a verifier bridge" for Ruby, Java and C# only. `/assurance-init` and `/assurance-status` make no Layer 3 claim and were not edited, although the row named them. The skill points at `contracts check` in `cgv/`; the `cgv_check` tool (ER-1.20) is not named yet. The "aspirational" wording beside it stays for VA-1.8.
+
+---
+
 ## 2026-10-07 — One invariant-heading grammar for the gate, the templates and the real docs
 
 **Type:** fix
