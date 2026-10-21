@@ -584,7 +584,7 @@ pub fn apply_shadows(func: &mut FunctionInfo, shadow: &dyn Fn(&Expr) -> Option<S
 /// The value type and nullability a parameter annotation gives. `object`
 /// includes `None`, so a parameter typed `object`, or a union with an
 /// `object` member, accepts it.
-fn param_annotation_facts(annotation: &Expr) -> (Option<String>, Option<bool>) {
+pub(crate) fn param_annotation_facts(annotation: &Expr) -> (Option<String>, Option<bool>) {
     match annotation_facts(annotation) {
         Some((t, n)) => {
             let n = if t.as_deref() == Some("object") || union_has_object(annotation) { Some(true) } else { n };

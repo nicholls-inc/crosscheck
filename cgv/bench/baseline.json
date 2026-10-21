@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool_commit": "c97e7c7034a3a530a9c9a763291598b15ef273e2",
+  "tool_commit": "f1f2d49880123291fb24468fbbbd05cf549bdcaa",
   "corpora": [
     "public"
   ],
@@ -11,15 +11,15 @@
       "kind": "non-null",
       "in_scope": true,
       "source": "synthetic",
-      "outcome": "WARNING_ONLY",
+      "outcome": "CAUGHT",
       "rank": [
         1,
         2
       ],
       "pre": {
-        "exit": 0,
-        "errors": 0,
-        "warnings": 2
+        "exit": 1,
+        "errors": 2,
+        "warnings": 0
       },
       "fix": {
         "exit": 0,
@@ -28,7 +28,7 @@
       },
       "matched": [
         {
-          "severity": "warning",
+          "severity": "error",
           "source": "parse_payer",
           "target": "Payer.city",
           "site": "billing/logic.py:5"
@@ -341,9 +341,9 @@
   ],
   "summary": {
     "in_scope": 8,
-    "CAUGHT": 5,
+    "CAUGHT": 6,
     "DETECTED_NOT_CLEARED": 1,
-    "WARNING_ONLY": 2,
+    "WARNING_ONLY": 1,
     "MISSED": 0,
     "out_of_scope": 2,
     "NOT_REPORTED": 2,
