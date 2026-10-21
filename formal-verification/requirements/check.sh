@@ -20,9 +20,12 @@ echo "ok: only propext, Classical.choice and Quot.sound"
 start="$(grep -n '^theorem requirement_holds' "$file" | cut -d: -f1)"
 end="$(awk -v s="$start" 'NR > s && /^\/-!/ { print NR; exit }' "$file")"
 
+tmps=()
+trap 'rm -rf ${tmps[@]+"${tmps[@]}"}' EXIT
 broken() {
   local name="$1" from="$2" to="$3" tmp
   tmp="$(mktemp -d)"
+  tmps+=("$tmp")
   cp -R lakefile.toml lean-toolchain Requirements.lean Requirements "$tmp/"
   grep -qF -- "$from" "$tmp/$file" || { echo "FAIL: $name: text not found"; exit 1; }
   sed -i.bak "s|$from|$to|" "$tmp/$file" && rm "$tmp/$file.bak"
@@ -36,7 +39,6 @@ broken() {
   echo "ok: $name breaks requirement_holds:"
   grep -E "^error: $file:[0-9]+" <<<"$out" \
     | awk -F: -v s="$start" -v e="$end" '$3 > s && $3 < e' | head -1
-  rm -rf "$tmp"
 }
 
 broken "A2 with a currency of exponent 0" \
