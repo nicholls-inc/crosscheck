@@ -10,7 +10,8 @@ inputs and the disagreements per configuration and predicate.
 Subcommands (run from cgv/):
   run       Build the Lean evaluator and the pinned virtual environments, sample
             every configuration, evaluate, compare with scripts/behavior-baseline.json.
-            Exit 0 when every count matches the baseline, 1 when one differs (or, with
+            Exit 0 when the run uses the baseline's seed and examples and every count matches,
+            1 when one differs (or, with
             --update-baseline, a disagreeing predicate has no tracked_by row), 2 when the
             harness itself fails.
   selftest  Mutate charFieldAccepts (<= becomes <) in a scratch copy of
@@ -471,8 +472,8 @@ def run(args):
         if (args.seed, args.examples) != (DEFAULT_SEED, DEFAULT_EXAMPLES):
             raise HarnessError("--update-baseline only accepts the default --seed and --examples")
     if baseline_path.exists():
-        baseline = json.loads(baseline_path.read_text())
-        check_baseline_shape(baseline, baseline_path)
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        check_baseline_shape(baseline, baseline_path, args.update_baseline)
     elif args.update_baseline:
         baseline = {}
     else:
@@ -491,7 +492,7 @@ def run(args):
     summary = summarise(cases, verdicts)
     report = {"seed": args.seed, "examples": args.examples, "behavior_model": str(args.behavior_model),
               "versions": versions, "summary": summary}
-    (work / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    (work / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print_summary(summary, baseline.get("tracked_by", {}))
     print(f"seed {args.seed}, {args.examples} examples per predicate, {len(cases)} cases; "
           f"report in {work / 'report.json'}")
@@ -509,7 +510,7 @@ def run(args):
         else:
             staged = baseline_path.with_suffix(baseline_path.suffix + ".tmp")
             try:
-                staged.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n")
+                staged.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
                 os.replace(staged, baseline_path)
             finally:
                 staged.unlink(missing_ok=True)
@@ -521,15 +522,25 @@ def run(args):
     return 1 if problems else 0
 
 
-def check_baseline_shape(baseline, path):
+def is_count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def check_baseline_shape(baseline, path, update):
+    """A baseline that would silently weaken the gate is a harness error. Only --update-baseline may start
+    from a file that holds nothing but tracked_by."""
     counts = baseline.get("counts", {}) if isinstance(baseline, dict) else None
-    ok = isinstance(counts, dict) and isinstance(baseline.get("tracked_by", {}), dict) and all(
-        isinstance(rows, dict) and all(isinstance(row, dict) and isinstance(row.get("drawn"), int)
-                                       and isinstance(row.get("disagreements"), int) for row in rows.values())
-        for rows in counts.values())
+    tracked = baseline.get("tracked_by", {}) if isinstance(baseline, dict) else None
+    ok = (isinstance(counts, dict) and isinstance(tracked, dict)
+          and all(isinstance(note, str) for note in tracked.values())
+          and all(isinstance(rows, dict) and all(isinstance(row, dict) and is_count(row.get("drawn"))
+                                                 and is_count(row.get("disagreements")) for row in rows.values())
+                  for rows in counts.values()))
+    if ok and not update:
+        ok = bool(counts) and is_count(baseline.get("seed")) and is_count(baseline.get("examples"))
     if not ok:
-        raise HarnessError(f"baseline {path} is malformed; fix it by hand or delete it and use --update-baseline "
-                           "(a new file needs a tracked_by object for the disagreeing predicates)")
+        raise HarnessError(f"baseline {path} is malformed; fix it by hand, or replace it with a file holding only "
+                           "the tracked_by object and rerun --update-baseline")
 
 
 def baseline_counts(baseline, config, predicate):
@@ -550,8 +561,8 @@ def selftest(args):
     run_args = argparse.Namespace(**{**vars(args), "behavior_model": str(mutant), "work_dir": str(work / "mutant"),
                                      "venv_dir": str(work), "update_baseline": False})
     status = run(run_args)
-    report = json.loads((work / "mutant" / "report.json").read_text())
-    baseline = json.loads(Path(args.baseline).read_text())
+    report = json.loads((work / "mutant" / "report.json").read_text(encoding="utf-8"))
+    baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
     moved = {(config, predicate) for config, predicates in report["summary"].items()
              for predicate, row in predicates.items()
              if row["disagreements"] != baseline_counts(baseline, config, predicate)}
