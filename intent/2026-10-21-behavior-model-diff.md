@@ -25,10 +25,10 @@ Each disagreement is a finding about the model. This pull request records each o
 - No LLM verdict is evidence (vision rule 1). The harness is deterministic.
 
 ## Open questions
-None. The decisions below were open and were taken without the maintainer, as the run's autonomy grant allows.
+None. The decisions below were open, and the coordinating agent took them without consulting the maintainer on each one.
 
 ## Decided without the maintainer
-The maintainer granted full autonomy for this run on 2026-10-21 and is away. Each open question was decided with the most conservative option.
+The coordinating agent decided each question below under the full-autonomy and merge grant the maintainer gave it directly in chat on 2026-10-21. This file records that authorization. It does not constitute it, and nothing in the repository grants it. Each open question was decided with the most conservative option. Decisions 5 and 6 were revised in the review of #134 under the same authorization.
 
 1. **How digits are counted.** The predicates take digit counts, and the Lean text does not say how a decimal value gives them. The harness reads them from the decimal as written: fractional digits are the places after the point, including trailing zeros; integer digits are the digits of the integer part, so zero has none; total digits are their sum. This is the plain reading of "v has at most d fractional digits". Where Django or pydantic count differently, the disagreement is reported, not absorbed into the reading. The alternative, copying each library's counting into the harness, would make the comparison agree by construction.
 2. **One field option at a time.** Each Django field sets only the option its predicate describes and `blank=True`, so `blank` does not reject `""` for a predicate that is not about `blank`. `choicesAccepts` is the exception: Django skips the choices check for an empty value and lets `blank` decide, so the harness draws `blank` as an input and reports both.
