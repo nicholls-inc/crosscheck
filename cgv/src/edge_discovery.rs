@@ -574,6 +574,7 @@ impl GuardCollector<'_, '_> {
     fn scan(&mut self, expr: &Expr, ctx: &Ctx) {
         match expr {
             Expr::Call(call) => {
+                let ctx = &ctx.before_call(expr);
                 self.record(call, ctx);
                 self.scan(&call.func, ctx);
                 for arg in call.arguments.args.iter() {
@@ -934,6 +935,7 @@ impl<'a, 's> EdgeWalker<'a, 's> {
     fn scan(&mut self, expr: &'a Expr, ctx: &Ctx) {
         match expr {
             Expr::Call(call) => {
+                let ctx = &ctx.before_call(expr);
                 if let Some(receiver) = self.saved_receiver(call) {
                     self.observations.push((Some(receiver), ctx.narrowed.clone()));
                 }

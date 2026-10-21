@@ -451,9 +451,9 @@ fn walk<'a, V: FlowVisitor<'a>>(
     for stmt in stmts {
         match stmt {
             Stmt::If(s) => {
+                n.forget_before(&effects(&s.test));
                 v.header(&s.test, &n);
                 n.extend(dereferenced(&s.test));
-                n.forget_before(&effects(&s.test));
                 let before = n.clone();
                 n.apply(&effects(&s.test));
                 let mut ends = Vec::new();
@@ -470,11 +470,11 @@ fn walk<'a, V: FlowVisitor<'a>>(
                     clause_n.assume(negated.iter().cloned());
                     let end = match &clause.test {
                         Some(test) => {
-                            v.header(test, &clause_n);
                             let e = effects(test);
+                            clause_n.forget_before(&e);
+                            v.header(test, &clause_n);
                             n.apply(&e);
                             negated.retain(|x| x.survives(&e));
-                            clause_n.forget_before(&e);
                             let before = clause_n.clone();
                             clause_n.apply(&e);
                             let mut bn = clause_n.clone();
@@ -512,6 +512,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 n.apply(&effects_of_stmt(stmt));
             }
             Stmt::For(f) => {
+                n.forget_before(&effects(&f.iter));
                 v.header(&f.iter, &n);
                 n.extend(dereferenced(&f.iter));
                 // A call in a later iteration may already have run.
@@ -539,6 +540,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 // narrowed does not survive, like what the body narrowed.
                 let mut after = n.clone();
                 for (i, item) in w.items.iter().enumerate() {
+                    n.forget_before(&effects(&item.context_expr));
                     v.header(&item.context_expr, &n);
                     n.extend(dereferenced(&item.context_expr));
                     n.apply(&effects(&item.context_expr));
@@ -597,6 +599,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 };
             }
             Stmt::Match(m) => {
+                n.forget_before(&effects(&m.subject));
                 v.header(&m.subject, &n);
                 n.extend(dereferenced(&m.subject));
                 // The cases run on a clone, so a call in a guard or a body
@@ -860,7 +863,10 @@ pub struct Effects {
     /// The roots `x` of which a field may be written by code that no later
     /// node names: `x.__dict__` or `x.a.__dict__` read (the table can be
     /// indexed), a store to `x.f` in a nested function or class body or as a
-    /// comprehension target, and a `nonlocal x` in a nested body.
+    /// comprehension target, and a `nonlocal x` in a nested body. A store at
+    /// the top level (a tuple, annotated, `for` or `with` target) is not
+    /// here: `bound_names` forgets what it writes, as for `x.f = v`, which
+    /// assumes that an attribute setter is not code that writes another field.
     pub exposes: HashSet<String>,
     /// The names a walrus in it binds.
     rebinds: HashSet<String>,
@@ -2365,8 +2371,10 @@ mod tests {
             assert!(!narrowing_with_isinstance(&src)[0].contains(&"o.a".to_string()), "{def:?}");
         }
         // A comprehension or `for` target that is an attribute of the root.
-        let src = "def f(o, c):\n    if isinstance(o.a, str) and any(0 for o.a in c):\n        use()\n";
-        assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
+        for test in ["any(0 for o.a in c)", "any(0 for o.a, d in c)", "any(0 for d, o.a in c)", "any(0 for d in c for o.a in d)"] {
+            let src = format!("def f(o, c):\n    if isinstance(o.a, str) and {test}:\n        use()\n");
+            assert!(!narrowing_with_isinstance(&src)[0].contains(&"o.a".to_string()), "{test}");
+        }
     }
 
     #[test]
@@ -2404,9 +2412,23 @@ mod tests {
             let src = format!("def f(x, o, c):\n    if isinstance({subject}, str):\n        {stmt}\n");
             assert_eq!(narrowing_with_isinstance(&src)[0].contains(&subject.to_string()), narrowed, "{subject} / {stmt}");
         }
-        // The same in an assert and in an elif test.
+        // A suspension anywhere in the statement ends it too.
+        let src = "async def f(o, c):\n    if isinstance(o.a, str):\n        use(await c, o.a)\n";
+        assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
+        // The same in an assert, and in the test of an if and of an elif, which
+        // are read before the branch (`use` is observed by the header here).
         let src = "def f(o, c):\n    assert isinstance(o.a, str)\n    use(clear(o), o.a)\n";
         assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
+        let src = "def f(o, c):\n    assert isinstance(o.a, str)\n    if use(clear(o), o.a):\n        pass\n    elif use(clear(o), o.a):\n        pass\n";
+        assert!(narrowing_with_isinstance(src).iter().all(|at| !at.contains(&"o.a".to_string())));
+    }
+
+    #[test]
+    fn test_a_hand_off_of_a_link_in_an_earlier_argument_is_not_yet_reached() {
+        // `o.a` handed in an earlier argument cannot be told from a read of the
+        // chain `o.a.b` in the same call, so the narrowing stays (README).
+        let src = "def f(o, c):\n    if isinstance(o.a.b, str):\n        use(clear(o.a), o.a.b)\n";
+        assert!(narrowing_with_isinstance(src)[0].contains(&"o.a.b".to_string()));
     }
 
     #[test]

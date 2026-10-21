@@ -180,6 +180,36 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_and_operand -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_walrus_in_and_operand -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_ternary -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_if_test -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_handoff_in_for_iterable -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
     }
   ]
 }

@@ -266,6 +266,15 @@ impl Ctx {
         c.narrow(names)
     }
 
+    /// Where the call `e` is read: its own walrus or hand-off of a root in an
+    /// argument that comes first ends an `isinstance` narrowing before the
+    /// arguments are read (`Narrowed::forget_before`).
+    pub fn before_call(&self, call: &Expr) -> Ctx {
+        let mut c = self.clone();
+        c.narrowed.forget_before(&flow::effects(call));
+        c
+    }
+
     pub fn shadow(&self, names: impl IntoIterator<Item = String>) -> Ctx {
         let mut c = self.clone();
         for n in names {

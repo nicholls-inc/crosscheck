@@ -223,3 +223,34 @@ def store_nested_dict_after(address: Address) -> Entry:
         reset()
         return Entry.objects.create(text=address.postcode)
     return Entry.objects.create(text="x")
+
+
+def store_handoff_in_and_operand(address: Address) -> object:
+    # BUG: clear() in an earlier argument of the call sets the postcode to None.
+    return isinstance(address.postcode, str) and Entry.objects.create(id=clear(address), text=address.postcode)
+
+
+def store_walrus_in_and_operand(value: object, fallback: Optional[str]) -> object:
+    # BUG: the walrus in an earlier argument of the call rebinds value to an Optional.
+    return isinstance(value, str) and Entry.objects.create(id=(value := fallback), text=value)
+
+
+def store_handoff_in_ternary(address: Address) -> Optional[Entry]:
+    # BUG: clear() in an earlier argument of the call sets the postcode to None.
+    return Entry.objects.create(id=clear(address), text=address.postcode) if isinstance(address.postcode, str) else None
+
+
+def store_handoff_in_if_test(address: Address) -> Entry:
+    # BUG: clear() in an earlier argument of the call in the inner test sets the postcode to None.
+    if isinstance(address.postcode, str):
+        if Entry.objects.create(id=clear(address), text=address.postcode):
+            return Entry.objects.create(text="y")
+    return Entry.objects.create(text="x")
+
+
+def store_handoff_in_for_iterable(address: Address) -> Entry:
+    # BUG: clear() in an earlier argument of the call in the iterable sets the postcode to None.
+    if isinstance(address.postcode, str):
+        for entry in Entry.objects.bulk_create([Entry(id=clear(address), text=address.postcode)]):
+            return entry
+    return Entry.objects.create(text="x")
