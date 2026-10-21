@@ -184,7 +184,8 @@ async function writeBaseline(
     return file;
   } finally {
     // No `git worktree prune`: it is repository-wide and would also drop the entries of the caller's other worktrees whose
-    // directories are missing. `remove --force` deregisters this checkout, and fails harmlessly when `add` registered nothing.
+    // directories are missing. `remove --force` deregisters a checkout git can still validate, and fails harmlessly when `add`
+    // registered nothing. A process killed inside `add` can leave a prunable entry, which is accepted (spec CK-5).
     await git(root, ["worktree", "remove", "--force", tree]);
     await rm(tree, { recursive: true, force: true }).catch(() => undefined);
   }
