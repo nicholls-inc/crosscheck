@@ -629,7 +629,8 @@ impl GuardCollector<'_, '_> {
 }
 
 /// For one call of `f`, each parameter's narrowed argument fields: the
-/// fields `a.f` narrowed here for an argument that is a name `a`.
+/// fields `a.f` and chains `a.link.f` narrowed here for an argument that is
+/// a name `a`.
 fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ctx) -> HashMap<String, HashSet<String>> {
     let mut out: HashMap<String, HashSet<String>> =
         f.params.iter().map(|p| (p.name.clone(), HashSet::new())).collect();
@@ -644,7 +645,7 @@ fn call_guards(f: &FunctionInfo, implicit: usize, call: &ast::ExprCall, ctx: &Ct
         ctx.narrowed
             .names()
             .filter_map(|x| x.strip_prefix(&prefix))
-            .filter(|field| !field.contains(['.', '[']))
+            .filter(|field| !field.contains('['))
             .map(str::to_string)
             .collect()
     };

@@ -780,7 +780,9 @@ pub struct ClassInfo {
 pub struct Link {
     /// Qualified name of the class of the value.
     pub class: String,
-    /// Whether the field may hold None (`null=True`, `Optional[...]`), when known.
+    /// Whether the field may hold None (`null=True`, `Optional[...]`), when
+    /// known. No read uses it while a chained read of a non-null field is
+    /// unknown (CG-1.52).
     pub nullable: Option<bool>,
 }
 

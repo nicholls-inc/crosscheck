@@ -364,7 +364,8 @@ const STR_METHODS: [&str; 16] = [
 ];
 
 /// Per function whose callers the project shows (see
-/// `edge_discovery::caller_guards`), per parameter, the fields `p.f` that
+/// `edge_discovery::caller_guards`), per parameter, the fields `p.f` (and
+/// chains `p.link.f`, as `link.f`) that
 /// every call narrows on its argument (`if h.name: label_of(h)`).
 pub type CallerGuards = HashMap<String, HashMap<String, HashSet<String>>>;
 
@@ -645,14 +646,12 @@ impl<'a> Scope<'a> {
 
     /// `obj.link.f` (any depth) for local `obj` of a known class whose
     /// fields `link` hold instances of project classes (`resolve::Link`): the
-    /// declared facts of the last class's field `f`, as `field_read_facts`
-    /// gives them for the chain. A link that may be None and is not narrowed
-    /// raises `AttributeError` rather than yield None, so no None flows from
-    /// it; a non-null field read through it still gets unknown nullability,
-    /// so the possible `AttributeError` is a warning rather than silent
-    /// (`intent/2026-10-21-cgv-chained-attribute-reads.md`). `None` when the chain does
-    /// not resolve, or when the function assigns a link (the value's class
-    /// is then not the declared one).
+    /// facts `field_read_facts` gives the chain, from the last class's field
+    /// `f` as `linked_declared_facts` declares it. A link that may be None
+    /// raises `AttributeError` rather than yield None, so it adds no None
+    /// (`intent/2026-10-21-cgv-chained-attribute-reads.md`). `None` when the
+    /// chain does not resolve, or when the function assigns a link (the
+    /// value's class is then not the declared one).
     fn linked_field_facts(&self, attr: &ast::ExprAttribute, ctx: &Ctx) -> Option<ValueFacts> {
         let mut links = Vec::new();
         let mut value = attr.value.as_ref();
@@ -670,33 +669,23 @@ impl<'a> Scope<'a> {
             return None;
         };
         let mut receiver = root.id.to_string();
-        let mut may_be_none = false;
         for link in links {
             let next = class.links.get(link)?;
             receiver = format!("{receiver}.{link}");
             if !element && (self.flow.attr_assignments.contains_key(&receiver) || self.flow.opaque.contains(&receiver)) {
                 return None;
             }
-            let narrowed = !element && ctx.narrowed.contains(&receiver);
-            may_be_none |= !narrowed && next.nullable != Some(false);
             class = self.index.class(&next.class)?;
         }
         let field = attr.attr.as_str();
         if !class.fields.iter().any(|f| f == field) {
             return None;
         }
-        let mut facts = if element {
-            declared_field_facts(class, field)
+        Some(if element {
+            linked_declared_facts(class, field)
         } else {
             self.field_read_facts(&receiver, class, field, ctx)
-        };
-        // A narrowed chain was evaluated without raising, so every link held
-        // an object then, and none has been rebound since.
-        let narrowed = !element && ctx.narrowed.contains(&format!("{receiver}.{field}"));
-        if may_be_none && !narrowed && facts.nullable == Some(false) {
-            facts.nullable = None;
-        }
-        Some(facts)
+        })
     }
 
     /// The facts of each value class constant `name` may have when read as
@@ -726,26 +715,32 @@ impl<'a> Scope<'a> {
         self.self_constant_values(class, name).filter(|v| v.len() > 1)
     }
 
-    /// A read of field `field` of `obj` (an instance of `class`): the values
-    /// assigned to `obj.f` in this function that reach here, or, when the
-    /// function does not assign it, the field's declared nullability.
+    /// A read of field `field` of `obj` (an instance of `class`; `obj` may
+    /// be a chain `root.link`): the values assigned to `obj.f` in this
+    /// function that reach here, or, when the function does not assign it,
+    /// the field's declared nullability.
     fn field_read_facts(&self, obj: &str, class: &ClassInfo, field: &str, ctx: &Ctx) -> ValueFacts {
         let name = format!("{obj}.{field}");
-        // Every caller narrows the argument's field: unknown, not nullable,
-        // since a caller the project does not show may still pass None.
+        let (root, path) = name.split_once('.').unwrap_or_default();
+        // Every caller narrows the argument's field (or chain): unknown, not
+        // nullable, since a caller the project does not show may still pass None.
         let guarded = self.func.is_some_and(|f| {
-            f.params.iter().any(|p| p.name == obj)
-                && !self.flow.assignments.contains_key(obj)
-                && !self.flow.opaque.contains(obj)
+            f.params.iter().any(|p| p.name == root)
+                && !self.flow.assignments.contains_key(root)
+                && !self.flow.opaque.contains(root)
                 // No call can have written the field since the entry.
-                && ctx.narrowed.untouched(obj)
+                && ctx.narrowed.untouched(root)
                 && self
                     .caller_guards
-                    .and_then(|g| g.get(&f.qualified_name)?.get(obj))
-                    .is_some_and(|fields| fields.contains(field))
+                    .and_then(|g| g.get(&f.qualified_name)?.get(root))
+                    .is_some_and(|fields| fields.contains(path))
         });
         let declared = || {
-            let mut facts = declared_field_facts(class, field);
+            let mut facts = if path.contains('.') {
+                linked_declared_facts(class, field)
+            } else {
+                declared_field_facts(class, field)
+            };
             if guarded && facts.nullable == Some(true) {
                 facts.nullable = None;
             }
@@ -2482,6 +2477,18 @@ fn declared_field_facts(class: &ClassInfo, field: &str) -> ValueFacts {
             None => ValueFacts::default(),
         },
     }
+}
+
+/// The declared facts of field `field` of `class` read through a link
+/// (`obj.link.field`), except that a declared non-null is unknown: a write
+/// through a chain or an alias (`a.b.f = None`, `x = a.b; x.f = None`) is not
+/// yet checked against the field, so the stored value may be None (CG-1.52).
+fn linked_declared_facts(class: &ClassInfo, field: &str) -> ValueFacts {
+    let mut facts = declared_field_facts(class, field);
+    if facts.nullable == Some(false) {
+        facts.nullable = None;
+    }
+    facts
 }
 
 /// The possible values of a string literal after a case-mapping method,
