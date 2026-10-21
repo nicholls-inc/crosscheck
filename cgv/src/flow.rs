@@ -121,6 +121,10 @@ pub struct Narrowed {
     /// (`Fact::held`). Each ends where a caller's guard on it would end
     /// (`Effects::hands_off`), counted from the test.
     held: HashSet<String>,
+    /// The names in `names` known non-None only by an `isinstance` test
+    /// (`Fact::by_isinstance`): a walrus that rebinds one ends it
+    /// (`Effects::rebinds`). A superset of `held`.
+    iso: HashSet<String>,
     /// The roots `x` of which `x.__dict__` (or `x.a.__dict__`) was read on
     /// some path here (see `Effects::exposes`): a table that code can keep and
     /// write to later, which `untouched` does not see.
@@ -162,20 +166,30 @@ impl Narrowed {
                 }
             }
             self.held.remove(&name);
+            self.iso.remove(&name);
             self.names.insert(name);
         }
     }
 
-    /// Mark the names of `facts` non-None. A held fact does not weaken a
-    /// name already known non-None by another test.
+    /// Mark the names of `facts` non-None. An `isinstance` fact does not
+    /// weaken a name already known non-None by another test.
     pub fn assume(&mut self, facts: impl IntoIterator<Item = Fact>) {
         for f in facts {
-            if !f.held {
+            if !f.by_isinstance {
                 self.extend([f.name]);
-            } else if !self.names.contains(&f.name) || self.held.contains(&f.name) {
-                self.names.insert(f.name.clone());
-                self.held.insert(f.name);
+                continue;
             }
+            let known_otherwise = self.names.contains(&f.name) && !self.iso.contains(&f.name);
+            if known_otherwise {
+                continue;
+            }
+            if f.held {
+                self.names.insert(f.name.clone());
+                self.held.insert(f.name.clone());
+            } else {
+                self.extend([f.name.clone()]);
+            }
+            self.iso.insert(f.name);
         }
     }
 
@@ -184,6 +198,7 @@ impl Narrowed {
     pub fn remove(&mut self, name: &str) {
         self.names.remove(name);
         self.held.remove(name);
+        self.iso.remove(name);
         self.defs.remove(name);
         self.forget_attributes(name);
         self.forget_members_of(name);
@@ -193,6 +208,7 @@ impl Narrowed {
     pub fn rebind(&mut self, name: &str, def: Def) {
         self.names.remove(name);
         self.held.remove(name);
+        self.iso.remove(name);
         self.defs.insert(name.to_string(), vec![(def, false)]);
         self.forget_attributes(name);
         self.forget_members_of(name);
@@ -247,6 +263,29 @@ impl Narrowed {
             && (!path.contains('.') || (self.links_untouched(root) && !self.link_handed(chain)))
     }
 
+    /// A walrus in `e` rebinds a name: what an `isinstance` test alone said
+    /// about it, or about its attributes, is no longer known. (A test of
+    /// another kind keeps its narrowing, as before this rule.)
+    fn forget_rebound_isinstance_facts(&mut self, e: &Effects) {
+        if e.rebinds.is_empty() {
+            return;
+        }
+        let gone: Vec<String> = self
+            .iso
+            .iter()
+            .filter(|n| e.rebinds.contains(n.split('.').next().unwrap_or(n)))
+            .cloned()
+            .collect();
+        for name in gone {
+            self.names.remove(&name);
+            self.held.remove(&name);
+            self.iso.remove(&name);
+            if let Some(d) = self.defs.get_mut(&name) {
+                d.iter_mut().for_each(|entry| entry.1 = false);
+            }
+        }
+    }
+
     /// The state after evaluating a node with effects `e`.
     pub fn apply(&mut self, e: &Effects) {
         self.names.retain(|n| e.keeps_member(n));
@@ -254,6 +293,7 @@ impl Narrowed {
             self.names.remove(h);
         }
         self.held.retain(|h| self.names.contains(h));
+        self.forget_rebound_isinstance_facts(e);
         self.exposed.extend(e.exposes.iter().cloned());
         if e.suspends {
             self.untouched.clear();
@@ -275,6 +315,7 @@ impl Narrowed {
             self.names.retain(|n| !n.starts_with(&prefix));
         }
         self.held.retain(|n| !n.starts_with(&prefix));
+        self.iso.retain(|n| !n.starts_with(&prefix));
         for (n, defs) in self.defs.iter_mut() {
             if n.starts_with(&prefix) {
                 *defs = vec![(Def::Param, false)];
@@ -304,6 +345,7 @@ impl Narrowed {
             out.handed_paths.extend(b.handed_paths.iter().cloned());
             out.held.extend(b.held.iter().cloned());
             out.exposed.extend(b.exposed.iter().cloned());
+            out.iso.extend(b.iso.iter().cloned());
             out.defs.retain(|name, defs| {
                 let Some(other) = b.defs.get(name) else {
                     return false;
@@ -318,6 +360,7 @@ impl Narrowed {
             });
         }
         out.held.retain(|h| out.names.contains(h));
+        out.iso.retain(|h| out.names.contains(h));
         Some(out)
     }
 }
@@ -550,6 +593,7 @@ fn walk<'a, V: FlowVisitor<'a>>(
                 v.reached.extend(inner.reached);
                 v.handed.extend(inner.handed);
                 v.handed_paths.extend(inner.handed_paths);
+                v.exposes.extend(inner.exposes);
                 n.apply(&v);
                 n.remove(f.name.as_str());
             }
@@ -783,8 +827,11 @@ pub struct Effects {
     /// attribute holds an object or a plain value, so only a guard on a longer
     /// chain through it is lost (`Narrowed::link_handed`), not every guard on `x`.
     pub handed_paths: HashSet<String>,
-    /// The roots `x` of which `x.__dict__` or `x.a.__dict__` is read: the
-    /// table can be stored or indexed to write a field without naming it.
+    /// The roots `x` of which a field may be written by code that no later
+    /// node names: `x.__dict__` or `x.a.__dict__` read (the table can be
+    /// indexed), a store to `x.f` the walk does not track (in a nested
+    /// function or class body, or as a `for` or comprehension target), and a
+    /// `nonlocal x` in a nested body.
     pub exposes: HashSet<String>,
     /// The names a walrus in it binds.
     rebinds: HashSet<String>,
@@ -867,6 +914,12 @@ impl<'a> Visitor<'a> for Effects {
             Stmt::Delete(d) => {
                 self.mutates = true;
                 d.targets.iter().for_each(|t| self.reach_root(t));
+            }
+            // A nested body that rebinds a name of this function can run later.
+            Stmt::Nonlocal(nl) if self.nested > 0 => {
+                nl.names.iter().for_each(|n| {
+                    self.exposes.insert(n.id.to_string());
+                });
             }
             Stmt::For(f) if f.is_async => *self = std::mem::take(self).suspended(),
             Stmt::With(w) if w.is_async => *self = std::mem::take(self).suspended(),
@@ -967,6 +1020,10 @@ impl<'a> Visitor<'a> for Effects {
                     if let Expr::Name(n) = base {
                         if self.outer(n.id.as_str()) {
                             self.handed.insert(n.id.to_string());
+                            // A store the walk does not track (a nested body,
+                            // a `for` or comprehension target) writes a field
+                            // of the root that no later node names.
+                            self.exposes.insert(n.id.to_string());
                         }
                     }
                 }
@@ -2230,6 +2287,50 @@ mod tests {
         // An `is not None` test is unchanged by this rule.
         let src = "def f(x, c):\n    if x is not None and (x := c) is None:\n        use()\n";
         assert_eq!(narrowing_at_uses(src), vec![names(&["x"])]);
+    }
+
+    #[test]
+    fn test_a_store_the_walk_does_not_track_ends_an_isinstance_narrowing() {
+        // A nested body that writes a field of the root, rebinds the root
+        // (`nonlocal`) or reads its `__dict__` can run any time after its
+        // definition, whether the definition is before the test or in the branch.
+        let cases = [
+            ("    def g():\n        o.a = None\n", "o.a", false),
+            ("    def g():\n        o.a.b = None\n", "o.a.b", false),
+            ("    def g():\n        o.__dict__['a'] = None\n", "o.a", false),
+            ("    def g():\n        nonlocal o\n        o = c\n", "o.a", false),
+            ("    class K:\n        o.a = None\n", "o.a", false),
+            ("    def g():\n        return o.a\n", "o.a", true),
+            ("    def g(o):\n        o.a = None\n", "o.a", true),
+        ];
+        for (before, subject, narrowed) in cases {
+            let src = format!("def f(o, c):\n{before}    if isinstance({subject}, str):\n        use()\n");
+            assert_eq!(narrowing_with_isinstance(&src)[0].contains(&subject.to_string()), narrowed, "{before:?}");
+        }
+        for def in ["def g():\n            o.a = None\n", "class K:\n            o.a = None\n"] {
+            let src = format!("def f(o, c):\n    if isinstance(o.a, str):\n        {def}        use()\n");
+            assert!(!narrowing_with_isinstance(&src)[0].contains(&"o.a".to_string()), "{def:?}");
+        }
+        // A comprehension or `for` target that is an attribute of the root.
+        let src = "def f(o, c):\n    if isinstance(o.a, str) and any(0 for o.a in c):\n        use()\n";
+        assert!(!narrowing_with_isinstance(src)[0].contains(&"o.a".to_string()));
+    }
+
+    #[test]
+    fn test_a_walrus_after_the_test_ends_an_isinstance_narrowing_of_what_it_rebinds() {
+        // The walrus is in a later node, not in the test (`Ctx::after_operand`
+        // reaches the same `Narrowed::apply`).
+        for subject in ["x", "o.a"] {
+            let root = subject.split('.').next().unwrap();
+            let src = format!("def f(x, o, c):\n    if isinstance({subject}, str):\n        y = ({root} := c)\n        use()\n");
+            assert!(!narrowing_with_isinstance(&src)[0].contains(&subject.to_string()), "{subject}");
+            // Another name, or no walrus, keeps it.
+            let src = format!("def f(x, o, c):\n    if isinstance({subject}, str):\n        y = (z := c)\n        use()\n");
+            assert!(narrowing_with_isinstance(&src)[0].contains(&subject.to_string()), "{subject}");
+        }
+        // A name that an `is not None` test also narrows keeps that narrowing.
+        let src = "def f(x, c):\n    if x is not None and isinstance(x, str):\n        y = (z := c)\n        use()\n";
+        assert!(narrowing_with_isinstance(src)[0].contains(&"x".to_string()));
     }
 
     #[test]

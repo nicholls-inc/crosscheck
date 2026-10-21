@@ -150,3 +150,51 @@ def store_dict_alias_before(address: Address) -> Entry:
         fields["postcode"] = None
         return Entry.objects.create(text=address.postcode)
     return Entry.objects.create(text="x")
+
+
+def store_nested_def_before(address: Address) -> Entry:
+    # BUG: reset() writes the postcode, and it was defined before the test.
+    def reset() -> None:
+        address.postcode = None
+
+    if isinstance(address.postcode, str):
+        reset()
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_nested_def_after(address: Address) -> Entry:
+    # BUG: reset() writes the postcode, and it is defined inside the branch.
+    if isinstance(address.postcode, str):
+        def reset() -> None:
+            address.postcode = None
+
+        reset()
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_nested_dict_before(address: Address) -> Entry:
+    # BUG: reset() writes through __dict__, and it was defined before the test.
+    def reset() -> None:
+        address.__dict__["postcode"] = None
+
+    if isinstance(address.postcode, str):
+        reset()
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_class_body_after(address: Address) -> Entry:
+    # BUG: the class body runs at once and writes the postcode.
+    if isinstance(address.postcode, str):
+        class Clear:
+            address.postcode = None
+
+        return Entry.objects.create(text=address.postcode)
+    return Entry.objects.create(text="x")
+
+
+def store_walrus_in_later_operand(value: object, fallback: Optional[str]) -> object:
+    # BUG: the walrus in a later operand rebinds value to an Optional.
+    return isinstance(value, str) and ((value := fallback) or True) and Entry.objects.create(text=value)

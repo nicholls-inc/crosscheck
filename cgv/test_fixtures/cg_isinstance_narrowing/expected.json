@@ -132,6 +132,36 @@
       "source_guarantee": "nullable",
       "target_requirement": "non-null",
       "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_def_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_def_after -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_nested_dict_before -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_class_body_after -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
+    },
+    {
+      "path": "store_walrus_in_later_operand -> Entry.text",
+      "source_guarantee": "nullable",
+      "target_requirement": "non-null",
+      "target": "Entry.text"
     }
   ]
 }
