@@ -69,3 +69,27 @@ None.
 No model errors were found in DRT. Model and spec errors found earlier by /correspondence-review (CR-OC16-01, CR-OC16-02) were fixed before these runs.
 
 Absence of other divergences is evidence, not proof. The generator bounds are at most 2 ChargePointMaxProfiles, 3 TxDefaultProfiles and 2 TxProfiles per case, at most 4 periods each, 15-minute period offsets, 24- or 48-hour windows in 2026, and connector 1.
+
+## Draft EVerest issue (not filed)
+
+For a human to review, edit and file at https://github.com/EVerest/EVerest/issues. EVerest's contributor policy requires every AI-assisted contribution to be reviewed and understood by a human first.
+
+> **Title.** fix(ocpp): OCPP 1.6 Recurring charging profiles restart early by one second per leap second
+>
+> **What happens.** For a Recurring Daily or Weekly profile, `calculate_start` in `lib/everest/ocpp/lib/ocpp/v16/profile.cpp` computes the restart as `(now − startSchedule) % 86400` (or 604800) on `date::utc_clock` time points. `utc_clock` counts leap seconds, so each leap second between `startSchedule` and now moves every restart one second earlier.
+>
+> **Expected.** OCPP 1.6 edition 2, RecurrencyKindType: Daily "restarts every 24 hours, at the same time as in the startSchedule". With startSchedule 2013-01-01T00:00:00Z and the section 3.13.7 example profile, the 6 kW period should start at 08:00:00.
+>
+> **Observed** at `dd696165`, with `profile.cpp` driven directly:
+>
+> | startSchedule | Leap seconds since | Switch to 6 kW |
+> | --- | --- | --- |
+> | 2013-01-01 | 2 | 07:59:58 |
+> | 2016-07-01 | 1 | 07:59:59 |
+> | 2020-01-01 | 0 | 08:00:00 |
+>
+> **Why the tests miss it.** The v16 profile tests use 2023 and 2024 dates, after the last leap second (2016-12-31).
+>
+> **Impact.** Limits switch one to three seconds early today, by one more second per future leap second, for any central system that anchors recurring profiles before 2017.
+>
+> **Possible fix.** Do the recurrence arithmetic on `date::sys_time` (or convert with `clock_cast<system_clock>`) so that a day is 86400 clock seconds.
