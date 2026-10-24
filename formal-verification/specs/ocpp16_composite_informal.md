@@ -36,11 +36,11 @@ Assumed callee contracts: none. The module calls nothing.
 These terms are used by the conditions below.
 
 - D1. **Applicable profile.** A ChargePointMaxProfile is applicable if its connectorId is 0. A TxDefaultProfile is applicable if its connectorId is 0 or c. A TxProfile is applicable if its connectorId is c. (3.13.1)
-- D2. **Valid at t.** A profile is valid at t when t is not before its validFrom, if present, and not after its validTo, if present. If validFrom is absent it is valid from receipt, and if validTo is absent it is valid until replaced (7.8). Boundary inclusion is ambiguity A4.
-- D3. **Schedule start at t.** For an Absolute profile, it is `startSchedule` ("Schedule periods are relative to a fixed point in time defined in the schedule", 7.9). For a Recurring profile with recurrencyKind Daily, it is the latest time `startSchedule + k × 86400` that is not after t, and for Weekly the same with 604800 ("The schedule restarts every 24 hours, at the same time as in the startSchedule", and every 7 days for Weekly). Whether k may be negative is ambiguity A5.
-- D4. **Covers t.** A profile's schedule covers t when t is not before its schedule start s, and either `duration` is absent or t < s + duration (7.13). "If the duration is left empty, the last period will continue indefinitely."
+- D2. **Valid at t.** A profile is valid at t when validFrom ≤ t, if validFrom is present, and t < validTo, if validTo is present. If validFrom is absent it is valid from receipt, and if validTo is absent it is valid until replaced (7.8). The half-open boundary is resolution A4.
+- D3. **Schedule start at t.** For an Absolute profile, it is `startSchedule` ("Schedule periods are relative to a fixed point in time defined in the schedule", 7.9). For a Recurring profile with recurrencyKind Daily, it is the latest time `startSchedule + k × 86400` with k ≥ 0 that is not after t, and for Weekly the same with 604800 ("The schedule restarts every 24 hours, at the same time as in the startSchedule", and every 7 days for Weekly). Time here is UTC counted in calendar days, so a day is always 86400 seconds and leap seconds are not counted. A Recurring profile has no schedule start before its startSchedule (resolution A5).
+- D4. **Covers t.** A profile's schedule covers t when it has a schedule start s at t, and either `duration` is absent or t < s + duration (7.13). "If the duration is left empty, the last period will continue indefinitely." For a Recurring profile, D3 picks the latest occurrence, so without a duration its last period runs until the next restart (resolution A6).
 - D5. **Limit of a profile at t.** It is the `limit` of the last period whose startPeriod ≤ t − s. "The value of StartPeriod also defines the stop time of the previous period." (7.14)
-- D6. **Prevailing profile of a purpose at t.** Among the applicable profiles of that purpose that are valid at t, it is the one with the highest stackLevel (3.13.2). Whether a profile that is valid but does not cover t can prevail is ambiguity A1.
+- D6. **Prevailing profile of a purpose at t.** Among the applicable profiles of that purpose that are valid at t and whose schedule covers t, it is the one with the highest stackLevel (3.13.2). A profile whose schedule does not cover t never prevails (resolution A1).
 
 ## Preconditions
 
@@ -53,15 +53,16 @@ These terms are used by the conditions below.
 - P5. Every profile uses the same chargingRateUnit. Every limit is ≥ 0 with at most one decimal place (7.14).
   - Satisfies: limits 16, 6.5 and 0 in A.
   - Violates: 6.25 A, or one profile in A and another in W.
-- P6. No two applicable profiles have the same purpose, stackLevel and connectorId (3.13.2 replacement rule). Whether a TxDefaultProfile on connector 0 and one on connector c may share a stack level is ambiguity A3.
+- P6. No two applicable profiles have the same purpose, stackLevel and connectorId (3.13.2 replacement rule). TxDefaultProfiles are installed on connector 0 or on connector c, never on both (resolution A3). The spec does not settle how the two interact, so the model takes no position and generated cases avoid the mix.
+- P8. No TxProfile carries a transactionId (resolution A9).
 - P7. If `duration` is present it is > 0.
 
 ## Postconditions
 
 - Q1. The ChargePointMaxProfile result at t is the limit at t (D5) of the prevailing ChargePointMaxProfile (D6), or nothing if none prevails.
-- Q2. The Tx result at t is the limit at t of the prevailing TxProfile if one prevails. Otherwise it is the limit at t of the prevailing TxDefaultProfile, or nothing if neither prevails. TxProfile "SHALL overrule the default charging profile with purpose TxDefaultProfile for the duration of the current transaction only" (3.13.1). Ambiguity A2 asks whether this is per instant.
+- Q2. The Tx result at t is the limit at t of the prevailing TxProfile if one prevails at t. Otherwise it is the limit at t of the prevailing TxDefaultProfile, or nothing if neither prevails. TxProfile "SHALL overrule the default charging profile with purpose TxDefaultProfile for the duration of the current transaction only" (3.13.1). The override applies only at instants where a TxProfile prevails (resolution A2).
 - Q3. `composite(profiles, c, t)` is the smaller of the Q1 and Q2 results where both exist, whichever one exists if only one does, and nothing if neither does. "This Composite Schedule is calculated by taking the minimum value for each time interval" (3.13.3).
-- Q4. Conformance of an implementation. An implementation's limit at t conforms when it is at or below `composite(profiles, c, t)`, or anything when the composite is nothing. The composite "SHALL be less than or equal to lowest value of available power or current in any of the merged schedules" (3.13.3). Ambiguity A10 confirms this reading.
+- Q4. Conformance of an implementation. An implementation's limit at t conforms when it is at or below `composite(profiles, c, t)`, or anything when the composite is nothing. The composite "SHALL be less than or equal to lowest value of available power or current in any of the merged schedules" (3.13.3). The model computes the minimum itself, the largest value allowed (resolutions A7 and A10).
 
 ## Invariants
 
@@ -82,11 +83,12 @@ Every function is a finite traversal of the finite profile list and the finite p
 - A limit of 0. The composite is 0 wherever that profile prevails and is the smaller.
 - t exactly at a startPeriod boundary. The new period's limit applies (7.14: startPeriod "defines the stop time of the previous period").
 - t exactly at schedule start + duration. The schedule no longer covers t (D4).
-- t exactly at validFrom or validTo. Escalated to A4.
-- t before startSchedule of a Recurring profile. Escalated to A5.
-- A Recurring profile whose duration is absent or longer than its recurrence period, so occurrences overlap. Escalated to A6.
-- A TxProfile that is installed but whose schedule does not cover t. Escalated to A1 and A2.
-- TxDefaultProfiles on both connector 0 and connector c. Escalated to A3.
+- t exactly at validFrom. The profile is valid. At exactly validTo it is not (A4).
+- t before startSchedule of a Recurring profile. The profile does not cover t (A5).
+- A Recurring profile whose duration is absent or longer than its recurrence period. The latest occurrence that has started applies (A6).
+- A TxProfile that is installed but whose schedule does not cover t. It does not prevail, and the prevailing TxDefaultProfile applies (A1, A2).
+- TxDefaultProfiles on both connector 0 and connector c. Outside the precondition P6 (A3).
+- A daily or weekly recurrence across a leap second. Boundaries stay at the same UTC clock time (D3).
 
 ## Worked examples
 
@@ -94,22 +96,33 @@ All in one unit and for connector 1 during a transaction. Times are UTC on 2026-
 
 1. The section 3.13.7 example. One TxDefaultProfile on connector 1, stackLevel 0, Recurring Daily, startSchedule 2013-01-01T00:00Z, duration 86400, unit W, periods (0, 11000), (28800, 6000), (72000, 11000). Expected composite: 11000 W from 00:00, 6000 W from 08:00, 11000 W from 20:00. Exercises D3 Daily, D5, Q2 and Q3.
 2. A ChargePointMaxProfile at 16 A (connector 0, Absolute from 00:00, no duration) and a TxProfile at 32 A (connector 1, Absolute from 00:00). Expected: 16 A at every t. Exercises Q1, Q3 and I1.
-3. TxDefaultProfile A at 10 A (stackLevel 0, Absolute from 00:00, no duration) and TxDefaultProfile B at 20 A (stackLevel 1, Absolute from 10:00, duration 3600). Expected: 10 A before 10:00, 20 A from 10:00 to 11:00, and 10 A from 11:00, if a profile that no longer covers t cannot prevail (A1). Exercises D6, I4 and A1.
-4. TxProfile at 6 A (stackLevel 0, Absolute from 00:00, duration 43200) and TxDefaultProfile at 32 A (connector 0, Absolute from 00:00). Expected: 6 A before 12:00. After 12:00 it is 32 A under a per-instant reading of A2, or nothing under the other reading. Exercises Q2, I2 and A2.
+3. TxDefaultProfile A at 10 A (stackLevel 0, Absolute from 00:00, no duration) and TxDefaultProfile B at 20 A (stackLevel 1, Absolute from 10:00, duration 3600). Expected: 10 A before 10:00, 20 A from 10:00 to 11:00, and 10 A from 11:00. Exercises D6, I4 and A1.
+4. TxProfile at 6 A (stackLevel 0, Absolute from 00:00, duration 43200) and TxDefaultProfile at 32 A (connector 0, Absolute from 00:00). Expected: 6 A before 12:00 and 32 A from 12:00. Exercises Q2, I2 and A2.
 5. ChargePointMaxProfile at 8 A with validTo 12:00, and TxDefaultProfile at 16 A. Expected: 8 A before 12:00 and 16 A after. Exercises D2, Q3, I3 and A4.
 
 ## Ambiguities
 
-- A1. Can a profile that is valid at t (D2) but whose schedule does not cover t (D4) be the prevailing profile of its purpose, so hiding lower stack levels? 3.13.2 defines prevailing by validFrom and validTo only, yet says that without a duration "the Charge Point will never fall back to a lower stack level profile".
-- A2. Does a TxProfile overrule TxDefaultProfiles only at instants where its own schedule covers t, or for the whole transaction once it is installed?
-- A3. When TxDefaultProfiles are installed on both connector 0 and connector c, does a connector-c profile hide every connector-0 profile, only those with the same stackLevel, or do they compete by stackLevel alone? 3.13.1 says the connector-0 profile "SHALL be replaced only for that specific connector".
-- A4. Is a profile valid at exactly t = validFrom, and at exactly t = validTo?
-- A5. For a Recurring profile and t before its startSchedule, does the recurrence apply (negative k), or does the profile not cover t?
-- A6. For a Recurring profile whose duration is absent or longer than its recurrence period, which occurrence's periods apply at t?
-- A7. Where no profile prevails for any purpose, is the composite "no limit", or some charger default? It is out of scope here, but an implementation will report a number.
-- A8. 7.13 says "The startSchedule of the first ChargingSchedulePeriod SHALL always be 0". Does this mean the first period's startPeriod is 0?
-- A9. A TxProfile may carry a transactionId (7.8). Should a TxProfile whose transactionId differs from the active transaction be ignored by the composite?
-- A10. Should the model compute the minimum itself (the largest value 3.13.3 allows), with an implementation conforming when it is at or below it?
+Each was resolved by the operator on 2026-10-24. A1 to A3 were the operator's own calls, and A4 to A10 accept the recommendations offered at sign-off.
+
+- A1. Can a profile that is valid at t but whose schedule does not cover t prevail? **No.** A profile prevails only where its schedule covers t (D6). OCA note N1.
+- A2. Does a TxProfile overrule TxDefaultProfiles only where its schedule covers t, or for the whole transaction? **Only where it covers t** (Q2).
+- A3. How do TxDefaultProfiles on connector 0 and connector c interact? **The model takes no position.** Precondition P6 excludes the mix, and generated cases avoid it. OCA note N2.
+- A4. Is a profile valid at exactly validFrom and at exactly validTo? **Valid at validFrom, not at validTo** (D2).
+- A5. Does a Recurring profile apply before its startSchedule? **No** (D3).
+- A6. Which occurrence applies when a Recurring duration is absent or longer than the recurrence? **The latest one that has started** (D3, D4).
+- A7. What is the composite where no profile prevails? **Nothing, meaning no limit from the spec.** Any implementation value conforms there (Q4).
+- A8. Does 7.13's "startSchedule of the first ChargingSchedulePeriod" mean the first period's startPeriod? **Yes** (P4). OCA note N3.
+- A9. Should a TxProfile with a non-matching transactionId be ignored? **Out of scope.** Precondition P8 excludes transactionId.
+- A10. Does the model compute the minimum, with conformance at or below it? **Yes** (Q4).
+
+## Notes for the Open Charge Alliance
+
+These are wording problems in OCPP 1.6 edition 2 found while writing this spec. They are recorded for a report, not resolved by it.
+
+- N1. **Prevailing profile (3.13.2).** The normative sentence picks the highest stackLevel among profiles "valid at that point in time, as determined by their validFrom and validTo parameters". Read literally, a profile whose schedule duration has ended still prevails and hides lower levels. The following sentence, "If you use Stacking without a duration, on the highest stack level, the Charge Point will never fall back to a lower stack level profile", implies a charger does fall back once a duration ends. Suggested fix: define prevailing over profiles that are valid and whose schedule covers that point in time.
+- N2. **TxDefaultProfile on connector 0 and connector > 0 (3.13.1).** The text says a connector-0 TxDefaultProfile "SHALL be replaced only for that specific connector" when a profile for a specific connector arrives. It does not say whether this applies across stack levels or only at the same stackLevel, where 3.13.2's replacement rule already applies. Implementations differ. EVerest (lib/everest/ocpp at dd696165) pools both sets and lets stackLevel decide.
+- N3. **First period (7.13).** "The startSchedule of the first ChargingSchedulePeriod SHALL always be 0" names a field that does not exist on ChargingSchedulePeriod. The intended field is startPeriod.
+- N4. **Recurrence and leap seconds (RecurrencyKindType).** "The schedule restarts every 24 hours, at the same time as in the startSchedule" has two readings once a leap second falls between startSchedule and now. Every 86400 elapsed seconds drifts from "the same time". Stating that recurrence follows UTC clock time would remove the doubt. EVerest follows elapsed seconds and drifts one second per leap second.
 
 ## Pipeline forward references
 
@@ -118,3 +131,5 @@ All in one unit and for connector 1 during a transaction. Times are UTC on 2026-
 - /correspondence-review (sub-phase 3b.5) classifies model-versus-source correspondence.
 - /drt-oracle (sub-phase 3b.6) runs differential random testing against the model. The system under test is EVerest `lib/everest/ocpp/lib/ocpp/v16/profile.cpp` at commit dd696165.
 - /intent-check (Layer 5) composes with this prose as the spec arm of the (prose, test, code-diff) triple.
+
+Human sign-off: 2026-10-24
