@@ -16,7 +16,7 @@ Time per phase is a guess for part-time work.
 
 | Phase | Output | Guess |
 | --- | --- | --- |
-| P0 | Operator items cleared, toolchain installed | 1 week |
+| P0 | Spec source pinned, toolchain installed | 1 week |
 | P1 | Informal spec and ambiguity log | 1 week |
 | P2 | Lean model and proofs | 2 weeks |
 | P3 | Executable model and correspondence review | 1 week |
@@ -26,12 +26,8 @@ Time per phase is a guess for part-time work.
 | P7 | Triage and upstream reports | 1 week, then ongoing |
 | P8 | Publish | 1 week |
 
-## Clear the operator items (P0)
+## Pin the spec and install the toolchain (P0)
 
-These need the operator, not an agent.
-
-- [ ] Confirm in writing who owns this work. Evidence is the operator's own record, kept out of this repository.
-- [ ] Get a reading on whether a model citing OCPP section numbers is an adaptation under CC BY-ND 4.0. Evidence is a note in `formal-verification/ocpp16-LICENCE-NOTE.md` that says who gave the reading and when, with no legal text copied.
 - [ ] Check the Open Charge Alliance download page for OCPP 1.6 errata newer than edition 2 (2017-09-28). Evidence is a line in the P1 spec naming the edition and any errata used.
 - [ ] Record the spec source. Note the file's sha256 in the P1 spec and cite it as "OCPP 1.6 edition 2, Open Charge Alliance, 2017-09-28".
 - [ ] Install the toolchain and record versions in `formal-verification/tests/ocpp16_composite/README.md`.
@@ -228,7 +224,6 @@ These need the operator, not an agent.
 - [ ] Write `formal-verification/OCPP16.md` covering what is proved, what is checked to a bound, what is only tested, and what is not yet reached.
 - [ ] Use only the claim "a verified model of OCPP 1.6 smart charging, and a conformance harness that uses it".
 - [ ] Describe the method, including what Claude drafted, what the Lean kernel and Quint rejected, and what the operator changed.
-- [ ] Add the CC BY-ND attribution for every verbatim quote.
 
 ## Close the program
 
@@ -242,7 +237,6 @@ No prototype was run. The facts below were checked against sources instead.
 Each was checked against a primary source on 2026-10-24.
 
 - The OCPP 1.6 edition 2 rules quoted above are in the edition 2 FINAL PDF of 2017-09-28. Sections 3.13.1, 3.13.3, 5.7, 7.13 and 7.14 were matched word for word, and the section numbers 3.3, 3.13.4 to 3.13.7 and 5.16 were read from the contents page.
-- The spec is CC BY-ND 4.0, per the licence notice on its opening pages.
 - `GetCompositeSchedule` is in the Smart Charging feature profile, which is optional for chargers (spec 3.3, and the OCA certification page).
 - EVerest's OCPP code is in `EVerest/EVerest` under `lib/everest/ocpp/`. `EVerest/libocpp` is archived. The v16 and v2 profile code are separate copies (`v16/profile.cpp`, 719 lines, and `v2/profile.cpp`, 1,253 lines, each with its own `merge_profiles_by_lowest_limit`).
 - EVerest has SIL configs that run without hardware against a configurable central system (`config/config-sil-ocpp.yaml`).
@@ -263,8 +257,6 @@ Still unproven. No prototype has built the EVerest v16 driver or the SIL setup, 
 
 ## Appendix C. Risks
 
-- **Licence.** A reading that models count as adaptations would block publishing. Lands in P0. Watch for the reading before P8.
-- **Ownership.** Unresolved ownership blocks publishing. Lands in P0.
 - **EVerest build cost.** Linking `v16/profile.cpp` alone may pull in much of the tree. Lands in P5. Fall back to driving EVerest through its SIL only.
 - **Floating point.** EVerest and MicroOcpp use floats. The 0.05 tolerance in P5 covers rounding to one decimal place. Watch for fails that vanish with a wider tolerance.
 - **Bounded checking.** Quint finds no bug beyond its bound. The README states the bound, and unbounded claims come only from Lean.

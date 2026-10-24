@@ -29,7 +29,6 @@ The honest claim is "a verified model of OCPP 1.6 smart charging, and a conforma
 ## Constraints
 
 - **No guarantee rests on an LLM** (`docs/VISION.md`). Claude may draft specs, models and proofs. Only the Lean kernel, the Quint checkers, the differential tests and human review count as evidence.
-- **The OCPP spec is CC BY-ND 4.0.** Quote it word for word with attribution, or describe it in original words with section numbers. Never publish modified spec text.
 - **The composite schedule is an upper bound.** Spec section 3.13.3 says the merged schedule "SHALL be less than or equal to" the lowest limit, and section 5.7 says the reported schedule "is only indicative". Checks test at most, never exact equality.
 - **The TxProfile deletion rule is a SHOULD.** Section 3.13.1 says that after a transaction ends the profile "SHOULD be deleted". The lifecycle model accepts chargers that keep it and chargers that delete it.
 - **`GetCompositeSchedule` is optional for chargers.** It belongs to the Smart Charging feature profile. Chargers without it get a meter-only check or none.
@@ -38,8 +37,6 @@ The honest claim is "a verified model of OCPP 1.6 smart charging, and a conforma
 
 ## Open questions
 
-- **Licence reading.** Does a Lean or Quint model that cites OCPP section numbers count as an adaptation under CC BY-ND? Default: treat it as original work, quote nothing modified, and get a legal reading before the first public release.
 - **Where the code lives.** Default: under `formal-verification/` in this repository, following its existing `specs/`, `lean/`, `correspondence/` and `tests/` layout. Move it to its own repository if the harness grows its own users.
-- **Ownership.** Who owns the work needs confirming in writing before publishing beyond this repository.
 - **Errata after edition 2.** Edition 2 (2017-09-28) merges all errata up to v3.0. Whether the Open Charge Alliance published later 1.6 errata is unchecked.
 - **OCPP 2.0.1 and 2.1.** Out of this program. They follow once the 1.6 harness works, against EVerest's separate v2 copy.
