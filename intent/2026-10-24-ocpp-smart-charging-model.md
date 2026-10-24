@@ -11,28 +11,24 @@ OCPP lets a central system tell a charger how much current or power it may draw,
 
 ## Proposed outcome
 
-Once this lands, three things are true.
+Once the first stage lands, two things are true.
 
-- **A machine-checked statement of the rules.** OCPP 1.6 edition 2, section 3.13, smart charging is written as a Lean model with proved properties, and the charger-side profile lifecycle is written as a Quint model with checked invariants.
-- **EVerest and MicroOcpp are checked against it.** A differential tester compares their 1.6 composite calculations with the model on generated profile stacks, and every disagreement is triaged as a bug, a spec ambiguity or a model error.
-- **Anyone can test a charger against it.** A black-box harness drives a charger over OCPP with `SetChargingProfile` and `GetCompositeSchedule` and reports where its answers break the rules. It needs no access to the charger's source.
+- **A machine-checked statement of the core rules.** The OCPP 1.6 edition 2 composite schedule (section 3.13) is a runnable Lean model with two proved properties.
+- **EVerest is checked against it.** A differential tester compares EVerest's 1.6 composite calculation with the model on generated profile sets, and every disagreement is triaged as a bug, a spec ambiguity or a model error.
 
-The honest claim is "a verified model of OCPP 1.6 smart charging, and a conformance harness that uses it". It is not "a formally verified OCPP library".
+Later stages follow only if the first finds something worth the cost. They are a Quint model of the profile lifecycle, MicroOcpp and EVerest's 2.x code as further targets, and a black-box harness that tests any charger over OCPP.
+
+The honest claim after the first stage is "a proved model of the OCPP 1.6 composite schedule, and what it found in EVerest". It is not "a formally verified OCPP library".
 
 ## Affected users and systems
 
-- **Charger and firmware developers**, including EVerest and MicroOcpp maintainers, who get bug reports with a reproducing profile stack.
-- **Central system operators and aggregators**, who can check what a charger reports against the profiles they sent.
-- **The Open Charge Alliance**, which gets precise reports of ambiguous or contradictory spec text.
-- **Crosscheck.** The work adds files under `formal-verification/` and exercises `/informal-spec`, `/lean-spec`, `/lean-impl`, `/correspondence-review` and `/drt-oracle` on a real external code base.
+- **EVerest maintainers and the developers of chargers built on EVerest**, who get bug reports with a reproducing profile set.
+- **Crosscheck.** The work adds files under `formal-verification/` and exercises `/informal-spec`, `/lean-spec`, `/lean-impl` and `/drt-oracle` on a real external code base.
 
 ## Constraints
 
-- **No guarantee rests on an LLM** (`docs/VISION.md`). Claude may draft specs, models and proofs. Only the Lean kernel, the Quint checkers, the differential tests and human review count as evidence.
-- **The composite schedule is an upper bound.** Spec section 3.13.3 says the merged schedule "SHALL be less than or equal to" the lowest limit, and section 5.7 says the reported schedule "is only indicative". Checks test at most, never exact equality.
-- **The TxProfile deletion rule is a SHOULD.** Section 3.13.1 says that after a transaction ends the profile "SHOULD be deleted". The lifecycle model accepts chargers that keep it and chargers that delete it.
-- **`GetCompositeSchedule` is optional for chargers.** It belongs to the Smart Charging feature profile. Chargers without it get a meter-only check or none.
-- **Quint checking is bounded.** Apalache explores behaviours up to a step bound, so Quint results are evidence, not proofs. Unbounded claims come from Lean only.
+- **No guarantee rests on an LLM** (`docs/VISION.md`). Claude may draft specs, models and proofs. Only the Lean kernel, the differential tests and human review count as evidence.
+- **The composite schedule is an upper bound.** Spec section 3.13.3 says the merged schedule "SHALL be less than or equal to" the lowest limit. Checks fail only when an implementation is above the model, never on inequality alone.
 - **No operator data in this repository.** The repository is public. Field data from any charger fleet stays out of it.
 
 ## Open questions
