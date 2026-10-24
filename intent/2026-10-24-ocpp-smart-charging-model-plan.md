@@ -55,7 +55,7 @@ Steps run in order. S1 is a spike with a kill criterion, because it carries the 
 
 - [ ] List the rules the model covers, each with its spec section, in the informal spec. Cover profile purposes and connector 0 (3.13.1), stack levels (3.13.2), combining (3.13.3), validity windows, and the Absolute and Recurring kinds.
 - [ ] Leave Relative profiles, phases and conversion between amps and watts out of this step and say so in the spec. Every profile in one case uses the same unit.
-- [ ] Name the data shape first. `Limit` is a natural number of tenths of the case's unit, because limits allow one decimal place (7.13). Time is whole seconds. `composite : ProfileSet → Connector → Time → Option Limit`.
+- [ ] Name the data shape first. `Limit` is a natural number of tenths of the case's unit, because limits allow one decimal place (7.14). Time is whole seconds. `composite : ProfileSet → Connector → Time → Option Limit`.
 - [ ] Prove T1. Where a valid ChargePointMaxProfile covers time t, the composite at t is at or below its limit.
 - [ ] Prove T2. Where a valid TxProfile covers t, no TxDefaultProfile affects the composite at t.
 - [ ] Make `composite` runnable with `lean_run`, and print the composite for the S1 example.
@@ -107,7 +107,7 @@ Steps run in order. S1 is a spike with a kill criterion, because it carries the 
 
 Each was checked against a primary source on 2026-10-24.
 
-- Sections 3.13.1 to 3.13.7 and 7.13 of OCPP 1.6 edition 2 (2017-09-28) say what the plan cites. A limit "accepts at most one digit fraction".
+- Sections 3.13.1 to 3.13.7 and 7.14 of OCPP 1.6 edition 2 (2017-09-28) say what the plan cites. A limit "accepts at most one digit fraction".
 - The composite is an upper bound. Section 3.13.3 says the merged schedule "SHALL be less than or equal to" the lowest limit. This is why S3 fails only on "above".
 - EVerest's 1.6 composite is in `lib/everest/ocpp/lib/ocpp/v16/profile.cpp` (719 lines) and is separate from the 2.x copy. It was rewritten in May 2025 (`EVerest/libocpp#1062`), and roughly 15 to 20 smart-charging fixes have been merged across EVerest since 2024.
 
