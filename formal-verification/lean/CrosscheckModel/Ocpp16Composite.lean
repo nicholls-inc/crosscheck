@@ -6,7 +6,7 @@ Source implementation: OCPP 1.6 edition 2 (2017-09-28), sections 3.13.1 to
 cite spec sections. The system under test is EVerest
 lib/everest/ocpp/lib/ocpp/v16/profile.cpp at dd696165.
 Sign-off: 2026-10-24
-Pipeline step: 3 of 5 (/lean-impl). Next: /correspondence-review (3b.5).
+Pipeline step: 4 of 5 (/correspondence-review done). Next: /drt-oracle (3b.6).
 
 Core Lean only, no Mathlib, so it builds with the plain toolchain in
 `lean-toolchain` (leanprover/lean4:v4.28.0).
@@ -97,20 +97,22 @@ def recurrence : Kind → Option Nat
 
 -- src: OCPP 1.6 ed.2 ChargingProfileKindType and RecurrencyKindType,
 -- resolutions A5 and A6
-/-- D3. The schedule start in force at t, or none before startSchedule. -/
+/-- D3. For an Absolute profile, startSchedule. For a Recurring profile, the
+latest restart at or before t, and none before startSchedule. -/
 def scheduleStart (p : Profile) (t : Time) : Option Time :=
-  if t < p.startSchedule then none
-  else
-    match recurrence p.kind with
-    | none => some p.startSchedule
-    | some r => some (p.startSchedule + (t - p.startSchedule) / r * r)
+  match recurrence p.kind with
+  | none => some p.startSchedule
+  | some r =>
+    if t < p.startSchedule then none
+    else some (p.startSchedule + (t - p.startSchedule) / r * r)
 
 -- src: OCPP 1.6 ed.2 §7.13 (duration)
-/-- D4. A schedule start exists at t and t is before start + duration. -/
+/-- D4. A schedule start s exists at t, s ≤ t, and t is before s + duration. -/
 def covers (p : Profile) (t : Time) : Bool :=
   match scheduleStart p t with
   | none => false
   | some s =>
+    decide (s ≤ t) &&
     match p.duration with
     | none => true
     | some d => decide (t < s + d)
@@ -196,7 +198,7 @@ def WellFormed (ps : List Profile) (c : Nat) : Prop :=
              (p.purpose = .tx → 0 < p.connectorId) ∧
              periodsWellFormed p.periods ∧
              (∀ d, p.duration = some d → 0 < d)) ∧
-  (∀ p ∈ ps, ∀ q ∈ ps, applicable c p → applicable c q → p ≠ q →
+  ps.Pairwise (fun p q => applicable c p → applicable c q →
      p.purpose = q.purpose → p.connectorId = q.connectorId →
      p.stackLevel ≠ q.stackLevel) ∧
   ¬ (∃ p ∈ ps, ∃ q ∈ ps, p.purpose = .txDefault ∧ q.purpose = .txDefault ∧
