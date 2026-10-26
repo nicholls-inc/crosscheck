@@ -25,21 +25,30 @@ download() {
     got="$(sha256 "$dest")"
     if [[ "$got" != "$want" ]]; then
         rm -f "$dest"
-        echo "FAIL: $dest had sha256 $got, expected $want. Removed it; re-run to download it again." >&2
+        echo "FAIL: $dest had sha256 $got, expected $want, and was removed. A truncated" \
+             "download succeeds on a re-run; if it fails again, upstream bytes changed, so check" \
+             "the source before updating the pin." >&2
         exit 1
     fi
 }
 
-download "https://codeload.github.com/EVerest/EVerest/tar.gz/$revision" .deps/everest.tar.gz \
-    64a902ec5476bd1fd235439a96afdbc704d18e8805c138bd2ebdc2be1aab9431
-if [[ ! -d ".deps/EVerest-$revision" ]]; then
-    tar -xzf .deps/everest.tar.gz -C .deps
-fi
-download https://codeload.github.com/HowardHinnant/date/tar.gz/v3.0.1 .deps/date.tar.gz \
-    7a390f200f0ccd207e8cff6757e04817c1a0aec3e327b006b7eb451c57ee3538
-if [[ ! -d .deps/date-3.0.1 ]]; then
-    tar -xzf .deps/date.tar.gz -C .deps
-fi
+# Extract a verified archive unless its tree carries a stamp with the same hash,
+# so a partial extraction or a tree from an unverified archive is replaced.
+extract() {
+    local archive="$1" dir="$2" want="$3"
+    if [[ "$(cat "$dir.sha256" 2>/dev/null)" != "$want" ]]; then
+        rm -rf "$dir" "$dir.sha256"
+        tar -xzf "$archive" -C .deps
+        echo "$want" > "$dir.sha256"
+    fi
+}
+
+everest_sha=64a902ec5476bd1fd235439a96afdbc704d18e8805c138bd2ebdc2be1aab9431
+download "https://codeload.github.com/EVerest/EVerest/tar.gz/$revision" .deps/everest.tar.gz "$everest_sha"
+extract .deps/everest.tar.gz ".deps/EVerest-$revision" "$everest_sha"
+date_sha=7a390f200f0ccd207e8cff6757e04817c1a0aec3e327b006b7eb451c57ee3538
+download https://codeload.github.com/HowardHinnant/date/tar.gz/v3.0.1 .deps/date.tar.gz "$date_sha"
+extract .deps/date.tar.gz .deps/date-3.0.1 "$date_sha"
 mkdir -p .deps/include/nlohmann
 download https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp .deps/include/nlohmann/json.hpp \
     9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6

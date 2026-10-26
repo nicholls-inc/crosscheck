@@ -30,7 +30,8 @@ Downloads are cached in `.deps/`; objects, executable and compiler scratch files
 are in `build/`. Both directories are ignored. Re-running `build.sh` reuses the
 downloads and rebuilds the executable. Each download is checked against a sha256
 pinned in `build.sh`, and a mismatched file is removed and fails the build. When
-the pinned revision changes, update its hash in `build.sh` as well. It can be invoked from any working directory.
+the pinned revision changes, update its hash in `build.sh` as well. It can be
+invoked from any working directory.
 No CMake, git, database, charger service or network connection at runtime is needed.
 Set `CXX` to choose another C++17 compiler.
 

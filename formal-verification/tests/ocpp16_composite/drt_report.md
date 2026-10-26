@@ -8,7 +8,7 @@ Correspondence doc: `formal-verification/correspondence/Ocpp16Composite.md`, rev
 SUT: EVerest `lib/everest/ocpp/lib/ocpp/v16/profile.cpp` at `dd696165`, unmodified, via `everest_driver/`.
 Oracle: `CrosscheckModel.Ocpp16Composite` through `Ocpp16CompositeRunner.lean`, Lean v4.28.0.
 Conformance rule: Q4 of the signed spec. EVerest must be at or below the model. Above by more than 0.05 of the unit is a fail, below by more than 0.05 is a warn.
-Regenerating: this report is written by hand from harness runs. A run writes its own report to the gitignored `drt_report_latest.md` unless `--report` says otherwise, and refuses to start unless the host leap-second table the driver reads has exactly the three leap seconds since 2010.
+Regenerating: a harness run does not overwrite this report. It writes its own to the gitignored `drt_report_latest.md` unless `--report` says otherwise, and refuses to start unless the `leapseconds` file in the tz directory the driver reads lists exactly the three leap seconds since 2010.
 
 ## Verdict summary
 
