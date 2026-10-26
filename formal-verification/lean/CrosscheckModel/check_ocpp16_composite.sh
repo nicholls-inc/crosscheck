@@ -19,7 +19,11 @@ cp "$here/Ocpp16Composite.lean" "$tmp/Check.lean"
 } >>"$tmp/Check.lean"
 
 elan_bin="$(command -v elan || echo "$HOME/.elan/bin/elan")"
-out="$(cd "$tmp" && "$elan_bin" run "$toolchain" lean Check.lean 2>&1)"
+rc=0
+out="$(cd "$tmp" && "$elan_bin" run "$toolchain" lean Check.lean 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "$out"; echo "FAIL: lean exited with status $rc"; exit 1
+fi
 echo "$out" | grep -E "depends on axioms|does not depend on any axioms" || true
 
 for name in "${proved[@]}"; do

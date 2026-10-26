@@ -49,6 +49,25 @@ def epoch(y: int, mo: int, d: int) -> int:
     return int(dt.datetime(y, mo, d, tzinfo=dt.timezone.utc).timestamp())
 
 
+def check_host_leap_seconds() -> None:
+    """The driver is built with USE_OS_TZDB, so EVerest counts the leap seconds
+    in the host's tz database. Refuse to run if they differ from LEAP_SECONDS,
+    because the old-anchor results and the leap attribution depend on them."""
+    path = Path(os.environ.get("TZDIR", "/usr/share/zoneinfo")) / "leapseconds"
+    if not path.exists():
+        sys.exit(f"host leap-second table not found at {path}; set TZDIR to the tz database the driver uses")
+    host = []
+    for line in path.read_text().splitlines():
+        f = line.split()
+        if len(f) >= 7 and f[0] == "Leap" and f[5] == "+":
+            day = dt.datetime.strptime(f"{f[1]} {f[2]} {f[3]}", "%Y %b %d").replace(tzinfo=dt.timezone.utc)
+            after = int(day.timestamp()) + DAY
+            if after > epoch(2010, 1, 1):
+                host.append(after)
+    if host != LEAP_SECONDS:
+        sys.exit(f"host leap seconds since 2010 {host} differ from LEAP_SECONDS {LEAP_SECONDS} ({path})")
+
+
 # ---------------------------------------------------------------- generation
 
 def gen_case(rng: random.Random, old_anchors: bool) -> dict:
@@ -270,7 +289,8 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=200)
     ap.add_argument("--old-anchors", action="store_true", help="anchor Recurring profiles in 2010-2016, across leap seconds")
     ap.add_argument("--max-shrink", type=int, default=12)
-    ap.add_argument("--report", type=Path, default=HERE / "drt_report.md")
+    ap.add_argument("--report", type=Path, default=HERE / "drt_report_latest.md",
+                    help="generated report (default is gitignored; drt_report.md is the curated record)")
     ap.add_argument("--replay", type=int, help="re-run one case index from the seed and print it")
     ap.add_argument("--mutate-stack", action="store_true",
                     help="self-test: reverse stack levels in the SUT's input, so a correct harness must report fails")
@@ -283,6 +303,7 @@ def main() -> int:
 
     if not SUT.exists():
         sys.exit(f"SUT not built: run {HERE / 'everest_driver' / 'build.sh'}")
+    check_host_leap_seconds()
     ensure_oracle()
 
     rng = random.Random(args.seed)
@@ -304,6 +325,7 @@ def main() -> int:
         f"Run: {dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         f"RNG seed: {args.seed}", f"Cases: {args.count}", "D4 case: (a)",
         f"Recurring anchors: {'2010-2016 (across leap seconds)' if args.old_anchors else '2017-2025 (no leap seconds since)'}",
+        f"SUT input altered: {', '.join(f for f, on in (('--mutate-stack', args.mutate_stack), ('--leap-correct', args.leap_correct)) if on) or 'no'}",
         "SUT: EVerest lib/everest/ocpp/lib/ocpp/v16/profile.cpp at dd696165, via everest_driver",
         "Oracle: CrosscheckModel.Ocpp16Composite via Ocpp16CompositeRunner.lean", "",
         "## Verdict summary", "", "| Status | Cases |", "| --- | --- |",

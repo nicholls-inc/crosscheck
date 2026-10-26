@@ -7,25 +7,41 @@ mkdir -p .deps build
 export TMPDIR="$driver_dir/build"
 revision=dd696165d407d461a724232a4d77fe476a964ef1
 
+sha256() {
+    if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
+}
+
+# Every download is checked against the hash of the copy the DRT results were
+# produced with, so a moved tag or a truncated file fails the build.
 download() {
-    local url="$1" dest="$2"
+    local url="$1" dest="$2" want="$3"
     if [[ ! -s "$dest" ]]; then
         curl --fail --location --retry 3 "$url" -o "$dest.part"
         mv "$dest.part" "$dest"
     fi
+    local got
+    got="$(sha256 "$dest")"
+    if [[ "$got" != "$want" ]]; then
+        echo "FAIL: $dest has sha256 $got, expected $want" >&2
+        exit 1
+    fi
 }
 
+download "https://codeload.github.com/EVerest/EVerest/tar.gz/$revision" .deps/everest.tar.gz \
+    64a902ec5476bd1fd235439a96afdbc704d18e8805c138bd2ebdc2be1aab9431
 if [[ ! -d ".deps/EVerest-$revision" ]]; then
-    download "https://codeload.github.com/EVerest/EVerest/tar.gz/$revision" .deps/everest.tar.gz
     tar -xzf .deps/everest.tar.gz -C .deps
 fi
+download https://codeload.github.com/HowardHinnant/date/tar.gz/v3.0.1 .deps/date.tar.gz \
+    7a390f200f0ccd207e8cff6757e04817c1a0aec3e327b006b7eb451c57ee3538
 if [[ ! -d .deps/date-3.0.1 ]]; then
-    download https://codeload.github.com/HowardHinnant/date/tar.gz/v3.0.1 .deps/date.tar.gz
     tar -xzf .deps/date.tar.gz -C .deps
 fi
 mkdir -p .deps/include/nlohmann
-download https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp .deps/include/nlohmann/json.hpp
-download https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json_fwd.hpp .deps/include/nlohmann/json_fwd.hpp
+download https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp .deps/include/nlohmann/json.hpp \
+    9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6
+download https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json_fwd.hpp .deps/include/nlohmann/json_fwd.hpp \
+    5cefbba751baf5243033fd894c70be9b37103d64b3d3a959e4173197d71137b9
 
 ocpp="$driver_dir/.deps/EVerest-$revision/lib/everest/ocpp"
 date_dir="$driver_dir/.deps/date-3.0.1"
