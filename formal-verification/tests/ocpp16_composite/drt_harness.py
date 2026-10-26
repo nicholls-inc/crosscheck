@@ -57,7 +57,7 @@ def driver_tz_dir() -> Path:
         try:
             target = os.readlink("/etc/localtime")
         except OSError as e:
-            sys.exit(f"cannot find the driver's tz directory: /etc/localtime is not a symlink ({e})")
+            sys.exit(f"cannot find the driver's tz directory: /etc/localtime is not a readable symlink ({e})")
         i = target.find("zoneinfo")
         j = target.find("/", i) if i >= 0 else -1
         if j < 0:
@@ -76,15 +76,16 @@ def check_host_leap_seconds() -> None:
         sys.exit(f"{path} not found. date falls back to leap-seconds.list there, "
                  "which this check does not read, so the leap seconds EVerest counts cannot be confirmed")
     months = {m: n for n, m in enumerate(
-        ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
     host = []
     for line in path.read_text().splitlines():
         f = line.split()
-        if len(f) >= 7 and f[0] == "Leap":
-            # date counts every Leap line as an inserted second, whatever its sign.
-            if f[5] != "+" or f[2][:3].lower() not in months:
+        if f and f[0] == "Leap":
+            # date counts every Leap line as an inserted second and reads only its
+            # date, so refuse any Leap line this check would read differently.
+            if len(f) < 7 or f[5] != "+" or f[2] not in months:
                 sys.exit(f"{path}: cannot check this Leap line: {line.strip()}")
-            after = epoch(int(f[1]), months[f[2][:3].lower()], int(f[3])) + DAY
+            after = epoch(int(f[1]), months[f[2]], int(f[3])) + DAY
             if after > epoch(2010, 1, 1):
                 host.append(after)
     if host != LEAP_SECONDS:

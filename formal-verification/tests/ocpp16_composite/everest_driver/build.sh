@@ -25,9 +25,9 @@ download() {
     got="$(sha256 "$dest")"
     if [[ "$got" != "$want" ]]; then
         rm -f "$dest"
-        echo "FAIL: $dest had sha256 $got, expected $want, and was removed. A truncated" \
-             "download succeeds on a re-run; if it fails again, upstream bytes changed, so check" \
-             "the source before updating the pin." >&2
+        echo "FAIL: $dest had sha256 $got, expected $want, and was removed. Re-run to" \
+             "download it again; if it still differs, check it against the source before" \
+             "updating the pin." >&2
         exit 1
     fi
 }
