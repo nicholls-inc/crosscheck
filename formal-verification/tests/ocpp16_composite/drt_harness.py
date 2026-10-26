@@ -57,7 +57,7 @@ def driver_tz_dir() -> Path:
         try:
             target = os.readlink("/etc/localtime")
         except OSError as e:
-            sys.exit(f"cannot find the driver's tz directory: /etc/localtime is not a readable symlink ({e})")
+            sys.exit(f"cannot find the driver's tz directory: could not read /etc/localtime as a symlink ({e})")
         i = target.find("zoneinfo")
         j = target.find("/", i) if i >= 0 else -1
         if j < 0:
@@ -83,7 +83,7 @@ def check_host_leap_seconds() -> None:
         if f and f[0] == "Leap":
             # date counts every Leap line as an inserted second and reads only its
             # date, so refuse any Leap line this check would read differently.
-            if len(f) < 7 or f[5] != "+" or f[2] not in months:
+            if len(f) < 7 or f[5] != "+" or f[2] not in months or not (f[1].isdigit() and f[3].isdigit()):
                 sys.exit(f"{path}: cannot check this Leap line: {line.strip()}")
             after = epoch(int(f[1]), months[f[2]], int(f[3])) + DAY
             if after > epoch(2010, 1, 1):
