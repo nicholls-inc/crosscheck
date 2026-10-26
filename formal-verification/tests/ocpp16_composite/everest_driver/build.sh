@@ -12,7 +12,9 @@ sha256() {
 }
 
 # Every download is checked against the hash of the copy the DRT results were
-# produced with, so a moved tag or a truncated file fails the build.
+# produced with, so a moved tag or a truncated file fails the build. GitHub
+# does not promise that codeload archives stay byte-identical, so a mismatch on
+# an archive may mean GitHub regenerated it rather than that its content changed.
 download() {
     local url="$1" dest="$2" want="$3"
     if [[ ! -s "$dest" ]]; then
@@ -22,7 +24,8 @@ download() {
     local got
     got="$(sha256 "$dest")"
     if [[ "$got" != "$want" ]]; then
-        echo "FAIL: $dest has sha256 $got, expected $want" >&2
+        rm -f "$dest"
+        echo "FAIL: $dest had sha256 $got, expected $want. Removed it; re-run to download it again." >&2
         exit 1
     fi
 }

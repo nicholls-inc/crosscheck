@@ -205,7 +205,7 @@ def WellFormed (ps : List Profile) (c : Nat) : Prop :=
        p.connectorId = 0 ∧ q.connectorId = c)
 
 -- == Properties ============================================================
--- Q1 to Q3 restate their definitions and hold by unfolding; I1 to I3 carry content.
+-- Q1 to Q3 restate their definitions and hold by unfolding; I1 to I4 are the invariants.
 /-- Q1. The ChargePointMaxProfile result is the prevailing
 ChargePointMaxProfile's limit. -/
 theorem q1 (ps : List Profile) (c : Nat) (t : Time) :

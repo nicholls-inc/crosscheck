@@ -49,19 +49,35 @@ def epoch(y: int, mo: int, d: int) -> int:
     return int(dt.datetime(y, mo, d, tzinfo=dt.timezone.utc).timestamp())
 
 
+def driver_tz_dir() -> Path:
+    """The directory date 3.0.1's discover_tz_dir() picks for the driver
+    (tz.cpp, USE_OS_TZDB). It ignores TZDIR."""
+    if sys.platform == "darwin":
+        target = os.readlink("/etc/localtime")
+        i = target.find("zoneinfo")
+        j = target.find("/", i) if i >= 0 else -1
+        if j < 0:
+            sys.exit(f"cannot find the driver's tz directory: /etc/localtime -> {target}")
+        return Path(target[:j])
+    uclibc = Path("/usr/share/zoneinfo/uclibc")
+    return uclibc if uclibc.is_dir() else Path("/usr/share/zoneinfo")
+
+
 def check_host_leap_seconds() -> None:
     """The driver is built with USE_OS_TZDB, so EVerest counts the leap seconds
     in the host's tz database. Refuse to run if they differ from LEAP_SECONDS,
     because the old-anchor results and the leap attribution depend on them."""
-    path = Path(os.environ.get("TZDIR", "/usr/share/zoneinfo")) / "leapseconds"
+    path = driver_tz_dir() / "leapseconds"
     if not path.exists():
-        sys.exit(f"host leap-second table not found at {path}; set TZDIR to the tz database the driver uses")
+        sys.exit(f"{path} not found. date falls back to leap-seconds.list there, "
+                 "which this check does not read, so the leap seconds EVerest counts cannot be confirmed")
+    months = {m: n for n, m in enumerate(
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
     host = []
     for line in path.read_text().splitlines():
         f = line.split()
         if len(f) >= 7 and f[0] == "Leap" and f[5] == "+":
-            day = dt.datetime.strptime(f"{f[1]} {f[2]} {f[3]}", "%Y %b %d").replace(tzinfo=dt.timezone.utc)
-            after = int(day.timestamp()) + DAY
+            after = epoch(int(f[1]), months[f[2]], int(f[3])) + DAY
             if after > epoch(2010, 1, 1):
                 host.append(after)
     if host != LEAP_SECONDS:
