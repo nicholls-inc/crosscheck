@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crosscheck: check the code, read the evidence</title>
+<meta name="description" content="Crosscheck is a Claude Code plugin that checks claims about AI-written code with proofs and tests you can repeat. Read what was checked, see the results, and inspect the assumptions.">
+<link rel="preload" href="fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="help.js" defer></script>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <a class="brand" href="./">Crosscheck</a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="#everest">Case studies</a></li>
+      <li><a href="#how">How to use it</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck">GitHub</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+
+<section class="intro" aria-labelledby="title">
+  <h1 id="title">Check the code.<br>Read the evidence.</h1>
+  <div class="intro-columns">
+    <p>Crosscheck checks claims about AI-written code, using <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> and tests you can repeat. Read what was checked, see the results, and inspect the assumptions.</p>
+    <p>Use <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> to check code against written rules. Use <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> to describe what code should do, then compare its answers with the code you run.</p>
+  </div>
+  <p class="actions">
+    <a class="button" href="#install">Install the plugin</a>
+    <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md">Read the vision</a>
+  </p>
+</section>
+
+<section class="study band" id="everest" aria-labelledby="everest-title">
+  <div class="study-summary">
+    <h2 id="everest-title" class="study-name">EVerest</h2>
+    <p class="study-meta">Software for electric-vehicle charging<br><time datetime="2026-10-24">24 October 2026</time></p>
+    <p class="study-finding">A daily charging schedule starts at 10:59:59. It should start at 11:00:00. The tests traced the difference to a <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button>.</p>
+    <ul class="stacked-links">
+      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144">Read the study</a></li>
+      <li><a href="#covers">What this result covers</a></li>
+    </ul>
+  </div>
+
+  <div class="evidence">
+    <h3 class="evidence-title">What the evidence says</h3>
+    <table class="ledger">
+      <thead>
+        <tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Result</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td data-label="What was checked">Rules in the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button></td>
+          <td data-label="How it was checked"><button type="button" class="term" data-term="proof" aria-describedby="def-proof">Proofs</button> checked by <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button></td>
+          <td data-label="Result">Three rules <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proved</button></td>
+        </tr>
+        <tr>
+          <td data-label="What was checked">Schedules starting in 2017–2025</td>
+          <td data-label="How it was checked">2,000 test cases</td>
+          <td data-label="Result">All 2,000 matched</td>
+        </tr>
+        <tr>
+          <td data-label="What was checked">Schedules starting in 2010–2016</td>
+          <td data-label="How it was checked">2,000 test cases</td>
+          <td data-label="Result"><mark class="finding">1,140 cases differed</mark></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="evidence-note">Of those 1,140 cases, 67 gave warnings and 1,073 failed. Repeat the run with starting number 20261024.</p>
+    <ul class="source-links" aria-label="Sources for the EVerest study">
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/specs/ocpp16_composite_informal.md">Written rules</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean">Reference program</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/correspondence/Ocpp16Composite.md">Review of the reference program</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/drt_report.md">Test results</a></li>
+    </ul>
+    <p class="evidence-scope">The <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> cover the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>. Tests compare EVerest with that program on the inputs tried.</p>
+  </div>
+</section>
+
+<section class="install band" id="install" aria-labelledby="install-title" tabindex="-1">
+  <h2 id="install-title">Start with the plugin</h2>
+  <div class="commands">
+    <pre id="install-commands"><code>claude plugin marketplace add nicholls-inc/claude-code-marketplace
+claude plugin install crosscheck@nicholls</code></pre>
+    <button type="button" class="copy" data-copy="install-commands">Copy commands</button>
+    <span class="copy-status" role="status" aria-live="polite"></span>
+  </div>
+</section>
+
+<section class="covers band" id="covers" aria-labelledby="covers-title">
+  <div>
+    <h2 id="covers-title">What this result covers</h2>
+    <p class="aside-note">The EVerest study checked how a charger combines its charging schedules under <button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button> 1.6. For daily and weekly schedules that started before 2017, the restart comes one to three seconds early today, and one second earlier with each future <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button>. The study rates this as low severity.</p>
+    <p class="aside-note">These are the limits of the claim, in the study’s own terms.</p>
+  </div>
+  <figure class="witness">
+    <figcaption>The smallest example the tests found. One daily default schedule, first started at 11:00:00 UTC on 14 September 2016, read at <time datetime="2026-08-13T10:59:59Z">10:59:59 UTC on 13 August 2026</time>.</figcaption>
+    <dl>
+      <div><dt>The <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button></dt><dd><span class="reading">6,543.6&nbsp;W</span><span class="why">The day’s second period still applies. The schedule restarts at 11:00:00.</span></dd></div>
+      <div><dt>EVerest at <code>dd696165</code></dt><dd><span class="reading reading-off">9,249.9&nbsp;W</span><span class="why">It has already restarted the schedule, one second early, so the limit is too high.</span></dd></div>
+    </dl>
+  </figure>
+  <table class="ledger ledger-claims">
+    <tbody>
+      <tr>
+        <th scope="row">Proved</th>
+        <td>Three rules about the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>. The combined limit is never above the charger-wide limit. It is never above the limit for the transaction. While a transaction’s own schedule applies, changing the default schedules does not change the limit.</td>
+      </tr>
+      <tr>
+        <th scope="row">Not yet proved</th>
+        <td>A fourth rule: adding a lower-priority schedule that does not apply leaves the limit unchanged. Its proof is unfinished.</td>
+      </tr>
+      <tr>
+        <th scope="row">Tested</th>
+        <td>EVerest’s schedule code at revision <code>dd696165</code>, unmodified, against the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>. Each test case was checked at every moment where either program might change its answer, and one second either side.</td>
+      </tr>
+      <tr>
+        <th scope="row">Range of the tests</th>
+        <td>Up to 2 charger-wide, 3 default and 2 transaction schedules per case, with up to 4 periods each, 15-minute steps, 24- or 48-hour windows in 2026, on connector 1. Matching answers cover only these inputs.</td>
+      </tr>
+      <tr>
+        <th scope="row">Not tested</th>
+        <td>Relative schedules, phases, conversion between amps and watts, offline behaviour, anything outside a transaction, transaction IDs, and the station-wide total on connector 0, where limits are added up across connectors. Also default schedules on connector 0 and connector 1 at the same time, where the standard is unclear.</td>
+      </tr>
+      <tr>
+        <th scope="row">Cause</th>
+        <td>The same 2,000 older cases were run again with every schedule start moved forward by the <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap seconds</button> since it. All 2,000 matched. This rerun is a diagnosis, not a fix to EVerest.</td>
+      </tr>
+      <tr>
+        <th scope="row">Reviewed</th>
+        <td>An AI model reviewed whether the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> follows the written rules, and the project owner checked each finding. The AI review only points at likely problems. The owner’s decisions are the human judgment, and the owner overruled the review on two parts.</td>
+      </tr>
+      <tr>
+        <th scope="row">Assumed</th>
+        <td>The <button type="button" class="term" data-term="trusted-base" aria-describedby="def-trusted-base">trusted base</button>: <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> v4.28.0, the harness that runs EVerest’s code, and the test machine’s <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap-second</button> table, which must list the three <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap seconds</button> since 2010.</td>
+      </tr>
+      <tr>
+        <th scope="row">Reported upstream</th>
+        <td>Not yet. A draft issue for EVerest is waiting for human review. EVerest asks for every AI-assisted contribution to be reviewed by a person first.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="repeat">
+    <p>Repeat the older-schedule run from the repository root:</p>
+    <pre><code>python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors</code></pre>
+  </div>
+</section>
+
+<section class="how band" id="how" aria-labelledby="how-title">
+  <div>
+    <h2 id="how-title">How to use it</h2>
+    <p class="aside-note">Install the plugin, then ask Claude in plain words. For example: “Use the <button type="button" class="term" data-term="byfuglien" aria-describedby="def-byfuglien">byfuglien</button> agent to verify your bug fix.” You can also run each step yourself as a skill.</p>
+  </div>
+  <div class="paths">
+    <table class="ledger ledger-steps">
+      <caption>Prove a small piece of code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></caption>
+      <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Step"><code>/spec-iterate</code></td><td data-label="What it does">Writes the rules for the code with you, until they say what you mean.</td></tr>
+        <tr><td data-label="Step"><code>/generate-verified</code></td><td data-label="What it does">Writes code, and <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> checks that it follows those rules.</td></tr>
+        <tr><td data-label="Step"><code>/extract-code</code></td><td data-label="What it does">Turns the checked code into Python or Go for your project.</td></tr>
+      </tbody>
+    </table>
+    <p class="path-note">This suits pure, self-contained logic. Fitting the generated code into your application is still your job, and the step that turns <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> into Python or Go is assumed correct, not proved.</p>
+
+    <table class="ledger ledger-steps">
+      <caption>Model existing code with <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and test it</caption>
+      <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Step"><code>/informal-spec</code></td><td data-label="What it does">Writes the rules in plain English, from the standard or the intent.</td></tr>
+        <tr><td data-label="Step"><code>/lean-spec</code></td><td data-label="What it does">Restates those rules precisely in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>.</td></tr>
+        <tr><td data-label="Step"><code>/lean-impl</code></td><td data-label="What it does">Builds the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and states the rules about it, ready to prove. A proof can stay unfinished, as the fourth rule’s did here.</td></tr>
+        <tr><td data-label="Step"><code>/correspondence-review</code></td><td data-label="What it does">An AI compares each part of the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> with the written rules and the code. A person decides what to do with each finding.</td></tr>
+        <tr><td data-label="Step"><code>/drt-oracle</code></td><td data-label="What it does">Runs your code and the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> on the same generated inputs, then reports each difference it finds, with an example. This is <button type="button" class="term" data-term="differential-testing" aria-describedby="def-differential-testing">differential testing</button>.</td></tr>
+      </tbody>
+    </table>
+    <p class="path-note">The EVerest study above followed these five steps.</p>
+  </div>
+</section>
+
+<section class="today band" id="today" aria-labelledby="today-title">
+  <div>
+    <h2 id="today-title">Today and the vision</h2>
+    <p class="aside-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md">vision</a> is a readable, checkable claim for every code change. Some of that ships now. The rest has not been reached yet, and the table says what blocks it.</p>
+  </div>
+  <table class="ledger ledger-status">
+    <thead><tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col">What counts as evidence</th></tr></thead>
+    <tbody>
+      <tr><td data-label="Check"><button type="button" class="term" data-term="proof" aria-describedby="def-proof">Proofs</button> about small, self-contained code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></td><td data-label="Status">Ships today</td><td data-label="What counts as evidence"><button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button>’s check</td></tr>
+      <tr><td data-label="Check"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">Reference programs</button> in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>, tested against your code</td><td data-label="Status">Ships today</td><td data-label="What counts as evidence"><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>’s check, and test results you can repeat</td></tr>
+      <tr><td data-label="Check">Data rules along Python data paths (<button type="button" class="term" data-term="cgv" aria-describedby="def-cgv">CGV</button>)</td><td data-label="Status">Ships today, for Django and plain Python data classes. The plugin calls it, but you build CGV from a clone of the repository</td><td data-label="What counts as evidence">A checker proved in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>. Its description of how each library behaves is assumed, not proved</td></tr>
+      <tr><td data-label="Check">Whether written rules match what you meant</td><td data-label="Status">Search only</td><td data-label="What counts as evidence">None yet. An AI points at likely mismatches, and a person decides</td></tr>
+      <tr><td data-label="Check">Whether the written rules are complete</td><td data-label="Status">Not yet reached</td><td data-label="What counts as evidence">Blocked until each rule is tied to a formal requirement</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="terms band" id="terms" aria-labelledby="terms-title">
+  <div>
+    <h2 id="terms-title">Terms used on this page</h2>
+    <p class="aside-note">Each dotted term on the page opens the explanation written here.</p>
+  </div>
+  <dl class="glossary">
+    <div><dt><dfn>Proof</dfn></dt><dd id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</dd></div>
+    <div><dt><dfn>Dafny</dfn></dt><dd id="def-dafny">A language and tool for checking that code follows written rules. It can turn checked code into Python or Go.</dd></div>
+    <div><dt><dfn>Lean</dfn></dt><dd id="def-lean">A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.</dd></div>
+    <div><dt><dfn>Reference program</dfn></dt><dd id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</dd></div>
+    <div><dt><dfn>Leap second</dfn></dt><dd id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</dd></div>
+    <div><dt><dfn>Differential testing</dfn></dt><dd id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</dd></div>
+    <div><dt><dfn>OCPP</dfn></dt><dd id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</dd></div>
+    <div><dt><dfn>CGV</dfn></dt><dd id="def-cgv">Contract graph verifier: a tool that follows data through a Python project and checks that each step keeps the data rules declared for it, such as a field’s length limit.</dd></div>
+    <div><dt><dfn>byfuglien</dfn></dt><dd id="def-byfuglien">The name of Crosscheck’s agent for checking code. It picks the right proof, test or review step for the job you describe.</dd></div>
+    <div><dt><dfn>Trusted base</dfn></dt><dd id="def-trusted-base">The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.</dd></div>
+  </dl>
+</section>
+
+</main>
+
+<footer class="colophon">
+  <a class="brand" href="./">Crosscheck</a>
+  <div>
+    <h2>Sources for this page</h2>
+    <ul>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md">The vision</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md">Plugin README</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144">EVerest study, pull request #144</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/drt_report.md">EVerest test report</a></li>
+    </ul>
+  </div>
+</footer>
+
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>
