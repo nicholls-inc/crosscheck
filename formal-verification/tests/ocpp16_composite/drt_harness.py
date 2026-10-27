@@ -258,7 +258,12 @@ def compare(case: dict, intermediate: list | None, err: str, ts: list[int], mode
         c["compared"] += 1
         sv = sut_value(intermediate, case, t)
         if m is None:
-            c["sut_limit_model_none" if sv is not None else "both_none"] += 1
+            if sv is None:
+                c["both_none"] += 1
+            else:
+                c["sut_limit_model_none"] += 1
+                if worst.status == "pass":
+                    worst.status, worst.t, worst.model, worst.sut = "warn", t, None, sv
             continue
         c["model_limit"] += 1
         mv = m / 10
@@ -345,7 +350,8 @@ def shrink(case: dict, status: str) -> dict:
 
 def describe(case: dict, o: Outcome) -> str:
     when = f"{rfc3339(o.t)} (offset {o.t - case['start']} s)" if o.t is not None else "n/a"
-    return f"at {when}: model {o.model} {case['unit']}, EVerest {o.sut} {case['unit']} {o.detail}".rstrip()
+    model = "no limit" if o.model is None else f"{o.model} {case['unit']}"
+    return f"at {when}: model {model}, EVerest {o.sut} {case['unit']} {o.detail}".rstrip()
 
 
 def main() -> int:
@@ -396,7 +402,7 @@ def main() -> int:
         "SUT: EVerest lib/everest/ocpp/lib/ocpp/v16/profile.cpp at dd696165, via everest_driver",
         "Oracle: CrosscheckModel.Ocpp16Composite via Ocpp16CompositeRunner.lean", "",
         "## Verdict summary", "", "| Status | Cases |", "| --- | --- |",
-        f"| Pass | {counts['pass']} |", f"| Warn (EVerest below the model) | {counts['warn']} |",
+        f"| Pass | {counts['pass']} |", f"| Warn (EVerest below the model, or a limit where the model gives none) | {counts['warn']} |",
         f"| Fail (EVerest above the model, or no limit, or error) | {counts['fail']} |", "",
         "## Comparison counters", "", *counter_lines(totals), "",
         "## Flagged cases, minimised", "",

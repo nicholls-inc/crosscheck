@@ -7,7 +7,7 @@ D4 case: (a). Hand-written production code (EVerest) against a Lean model. Infer
 Correspondence doc: `formal-verification/correspondence/Ocpp16Composite.md`, revised verdict exact 20, abstraction 4, approximation 0, mismatch 0.
 SUT: EVerest `lib/everest/ocpp/lib/ocpp/v16/profile.cpp` at `dd696165`, unmodified, via `everest_driver/`.
 Oracle: `CrosscheckModel.Ocpp16Composite` through `Ocpp16CompositeRunner.lean`, Lean v4.28.0.
-Conformance rule: Q4 of the signed spec. EVerest must be at or below the model. Above by more than 0.05 of the unit is a fail, below by more than 0.05 is a warn.
+Conformance rule: Q4 of the signed spec. EVerest must be at or below the model. Above by more than 0.05 of the unit is a fail, below by more than 0.05, or a limit where the model gives none, is a warn (operator decision, 2026-10-27). Q4 calls both conforming, but each one loses charging.
 Regenerating: a harness run does not overwrite this report. It writes its own to the gitignored `drt_report_latest.md` unless `--report` says otherwise, and refuses to start unless the `leapseconds` file in the tz directory the driver reads lists exactly the three leap seconds since 2010.
 
 ## Verdict summary
@@ -15,14 +15,14 @@ Regenerating: a harness run does not overwrite this report. It writes its own to
 | Configuration | Pass | Warn | Fail |
 | --- | --- | --- | --- |
 | Recurring anchors 2017 to 2025 | 2000 | 0 | 0 |
-| Recurring anchors 2010 to 2016, across leap seconds | 860 | 67 | 1073 |
+| Recurring anchors 2010 to 2016, across leap seconds | 835 | 92 | 1073 |
 | Same 2010 to 2016 cases with `--leap-correct` | 2000 | 0 | 0 |
 | Self-test `--mutate-stack` (300 cases, seed 1) | 181 | 34 | 85 |
 
 | Status | Count |
 | --- | --- |
 | Passed (no divergence) | Every case without a pre-2017 recurring anchor |
-| Failed (divergence found) | 1 distinct divergence, in 1,140 cases |
+| Failed (divergence found) | 1 distinct divergence, in 1,165 cases |
 | Skipped (approximation) | 0 |
 | Skipped as redundant (fully Dafny-verified) | 0 |
 
@@ -57,7 +57,7 @@ Case 2 of seed 20261024 with `--old-anchors`, minimised. One TxProfile on connec
 - **D4 case applied.** (a).
 - **Witness (minimised).** One TxDefaultProfile on connector 0, stackLevel 3, Recurring Daily, startSchedule 2016-09-14T11:00:00Z (1473850800), no duration, periods (0 s, 9249.9 W) and (40500 s, 6543.6 W). Window 2026-08-13T03:00:00Z for 24 hours. At 2026-08-13T10:59:59Z the model gives 6543.6 W, because the day's second period still applies. EVerest gives 9249.9 W, because it restarts the daily schedule one second before 11:00:00, the time the spec says the schedule restarts ("at the same time as in the startSchedule"). EVerest is above the model, so this is a fail. Where the restart lowers the limit instead, the same drift shows as a warn.
 - **Witness (original).** Seed 20261024 with `--old-anchors`, case 3. Replay with `python3 formal-verification/tests/ocpp16_composite/drt_harness.py --seed 20261024 --count 2000 --old-anchors --replay 3`.
-- **Attribution.** With `--leap-correct`, every Recurring anchor in EVerest's input moves forward by the leap seconds since it (2012-06-30, 2015-06-30 and 2016-12-31). All 2,000 cases then pass, so leap seconds explain all 1,140 flagged cases. The S1 controls give the same answer. The section 3.13.7 example switches at 28798 s from a 2013 anchor, 28799 s from 2016-07-01 and 28800 s from 2020-01-01.
+- **Attribution.** With `--leap-correct`, every Recurring anchor in EVerest's input moves forward by the leap seconds since it (2012-06-30, 2015-06-30 and 2016-12-31). All 2,000 cases then pass, so leap seconds explain all 1,165 flagged cases. The S1 controls give the same answer. The section 3.13.7 example switches at 28798 s from a 2013 anchor, 28799 s from 2016-07-01 and 28800 s from 2020-01-01.
 - **Mechanism.** `profile.cpp:207-210` takes `(now − startSchedule) % 86400` on `date::utc_clock` instants (`common/types.cpp:14-53`), and that clock counts leap seconds.
 - **Divergence classification.** Production-code gap. The source computes recurrence in elapsed SI seconds where the spec asks for the same clock time. The spec wording is open to the other reading, so it is also OCA note N4.
 - **Severity.** Low. The shift is one to three seconds today and grows by one second per future leap second. Physical impact is negligible, but a charger reports and enforces limits early, at times its central system did not ask for.
