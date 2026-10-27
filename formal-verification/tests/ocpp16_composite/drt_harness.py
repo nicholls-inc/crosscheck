@@ -234,6 +234,10 @@ def run_oracle(cases: list[dict], times: list[list[int]]) -> list[list[int | Non
 
 # ------------------------------------------------------------- comparison
 
+COUNTER_NAMES = ("compared", "model_limit", "exact", "sut_below", "sut_above", "sut_limit_model_none",
+                 "both_none", "cases_model_none_everywhere")
+
+
 @dataclass
 class Outcome:
     status: str
@@ -241,22 +245,60 @@ class Outcome:
     model: float | None = None
     sut: float | None = None
     detail: str = ""
+    counters: dict = field(default_factory=lambda: dict.fromkeys(COUNTER_NAMES, 0))
 
 
 def compare(case: dict, intermediate: list | None, err: str, ts: list[int], model: list) -> Outcome:
     if intermediate is None:
         return Outcome("fail", detail=f"SUT error: {err}")
     worst = Outcome("pass")
+    first_fail = None
+    c = worst.counters
     for t, m in zip(ts, model):
-        if m is None:
-            continue
-        mv = m / 10
+        c["compared"] += 1
         sv = sut_value(intermediate, case, t)
+        if m is None:
+            c["sut_limit_model_none" if sv is not None else "both_none"] += 1
+            continue
+        c["model_limit"] += 1
+        mv = m / 10
         if sv is None or sv > mv + TOLERANCE:
-            return Outcome("fail", t, mv, sv)
-        if sv < mv - TOLERANCE and worst.status == "pass":
-            worst = Outcome("warn", t, mv, sv)
+            c["sut_above"] += 1
+            first_fail = first_fail or Outcome("fail", t, mv, sv)
+        elif sv < mv - TOLERANCE:
+            c["sut_below"] += 1
+            if worst.status == "pass":
+                worst.status, worst.t, worst.model, worst.sut = "warn", t, mv, sv
+        else:
+            c["exact"] += 1
+    if c["model_limit"] == 0:
+        c["cases_model_none_everywhere"] = 1
+    if first_fail:
+        first_fail.counters = c
+        return first_fail
     return worst
+
+
+def summarise(outcomes: list) -> dict:
+    total = dict.fromkeys(COUNTER_NAMES, 0)
+    for o in outcomes:
+        for k, v in o.counters.items():
+            total[k] += v
+    return total
+
+
+def counter_lines(total: dict) -> list[str]:
+    return [
+        "| Counter | Value |", "| --- | --- |",
+        f"| Instants compared | {total['compared']} |",
+        f"| Instants where the model gives a limit | {total['model_limit']} |",
+        f"| EVerest within 0.05 of the model (exact) | {total['exact']} |",
+        f"| EVerest below the model by more than 0.05 | {total['sut_below']} |",
+        f"| EVerest above the model, or no limit where the model has one | {total['sut_above']} |",
+        f"| EVerest gives a limit where the model gives none | {total['sut_limit_model_none']} |",
+        f"| Neither gives a limit | {total['both_none']} |",
+        f"| Cases where the model gives no limit at any instant | {total['cases_model_none_everywhere']} |",
+    ]
 
 
 def check(cases: list[dict]) -> list[Outcome]:
@@ -343,6 +385,7 @@ def main() -> int:
         outcomes += check(cases[i:i + args.batch])
 
     counts = {s: sum(o.status == s for o in outcomes) for s in ("pass", "warn", "fail")}
+    totals = summarise(outcomes)
     flagged = [(i, o) for i, o in enumerate(outcomes) if o.status != "pass"]
     lines = [
         "# DRT report: Ocpp16Composite", "",
@@ -355,6 +398,7 @@ def main() -> int:
         "## Verdict summary", "", "| Status | Cases |", "| --- | --- |",
         f"| Pass | {counts['pass']} |", f"| Warn (EVerest below the model) | {counts['warn']} |",
         f"| Fail (EVerest above the model, or no limit, or error) | {counts['fail']} |", "",
+        "## Comparison counters", "", *counter_lines(totals), "",
         "## Flagged cases, minimised", "",
     ]
     for n, (i, o) in enumerate(flagged[:args.max_shrink]):
@@ -371,6 +415,7 @@ def main() -> int:
         lines.append(f"{len(flagged) - args.max_shrink} more flagged cases not minimised. Indices: "
                      + ", ".join(str(i) for i, _ in flagged[args.max_shrink:]))
     args.report.write_text("\n".join(lines) + "\n")
+    print("\n".join(counter_lines(totals)))
     print(f"pass {counts['pass']}  warn {counts['warn']}  fail {counts['fail']}  report {args.report}")
     return 1 if counts["fail"] else 0
 

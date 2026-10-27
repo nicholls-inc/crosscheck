@@ -26,7 +26,29 @@ Regenerating: a harness run does not overwrite this report. It writes its own to
 | Skipped (approximation) | 0 |
 | Excluded (fully Dafny-verified) | 0 |
 
-How much was compared, measured on 300 cases of seed 1: 10,152 instants, of which the model gave a limit at 8,439. EVerest agreed exactly at all 8,439. Cases average 3.4 profiles (up to 7), across all three purposes and the Absolute, Daily and Weekly kinds.
+## What was compared
+
+Conformance is the Q4 inequality, EVerest at or below the model, so a pass does not mean the two agree at every instant. The harness counts the instants of each kind (`drt_harness.py` prints these counters and writes them to its report). Measured 2026-10-27 at `dd696165`. "Exact" means within 0.05 of the unit.
+
+| Counter | 2017-2025 anchors | 2010-2016 anchors | 2010-2016, `--leap-correct` | Seed 1, 300 cases |
+| --- | --- | --- | --- | --- |
+| Cases | 2000 | 2000 | 2000 | 300 |
+| Instants compared | 67,530 | 78,263 | 67,537 | 10,152 |
+| Model gives a limit | 57,304 | 66,541 | 56,896 | 8,439 |
+| EVerest exact | 57,304 | 56,902 | 56,896 | 8,439 |
+| EVerest below the model | 0 | 4,331 | 0 | 0 |
+| EVerest above the model, or no limit where the model has one | 0 | 5,308 | 0 | 0 |
+| EVerest gives a limit where the model gives none | 0 | 1,081 | 0 | 0 |
+| Neither gives a limit | 10,226 | 10,641 | 10,641 | 1,713 |
+| Cases where the model gives no limit at any instant | 55 | 64 | 64 | 18 |
+
+The first three columns use seed 20261024 and 2,000 cases. The 2017 to 2025 run passes 2,000 of 2,000 and EVerest is exact at every one of the 57,304 instants where the model gives a limit. Instants where the model gives no limit are compared too: EVerest also gives none at all 10,226 of them. The 55 cases where the model gives no limit anywhere pass vacuously and are counted above. In the 2010 to 2016 run, the 1,081 instants where EVerest gives a limit and the model gives none are an extra kind of divergence that the harness neither fails nor warns on. It is not zero, see the minimal case below. With `--leap-correct` it returns to zero.
+
+The seed 1 column is a 300-case run of the same generator with no flags, which reproduces the earlier one-off figures of 10,152 and 8,439. Cases average 3.4 profiles (up to 7), across all three purposes and the Absolute, Daily and Weekly kinds. The `--mutate-stack` self-test on the same 300 cases gives 6,742 exact, 795 below and 902 above, so the counters do separate agreement from disagreement.
+
+### Minimal case, EVerest limit where the model gives none (2010-2016 run)
+
+Case 2 of seed 20261024 with `--old-anchors`, minimised. One TxProfile on connector 1, stackLevel 0, Recurring Weekly, startSchedule 2013-01-23T00:00:00Z (1358899200), duration 172800 s, one period (0 s, 12.1 A). Query window from 2026-03-10T22:15:00Z for 48 hours. At 2026-03-10T23:59:58Z and 23:59:59Z the model gives no limit and EVerest gives 12.1 A. Measured: with `--leap-correct` no such instant remains in the 2,000 cases. Inferred, not checked on this case alone: this is the same leap-second shift as the failures below, here at the weekly restart. The harness does not classify this kind, and the operator has not yet said whether it should fail.
 
 ## Failures
 
