@@ -186,10 +186,16 @@ def conforms (impl : Limit) (model : Option Limit) : Bool :=
   | none => true
   | some m => decide (impl ≤ m)
 
+/-- `R` holds between every element and each element after it. The same as
+`List.Pairwise`, which the Crosscheck Lean image's v4.10.0 core lacks. -/
+def pairwise {α : Type} (R : α → α → Prop) : List α → Prop
+  | [] => True
+  | a :: rest => (∀ b ∈ rest, R a b) ∧ pairwise R rest
+
 /-- The periods of a schedule start at 0 and strictly increase (P4). -/
 def periodsWellFormed : List Period → Prop
   | [] => False
-  | p :: rest => p.startPeriod = 0 ∧ (p :: rest).Pairwise (·.startPeriod < ·.startPeriod)
+  | p :: rest => p.startPeriod = 0 ∧ pairwise (·.startPeriod < ·.startPeriod) (p :: rest)
 
 /-- P1 to P8. Units (P5) are not in the model: a case uses one unit. -/
 def WellFormed (ps : List Profile) (c : Nat) : Prop :=
@@ -198,9 +204,9 @@ def WellFormed (ps : List Profile) (c : Nat) : Prop :=
              (p.purpose = .tx → 0 < p.connectorId) ∧
              periodsWellFormed p.periods ∧
              (∀ d, p.duration = some d → 0 < d)) ∧
-  ps.Pairwise (fun p q => applicable c p → applicable c q →
+  pairwise (fun p q => applicable c p → applicable c q →
      p.purpose = q.purpose → p.connectorId = q.connectorId →
-     p.stackLevel ≠ q.stackLevel) ∧
+     p.stackLevel ≠ q.stackLevel) ps ∧
   ¬ (∃ p ∈ ps, ∃ q ∈ ps, p.purpose = .txDefault ∧ q.purpose = .txDefault ∧
        p.connectorId = 0 ∧ q.connectorId = c)
 
