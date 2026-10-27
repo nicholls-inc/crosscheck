@@ -25,7 +25,7 @@ The review above was run by an independent model (Codex) and is kept as written.
 
 | Lean ident | Review verdict | Action | Revised class |
 | --- | --- | --- | --- |
-| `scheduleStart` | mismatch (CR-OC16-01) | Agreed. The model now gives an Absolute profile its startSchedule unconditionally, as D3 says, and `covers` requires s ≤ t. The witness exposed that the signed D4 had lost "s ≤ t" when A5 and A6 were applied. D4 is restored with a correction note, pending operator confirmation. | exact |
+| `scheduleStart` | mismatch (CR-OC16-01) | Agreed. The model now gives an Absolute profile its startSchedule unconditionally, as D3 says, and `covers` requires s ≤ t. The witness exposed that the signed D4 had lost "s ≤ t" when A5 and A6 were applied. D4 is restored with a correction note, which the operator confirmed on 2026-10-27. | exact |
 | `WellFormed` | mismatch (CR-OC16-02) | Agreed. P6 is now stated over list positions with `List.Pairwise`, so duplicate entries violate it. `WellFormed` is not used by any proved theorem, so no proof changes. | exact |
 | `candidates` | approximation | Not adopted. The model follows signed resolution A1, which the operator chose knowing the official sentence reads otherwise (OCA note N1). Divergences here are triaged first as spec-reading gaps, not EVerest bugs. Downgraded from exact rather than skipped, because skipping would remove the composite from DRT. | abstraction |
 | `txResult` | approximation | Not adopted, for the same reason under resolution A2. | abstraction |

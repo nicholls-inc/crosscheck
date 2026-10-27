@@ -67,7 +67,7 @@ Steps run in order. S1 is a spike with a kill criterion, because it carries the 
 **Verify.**
 
 - [x] `#print axioms` for T1 and T2 shows only `propext`, `Classical.choice` and `Quot.sound`, which rules out `sorry`. `check_ocpp16_composite.sh` shows `i1` uses `propext` and `i2` uses `propext` and `Quot.sound`. It fails on the unproved `i4`.
-- [ ] The operator reads the informal spec and the two theorem statements against the PDF and signs the spec's review table. **Open.** The informal spec is signed. The operator has not yet read the theorem statements, or confirmed the D4 correction made after /correspondence-review.
+- [ ] The operator reads the informal spec and the two theorem statements against the PDF and signs the spec's review table. **Open.** The informal spec is signed. The operator confirmed the D4 correction made after /correspondence-review on 2026-10-27, and has not yet read the theorem statements.
 
 ## Test EVerest against the model (S3)
 
