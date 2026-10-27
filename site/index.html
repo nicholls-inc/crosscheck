@@ -16,8 +16,9 @@
   <a class="brand" href="./">Crosscheck</a>
   <nav aria-label="Main">
     <ul>
-      <li><a href="#everest">Case studies</a></li>
+      <li><a href="#everest">Case study</a></li>
       <li><a href="#how">How to use it</a></li>
+      <li><a href="#install">Install</a></li>
       <li><a href="https://github.com/nicholls-inc/crosscheck">GitHub</a></li>
     </ul>
   </nav>
@@ -28,7 +29,7 @@
 <section class="intro" aria-labelledby="title">
   <h1 id="title">Check the code.<br>Read the evidence.</h1>
   <div class="intro-columns">
-    <p>Crosscheck checks claims about AI-written code, using <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> and tests you can repeat. Read what was checked, see the results, and inspect the assumptions.</p>
+    <p data-gloss="margin">Crosscheck is a Claude Code plugin that checks claims about AI-written code, using <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> and tests you can repeat. Read what was checked, see the results, and inspect the assumptions.</p>
     <p>Use <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> to check code against written rules. Use <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> to describe what code should do, then compare its answers with the code you run.</p>
   </div>
   <p class="actions">
@@ -40,10 +41,10 @@
 <section class="study band" id="everest" aria-labelledby="everest-title">
   <div class="study-summary">
     <h2 id="everest-title" class="study-name">EVerest</h2>
-    <p class="study-meta">Software for electric-vehicle charging<br><time datetime="2026-10-24">24 October 2026</time></p>
+    <p class="study-meta">Software for electric-vehicle charging<br>Run on <time datetime="2026-10-24">24 October 2026</time></p>
     <p class="study-finding">A daily charging schedule starts at 10:59:59. It should start at 11:00:00. The tests traced the difference to a <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button>.</p>
     <ul class="stacked-links">
-      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144">Read the study</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144">Read the study (pull request #144)</a></li>
       <li><a href="#covers">What this result covers</a></li>
     </ul>
   </div>
@@ -52,27 +53,30 @@
     <h3 class="evidence-title">What the evidence says</h3>
     <table class="ledger">
       <thead>
-        <tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Result</th></tr>
+        <tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result</th></tr>
       </thead>
       <tbody>
         <tr>
           <td data-label="What was checked">Rules in the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button></td>
           <td data-label="How it was checked"><button type="button" class="term" data-term="proof" aria-describedby="def-proof">Proofs</button> checked by <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button></td>
+          <td class="strength" data-label="Strength">Proved</td>
           <td data-label="Result">Three rules <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proved</button></td>
         </tr>
         <tr>
           <td data-label="What was checked">Schedules starting in 2017–2025</td>
           <td data-label="How it was checked">2,000 test cases</td>
+          <td class="strength" data-label="Strength">Tested</td>
           <td data-label="Result">All 2,000 matched</td>
         </tr>
         <tr>
           <td data-label="What was checked">Schedules starting in 2010–2016</td>
           <td data-label="How it was checked">2,000 test cases</td>
+          <td class="strength" data-label="Strength">Tested</td>
           <td data-label="Result"><mark class="finding">1,140 cases differed</mark></td>
         </tr>
       </tbody>
     </table>
-    <p class="evidence-note">Of those 1,140 cases, 67 gave warnings and 1,073 failed. Repeat the run with starting number 20261024.</p>
+    <p class="evidence-note">Of those 1,140 cases, 67 gave warnings and 1,073 failed. Repeat the run with random seed 20261024.</p>
     <ul class="source-links" aria-label="Sources for the EVerest study">
       <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/specs/ocpp16_composite_informal.md">Written rules</a></li>
       <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean">Reference program</a></li>
@@ -83,16 +87,6 @@
   </div>
 </section>
 
-<section class="install band" id="install" aria-labelledby="install-title" tabindex="-1">
-  <h2 id="install-title">Start with the plugin</h2>
-  <div class="commands">
-    <pre id="install-commands"><code>claude plugin marketplace add nicholls-inc/claude-code-marketplace
-claude plugin install crosscheck@nicholls</code></pre>
-    <button type="button" class="copy" data-copy="install-commands">Copy commands</button>
-    <span class="copy-status" role="status" aria-live="polite"></span>
-  </div>
-</section>
-
 <section class="covers band" id="covers" aria-labelledby="covers-title">
   <div>
     <h2 id="covers-title">What this result covers</h2>
@@ -100,7 +94,9 @@ claude plugin install crosscheck@nicholls</code></pre>
     <p class="aside-note">These are the limits of the claim, in the study’s own terms.</p>
   </div>
   <figure class="witness">
-    <figcaption>The smallest example the tests found. One daily default schedule, first started at 11:00:00 UTC on 14 September 2016, read at <time datetime="2026-08-13T10:59:59Z">10:59:59 UTC on 13 August 2026</time>.</figcaption>
+    <figcaption>The smallest example the tests found: one daily default schedule, first started at 11:00:00 UTC on 14 September 2016.
+      <span class="witness-time">Read at <time datetime="2026-08-13T10:59:59Z">10:59:59 UTC on 13 August 2026</time></span>
+    </figcaption>
     <dl>
       <div><dt>The <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button></dt><dd><span class="reading">6,543.6&nbsp;W</span><span class="why">The day’s second period still applies. The schedule restarts at 11:00:00.</span></dd></div>
       <div><dt>EVerest at <code>dd696165</code></dt><dd><span class="reading reading-off">9,249.9&nbsp;W</span><span class="why">It has already restarted the schedule, one second early, so the limit is too high.</span></dd></div>
@@ -147,9 +143,41 @@ claude plugin install crosscheck@nicholls</code></pre>
     </tbody>
   </table>
   <div class="repeat">
-    <p>Repeat the older-schedule run from the repository root:</p>
-    <pre><code>python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors</code></pre>
+    <p>Clone the repository at the study’s commit, build the EVerest driver, then run the older-schedule test:</p>
+    <pre tabindex="0" aria-label="Commands to repeat the run"><code>git clone https://github.com/nicholls-inc/crosscheck &amp;&amp; cd crosscheck &amp;&amp; git checkout d41f08251ceeb70f53bc98d850fe56d70fc190c0
+(cd formal-verification/tests/ocpp16_composite/everest_driver &amp;&amp; ./build.sh)
+python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors</code></pre>
+    <p class="repeat-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/everest_driver/README.md">How the driver is built</a></p>
   </div>
+</section>
+
+<section class="install band" id="install" aria-labelledby="install-title" tabindex="-1">
+  <div>
+    <h2 id="install-title">Start with the plugin</h2>
+    <p class="aside-note">You will need Docker, Node.js 18 or later, and Claude Code. The <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> and <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks run in Docker containers with no network access.</p>
+  </div>
+  <ol class="install-steps">
+    <li>
+      <p class="step-label">Install the plugin from the marketplace.</p>
+      <div class="commands">
+        <pre id="install-commands" tabindex="0" aria-label="Install commands"><code>claude plugin marketplace add nicholls-inc/claude-code-marketplace
+claude plugin install crosscheck@nicholls</code></pre>
+        <button type="button" class="copy" data-copy="install-commands">Copy commands</button>
+        <span class="copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </li>
+    <li>
+      <p class="step-label">Build the checker images once, from a clone of the repository. The Lean image is slow the first time.</p>
+      <div class="commands">
+        <pre id="build-commands" tabindex="0" aria-label="Commands to build the checker images"><code>git clone https://github.com/nicholls-inc/crosscheck &amp;&amp; cd crosscheck/crosscheck
+./scripts/build-docker.sh
+./scripts/build-lean-docker.sh</code></pre>
+        <button type="button" class="copy" data-copy="build-commands">Copy commands</button>
+        <span class="copy-status" role="status" aria-live="polite"></span>
+        <p class="step-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md#prerequisites">Full setup in the README</a></p>
+      </div>
+    </li>
+  </ol>
 </section>
 
 <section class="how band" id="how" aria-labelledby="how-title">
@@ -158,6 +186,7 @@ claude plugin install crosscheck@nicholls</code></pre>
     <p class="aside-note">Install the plugin, then ask Claude in plain words. For example: “Use the <button type="button" class="term" data-term="byfuglien" aria-describedby="def-byfuglien">byfuglien</button> agent to verify your bug fix.” You can also run each step yourself as a skill.</p>
   </div>
   <div class="paths">
+    <div class="path">
     <table class="ledger ledger-steps">
       <caption>Prove a small piece of code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></caption>
       <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
@@ -168,7 +197,9 @@ claude plugin install crosscheck@nicholls</code></pre>
       </tbody>
     </table>
     <p class="path-note">This suits pure, self-contained logic. Fitting the generated code into your application is still your job, and the step that turns <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> into Python or Go is assumed correct, not proved.</p>
+    </div>
 
+    <div class="path">
     <table class="ledger ledger-steps">
       <caption>Model existing code with <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and test it</caption>
       <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
@@ -181,6 +212,7 @@ claude plugin install crosscheck@nicholls</code></pre>
       </tbody>
     </table>
     <p class="path-note">The EVerest study above followed these five steps.</p>
+    </div>
   </div>
 </section>
 
@@ -199,6 +231,17 @@ claude plugin install crosscheck@nicholls</code></pre>
       <tr><td data-label="Check">Whether the written rules are complete</td><td data-label="Status">Not yet reached</td><td data-label="What counts as evidence">Blocked until each rule is tied to a formal requirement</td></tr>
     </tbody>
   </table>
+</section>
+
+<section class="reprise band" aria-labelledby="reprise-title">
+  <div>
+    <h2 id="reprise-title">Try it on your own code</h2>
+    <p class="aside-note">Install the plugin, then ask Claude to check a change. Or repeat the EVerest run yourself and compare your numbers with ours.</p>
+  </div>
+  <p class="actions">
+    <a class="button" href="#install">Install the plugin</a>
+    <a href="#covers">Rerun the EVerest check</a>
+  </p>
 </section>
 
 <section class="terms band" id="terms" aria-labelledby="terms-title">

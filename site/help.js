@@ -9,7 +9,9 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").match
 /* Help terms */
 
 const tip = document.getElementById("tip");
-let current = null;
+// The open term and how it was opened: "hover" | "focus" | "click" | "link".
+// A click pins a term, so the focus that arrives with a tap or Enter cannot close it.
+let state = null;
 let closeTimer = 0;
 
 function definition(term) {
@@ -19,7 +21,8 @@ function definition(term) {
 
 function place(term) {
   const r = term.getBoundingClientRect();
-  const block = term.closest("p, td, li, dd") || term.parentElement;
+  const gloss = term.closest("[data-gloss]");
+  const block = gloss || term.closest("p, td, li, dd") || term.parentElement;
   const b = block.getBoundingClientRect();
   const vw = document.documentElement.clientWidth;
   const vh = window.innerHeight;
@@ -27,11 +30,11 @@ function place(term) {
   const h = tip.offsetHeight;
   const gap = 18;
 
-  // In the margin to the left, when the term starts its line and the margin has room.
-  if (r.left - b.left < 8 && b.left - w - gap >= 8 && vw >= 900) {
+  // In the left margin, for a term inside an element that opts in and has the room.
+  if (gloss && gloss.dataset.gloss === "margin" && b.left - w - gap >= 8 && vw >= 900) {
     const top = Math.max(8, r.top + r.height / 2 - 34);
     tip.dataset.side = "left";
-    tip.style.left = `${window.scrollX + r.left - w - gap}px`;
+    tip.style.left = `${window.scrollX + b.left - w - gap}px`;
     tip.style.top = `${window.scrollY + top}px`;
     tip.style.setProperty("--arrow", `${r.top + r.height / 2 - top}px`);
     return;
@@ -46,11 +49,11 @@ function place(term) {
   tip.style.setProperty("--arrow", `${r.left + r.width / 2 - left}px`);
 }
 
-function open(term) {
+function open(term, via) {
   clearTimeout(closeTimer);
-  if (current && current !== term) current.setAttribute("aria-expanded", "false");
-  current = term;
-  term.setAttribute("aria-expanded", "true");
+  if (state && state.term !== term) delete state.term.dataset.open;
+  state = { term, via };
+  term.dataset.open = "";
   tip.textContent = definition(term);
   tip.hidden = false;
   place(term);
@@ -60,42 +63,48 @@ function open(term) {
 
 function close() {
   clearTimeout(closeTimer);
-  if (!current) return;
-  current.setAttribute("aria-expanded", "false");
-  current = null;
+  if (!state) return;
+  delete state.term.dataset.open;
+  state = null;
   tip.classList.remove("is-open");
   tip.hidden = true;
 }
 
-function closeSoon() {
+// Closes after a short delay, but only a tip that was opened in one of the given ways.
+function closeSoon(vias) {
   clearTimeout(closeTimer);
-  closeTimer = setTimeout(close, 160);
+  closeTimer = setTimeout(() => { if (state && vias.includes(state.via)) close(); }, 160);
 }
 
+const pinned = (term) => state !== null && state.term === term && state.via === "click";
+
 for (const term of document.querySelectorAll(".term")) {
-  term.setAttribute("aria-expanded", "false");
-  term.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") open(term); });
-  term.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") closeSoon(); });
-  term.addEventListener("focus", () => open(term));
-  term.addEventListener("blur", closeSoon);
+  term.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse" && !pinned(term)) open(term, "hover"); });
+  term.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") closeSoon(["hover"]); });
+  term.addEventListener("focus", () => { if (!pinned(term)) open(term, "focus"); });
+  term.addEventListener("blur", () => closeSoon(["hover", "focus", "link"]));
   term.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (current === term && e.pointerType !== "mouse") close();
-    else open(term);
+    if (pinned(term)) close();
+    else open(term, "click");
   });
 }
 
 tip.addEventListener("pointerenter", () => clearTimeout(closeTimer));
-tip.addEventListener("pointerleave", closeSoon);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && current) close(); });
-document.addEventListener("click", (e) => { if (current && !tip.contains(e.target)) close(); });
-window.addEventListener("resize", () => { if (current) place(current); });
+tip.addEventListener("pointerleave", () => closeSoon(["hover"]));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state) close(); });
+document.addEventListener("click", (e) => { if (state && !tip.contains(e.target)) close(); });
+window.addEventListener("resize", () => { if (state) place(state.term); });
 
 // ?explain=<term> opens that term's explanation, so a definition can be linked to.
+// An unknown term lands on the glossary instead of doing nothing.
 const asked = new URLSearchParams(location.search).get("explain");
 if (asked) {
   const term = document.querySelector(`.term[data-term="${CSS.escape(asked)}"]`);
-  if (term) document.fonts.ready.then(() => open(term));
+  document.fonts.ready.then(() => {
+    if (term) open(term, "link");
+    else document.getElementById("terms")?.scrollIntoView();
+  });
 }
 
 /* The finding is marked as it scrolls into view. If it is already on screen
@@ -117,7 +126,7 @@ if (finding && "IntersectionObserver" in window && !reduceMotion) {
     finding.classList.add("is-marked");
     void finding.offsetWidth;
     finding.classList.remove("is-waiting");
-  }, { threshold: 0.6 });
+  }, { threshold: 0.35 });
   io.observe(finding);
 }
 

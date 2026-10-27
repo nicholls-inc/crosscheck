@@ -15,6 +15,7 @@ colors:
   mark: "#f8eab4"
   button: "#232322"
   button-hover: "#000000"
+  button-label: "#ffffff"
   help: "#6d717a"
 typography:
   display:
@@ -96,14 +97,14 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.button}"
-    textColor: "{colors.ground}"
+    textColor: "{colors.button-label}"
     typography: "{typography.body}"
     rounded: "{rounded.button}"
     padding: "0 22px"
     height: "42px"
   button-primary-hover:
     backgroundColor: "{colors.button-hover}"
-    textColor: "{colors.ground}"
+    textColor: "{colors.button-label}"
   link:
     textColor: "{colors.link}"
   link-hover:
@@ -244,14 +245,14 @@ Quiet and decisive; there is exactly one filled button style.
 - **Primary:** Press Black fill, white Newsreader 18px at 400, 42px minimum height, 170px minimum width, 22px horizontal padding.
 - **Hover / Focus:** fill goes to pure black over 120ms ease-out; active nudges down 1px. Focus uses the global 2px Record Blue outline at 3px offset.
 - **Secondary:** a plain underlined text link sits beside the button; there is no outlined or ghost button.
-- **Text action:** the copy control is a button styled as a small sans link (13px, Record Blue, underlined) with a live status message beside it in Graphite.
+- **Text action:** the copy control is a button styled as a small sans link (13px, Record Blue, underlined) with a 44px-tall hit area and a live status message beside it in Graphite. It keeps the text-link look; there is no outlined button.
 
 ### Links
 - Record Blue, 1px underline at 4px offset, underline at 70% strength; hover to Deep Record Blue with a full-strength underline, 120ms ease-out.
 - Masthead links are ink-coloured Public Sans 14px with a grey underline at 6px offset, turning blue on hover.
 
 ### Help Terms and Tips (signature)
-- **Term:** an inline button that inherits the surrounding type exactly, with a 1.5px dotted underline in Help Dot at 4px offset and a help cursor. Hover or expanded state darkens the dots to ink. Used only for specialist verification and domain terms defined in the page glossary.
+- **Term:** an inline button that inherits the surrounding type exactly, with a 1.5px dotted underline in Help Dot at 4px offset and a help cursor. Hover, or the open state (marked with a `data-open` attribute), darkens the dots to ink. Used only for specialist verification and domain terms defined in the page glossary.
 - **Tip:** paper-coloured panel, 1px grey border, 2px corners, 11px/13px padding, Newsreader 15.5px, width 228px to 290px. Opens left of, below or above the term with a pointer arrow. Fades in over 140ms and rises 2px over 220ms on cubic-bezier(.16,1,.3,1). Opens on hover, focus and tap; stays open while the pointer moves onto it; Escape and outside clicks close it.
 
 ### Ledger Tables (signature)
@@ -267,10 +268,10 @@ The decisive result cell gets a full-bleed Highlighter Yellow block in ink. With
 A ruled two-column definition list: a small sans label, a large serif reading with tabular numerals, then a Graphite explanation capped at 40ch.
 
 ### Command Block
-Plex Mono 13.5px in Code Ink, wrapping rather than scrolling, with no background panel or border; followed by the copy control.
+Plex Mono 13.5px in Code Ink, scrolling sideways inside the block rather than wrapping mid-command, with no background panel or border; followed by the copy control.
 
 ### Navigation
-A single-line masthead: the brand in Newsreader 28px ink at left, three sans links at right 36px apart, closed by a strong rule. Wraps on phones.
+A single-line masthead: the brand in Newsreader 28px ink at left, four sans links at right 36px apart, closed by a strong rule. Wraps on phones.
 
 ## Do's and Don'ts
 

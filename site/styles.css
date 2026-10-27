@@ -145,7 +145,7 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 }
 .intro-columns {
   display: grid;
-  grid-template-columns: minmax(0, 432px) minmax(0, 418px);
+  grid-template-columns: minmax(0, 425px) minmax(0, 425px);
   justify-content: center;
   column-gap: 60px;
   /* Room in the left margin for the explanation of the first term */
@@ -198,7 +198,7 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
   text-decoration-color: var(--help);
   border-radius: 1px;
 }
-.term:hover, .term[aria-expanded="true"] { text-decoration-color: var(--ink); }
+.term:hover, .term[data-open] { text-decoration-color: var(--ink); }
 
 .tip {
   position: absolute;
@@ -282,8 +282,15 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
   border-bottom: 1px solid #5d5f68;
 }
 .ledger td { border-bottom: 1px solid var(--rule); }
-.evidence .ledger th:nth-child(1) { width: 35.2%; }
-.evidence .ledger th:nth-child(2) { width: 36.2%; }
+.evidence .ledger th:nth-child(1) { width: 34%; }
+.evidence .ledger th:nth-child(2) { width: 22%; }
+.evidence .ledger th:nth-child(3) { width: 10%; }
+.ledger td.strength {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
 .finding {
   display: inline-block;
   margin: -9px 0 -10px -12px;
@@ -311,24 +318,34 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 
 /* Install */
 
-.install { padding-bottom: 96px; }
+.install { padding-bottom: 56px; }
 .install h2 {
   font-size: 32px;
   line-height: 38px;
   letter-spacing: -0.03em;
   font-variation-settings: "opsz" 48;
 }
+.install-steps { margin: 0; padding-left: 28px; list-style: decimal; }
+.install-steps li::marker { color: var(--muted); }
+.install-steps li + li { margin-top: 28px; }
+.step-label { font-size: 17.5px; line-height: 25px; }
+.step-link, .repeat-link { margin-top: 4px; font-size: 17.5px; line-height: 25px; }
 .commands { position: relative; padding-top: 7px; }
-.commands pre {
+.commands pre, .repeat pre {
   font-family: var(--mono);
   font-size: 13.5px;
-  line-height: 23px;
   color: #33363d;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  max-width: 100%;
 }
+.commands pre { line-height: 23px; }
 .copy {
-  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  vertical-align: middle;
   padding: 0;
   border: 0;
   background: none;
@@ -342,11 +359,12 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
   text-underline-offset: 4px;
 }
 .copy:hover { color: var(--link-hover); }
-.copy-status { margin-left: 12px; font-family: var(--sans); font-size: 13px; color: var(--muted); }
+.copy-status { margin-left: 12px; vertical-align: middle; font-family: var(--sans); font-size: 13px; color: var(--muted); }
 
 /* Sections below the first screen */
 
-.covers, .how, .today, .terms { padding: 44px 0 48px; }
+.covers, .how, .today, .reprise, .terms { padding: 44px 0 48px; }
+.reprise .actions { justify-content: flex-start; margin-top: 0; padding-left: 0; }
 .band h2 {
   font-size: 32px;
   line-height: 38px;
@@ -361,6 +379,14 @@ pre code { font-size: inherit; }
 
 .witness { margin: 0 0 36px; }
 .witness figcaption { font-size: 17.5px; line-height: 25px; max-width: 70ch; }
+.witness-time {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
 .witness dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -397,15 +423,7 @@ pre code { font-size: inherit; }
 .ledger-claims td { max-width: 72ch; }
 
 .repeat { margin-top: 22px; font-size: 17.5px; line-height: 25px; }
-.repeat pre {
-  margin-top: 8px;
-  font-family: var(--mono);
-  font-size: 13.5px;
-  line-height: 22px;
-  color: #33363d;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
+.repeat pre { margin-top: 8px; line-height: 22px; }
 
 .ledger caption {
   caption-side: top;
@@ -418,9 +436,9 @@ pre code { font-size: inherit; }
 }
 .ledger-steps + .path-note { margin-top: 12px; }
 .path-note { font-size: 16.5px; line-height: 24px; color: var(--muted); max-width: 78ch; }
-.path-note + .ledger { margin-top: 40px; }
+.path + .path { margin-top: 40px; }
 .ledger-steps th:first-child { width: 230px; }
-.ledger-steps td:first-child code { font-size: 14px; color: var(--ink); }
+.ledger-steps td:first-child code { font-size: 14px; color: var(--ink); white-space: nowrap; }
 
 .ledger-status th:nth-child(1) { width: 40%; }
 .ledger-status th:nth-child(2) { width: 24%; }
@@ -447,6 +465,14 @@ pre code { font-size: inherit; }
 .colophon .brand { padding-left: 4px; font-size: 22px; }
 .colophon h2 { font-family: var(--sans); font-size: 13.5px; line-height: 20px; font-weight: 500; }
 .colophon ul { display: flex; flex-wrap: wrap; column-gap: 32px; row-gap: 4px; margin-top: 8px; font-size: 17px; }
+
+/* The two step tables sit side by side only when there is room for both */
+
+@media (min-width: 1281px) {
+  .paths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--col-gap); align-items: start; }
+  .path + .path { margin-top: 0; }
+  .paths .ledger-steps th:first-child { width: 1%; }
+}
 
 /* Narrower screens: the same order, stacked */
 
