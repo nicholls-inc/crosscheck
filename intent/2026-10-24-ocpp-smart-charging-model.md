@@ -35,4 +35,4 @@ The honest claim after the first stage is "a proved model of the OCPP 1.6 compos
 
 - **Where the code lives.** Default: under `formal-verification/` in this repository, following its existing `specs/`, `lean/`, `correspondence/` and `tests/` layout. Move it to its own repository if the harness grows its own users.
 - **Errata after edition 2.** Edition 2 (2017-09-28) merges all errata up to v3.0. Whether the Open Charge Alliance published later 1.6 errata is unchecked.
-- **OCPP 2.0.1 and 2.1.** Out of this program. They follow once the 1.6 harness works, against EVerest's separate v2 copy.
+- **OCPP 2.0.1 and 2.1.** Not yet reached. Blocker: the profile structure differs from 1.6, and EVerest keeps a separate v2 copy of the calculation, so the 1.6 model does not cover it. Open question: whether the 1.6 model's shape extends to 2.x. The work follows once the 1.6 harness works, against that v2 copy.

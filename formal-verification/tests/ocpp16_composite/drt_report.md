@@ -24,7 +24,7 @@ Regenerating: a harness run does not overwrite this report. It writes its own to
 | Passed (no divergence) | Every case without a pre-2017 recurring anchor |
 | Failed (divergence found) | 1 distinct divergence, in 1,140 cases |
 | Skipped (approximation) | 0 |
-| Excluded (fully Dafny-verified) | 0 |
+| Skipped as redundant (fully Dafny-verified) | 0 |
 
 ## What was compared
 
@@ -74,14 +74,21 @@ Minimised witnesses for six more of the flagged cases are in `drt_witnesses_old_
 
 None. The reviewer classified `candidates` and `txResult` as approximation. The pipeline owner reclassified them as abstraction because they follow the operator's signed resolutions A1 and A2. Neither region produced a divergence, so the reclassification did not change any result.
 
-## Exclusions (fully Dafny-verified slices)
+## Skipped as redundant (fully Dafny-verified slices)
 
 None.
 
 ## Outside the generator, by design
 
 - **TxDefaultProfiles on connector 0 and connector 1 together (A3).** The model takes no position, so the generator never mixes them. A direct probe of EVerest gives 10 A for connector 0 at 10 A stack 5 with connector 1 at 20 A stack 1, 20 A with the stack levels swapped, and 20 A when both are stack 3. EVerest lets stackLevel decide, and the connector-specific profile replaces the connector-0 one only at an equal stack level. The equal-stack result runs through the driver's copy of EVerest's installation glue, cited in `everest_driver/README.md`. This is evidence for OCA note N2.
-- **Relative profiles, phases, amp and watt conversion, offline behaviour and transactionId matching.** Out of scope per the signed spec.
+- **Classes the signed spec does not yet reach.** The harness never generates them, and a pass here says nothing about them. Each has a blocking property and an open question in the signed spec's module boundary and A9 (amended 2026-10-27).
+  - Relative profiles. Blocker: the model has no transaction start time input.
+  - Phases (`numberPhases`, `minChargingRate`). Blocker: the model has one scalar limit and no phase count.
+  - Amp and watt conversion. Blocker: the model has no voltage or phase input, and needs one unit across all profiles.
+  - Connector-0 aggregation. Blocker: the model has no per-connector allocation state to state the sum over connectors.
+  - Offline behaviour. Blocker: the model has no connectivity state.
+  - transactionId matching. Blocker: the model has no transactionId field and no active-transaction input.
+  - OCPP 2.x. Blocker: a different profile structure, and EVerest keeps a separate copy of the calculation.
 
 ## Triage (S4)
 

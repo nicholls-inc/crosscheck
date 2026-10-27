@@ -19,11 +19,17 @@ In scope:
 - `composite(profiles, c, t)`, the limit that applies to connector c at time t, for one connector c ≥ 1 during an active transaction on c, with every profile in one charging rate unit.
 - The helper notions it is defined from. These are profile validity, schedule start, schedule coverage, the limit of a profile at t, the prevailing profile of a purpose, and the Tx or TxDefault result.
 
-Out of scope, and so not specified here:
-- Relative profiles, `numberPhases`, `minChargingRate`, conversion between A and W, and the station-wide composite for connector 0, where limits are summed over connectors.
-- Installing, replacing and deleting profiles (SetChargingProfile, ClearChargingProfile and the replacement rule of 3.13.2). The input is the set of profiles already installed.
-- What a charger does when no profile limits it.
-- Offline behaviour (3.13.6) and anything that happens outside a transaction.
+Not yet reached, and so not specified here. Each item names the property that blocks it and the open question.
+- Relative profiles. Blocker: a Relative schedule starts at the transaction start, and `composite(profiles, c, t)` has no transaction start time input. Open question: how to supply that time to the model and to the system under test.
+- `numberPhases` and `minChargingRate`. Blocker: the model has one scalar limit and no phase count. Open question: how to state a phase-dependent limit, for example during a 3 to 1 phase switch.
+- Conversion between A and W. Blocker: the model needs every profile in one unit and has no voltage or phase input to convert with. Open question: which conversion inputs the oracle takes, and whether tenths arithmetic stays exact through the conversion.
+- The station-wide composite for connector 0, where limits are summed over connectors. Blocker: the model has no per-connector allocation state, so it cannot state the sum. Open question: whether the sum is stated as an upper bound over all connectors, and how the system under test's aggregate is read.
+- Installing, replacing and deleting profiles (SetChargingProfile, ClearChargingProfile and the replacement rule of 3.13.2). Blocker: the model has no lifecycle state, and the input is the set of profiles already installed. Open question: whether a separate lifecycle model covers it.
+- What a charger does when no profile limits it. Blocker: OCPP gives no required behaviour, so there is no rule to model. Open question: whether the Open Charge Alliance intends one (see A7).
+- Offline behaviour (3.13.6) and anything that happens outside a transaction. Blocker: the model has no connectivity state and no case without an active transaction. Open question: how to represent connectivity loss and a missing transaction as inputs.
+- OCPP 2.0.1 and 2.1. Blocker: the profile structure and the section numbering differ, and EVerest keeps a separate copy of the calculation for 2.x. Open question: whether this model's shape extends to the 2.x profile structure.
+
+Amended 2026-10-27: the operator approved replacing the words "out of scope" with "not yet reached", each with its blocking property and open question. The change adds no rule and removes none. D1 to D6, P1 to P8, Q1 to Q4 and A1 to A10 keep their meaning.
 
 Assumed callee contracts: none. The module calls nothing.
 
@@ -112,7 +118,7 @@ Each was resolved by the operator on 2026-10-24. A1 to A3 were the operator's ow
 - A6. Which occurrence applies when a Recurring duration is absent or longer than the recurrence? **The latest one that has started** (D3, D4).
 - A7. What is the composite where no profile prevails? **Nothing, meaning no limit from the spec.** Any implementation value conforms there (Q4).
 - A8. Does 7.13's "startSchedule of the first ChargingSchedulePeriod" mean the first period's startPeriod? **Yes** (P4). OCA note N3.
-- A9. Should a TxProfile with a non-matching transactionId be ignored? **Out of scope.** Precondition P8 excludes transactionId.
+- A9. Should a TxProfile with a non-matching transactionId be ignored? **Not yet reached.** Blocker: the model has no transactionId field and no active-transaction input, and precondition P8 rules transactionId out of the inputs. Open question: how to add the field and the input without changing D6.
 - A10. Does the model compute the minimum, with conformance at or below it? **Yes** (Q4).
 
 ## Notes for the Open Charge Alliance

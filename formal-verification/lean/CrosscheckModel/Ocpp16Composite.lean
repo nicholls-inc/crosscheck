@@ -42,8 +42,9 @@ inductive Purpose where
   | tx
   deriving Repr, DecidableEq
 
-/-- Profile kinds in scope (P3). Relative is out of scope and cannot be
-represented. -/
+/-- Profile kinds the model reaches (P3). Relative is not yet reached and cannot
+be represented. Blocker: a Relative schedule starts at the transaction start,
+and the model has no transaction start time input. -/
 inductive Kind where
   | absolute
   | daily
