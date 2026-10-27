@@ -6,22 +6,24 @@ Reviewed 2026-10-24. The sources are OCPP 1.6 edition 2 FINAL (2017-09-28), as e
 
 ## Verdict summary
 
-| Class | Count | DRT effect |
+This is the reviewer's original table, kept as written. The audit below revised it: exact 20, abstraction 4, approximation 0, mismatch 0, DRT readiness READY. Read the revised table, not this one, for the current state.
+
+| Class (reviewer's original) | Count | DRT effect |
 |---|---|---|
 | exact | 18 | runs, subject to dependency gates and stated preconditions |
 | abstraction | 2 | runs with omitted context held constant |
 | approximation | 2 | skipped, flagged |
 | mismatch | 2 | blocks DRT until resolved |
 
-Overall DRT readiness: **BLOCKED**.
+Reviewer's original verdict: overall DRT readiness **BLOCKED**. Current verdict after the audit and the fixes: **READY**.
 
 Counts include all 24 `def` declarations, including `periodsWellFormed`, `jan1`, `hour`, and `ex1` to `ex5`; types and theorems are assessed separately. Classifications describe each definition's translation of its cited source expression. A locally exact composition does not repair a mismatched or approximate dependency: `scheduleStart → covers → limitAt/candidates → prevailing → purposeLimit/cpMaxResult/txResult → composite` propagates the oracle restriction. No composite DRT is authorized by the exact rows while the mismatch gate is open.
 
-Two root mismatch issues are recorded locally below, as CR-OC16-01 and CR-OC16-02. No remote issue was created: this review is authorized to edit only this document.
+Two root mismatch issues are recorded locally below, as CR-OC16-01 and CR-OC16-02. Both were fixed before DRT ran (see the audit). No remote issue was created: this review was authorized to edit only this document.
 
 ## Pipeline owner's audit of this review (2026-10-24)
 
-The review above was run by an independent model (Codex) and is kept as written. The pipeline owner audited each non-exact verdict and acted as follows. The verdict table below this section's heading is superseded by the revised table here.
+The review above was run by an independent model (Codex) and is kept as written. The pipeline owner audited each non-exact verdict and acted as follows. The verdict summary table above is superseded by the revised table here. Sections below this audit are the reviewer's text as written. Where the audit changed a class, the section heading and a Status line say so. Wording inside those sections that calls a mismatch open, or says it blocks DRT, is the reviewer's original finding and is historical.
 
 | Lean ident | Review verdict | Action | Revised class |
 | --- | --- | --- | --- |
@@ -72,7 +74,9 @@ The reclassification of `candidates` and `txResult` is a judgment by the pipelin
 - **Theorem impact.** Schedule-dependent properties are about the signed clock, not a proof resolving N4 for all implementations.
 - **DRT note.** Normalize calendar timestamps consistently; do not silently compare leap-second-counting elapsed seconds with these integers. No rounding of dates or limits is authorized.
 
-### scheduleStart — class: mismatch
+### scheduleStart — reviewer's original class: mismatch (revised: exact)
+
+- **Status.** CR-OC16-01 was fixed before DRT ran: the model gives an Absolute profile its startSchedule unconditionally, and the signed D4 was restored. Revised class exact, see the audit table. The text below is the reviewer's original finding.
 
 - **Source.** §§7.9, 7.13 and 7.37, `raw.txt:5389-5395,5501-5508,6305-6317`; informal:40,111–112 (D3/A5/A6). Lean:101–106.
 - **Behaviour.** For Recurring schedules, guarded subtraction and division compute exactly the latest nonnegative recurrence index, including restart instants. However the pre-start guard is applied to Absolute profiles too. D3 gives an Absolute profile its fixed startSchedule without that exception; A5 only adds the exception for Recurring profiles.
@@ -99,7 +103,9 @@ The reclassification of `candidates` and `txResult` is a judgment by the pipelin
 - **Theorem impact.** q1/q2 speak about this model lookup; i1/i3 remain algebraic even on malformed periods. I2 intentionally handles a prevailing TxProfile returning none. No property verifies period sorting at runtime.
 - **DRT note.** P4 is mandatory. Do not sort or repair malformed SUT inputs and then claim this review classified their behavior.
 
-### candidates — class: approximation
+### candidates — reviewer's original class: approximation (revised: abstraction)
+
+- **Status.** The operator approved the reclassification on 2026-10-27. DRT tests `candidates` against signed resolution A1, and a divergence there is reported as a spec-reading gap, never as an EVerest bug. The DRT note below (flag and skip) is the reviewer's original instruction and was not followed. The text below is the reviewer's original finding.
 
 - **Source.** §3.13.2, `raw.txt:1217-1219,1233-1234`; informal:43,107,122 (D6/A1/N1). Lean:129–131.
 - **Behaviour.** Exact filter for the signed D6: purpose, connector applicability, validity and coverage. The normative prevailing sentence names validity via validFrom/validTo; the model adds coverage, following signed A1 and the duration/fallback note.
@@ -144,7 +150,9 @@ The reclassification of `candidates` and `txResult` is a judgment by the pipelin
 - **Theorem impact.** q1 is reflexive; i1 bounds composite against this selected result, not against every station profile or total energy flow.
 - **DRT note.** Inherits prevailing's restrictions. Hold other-connector allocation outside this pointwise comparison.
 
-### txResult — class: approximation
+### txResult — reviewer's original class: approximation (revised: abstraction)
+
+- **Status.** The operator approved the reclassification on 2026-10-27. DRT tests `txResult` against signed resolution A2, and a divergence there is reported as a spec-reading gap, never as an EVerest bug. The DRT note below (flag and skip) is the reviewer's original instruction and was not followed. The text below is the reviewer's original finding.
 
 - **Source.** §3.13.1, `raw.txt:1200-1209`; §7.10, `raw.txt:5426-5430`; informal:63,108 (Q2/A2). Lean:162–165.
 - **Behaviour.** Exact signed Q2: branch on the existence of a prevailing TxProfile, return its limit even if none, and use TxDefault only if no TxProfile prevails. Signed A2 limits the override to covered instants.
@@ -189,7 +197,9 @@ The reclassification of `candidates` and `txResult` is a judgment by the pipelin
 - **Theorem impact.** No q/i theorem assumes this predicate; therefore those proofs do not establish it for their inputs.
 - **DRT note.** Check every generated profile, including profiles not applicable to c.
 
-### WellFormed — class: mismatch
+### WellFormed — reviewer's original class: mismatch (revised: exact)
+
+- **Status.** CR-OC16-02 was fixed before DRT ran: P6 is stated over list positions with a local `pairwise`, so duplicate entries violate it. Revised class exact, see the audit table. The text below is the reviewer's original finding.
 
 - **Source.** §§3.13.1–3.13.2 and 7.8–7.14, `raw.txt:1186-1222,5298-5306,5318-5326,5491-5526,5562-5570`; informal:47–58 (P1–P8). Lean:193–203.
 - **Behaviour.** Checks positive target connector, purpose connector restrictions, P4, positive duration, same-purpose/same-connector unequal-record stack uniqueness, and absence of default profiles on both 0 and c. It is not a complete encoding of P1–P8 over installed-profile lists.
@@ -352,9 +362,11 @@ No q1–q3/i1–i4 statement was found to assert a different signed property. No
 
 ## Mismatch issues opened
 
-The following are local tracking issues in this document. They are open; no repair is proposed or performed here.
+These are the reviewer's local tracking issues, kept as written. Both are now fixed, as the status line under each heading says. The reviewer proposed and performed no repair.
 
 ### CR-OC16-01 — Absolute pre-start scheduleStart differs from signed D3
+
+- **Status.** Fixed before DRT ran. The model applies the pre-start guard only to Recurring profiles, and the signed D4 regained its "s ≤ t" condition, confirmed by the operator on 2026-10-27. Class of `scheduleStart` is now exact.
 
 - **Lean ident.** `scheduleStart`, Lean:101–106; transitive consumers `covers`, `limitAt`, `candidates`, `prevailing`, `purposeLimit`, `cpMaxResult`, `txResult`, `composite`.
 - **Source.** §§7.9/7.13, `raw.txt:5389-5395,5501-5508`; signed D3/D4/A5, informal:40–41,111.
@@ -365,6 +377,8 @@ The following are local tracking issues in this document. They are open; no repa
 
 ### CR-OC16-02 — WellFormed does not enforce installed-list P6 multiplicity
 
+- **Status.** Fixed before DRT ran. P6 is stated over list positions with a local `pairwise`, so equal duplicate entries violate it. Class of `WellFormed` is now exact.
+
 - **Lean ident.** `WellFormed`, Lean:199–201; misleading no-ties comment at 133–134.
 - **Source.** §3.13.2 replacement/conflict rule, `raw.txt:1220-1222`; §7.8 identifier, `raw.txt:5290-5296`; informal:28,56 (P6).
 - **Disagreement.** The predicate only constrains unequal Profile values. As a predicate over `List Profile`, it accepts equal duplicate occurrences with the same purpose/stack/connector. Distinct raw installed IDs can be erased into equal values. Signed P6 says no two applicable installed profiles share that key. If lists merely represent deduplicated mathematical sets, that interpretation must be stated and enforced; it is not a theorem supplied by WellFormed. Equal duplicates have no observable limit difference, so this is a precondition/traceability mismatch rather than a witnessed composite-limit bug.
@@ -374,13 +388,13 @@ The following are local tracking issues in this document. They are open; no repa
 
 ## Open questions for /drt-oracle
 
-- Resolve both mismatch issues before invoking DRT. This review did not run differential tests or change the Lean model/spec/SUT.
-- A1 candidates and A2 txResult are flagged approximation regions relative to unsettled official wording. The signed resolutions are explicit and faithfully encoded, but exact official conformance is not established. These regions require flagged skips, not silent skips or unqualified bug reports.
+- Resolve both mismatch issues before invoking DRT. Done: both were fixed before DRT ran. This review did not run differential tests or change the Lean model/spec/SUT.
+- A1 candidates and A2 txResult are flagged approximation regions relative to unsettled official wording. The signed resolutions are explicit and faithfully encoded, but exact official conformance is not established. The reviewer asked for flagged skips. The operator approved a different handling on 2026-10-27: these regions are tested against A1 and A2 and any divergence is reported as a spec-reading gap, not an EVerest bug.
 - Recurrence clock and missing validity bounds require fixed context: calendar-second encoding, installed snapshots, active transaction, same units, no transactionId. Fractional or pre-epoch dates must be rejected rather than rounded. Precision/tenths conversion must preserve decimals exactly.
 - Period validity and uniqueness are cross-definition contracts. Test generation must validate all P1–P8 before field erasure; `WellFormed` alone is insufficient. Preserve list order only as encoding, not an authorized tie-resolution rule.
 - A future EVerest divergence around duration fallback, whole-transaction override, connector-0 defaults, or leap-second conversion may reflect the already recorded wording questions (informal N1/N2/N4), not a demonstrated EVerest defect. No EVerest behavior was classified or newly established by this review.
 - Use Q4's inequality rather than exact equality for implementation conformance, including no model bound. Independently validate the SUT's returned time coverage/unit representation. A conforming smaller value does not test equality with the maximal oracle envelope.
-- The direct helper source pair missing from D3 for Absolute pre-start queries must be resolved before using any generated witness in that region as evidence against the SUT.
+- The direct helper source pair missing from D3 for Absolute pre-start queries must be resolved before using any generated witness in that region as evidence against the SUT. Resolved by the CR-OC16-01 fix.
 
 ## Verification Checklist
 
@@ -390,7 +404,8 @@ The following are local tracking issues in this document. They are open; no repa
 - [x] Every classification cites its rubric step and source section/extraction lines.
 - [x] Concrete recurrence, duration, validity, malformed-period, connector, tie and missing-Tx-period cases were worked by hand; selected Lean results were checked without editing the model.
 - [x] Theorem impact assessed for remaining sorry theorem i4 and all other requested named properties.
-- [x] Verdict counts and overall BLOCKED readiness emitted.
+- [x] Verdict counts and overall BLOCKED readiness emitted (the reviewer's original verdict; revised to READY by the audit).
 - [x] Both mismatch issues opened as local records in this document, with witnesses and owners; no external issue creation claimed.
 - [x] Pipeline stopped; no /drt-oracle invocation or handoff.
-- [ ] All mismatches resolved: CR-OC16-01 and CR-OC16-02 remain open.
+- [x] All mismatches resolved. The reviewer left CR-OC16-01 and CR-OC16-02 open. Both were fixed before DRT ran (see the audit), and the revised counts are exact 20, abstraction 4, approximation 0, mismatch 0.
+- [x] The reclassification of `candidates` and `txResult` to abstraction was approved by the operator on 2026-10-27.
