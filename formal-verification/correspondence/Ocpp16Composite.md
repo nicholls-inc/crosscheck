@@ -32,7 +32,7 @@ The review above was run by an independent model (Codex) and is kept as written.
 
 Revised counts: exact 20, abstraction 4, approximation 0, mismatch 0. Overall DRT readiness: **READY**, with divergences in `candidates` and `txResult` triaged as spec-reading gaps first. The rebuilt model passes all five worked-example guards, and `check_ocpp16_composite.sh` passes for q1 to q3, i1 to i3 and the lemma.
 
-The reclassification of `candidates` and `txResult` is a judgment by the pipeline owner against the reviewer's verdict. The operator may restore the reviewer's verdict, which would make DRT skip the composite.
+The reclassification of `candidates` and `txResult` is a judgment by the pipeline owner against the reviewer's verdict. The operator approved it on 2026-10-27: DRT tests `candidates` and `txResult` against signed resolutions A1 and A2, and any divergence there is reported as a spec-reading gap, never as an EVerest bug.
 
 ## Prerequisite checks and source pairing
 
