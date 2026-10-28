@@ -42,7 +42,7 @@
   --label-size: 13.5px;
   --label-track: 0.01em;
 
-  --gutter: clamp(16px, 3.125vw, 48px);
+  --gutter: clamp(20px, 7vw, 128px);
   --aside: clamp(300px, 26.7vw, 410px);
   --col-gap: 48px;
   --band-pad: 28px;
@@ -805,6 +805,12 @@ pre code { font-size: inherit; }
 .entry-body { padding: 10px 0 30px; }
 .entry-body > .aside-note { margin-top: 0; margin-bottom: 18px; max-width: 65ch; }
 .block[hidden] { display: none; }
+/* Without JavaScript the filters cannot follow the reader, so each entry links back to them */
+.back-to-filters { margin-top: 18px; }
+.back-to-filters a { font: 14px/22px var(--sans); letter-spacing: var(--label-track); text-underline-offset: 5px; }
+.js .back-to-filters { display: none; }
+/* With JavaScript the filters stay at the top of the screen; the list below is always tall enough for that */
+.js .is-filtering .evidence { min-height: 100vh; }
 .js .entry[open] .entry-body { animation: entry-in 360ms cubic-bezier(.16,1,.3,1) both; }
 @keyframes entry-in { from { opacity: 0; transform: translateY(4px); } }
 

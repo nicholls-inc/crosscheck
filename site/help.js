@@ -4,7 +4,6 @@
 
 document.documentElement.classList.add("js");
 
-const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* Help terms */
 
@@ -156,6 +155,7 @@ if (blocks.length && answer) {
     }
     for (const button of strengthButtons) button.setAttribute("aria-pressed", String(button.dataset.strength === filter.strength));
 
+    document.body.classList.toggle("is-filtering", Boolean(filter.question || filter.strength));
     const marked = filter.strength ? ` marked ${strengthName(filter.strength)}` : "";
     answer.hidden = !filter.question;
     if (filter.question) {
@@ -170,14 +170,22 @@ if (blocks.length && answer) {
     status.textContent = !filter.question && filter.strength ? `Showing ${pieces(shown)} of evidence${marked}, out of ${blocks.length}.` : "";
   }
 
+  // Every filter change leaves the filters where they were: their top edge at the top of the
+  // screen, with the answer and evidence below. Stacked on a phone they fill the screen,
+  // so there the view anchors to what the filter produced instead.
+  const filters = document.getElementById("questions");
+  const wide = window.matchMedia("(min-width: 861px)");
+  function anchor() {
+    const target = wide.matches ? filters : (filter.question ? answer : document.getElementById("evidence"));
+    window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
+  }
+
   function choose(question, { push = true, scroll = true } = {}) {
     filter.question = question;
     apply();
     if (push) history.pushState(null, "", question ? `#q-${question}` : location.pathname + location.search);
-    if (question && scroll) {
-      title.focus({ preventScroll: true });
-      answer.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-    }
+    if (question) title.focus({ preventScroll: true });
+    if (scroll) anchor();
   }
 
   for (const link of questionLinks) {
@@ -191,13 +199,13 @@ if (blocks.length && answer) {
     button.addEventListener("click", () => {
       filter.strength = filter.strength === button.dataset.strength ? "" : button.dataset.strength;
       apply();
+      anchor();
     });
   }
   showAll.addEventListener("click", () => {
-    if (showAll.textContent === "Clear the strength filter") { filter.strength = ""; apply(); return; }
     filter.strength = "";
-    choose("", { scroll: false });
-    document.getElementById("questions").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+    if (showAll.textContent === "Clear the strength filter") { apply(); anchor(); return; }
+    choose("");
   });
 
   // A link into the page clears any filter hiding its target, then opens it.

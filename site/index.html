@@ -37,11 +37,20 @@
       <p class="tab-link"><a href="everest-study.json" download>Download the publication record (JSON)</a></p>
     </div>
   </details>
-  <details class="section" id="panel-charger">
-    <summary><span class="section-name">Charger</span><span class="section-first"><button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button> 1.6 is a shared set of rules for how charging stations talk to the software that manages them.</span></summary>
+  <details class="section" id="panel-everest">
+    <summary><span class="section-name">EVerest</span><span class="section-first">EVerest is open-source software for electric-vehicle chargers: a full software stack for running a charging station.</span></summary>
     <div class="section-more">
-      <p>Part of it says how a charger combines its schedules into one limit. A schedule is a list of periods, each with a limit in amps or watts, starting at an offset from the schedule’s start. A charger can hold charger-wide, default and transaction schedules at once. Daily and weekly schedules repeat.</p>
-      <p>EVerest is charging-station software. The study tested its unmodified C++ scheduling code at revision <code>dd696165</code>.</p>
+      <p>Its own documentation calls it “a full-stack environment for EV-charging”. It is a Linux Foundation Energy project, started by Pionix GmbH and released under the Apache 2.0 licence. Among its modules is support for OCPP, the protocol described in the next line.</p>
+      <p>The study tested one part of it: EVerest’s unmodified C++ code that works out a charger’s power limit from its charging schedules, at source revision <code>dd696165</code>.</p>
+      <p class="tab-link"><a href="https://everest.github.io/nightly/" target="_blank" rel="noopener">Read the EVerest documentation<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-ocpp">
+    <summary><span class="section-name">OCPP</span><span class="section-first">OCPP, the Open Charge Point Protocol, is the open standard chargers use to talk to the software that manages a charging network.</span></summary>
+    <div class="section-more">
+      <p>The Open Charge Alliance publishes it and describes it as “the global open communication protocol between charging stations and charging management systems”. Version 1.6, released in 2015, is widely implemented. It includes smart charging: the network can send a charger schedules that limit how much power it gives.</p>
+      <p>A schedule is a list of periods, each with a limit in amps or watts, starting at an offset from the schedule’s start. A charger can hold charger-wide, default and transaction schedules at once, and must combine them into one limit. Daily and weekly schedules repeat. This study checks that combining, under version 1.6.</p>
+      <p class="tab-link"><a href="https://openchargealliance.org/protocols/open-charge-point-protocol/" target="_blank" rel="noopener">Read about OCPP from the Open Charge Alliance<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     </div>
   </details>
   <details class="section" id="panel-finding">
@@ -142,6 +151,7 @@
 </dl></figure>
 <!-- /publication:witness -->
     <p class="study-prose">The input has one daily default profile, no duration, and two periods: 9,249.9 W from offset 0, then 6,543.6 W from offset 40,500 seconds. Its query window begins at 03:00:00 UTC on 13 August 2026 and lasts 24 hours.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 <span class="q-anchor" id="q-proof"></span>
@@ -152,6 +162,7 @@
     <p class="study-prose">The signed interpretation is that a daily schedule restarts at the clock time in its <code>startSchedule</code>. The study records that the standard’s wording also admits another reading.</p>
     <p class="study-prose">EVerest calculates recurrence using elapsed UTC seconds, which include leap seconds. The reference program follows the signed clock-time reading.</p>
     <p class="study-prose">A diagnostic rerun shifts older anchors forward by the leap seconds in between, and all 2,000 cases then pass. That changes the inputs to isolate the cause. It is not a fix to EVerest.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
@@ -166,6 +177,7 @@
 <table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference program</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">About the Lean model, not a proof of EVerest&#39;s implementation.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 pass; 57,304 instants with a model limit agree within tolerance, and neither program gives a limit at the other 10,226 instants.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn, 1,073 fail, as reported. The report also records 1,081 instants with an extra EVerest limit; see the classification caveat.</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Unfinished</td><td data-label="Result and boundary">No proof claimed.</td></tr></tbody></table>
 <p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>
 <!-- /publication:claims -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 <details class="entry block" id="proved" data-q="proof" data-strength="proved unreached">
@@ -176,6 +188,7 @@
 <ul class="study-list"><li>The combined limit is never above the charger-wide limit.</li><li>It is never above the applicable transaction limit.</li><li>While a transaction&#39;s own schedule applies, changing default schedules does not change the limit.</li></ul><p class="evidence-note">Unfinished: Adding a lower-priority schedule that does not apply leaves the limit unchanged (I4).</p>
 <!-- /publication:properties -->
     <p class="evidence-note">The proof check names the completed theorems and rejects dependencies on <code>sorryAx</code> or non-standard axioms. The fourth, unfinished statement is not counted as proved.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
@@ -191,6 +204,7 @@
 <p class="evidence-note">The pinned report is internally inconsistent about extra limits: its updated Q4 header calls an EVerest limit where the model has none a warning, while a retained note says these instants were unclassified. Its counters record 1,081 such instants in the older run. The totals here are the report&#39;s published totals, not a reconstruction or a new run. A pass is not a general claim of exact agreement.</p>
 <!-- /publication:results -->
     <p class="evidence-note">The mutation self-test deliberately changes stack selection to check that the harness detects differences. It is not another production defect.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 <details class="entry block" id="instants" data-q="tested" data-strength="tested">
@@ -201,6 +215,7 @@
 <table class="ledger"><caption>Agreement at individual instants</caption><thead><tr><th scope="col">Counter</th><th scope="col">2017–2025 anchors</th><th scope="col">2010–2016 anchors</th></tr></thead><tbody><tr><td data-label="Counter">Instants compared</td><td data-label="2017–2025 anchors">67,530</td><td data-label="2010–2016 anchors">78,263</td></tr><tr><td data-label="Counter">Model gives a limit</td><td data-label="2017–2025 anchors">57,304</td><td data-label="2010–2016 anchors">66,541</td></tr><tr><td data-label="Counter">EVerest agrees within tolerance</td><td data-label="2017–2025 anchors">57,304</td><td data-label="2010–2016 anchors">56,902</td></tr><tr><td data-label="Counter">EVerest below the model</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">4,331</td></tr><tr><td data-label="Counter">EVerest above, or missing a required limit</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">5,308</td></tr><tr><td data-label="Counter">EVerest gives a limit; model gives none</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">1,081</td></tr><tr><td data-label="Counter">Neither gives a limit</td><td data-label="2017–2025 anchors">10,226</td><td data-label="2010–2016 anchors">10,641</td></tr><tr><td data-label="Counter">Cases with no model limit anywhere</td><td data-label="2017–2025 anchors">55</td><td data-label="2010–2016 anchors">64</td></tr></tbody></table>
 <!-- /publication:counters -->
     <p class="evidence-note">The 55 recent-anchor cases with no model limit anywhere are vacuous passes.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
@@ -219,6 +234,7 @@
 <div><dt>The reported result</dt><dd>The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation.</dd></div></dl>
 <p class="evidence-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">signed interpretation decisions<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">correspondence review with owner decisions<span class="visually-hidden"> (opens in a new tab)</span></a> record the human judgments behind this account.</p>
 <!-- /publication:contribution -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 <details class="entry block" id="judgment" data-q="people proof" data-strength="decided">
@@ -228,6 +244,7 @@
 <!-- publication:decisions -->
 <ul class="study-list"><li>The owner approved interpretations A1 and A2 and reclassified two AI correspondence-review findings as abstractions rather than approximations.</li><li>The owner confirmed restoring the missing s ≤ t condition in D4 on 2026-10-27.</li><li>Q4 treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here.</li></ul>
 <!-- /publication:decisions -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 <span class="q-anchor" id="q-unchecked"></span>
@@ -238,6 +255,7 @@
 <!-- publication:choices -->
 <dl class="contribution"><div><dt>Separate the model from the production implementation</dt><dd>A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation. <span class="decision-boundary">A proof about that model does not establish correspondence with all production behavior.</span></dd></div><div><dt>Check the moments where schedules change</dt><dd>The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible. <span class="decision-boundary">The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs.</span></dd></div><div><dt>Record interpretation decisions before judging differences</dt><dd>The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions. <span class="decision-boundary">A difference caused by a disputed reading of the standard must remain distinct from an implementation defect.</span></dd></div><div><dt>Publish the limits beside the result</dt><dd>The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs. <span class="decision-boundary">The leap-second input shift is a diagnostic experiment, not an upstream repair.</span></dd></div></dl>
 <!-- /publication:choices -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
@@ -252,6 +270,7 @@
 <ul class="study-list"><li>Lean v4.28.0 and its standard axioms propext, Classical.choice and Quot.sound for the stated completed proofs.</li><li>The reviewed interpretation of OCPP 1.6 edition 2 and the Lean model&#39;s correspondence to it.</li><li>The C++ compiler, driver, copied installation/orchestration glue, two shim headers, Python harness, JSON adapter and model runner.</li><li>The operating system timezone database read by the driver; its leap-second table must contain exactly the three leap seconds since 2010 (2012-06-30, 2015-06-30, 2016-12-31).</li></ul>
 <!-- /publication:trust -->
     <p class="evidence-note">The driver compiles unmodified EVerest scheduling code, but supplies its own installation and orchestration glue and two shim headers. Those are part of what the comparison trusts.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
@@ -264,6 +283,7 @@
 <!-- publication:limits -->
 <p>At most 2 charger-wide, 3 default and 2 transaction profiles, up to 4 periods per profile, 15-minute offsets, 24- or 48-hour windows in 2026, on connector 1. Absolute, daily and weekly schedules are generated. Each case samples transition instants from either program and one second either side.</p><p class="evidence-note">Default profiles on connectors 0 and 1 together are not generated: the signed spec leaves their interaction unresolved. The recurrence wording also admits another interpretation; the study records it as OCA note N4.</p><table class="ledger"><caption>Not yet reached by this study</caption><thead><tr><th scope="col">Behavior</th><th scope="col">Blocking property</th><th scope="col">Open modeling question</th></tr></thead><tbody><tr><td data-label="Behavior">Relative profiles</td><td data-label="Blocking property">No transaction start time in the model</td><td data-label="Open modeling question">How should transaction-relative time enter the model?</td></tr><tr><td data-label="Behavior">Phases and minimum charging rate</td><td data-label="Blocking property">One scalar limit and no phase count</td><td data-label="Open modeling question">How should phase-dependent limits be represented?</td></tr><tr><td data-label="Behavior">Conversion between amps and watts</td><td data-label="Blocking property">No voltage or phase inputs</td><td data-label="Open modeling question">What assumptions justify conversion between units?</td></tr><tr><td data-label="Behavior">Connector-0 aggregate</td><td data-label="Blocking property">No allocation state across connectors</td><td data-label="Open modeling question">How should the station-wide sum be constrained?</td></tr><tr><td data-label="Behavior">Offline behavior</td><td data-label="Blocking property">No connectivity state</td><td data-label="Open modeling question">How should connectivity change profile selection?</td></tr><tr><td data-label="Behavior">Transaction ID matching</td><td data-label="Blocking property">No transaction ID field or active-transaction input</td><td data-label="Open modeling question">How should transaction identity constrain applicability?</td></tr><tr><td data-label="Behavior">OCPP 2.x</td><td data-label="Blocking property">Different profile structure and separate production code</td><td data-label="Open modeling question">Which rules and model changes are needed for OCPP 2.x?</td></tr></tbody></table>
 <!-- /publication:limits -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
@@ -287,6 +307,7 @@
 <span class="cmd">python3 formal-verification/<wbr>tests/<wbr>ocpp16_composite/<wbr>drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024 <span class="flag">--old-anchors</span> <span class="flag">--leap-correct</span></span></code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
 <p class="evidence-note">The older-anchor run is expected to report failures; a nonzero exit is a reproduced finding, not an installation failure. --leap-correct changes input anchors for diagnosis and does not fix EVerest. A run writes drt_report_latest.md; preserve the pinned historical report.</p>
 <!-- /publication:replay -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 <details class="entry block" id="sources" data-q="run depends">
@@ -302,6 +323,7 @@
 <!-- publication:upstream -->
 <p>The pinned study contains a draft EVerest issue awaiting human review. It records no upstream filing. This website does not submit one.</p>
 <!-- /publication:upstream -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
 </div></div>
