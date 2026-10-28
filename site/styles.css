@@ -473,6 +473,9 @@ pre code { font-size: inherit; }
 .glossary dt { color: var(--ink); font-weight: 500; font-size: 17px; }
 .glossary dfn { font-style: normal; }
 .glossary dd { margin-top: 3px; font-size: 17px; line-height: 24px; }
+/* The longer account under a definition; tooltips use only the first line */
+.glossary dd.more { margin-top: 8px; color: var(--muted); }
+.glossary dd.more a { white-space: nowrap; }
 
 .colophon {
   display: grid;

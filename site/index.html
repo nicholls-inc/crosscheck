@@ -31,27 +31,11 @@
   <details class="section" id="panel-about">
     <summary><span class="section-name">About</span><span class="section-first">A study of EVerest, open-source software that runs electric-vehicle chargers, and of how it follows OCPP, the standard chargers use to talk to their network.</span></summary>
     <div class="section-more">
-      <p><strong>EVerest</strong> is a full software stack for running a charging station, maintained as a Linux Foundation Energy project. <strong>OCPP</strong>, the Open Charge Point Protocol, is the open standard a charger uses to talk to the software that manages its charging network. Version 1.6, the one checked here, lets the network send a charger schedules that limit how much power it gives, and the charger must combine them into one limit at each moment.</p>
+      <p><strong><button type="button" class="term" data-term="everest" aria-describedby="def-everest">EVerest</button></strong> is a full software stack for running a charging station, maintained as a Linux Foundation Energy project. <strong><button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button></strong>, the Open Charge Point Protocol, is the open standard a charger uses to talk to the software that manages its charging network. Version 1.6, the one checked here, lets the network send a charger schedules that limit how much power it gives, and the charger must combine them into one limit at each moment.</p>
       <p>The study compared EVerest’s code for that combining with a <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>, and found one difference: EVerest restarts a daily schedule one second early. That holds under the study’s signed reading of the standard and in its smallest example; the drift grows by a second for each <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button> since a schedule first started. The study rates it low severity.</p>
-      <p>Pick a question below to see a short answer and only the evidence behind it. Each piece of evidence carries its strength: proved, tested, decided by a person, assumed, or unfinished and not yet reached. The next two lines say more about EVerest and OCPP, with links to their own documentation.</p>
+      <p>Pick a question below to see a short answer and only the evidence behind it. Each piece of evidence carries its strength: proved, tested, decided by a person, assumed, or unfinished and not yet reached. The <a href="glossary.html#everest">glossary</a> says more about EVerest and OCPP, with links to their own documentation.</p>
       <p>It is a worked example of the argument in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>. By <a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls<span class="visually-hidden"> (opens in a new tab)</span></a>, who directed the study and built the tool used to run it.</p>
       <p class="tab-link"><a href="everest-study.json" download>Download the publication record (JSON)</a></p>
-    </div>
-  </details>
-  <details class="section" id="panel-everest">
-    <summary><span class="section-name">EVerest</span><span class="section-first">EVerest is open-source software for electric-vehicle chargers: a full software stack for running a charging station.</span></summary>
-    <div class="section-more">
-      <p>Its own documentation calls it “a full-stack environment for EV-charging”. It is a Linux Foundation Energy project, started by Pionix GmbH and released under the Apache 2.0 licence. Among its modules is support for OCPP, the protocol described in the next line.</p>
-      <p>The study tested one part of it: EVerest’s unmodified C++ code that works out a charger’s power limit from its charging schedules, at source revision <code>dd696165</code>.</p>
-      <p class="tab-link"><a href="https://everest.github.io/nightly/" target="_blank" rel="noopener">Read the EVerest documentation<span class="visually-hidden"> (opens in a new tab)</span></a></p>
-    </div>
-  </details>
-  <details class="section" id="panel-ocpp">
-    <summary><span class="section-name">OCPP</span><span class="section-first">OCPP, the Open Charge Point Protocol, is the open standard chargers use to talk to the software that manages a charging network.</span></summary>
-    <div class="section-more">
-      <p>The Open Charge Alliance publishes it and describes it as “the global open communication protocol between charging stations and charging management systems”. Version 1.6, released in 2015, is widely implemented. It includes smart charging: the network can send a charger schedules that limit how much power it gives.</p>
-      <p>A schedule is a list of periods, each with a limit in amps or watts, starting at an offset from the schedule’s start. A charger can hold charger-wide, default and transaction schedules at once, and must combine them into one limit. Daily and weekly schedules repeat. This study checks that combining, under version 1.6.</p>
-      <p class="tab-link"><a href="https://openchargealliance.org/protocols/open-charge-point-protocol/" target="_blank" rel="noopener">Read about OCPP from the Open Charge Alliance<span class="visually-hidden"> (opens in a new tab)</span></a></p>
     </div>
   </details>
   <details class="section" id="panel-finding">
@@ -348,6 +332,7 @@
   <p id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</p>
   <p id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</p>
   <p id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</p>
+  <p id="def-everest">Open-source software for running an electric-vehicle charging station, maintained as a Linux Foundation Energy project. This study tested its code for combining charging schedules.</p>
   <p id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</p>
   <p id="def-cgv">Contract graph verifier: a tool that follows data through a Python project and checks that each step keeps the data rules declared for it, such as a field’s length limit.</p>
   <p id="def-byfuglien">The name of Crosscheck’s agent for checking code. It picks the right proof, test or review step for the job you describe.</p>
