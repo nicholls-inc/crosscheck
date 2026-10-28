@@ -228,7 +228,7 @@ A near-monochrome paper-and-ink palette with one link blue and one highlighter y
 - **Mono** (IBM Plex Mono 400, 13.5px/23px): command blocks; inline code at 0.82em.
 
 ### Named Rules
-**The Serif Carries It Rule.** Prose, headings, table cells and numbers are all Newsreader. The sans names things the reader acts on or scans by: navigation, the button, table headers and data labels. It never sets a heading or a paragraph, and it always carries +0.01em tracking at these sizes.
+**The Serif Carries It Rule.** Prose, headings, table cells and numbers are all Newsreader. The sans names things the reader acts on or scans by: navigation, the button, standalone links, table headers and data labels. It never sets a heading or a paragraph, and it always carries +0.01em tracking at these sizes.
 
 **The Narrow Prose Rule.** A wide page does not mean wide prose. Running text stays near 45 to 60 characters per line; only tables use the full evidence column.
 
@@ -265,6 +265,7 @@ Quiet and decisive; there is exactly one filled button style.
 
 ### Links
 - Record Blue, 1px underline at 4px offset, underline at 70% strength; hover to Deep Record Blue with a full-strength underline, 120ms ease-out.
+- Standalone links (the link beside the button, stacked and source link lists, step and driver links, footer links) are Public Sans 15px/22px with +0.01em tracking and a 5px underline offset. Links inside a sentence stay in the surrounding Newsreader.
 - Masthead links are ink-coloured Public Sans 14px with a grey underline at 6px offset, turning blue on hover.
 
 ### Help Terms and Tips (signature)
