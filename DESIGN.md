@@ -25,6 +25,12 @@ typography:
     lineHeight: "47px"
     letterSpacing: "-0.02em"
     fontVariation: "\"opsz\" 60"
+  wordmark:
+    fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
+    fontSize: "28px"
+    fontWeight: 400
+    lineHeight: "34px"
+    letterSpacing: "-0.012em"
   reading:
     fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
     fontSize: "46px"
@@ -38,13 +44,13 @@ typography:
     fontSize: "32px"
     fontWeight: 400
     lineHeight: "38px"
-    letterSpacing: "-0.03em"
+    letterSpacing: "-0.022em"
     fontVariation: "\"opsz\" 48"
   title:
     fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
-    fontSize: "25px"
+    fontSize: "24px"
     fontWeight: 400
-    lineHeight: "32px"
+    lineHeight: "31px"
     letterSpacing: "-0.012em"
     fontVariation: "\"opsz\" 36"
   body:
@@ -73,11 +79,19 @@ typography:
     fontSize: "13.5px"
     fontWeight: 500
     lineHeight: "22px"
+    letterSpacing: "0.01em"
+  button:
+    fontFamily: "Public Sans, Helvetica Neue, Arial, sans-serif"
+    fontSize: "15px"
+    fontWeight: 500
+    lineHeight: "20px"
+    letterSpacing: "0.01em"
   nav:
     fontFamily: "Public Sans, Helvetica Neue, Arial, sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: "20px"
+    letterSpacing: "0.01em"
   mono:
     fontFamily: "IBM Plex Mono, ui-monospace, Menlo, monospace"
     fontSize: "13.5px"
@@ -98,7 +112,7 @@ components:
   button-primary:
     backgroundColor: "{colors.button}"
     textColor: "{colors.button-label}"
-    typography: "{typography.body}"
+    typography: "{typography.button}"
     rounded: "{rounded.button}"
     padding: "0 22px"
     height: "42px"
@@ -156,7 +170,7 @@ Density is moderate: generous enough to read, tight enough that the introduction
 
 **Key Characteristics:**
 - Warm off-white paper ground with near-black ink and greys tuned slightly cool.
-- Newsreader for reading, headings and data; Public Sans only for navigation and small data labels; IBM Plex Mono only for commands and identifiers.
+- Newsreader for reading, headings and data; Public Sans only for navigation, the button and table labels; IBM Plex Mono only for commands and identifiers.
 - Bands: a narrow summary column beside a wide evidence column, each band closed by a 1px rule.
 - Ruled ledger tables with tabular numerals as the primary evidence form.
 - One highlighter accent, used on a single finding per view.
@@ -201,18 +215,20 @@ A near-monochrome paper-and-ink palette with one link blue and one highlighter y
 ### Hierarchy
 - **Display** (400, 40px/47px, -0.02em, opsz 60): the page title only, centred on desktop. 36px at 860px and below, 32px left-aligned at 640px and below.
 - **Reading** (400, 46px/52px, tabular lining numerals): measured values in the witness figure. 38px on narrow screens.
-- **Headline** (400, 32px/38px, -0.03em, opsz 48): band headings. The case-study name runs slightly larger (34px/40px). 28px on phones.
-- **Title** (400, 25px/32px, opsz 36): the evidence heading above a ledger; table captions run at 22px/30px.
+- **Wordmark** (400, 28px/34px, -0.012em): the masthead brand; 22px in the footer.
+- **Headline** (400, 32px/38px, -0.022em, opsz 48): every band heading, the case-study name included. 28px on phones.
+- **Title** (400, 24px/31px, opsz 36): the evidence heading above a ledger and every table caption.
 - **Body** (380, 19px/26px): prose. Introduction columns are capped near 430px, roughly 50 to 60 characters. 18px on phones.
-- **Body note** (380, 17.5px/25px): notes, scope statements, figure captions, capped at 36ch to 78ch depending on context.
-- **Table** (380, 17px/24px, tabular lining numerals): ledger rows; headers at 500 in ink.
+- **Body note** (380, 17.5px/25px): notes, scope statements, figure captions, source links, capped at 36ch to 72ch depending on context.
+- **Table** (380, 17px/24px, tabular lining numerals): ledger rows, glossary entries, and the Graphite explanations under readings and step tables.
 - **Tip** (400, 15.5px/22px): help explanations.
-- **Label** (Public Sans 500, 13.5px/22px): column labels in definition lists, claim-table row headers, footer heading. Sentence case, no tracking.
-- **Nav** (Public Sans 400, 14px/20px): masthead links.
+- **Label** (Public Sans 500, 13.5px/22px, +0.01em): every table header (column and row), the Strength column, witness labels, the copy control and its status, the footer heading. Sentence case. Mobile row labels run at 13px in Graphite.
+- **Button** (Public Sans 500, 15px/20px, +0.01em): the filled button label. Public Sans runs large beside Newsreader, so 15px sits level with the 19px serif link beside it.
+- **Nav** (Public Sans 400, 14px/20px, +0.01em): masthead links.
 - **Mono** (IBM Plex Mono 400, 13.5px/23px): command blocks; inline code at 0.82em.
 
 ### Named Rules
-**The Serif Carries It Rule.** Prose, headings, tables and numbers are all Newsreader. The sans appears only at label size for wayfinding and data labels; it never sets a heading or a paragraph.
+**The Serif Carries It Rule.** Prose, headings, table cells and numbers are all Newsreader. The sans names things the reader acts on or scans by: navigation, the button, table headers and data labels. It never sets a heading or a paragraph, and it always carries +0.01em tracking at these sizes.
 
 **The Narrow Prose Rule.** A wide page does not mean wide prose. Running text stays near 45 to 60 characters per line; only tables use the full evidence column.
 
@@ -242,10 +258,10 @@ Square by default. Rules are full-width horizontal hairlines; tables have no ver
 ### Buttons
 Quiet and decisive; there is exactly one filled button style.
 - **Shape:** barely softened corners (3px).
-- **Primary:** Press Black fill, white Newsreader 18px at 400, 42px minimum height, 170px minimum width, 22px horizontal padding.
+- **Primary:** Press Black fill, white Public Sans 15px at 500 with +0.01em tracking, 42px minimum height, 170px minimum width, 22px horizontal padding.
 - **Hover / Focus:** fill goes to pure black over 120ms ease-out; active nudges down 1px. Focus uses the global 2px Record Blue outline at 3px offset.
 - **Secondary:** a plain underlined text link sits beside the button; there is no outlined or ghost button.
-- **Text action:** the copy control is a button styled as a small sans link (13px, Record Blue, underlined) with a 44px-tall hit area and a live status message beside it in Graphite. It keeps the text-link look; there is no outlined button.
+- **Text action:** the copy control is a button styled as a small sans link (13.5px label, Record Blue, underlined) with a 44px-tall hit area and a live status message beside it in Graphite. It keeps the text-link look; there is no outlined button.
 
 ### Links
 - Record Blue, 1px underline at 4px offset, underline at 70% strength; hover to Deep Record Blue with a full-strength underline, 120ms ease-out.
@@ -256,7 +272,7 @@ Quiet and decisive; there is exactly one filled button style.
 - **Tip:** paper-coloured panel, 1px grey border, 2px corners, 11px/13px padding, Newsreader 15.5px, width 228px to 290px. Opens left of, below or above the term with a pointer arrow. Fades in over 140ms and rises 2px over 220ms on cubic-bezier(.16,1,.3,1). Opens on hover, focus and tap; stays open while the pointer moves onto it; Escape and outside clicks close it.
 
 ### Ledger Tables (signature)
-- Full-width, collapsed, left-aligned, tabular lining numerals, Newsreader 17px.
+- Full-width, collapsed, left-aligned, tabular lining numerals, Newsreader 17px cells under Public Sans label headers.
 - Strong rule above the header row, a darker rule below it, normal rules between rows. Cells 42px tall with 8px/10px/9px/12px padding.
 - Row-header variants put a small sans label in a fixed 190px to 230px first column.
 - On phones the header row is visually hidden and each row becomes a stacked block with the column name above each value.
