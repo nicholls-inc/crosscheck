@@ -42,8 +42,8 @@
   --label-size: 13.5px;
   --label-track: 0.01em;
 
-  --gutter: clamp(20px, 7vw, 128px);
-  --aside: clamp(300px, 26.7vw, 410px);
+  --gutter: clamp(20px, 12vw, 240px);
+  --aside: clamp(140px, 15vw, 220px);
   --col-gap: 48px;
   --band-pad: 28px;
 
@@ -115,7 +115,8 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 }
 
 .page {
-  max-width: 1680px;
+  /* A centred column, as on balfrontower.org: wide screens get wide margins */
+  max-width: calc(1200px + 2 * var(--gutter));
   margin: 0 auto;
   padding: 0 var(--gutter) 64px;
 }
@@ -510,7 +511,7 @@ pre code { font-size: inherit; }
 /* Narrower screens: the same order, stacked */
 
 @media (max-width: 1100px) {
-  :root { --aside: 300px; --col-gap: 36px; }
+  :root { --col-gap: 36px; }
   .intro-columns { column-gap: 48px; padding-left: 0; }
 }
 
@@ -741,12 +742,14 @@ pre code { font-size: inherit; }
   display: grid;
   grid-template-columns: var(--aside) minmax(0, 1fr);
   column-gap: var(--col-gap);
+  row-gap: 12px;
   padding: 34px 0 32px;
   border-bottom: 1px solid var(--rule-strong);
 }
 .answer[hidden] { display: none; }
-.answer > :first-child { padding-left: 4px; }
-.answer h2 { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; font-variation-settings: "opsz" 48; max-width: 16ch; }
+/* The label column is narrow, so the question heads the answer in the main column */
+.answer > div { grid-column: 2; }
+.answer h2 { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; font-variation-settings: "opsz" 48; max-width: 28ch; }
 .answer h2:focus { outline: none; }
 .answer-text { font-size: 21px; line-height: 30px; color: var(--ink); max-width: 56ch; font-variation-settings: "opsz" 24; }
 .answer-meta { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; margin-top: 6px; font: var(--label-size)/22px var(--sans); letter-spacing: var(--label-track); color: var(--muted); }
@@ -845,12 +848,15 @@ pre code { font-size: inherit; }
 }
 @media (max-width: 860px) {
   .filters, .answer, .group { grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
+  .answer > div { grid-column: 1; }
   .filters > .filter-strengths { grid-column: 1; }
   .filters > h2, .answer > :first-child, .group-title, .evidence-heading { padding-left: 0; }
   .group { row-gap: 2px; }
   .made-with { padding-left: 0; }
 }
 @media (max-width: 640px) {
+  /* Wide margins are a desktop idea; a phone keeps its width for reading */
+  :root { --gutter: 24px; }
   .title-block { padding-top: 26px; }
   .title-block h1 { margin-top: 16px; font-size: 22px; line-height: 28px; }
   .section summary { flex-wrap: wrap; }
