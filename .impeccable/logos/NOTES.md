@@ -14,13 +14,13 @@ A check sits against a ruled baseline: a result made relative to an explicit ref
 
 A compact ledger keeps a small checking stroke beside the record it belongs to. The row detail softens at the smallest size and may suggest a checklist application. Three rules evoke a record, a vertical separator establishes a checking margin, and the short tick belongs to one row. At 20px the margin and rows remain distinct, but the checking stroke is deliberately subordinate.
 
-## 4. Two-part QED
+## 4. Divided QED
 
-Two facing solid halves recast the proof-ending square, with an open cross preserving their separation. The proof reference favours formal methods and may overstate what tested or human-decided evidence establishes. The four quadrants together recall a QED square; two facing columns remain divided by a visible cross. This is the most compact and typographic option, though the same four-pane construction can suggest a window. It should be a brand mark, never a status label applied to every result.
+Two solid triangles rebuild a proof-ending square, with a rising seam keeping the two halves visibly independent. The proof reference favours formal methods and may overstate what tested or human-decided evidence establishes. The two triangles together recall a QED square; a rising diagonal channel holds their edges apart. This is the most compact and typographic option, though the diagonal split could suggest a general division symbol. It should be a brand mark, never a status label applied to every result.
 
 ## 5. Compared readings
 
-Two stepped readings share endpoints but differ at one transition, exposing a discrepancy for inspection. Without context, the stepped lines could read as a waveform or an electronics symbol. The two square-ended traces rise at different horizontal positions, keeping the disagreement visible. This connects most directly to the study’s early restart while remaining a general comparison symbol; it is a schematic relationship, not a plot of the study data.
+Two stepped readings span the same interval but differ at one transition, exposing a discrepancy for inspection. Without context, the stepped lines could read as a waveform or an electronics symbol. The two square-ended traces rise at different horizontal positions, keeping the disagreement visible. This connects most directly to the study’s early restart while remaining a general comparison symbol; it is a schematic relationship, not a plot of the study data.
 
 ## Recommendation
 
@@ -30,6 +30,6 @@ Mark 5 is the stronger alternative if distinctiveness and the comparison mechani
 
 ## Geometry and use
 
-Coordinates are whole pixels; stroked marks use one consistent 2-unit stroke with square-ended default butt caps and miter joins. ViewBoxes include the half-stroke extents at their edges. The mark heights vary optically: the paired checks form a diagonal unit, the ledger runs wide, and QED stays square. Scale each by height rather than forcing all into square boxes. Filled QED quadrants are 10 units wide with 4-unit open channels. All marks also work on an ink ground by setting the surrounding colour to `#f8f7f4`.
+Coordinates are whole pixels; stroked marks use one consistent 2-unit stroke with square-ended default butt caps and miter joins. ViewBoxes include the half-stroke extents at their edges. The mark heights vary optically: the paired checks form a diagonal unit, the ledger runs wide, and QED stays square. Scale each by height rather than forcing all into square boxes. The filled QED square has a 3-unit diagonal offset between its two halves. All marks also work on an ink ground by setting the surrounding colour to `#f8f7f4`.
 
 For recolouring, inline the SVG and set CSS `color` on its parent. A separately loaded SVG image does not inherit the host document’s colour. The provided SVG files contain only paths inside the SVG root; the HTML adds accessible names to the inline comparison specimens.
