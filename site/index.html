@@ -27,7 +27,7 @@
 <section class="hero band" aria-labelledby="title">
   <div>
     <h1 id="title">EVerest restarts a daily charging schedule one second early.</h1>
-    <p class="hero-note">Low severity. Caused by <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap seconds</button>. Found by comparing EVerest’s scheduling code with a <span class="keep-together"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>.</span></p>
+    <p class="hero-note">Low severity. One second in the study’s smallest example; the drift grows by a second for each <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button> since a schedule first started. Found by comparing EVerest’s scheduling code with a <span class="keep-together"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>.</span></p>
   </div>
   <dl class="clocks">
     <div><dt>The schedule should restart at</dt><dd><span class="clock">11:00:00</span><span class="why">Under the study’s signed reading of the standard.</span></dd></div>
@@ -75,9 +75,10 @@
   </div>
   <h2 class="tab-head"><button type="button" id="tab-repeat" aria-controls="panel-repeat">Repeat it</button></h2>
   <div class="tab-panel" id="panel-repeat" role="region" aria-labelledby="tab-repeat">
-    <p class="tab-lead">Every input is pinned to one revision.</p>
+    <p class="tab-lead">The source and downloaded inputs are pinned to one revision.</p>
     <div class="tab-text">
-      <p>Start from study revision <code>7d05c4e6</code>, not the moving pull request. Setup needs elan with Lean v4.28.0, Python 3, git, curl and a C++ compiler.</p>
+      <p>Start from study revision <code>7d05c4e6</code>, not the moving pull request. Setup needs elan with Lean v4.28.0, Python 3, git, curl, a C++ compiler, Boost and fmt.</p>
+      <p>The host compiler, system headers and timezone database still need matching; this is not a hermetically pinned environment.</p>
       <p>The run with older schedule anchors is expected to report failures. That is the finding reproduced, not a broken install.</p>
       <p class="tab-link"><a href="#replay">Get the replay commands</a></p>
     </div>
@@ -122,13 +123,13 @@
 </section>
 
 <div id="answers" hidden>
-  <p data-answer="went-wrong">In the study’s smallest example, EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00. For that second its limit is 9,249.9&nbsp;W where the reference program gives 6,543.6&nbsp;W. The cause is leap seconds.</p>
+  <p data-answer="went-wrong">Under the study’s signed reading of the standard, and in its smallest example, EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00. For that second its limit is 9,249.9&nbsp;W where the reference program gives 6,543.6&nbsp;W. The cause is leap seconds: the drift grows by one second per leap second since the schedule first started.</p>
   <p data-answer="matter">The study rates it low severity. The physical impact is small, but the difference is concrete and repeatable, and restarts drift one more second for each leap second since the schedule first started.</p>
   <p data-answer="proof">No. The proofs are about the reference program, not EVerest’s C++ code. EVerest was compared with that program on generated inputs, and the finding rests on a signed reading of the standard whose wording also admits another reading.</p>
-  <p data-answer="tested">A driver runs EVerest’s unmodified scheduling code against the reference program on 2,000 generated cases per configuration. Schedules anchored in 2017–2025 all pass. Schedules anchored in 2010–2016 give 835 passes, 92 warnings and 1,073 failures, as reported.</p>
+  <p data-answer="tested">A driver runs EVerest’s unmodified scheduling code against the reference program on 2,000 generated cases per configuration. Schedules anchored in 2017–2025 all pass, though a pass meets the study’s comparison rule rather than meaning exact agreement, and 55 of those passes are vacuous. Schedules anchored in 2010–2016 give 835 passes, 92 warnings and 1,073 failures, as reported.</p>
   <p data-answer="people">Harry Nicholls directed the study, approved the readings of the charging rules and decided which claims the evidence supports. AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI review searched for mismatches; its verdicts do not count as evidence.</p>
-  <p data-answer="depends">On Lean and its standard axioms, the reviewed reading of OCPP 1.6, the compiler, driver and test harness, and a timezone database that lists exactly the three leap seconds since 2010.</p>
-  <p data-answer="unchecked">Inputs are bounded: at most 2 charger-wide, 3 default and 2 transaction profiles, on connector 1, in 2026. Relative profiles, phases, unit conversion, the connector-0 aggregate, offline behavior, transaction IDs and OCPP 2.x are not yet reached, and a fourth model rule has no finished proof.</p>
+  <p data-answer="depends">On Lean and its standard axioms; the reviewed reading of OCPP 1.6 and the Lean model’s correspondence to it; the compiler, the driver with its installation and orchestration glue and two shim headers, and the test harness; and a timezone database that lists exactly the three leap seconds since 2010.</p>
+  <p data-answer="unchecked">Inputs are bounded: at most 2 charger-wide, 3 default and 2 transaction profiles, up to 4 periods each, 15-minute offsets and 24- or 48-hour windows in 2026, on connector 1. Default profiles on connectors 0 and 1 together are not generated. Relative profiles, phases, unit conversion, the connector-0 aggregate, offline behavior, transaction IDs and OCPP 2.x are not yet reached, and a fourth model rule has no finished proof.</p>
   <p data-answer="run">Yes. Check out the pinned study revision, build the driver, run the proof check, then run the test harness three times. The older-anchor run is expected to report failures.</p>
 </div>
 
@@ -233,7 +234,7 @@
   <div>
     <h2 id="contribution-title">Who did what</h2>
     <p class="strength-tags">Decided by a person</p>
-    <p class="aside-note">AI drafted. Deterministic checks and a person’s recorded decisions are what count as evidence.</p>
+    <p class="aside-note">In Harry Nicholls’s own words. AI drafted; deterministic checks and the owner’s recorded decisions are what count as evidence.</p>
   </div>
   <div>
 <!-- publication:contribution -->
@@ -312,14 +313,14 @@
 <!-- publication:replay -->
 <p>Install elan with <code>leanprover/lean4:v4.28.0</code>, Python 3, git and curl. The recorded driver build used Apple clang 21.0.0, C++17; reported on macOS arm64, Boost 1.92.0, headers under /opt/homebrew/include and fmt 12.2.0, header-only under /opt/homebrew/include. See <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md" target="_blank" rel="noopener">the driver prerequisites<span class="visually-hidden"> (opens in a new tab)</span></a> before running.</p>
 <p class="evidence-note">Source and downloaded inputs are pinned. The host compiler, system headers and timezone database still need matching; this is not a hermetically pinned environment. The leap-second table must list the three leap seconds since 2010. The driver build checks downloaded sources against SHA-256 hashes in <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh" target="_blank" rel="noopener">the pinned build script<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
-<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat the study"><code>git clone https://github.com/nicholls-inc/crosscheck crosscheck-everest-study
-cd crosscheck-everest-study
-git checkout --detach 7d05c4e62284b4101e8f23722ee3b6111e5ca0e9
-formal-verification/tests/ocpp16_composite/everest_driver/build.sh
-formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh
-python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024
-python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors
-python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors --leap-correct</code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
+<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat the study"><code><span class="cmd">git clone https://github.com/nicholls-inc/crosscheck crosscheck-everest-study</span>
+<span class="cmd">cd crosscheck-everest-study</span>
+<span class="cmd">git checkout <span class="flag">--detach</span> 7d05c4e62284b4101e8f23722ee3b6111e5ca0e9</span>
+<span class="cmd">formal-verification/tests/ocpp16_composite/everest_driver/build.sh</span>
+<span class="cmd">formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh</span>
+<span class="cmd">python3 formal-verification/tests/ocpp16_composite/drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024</span>
+<span class="cmd">python3 formal-verification/tests/ocpp16_composite/drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024 <span class="flag">--old-anchors</span></span>
+<span class="cmd">python3 formal-verification/tests/ocpp16_composite/drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024 <span class="flag">--old-anchors</span> <span class="flag">--leap-correct</span></span></code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
 <p class="evidence-note">The older-anchor run is expected to report failures; a nonzero exit is a reproduced finding, not an installation failure. --leap-correct changes input anchors for diagnosis and does not fix EVerest. A run writes drt_report_latest.md; preserve the pinned historical report.</p>
 <!-- /publication:replay -->
   </div>

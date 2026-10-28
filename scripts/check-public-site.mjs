@@ -29,7 +29,8 @@ export async function checkPublicSite(input) {
   const remote = await (await responseAt(base, 'everest-study.json')).json();
   const expected = JSON.parse(readFileSync(resolve(site, 'everest-study.json'), 'utf8'));
   if (!isDeepStrictEqual(remote, expected)) throw new Error('Publication snapshot differs from this release. Check the origin worktree or edge cache.');
-  if (!study.includes(expected.studyCommit) || !study.includes('git checkout --detach')) throw new Error('Study is missing pinned replay instructions.');
+  const studyText = study.replace(/<[^>]+>/g, '');
+  if (!studyText.includes(expected.studyCommit) || !studyText.includes('git checkout --detach')) throw new Error('Study is missing pinned replay instructions.');
 
   for (const path of ['glossary.html', 'styles.css', 'help.js', 'fonts/newsreader-roman.woff2', 'fonts/public-sans.woff2', 'fonts/ibm-plex-mono.woff2']) {
     const deployed = Buffer.from(await (await responseAt(base, path)).arrayBuffer());

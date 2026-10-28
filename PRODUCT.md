@@ -2,23 +2,27 @@
 
 ## Platform and readers
 
-A static public website for engineers evaluating Crosscheck, readers of the
-published vision essay, and reviewers who want to inspect or reproduce a claim.
-Hiring engineers are also readers: the case study should make the author's
-contribution and judgment clear in applications and specific conversations.
+A static public website about one thing: the EVerest OCPP 1.6 case study.
+The first reader is a curious engineer arriving from the "Review Evidence, Not
+Code" essay or a shared link, who wants to know what was found, whether it is
+real and how sure the study is. Hiring engineers and reviewers who want to
+reproduce the result are also readers.
 
 ## Purpose
 
-Help readers understand, inspect and eventually produce evidence-carrying code.
-The published essay supplies the argument, the EVerest OCPP 1.6 study supplies a
-worked example, and the website connects that example to the existing tools.
+Explain one finding and make every claim behind it inspectable. The site is a
+reading surface, not a product landing page: it does not sell or install
+Crosscheck. Crosscheck appears once, in the footer, as "The tool behind this
+study", linking to the repository.
 
 ## Selected approach
 
-The user selected Canvas approach `evidence` version 3 on 2026-10-28: lead with
-the EVerest evidence. The home page's primary action opens the study. The study
-offers replay instructions and a downloadable editorial publication snapshot.
-Installation remains available from navigation and after the study.
+On 2026-10-28 the maintainer found the evidence-led landing page too
+text-heavy and chose to rebuild the site around the case study alone, borrowing
+two ideas from balfrontower.org: expandable index tabs at the top, and plain
+questions that filter the evidence. A second filter sorts evidence by strength.
+The confirmed brief is `intent/2026-10-28-everest-site-brief.md`. The study is
+`site/index.html`; `site/everest.html` only forwards old links.
 
 ## Career and publication purpose
 
@@ -28,8 +32,8 @@ engineering decisions, measured result and limits. Relevant audiences include
 AI platform and developer-tool teams, and teams applying AI to real problems.
 The work supports applications for Senior/Staff Software Engineer and Product
 Engineer roles as well as problem-specific side-door conversations.
-Keep the product useful to engineers rather than turning its homepage into a
-job advertisement. Application and side-door drafts live in publication docs;
+Keep the study useful to engineers rather than turning it into a job
+advertisement; the author appears in one line of the About tab. Application and side-door drafts live in publication docs;
 personal job filters stay in local preparation notes outside the public output.
 
 ## Product truth
@@ -41,7 +45,7 @@ The full goal-to-requirement-to-spec-to-code vision is not yet implemented.
 
 ## Visual authority
 
-Preserve the owner's existing landing-page implementation: Newsreader prose and
+Preserve the owner's existing visual implementation: Newsreader prose and
 headings, Public Sans labels, IBM Plex Mono commands, warm paper, dark ink,
 blue underlined links and ruled evidence tables. Keep prose narrow and tables
 wide. The selected Canvas previews refine this existing identity. This is an

@@ -1,5 +1,28 @@
 # Website journal
 
+## 2026-10-28 — The site becomes the EVerest case study
+
+**Type:** feature
+**Touches:** PRODUCT.md, site/, scripts/build-site.mjs, scripts/check-site.mjs,
+scripts/site.test.mjs, scripts/check-public-site.mjs,
+scripts/check-public-site.test.mjs
+**Why:** The maintainer found the landing page too much text to grasp, even as
+its author. They chose to drop the product pitch and present only the EVerest
+study, using balfrontower.org's expandable index tabs and question filters.
+**Links:** [brief](../intent/2026-10-28-everest-site-brief.md)
+
+`index.html` is now the study. Two clock readings open it, five index tabs give
+context, and eight questions filter the evidence blocks, each tagged with its
+strength (proved, tested, decided by a person, assumed, unfinished or not yet
+reached). A strength filter narrows further. Without JavaScript every block
+shows and each question is a jump link. `everest.html` forwards old links,
+fragment included. The install call to action is gone; the footer reads "The
+tool behind this study: Crosscheck".
+
+Copy was rewritten and regrouped, but every number still renders from
+`everest-study.json`, and the hand-written short answers restate facts from the
+previous page without new claims.
+
 ## 2026-10-28 — The study explains the author's engineering contribution
 
 **Type:** feature

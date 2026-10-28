@@ -1,8 +1,9 @@
 # Crosscheck website
 
-A static website connecting the published
+A static website about one study: EVerest's OCPP 1.6 charging schedules,
+checked with Crosscheck. It is the worked example for the published
 [Review Evidence, Not Code](https://brainflow.substack.com/p/review-evidence-not-code)
-essay, the EVerest OCPP study, and the existing Crosscheck installation workflow.
+essay. `index.html` is the study; `everest.html` forwards old links to it.
 
 Serve this directory with any static server, for example from the repository root:
 

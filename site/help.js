@@ -131,7 +131,9 @@ function setTab(open) {
 for (const button of tabButtons) {
   button.addEventListener("click", () => setTab(button.getAttribute("aria-expanded") === "true" ? null : button));
 }
-if (tabButtons.length) setTab(tabButtons[0]);
+// A link to a panel (#panel-finding) opens that tab; otherwise the first tab is open.
+const linkedTab = tabButtons.find((b) => location.hash === `#${b.getAttribute("aria-controls")}`);
+if (tabButtons.length) setTab(linkedTab || tabButtons[0]);
 
 /* Questions filter the evidence, and the strength filter narrows it further.
    Without JavaScript every block shows and each question is a jump link. */
