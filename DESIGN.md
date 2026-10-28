@@ -299,6 +299,26 @@ Plex Mono 13.5px in Code Ink, scrolling sideways inside the block rather than wr
 ### Navigation
 A single-line masthead: the brand in Newsreader 28px ink at left, four sans links at right 36px apart, closed by a strong rule. Wraps on phones.
 
+### Author note
+
+Muted Newsreader 16px/23px, capped at 68ch, with 18px above it after the action
+row. Centred on larger screens and left-aligned at 640px and below. Its link
+identifies the author without competing with the product's primary action.
+
+### Study contents
+
+Wrapping inline navigation below the introduction: Public Sans 14px/22px,
+18px vertical padding, 10px row gaps and 28px column gaps (20px on phones),
+closed by a strong rule. Links open the contribution, decisions, finding,
+results, limits and replay sections.
+
+### Contribution and decisions
+
+Unboxed definition lists in the existing band grid, capped at 65ch. Public Sans
+500 labels at 13.5px/22px sit above Newsreader 17.5px/25px descriptions. Normal
+rules separate entries, with 13px top and 15px bottom padding. Decision
+boundaries occupy a separate muted line, 6px below the explanation.
+
 ## Do's and Don'ts
 
 ### Do:

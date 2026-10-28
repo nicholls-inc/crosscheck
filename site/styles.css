@@ -586,3 +586,19 @@ pre code { font-size: inherit; }
 @media (min-width: 861px) {
   .intro h1 { font-size: 46px; line-height: 52px; }
 }
+
+/* Authorship and study navigation extend the existing reading hierarchy. */
+.author-note { margin: 18px auto 0; max-width: 68ch; font-size: 16px; line-height: 23px; text-align: center; color: var(--muted); }
+.study-contents { display: flex; flex-wrap: wrap; gap: 10px 28px; padding: 18px 0; border-bottom: 1px solid var(--rule-strong); }
+.study-contents a { font: 14px/22px var(--sans); }
+.contribution { max-width: 65ch; font-size: 17.5px; line-height: 25px; }
+.study-prose + .contribution { margin-top: 20px; }
+.contribution > div { padding: 13px 0 15px; border-top: 1px solid var(--rule); }
+.contribution dt { font: 500 13.5px/22px var(--sans); color: var(--ink); margin-bottom: 6px; }
+.contribution dd { margin: 0; }
+.decision-boundary { display: block; margin-top: 6px; color: var(--muted); }
+.keep-together { white-space: nowrap; }
+@media (max-width: 640px) {
+  .author-note { text-align: left; }
+  .study-contents { column-gap: 20px; }
+}

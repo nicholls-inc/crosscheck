@@ -214,5 +214,38 @@
     "python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors --leap-correct"
   ],
   "replayNote": "The older-anchor run is expected to report failures; a nonzero exit is a reproduced finding, not an installation failure. --leap-correct changes input anchors for diagnosis and does not fix EVerest. A run writes drt_report_latest.md; preserve the pinned historical report.",
-  "publicationNote": "This editorial snapshot summarizes linked historical evidence. It is not evidence-record/1, an automatic attestation, a new experimental run, or independent proof rechecking."
+  "publicationNote": "This editorial snapshot summarizes linked historical evidence. It is not evidence-record/1, an automatic attestation, a new experimental run, or independent proof rechecking.",
+  "author": {
+    "name": "Harry Nicholls",
+    "profile": "https://github.com/hnipps"
+  },
+  "contribution": {
+    "summary": "I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest's scheduling code.",
+    "human": "I directed the study, approved interpretations of the charging rules, reviewed correspondence findings and decided which claims the evidence supports. The signed spec and owner decisions record that judgment.",
+    "agents": "AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Its verdicts needed review; they do not count as evidence.",
+    "checks": "Lean checks the completed proofs about the model. A differential harness compares generated inputs with EVerest's unmodified scheduling code through a driver. The compiler, model interpretation, driver and harness remain trusted dependencies.",
+    "result": "The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation."
+  },
+  "engineeringDecisions": [
+    {
+      "choice": "Separate the model from the production implementation",
+      "reason": "A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation.",
+      "boundary": "A proof about that model does not establish correspondence with all production behavior."
+    },
+    {
+      "choice": "Check the moments where schedules change",
+      "reason": "The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible.",
+      "boundary": "The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs."
+    },
+    {
+      "choice": "Record interpretation decisions before judging differences",
+      "reason": "The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions.",
+      "boundary": "A difference caused by a disputed reading of the standard must remain distinct from an implementation defect."
+    },
+    {
+      "choice": "Publish the limits beside the result",
+      "reason": "The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs.",
+      "boundary": "The leap-second input shift is a diagnostic experiment, not an upstream repair."
+    }
+  ]
 }

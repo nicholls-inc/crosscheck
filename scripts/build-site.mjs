@@ -53,7 +53,21 @@ function sources() {
 <p class="evidence-note">${esc(record.publicationNote)}</p>`;
 }
 
-const fragments = {claims, witness, results, counters, replay, limits, sources,
+function contribution() {
+  const c = record.contribution;
+  return `<p class="study-prose">${esc(c.summary)}</p>
+<dl class="contribution"><div><dt>My contribution</dt><dd>${esc(c.human)}</dd></div>
+<div><dt>AI assistance</dt><dd>${esc(c.agents)}</dd></div>
+<div><dt>What the checks establish</dt><dd>${esc(c.checks)}</dd></div>
+<div><dt>The reported result</dt><dd>${esc(c.result)}</dd></div></dl>
+<p class="evidence-note">The ${source('spec', 'signed interpretation decisions')} and ${source('review', 'correspondence review with owner decisions')} record the human judgments behind this account.</p>`;
+}
+
+function choices() {
+  return `<dl class="contribution">${record.engineeringDecisions.map((d) => `<div><dt>${esc(d.choice)}</dt><dd>${esc(d.reason)} <span class="decision-boundary">${esc(d.boundary)}</span></dd></div>`).join('')}</dl>`;
+}
+
+const fragments = {claims, witness, results, counters, replay, limits, sources, contribution, choices,
   properties: () => list(record.modelProperties) + `<p class="evidence-note">Unfinished: ${esc(record.unfinishedProperty)}</p>`,
   decisions: () => list(record.humanDecisions),
   trust: () => list(record.trustedDependencies),

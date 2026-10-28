@@ -31,6 +31,7 @@ node scripts/build-site.mjs
 node scripts/build-site.mjs --check
 node scripts/check-site.mjs
 node --test scripts/site.test.mjs
+node --test scripts/check-public-site.test.mjs
 ```
 
 To check source paths, reported totals and download hashes against the original
@@ -51,8 +52,12 @@ Update all claims and limitations in the record before regenerating both
 surfaces. Keep model proofs distinct from tests of production code. Changing
 the warning rule can change totals without changing the underlying divergence.
 
-The site is ready for static hosting. This change does not configure hosting,
+The launch kit prepares an origin configuration. It does not deploy remotely,
 edit the published essay, publish externally or file the upstream issue.
+
+For the confirmed home-server deployment through an existing Cloudflare Tunnel,
+see [LAUNCH.md](LAUNCH.md). The launch kit includes a localhost-only Caddy config
+and a public-route check; building it does not change the live tunnel.
 
 ## Provenance
 

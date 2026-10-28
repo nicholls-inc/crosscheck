@@ -65,3 +65,17 @@ test('case and instant totals must balance independently', () => {
   assert.match(result.stderr, /totals must equal case count/);
   assert.match(result.stderr, /all instant counters must balance/);
 });
+
+test('author contribution is rendered from the record, not stale article copy', () => {
+  edit('everest-study.json', (text) => {
+    const record = JSON.parse(text);
+    record.contribution.summary = 'A revised contribution account.';
+    return JSON.stringify(record);
+  });
+  assert.equal(run('build-site.mjs', '--check').status, 1);
+  assert.equal(run('build-site.mjs').status, 0);
+  const article = readFileSync(join(fixture, 'site/everest.html'), 'utf8');
+  assert.ok(article.includes('A revised contribution account.'));
+  assert.ok(article.includes('AI assistance'));
+  assert.ok(article.includes('id="decisions"'));
+});

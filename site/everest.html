@@ -17,6 +17,7 @@
   <a class="brand" href="./">Crosscheck</a>
   <nav aria-label="Main"><ul>
     <li><a href="everest.html" aria-current="page">Case study</a></li>
+    <li><a href="#contribution">My contribution</a></li>
     <li><a href="#replay">Repeat the run</a></li>
     <li><a href="./#install">Install</a></li>
     <li><a href="glossary.html">Glossary</a></li>
@@ -30,13 +31,46 @@
     <p>This is a worked example of the argument in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>. Follow the claim from a written rule to its supporting checks, human decisions and limits.</p>
   </div>
   <p class="actions"><a class="button" href="#witness">Inspect the witness</a><a href="#replay">Repeat the run</a></p>
+  <p class="author-note">By <a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls<span class="visually-hidden"> (opens in a new tab)</span></a> · AI-assisted engineering, with the decisions and evidence recorded below.</p>
+</section>
+
+<nav class="study-contents" aria-label="Read the study">
+  <a href="#contribution">My contribution</a>
+  <a href="#decisions">Engineering decisions</a>
+  <a href="#witness">The finding</a>
+  <a href="#results">Reported results</a>
+  <a href="#limits">Limits</a>
+  <a href="#replay">Replay</a>
+</nav>
+
+<section class="covers band" id="contribution" aria-labelledby="contribution-title">
+  <div><h2 id="contribution-title">What I built and decided</h2><p class="aside-note">A developer tool applied to a real charging-software implementation. The important parts are the question, the boundary and the decisions behind the result.</p></div>
+  <div>
+<!-- publication:contribution -->
+<p class="study-prose">I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest&#39;s scheduling code.</p>
+<dl class="contribution"><div><dt>My contribution</dt><dd>I directed the study, approved interpretations of the charging rules, reviewed correspondence findings and decided which claims the evidence supports. The signed spec and owner decisions record that judgment.</dd></div>
+<div><dt>AI assistance</dt><dd>AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Its verdicts needed review; they do not count as evidence.</dd></div>
+<div><dt>What the checks establish</dt><dd>Lean checks the completed proofs about the model. A differential harness compares generated inputs with EVerest&#39;s unmodified scheduling code through a driver. The compiler, model interpretation, driver and harness remain trusted dependencies.</dd></div>
+<div><dt>The reported result</dt><dd>The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation.</dd></div></dl>
+<p class="evidence-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">signed interpretation decisions<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">correspondence review with owner decisions<span class="visually-hidden"> (opens in a new tab)</span></a> record the human judgments behind this account.</p>
+<!-- /publication:contribution -->
+  </div>
+</section>
+
+<section class="covers band" id="decisions" aria-labelledby="decisions-title">
+  <div><h2 id="decisions-title">Engineering decisions</h2><p class="aside-note">Why the study uses a reference program, what the test generator looks for, and how uncertain results are reported.</p></div>
+  <div>
+<!-- publication:choices -->
+<dl class="contribution"><div><dt>Separate the model from the production implementation</dt><dd>A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation. <span class="decision-boundary">A proof about that model does not establish correspondence with all production behavior.</span></dd></div><div><dt>Check the moments where schedules change</dt><dd>The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible. <span class="decision-boundary">The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs.</span></dd></div><div><dt>Record interpretation decisions before judging differences</dt><dd>The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions. <span class="decision-boundary">A difference caused by a disputed reading of the standard must remain distinct from an implementation defect.</span></dd></div><div><dt>Publish the limits beside the result</dt><dd>The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs. <span class="decision-boundary">The leap-second input shift is a diagnostic experiment, not an upstream repair.</span></dd></div></dl>
+<!-- /publication:choices -->
+  </div>
 </section>
 
 <section class="study band" aria-labelledby="record-title">
   <div>
     <h2 id="record-title">The evidence record</h2>
     <p class="aside-note">The study checks how a charger combines schedules under <button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button> 1.6.</p>
-    <p class="aside-note">Three proved rules concern the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>. Production code is compared against it on generated inputs.</p>
+    <p class="aside-note">Three proved rules concern the <span class="keep-together"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>.</span> Production code is compared against it on generated inputs.</p>
     <p class="aside-note"><a href="everest-study.json" download>Download the publication record (JSON)</a></p>
   </div>
   <div class="evidence">
@@ -157,6 +191,10 @@ python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 -
 <section class="reprise band" aria-labelledby="next-title">
   <div><h2 id="next-title">Make your own claim inspectable</h2><p class="aside-note">Choose a small behavior, state its rules, and check it. Keep the assumptions and any missing guarantees beside the result.</p></div>
   <p class="actions"><a class="button" href="./#install">Install the plugin</a><a href="./#how">Follow the existing workflow</a></p>
+</section>
+<section class="reprise band" id="author" aria-labelledby="author-title">
+  <div><h2 id="author-title">About this work</h2><p class="aside-note">I’m Harry Nicholls, the creator of Crosscheck. I’m interested in AI platforms, developer tools and applying AI to problems with measurable consequences.</p></div>
+  <div><p class="study-prose">This project brings together specification work, AI-assisted implementation, formal models, test design and a developer-facing product. The case study lets you inspect those decisions and their limits.</p><p class="source-links"><a href="https://github.com/hnipps" target="_blank" rel="noopener">Find me on GitHub<span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://brainflow.substack.com" target="_blank" rel="noopener">Read more on Brainflow<span class="visually-hidden"> (opens in a new tab)</span></a></p></div>
 </section>
 </main>
 <footer class="colophon">
