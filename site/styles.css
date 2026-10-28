@@ -620,7 +620,13 @@ pre code { font-size: inherit; }
   text-decoration: none;
 }
 .mark { display: block; width: 22px; height: 22px; }
-.brand-name { font: 400 22px/22px var(--serif); letter-spacing: -0.012em; font-variation-settings: "opsz" 36; }
+.brand-name {
+  font: 400 22px/22px var(--serif);
+  letter-spacing: -0.012em;
+  font-variation-settings: "opsz" 36;
+  /* Flex centres the line box; this centres the capitals on the mark (measured at 4x) */
+  transform: translateY(0.11em);
+}
 .brand-mark:hover .brand-name { text-decoration: underline; text-underline-offset: 5px; }
 .mark-inline { display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.3em; vertical-align: -0.08em; fill: currentColor; }
 .made-with-link { white-space: nowrap; }
