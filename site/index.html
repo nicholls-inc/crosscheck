@@ -20,7 +20,8 @@
       <li><a href="#everest">Case study</a></li>
       <li><a href="#how">How to use it</a></li>
       <li><a href="#install">Install</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck">GitHub</a></li>
+      <li><a href="glossary.html">Glossary</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
     </ul>
   </nav>
 </header>
@@ -35,7 +36,7 @@
   </div>
   <p class="actions">
     <a class="button" href="#install">Install the plugin</a>
-    <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md">Read the vision</a>
+    <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md" target="_blank" rel="noopener">Read the vision<span class="visually-hidden"> (opens in a new tab)</span></a>
   </p>
 </section>
 
@@ -45,7 +46,7 @@
     <p class="study-meta">Software for electric-vehicle charging<br>Run on <time datetime="2026-10-24">24 October 2026</time></p>
     <p class="study-finding">A daily charging schedule starts at 10:59:59. It should start at 11:00:00. The tests traced the difference to a <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button>.</p>
     <ul class="stacked-links">
-      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144">Read the study (pull request #144)</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144" target="_blank" rel="noopener">Read the study (pull request #144)<span class="visually-hidden"> (opens in a new tab)</span></a></li>
       <li><a href="#covers">What this result covers</a></li>
     </ul>
   </div>
@@ -79,10 +80,10 @@
     </table>
     <p class="evidence-note">Of those 1,140 cases, 67 gave warnings and 1,073 failed. Repeat the run with random seed 20261024.</p>
     <ul class="source-links" aria-label="Sources for the EVerest study">
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/specs/ocpp16_composite_informal.md">Written rules</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean">Reference program</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/correspondence/Ocpp16Composite.md">Review of the reference program</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/drt_report.md">Test results</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">Written rules<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean" target="_blank" rel="noopener">Reference program<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">Review of the reference program<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/drt_report.md" target="_blank" rel="noopener">Test results<span class="visually-hidden"> (opens in a new tab)</span></a></li>
     </ul>
     <p class="evidence-scope">The <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> cover the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>. Tests compare EVerest with that program on the inputs tried.</p>
   </div>
@@ -148,7 +149,7 @@
     <pre tabindex="0" aria-label="Commands to repeat the run"><code>git clone https://github.com/nicholls-inc/crosscheck &amp;&amp; cd crosscheck &amp;&amp; git checkout d41f08251ceeb70f53bc98d850fe56d70fc190c0
 (cd formal-verification/tests/ocpp16_composite/everest_driver &amp;&amp; ./build.sh)
 python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors</code></pre>
-    <p class="repeat-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/everest_driver/README.md">How the driver is built</a></p>
+    <p class="repeat-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/everest_driver/README.md" target="_blank" rel="noopener">How the driver is built<span class="visually-hidden"> (opens in a new tab)</span></a></p>
   </div>
 </section>
 
@@ -175,7 +176,7 @@ claude plugin install crosscheck@nicholls</code></pre>
 ./scripts/build-lean-docker.sh</code></pre>
         <button type="button" class="copy" data-copy="build-commands">Copy commands</button>
         <span class="copy-status" role="status" aria-live="polite"></span>
-        <p class="step-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md#prerequisites">Full setup in the README</a></p>
+        <p class="step-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md#prerequisites" target="_blank" rel="noopener">Full setup in the README<span class="visually-hidden"> (opens in a new tab)</span></a></p>
       </div>
     </li>
   </ol>
@@ -220,7 +221,7 @@ claude plugin install crosscheck@nicholls</code></pre>
 <section class="today band" id="today" aria-labelledby="today-title">
   <div>
     <h2 id="today-title">Today and the vision</h2>
-    <p class="aside-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md">vision</a> is a readable, checkable claim for every code change. Some of that ships now. The rest has not been reached yet, and the table says what blocks it.</p>
+    <p class="aside-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md" target="_blank" rel="noopener">vision<span class="visually-hidden"> (opens in a new tab)</span></a> is a readable, checkable claim for every code change. Some of that ships now. The rest has not been reached yet, and the table says what blocks it.</p>
   </div>
   <table class="ledger ledger-status">
     <thead><tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col">What counts as evidence</th></tr></thead>
@@ -245,40 +246,40 @@ claude plugin install crosscheck@nicholls</code></pre>
   </p>
 </section>
 
-<section class="terms band" id="terms" aria-labelledby="terms-title">
-  <div>
-    <h2 id="terms-title">Terms used on this page</h2>
-    <p class="aside-note">Each dotted term on the page opens the explanation written here.</p>
-  </div>
-  <dl class="glossary">
-    <div><dt><dfn>Proof</dfn></dt><dd id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</dd></div>
-    <div><dt><dfn>Dafny</dfn></dt><dd id="def-dafny">A language and tool for checking that code follows written rules. It can turn checked code into Python or Go.</dd></div>
-    <div><dt><dfn>Lean</dfn></dt><dd id="def-lean">A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.</dd></div>
-    <div><dt><dfn>Reference program</dfn></dt><dd id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</dd></div>
-    <div><dt><dfn>Leap second</dfn></dt><dd id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</dd></div>
-    <div><dt><dfn>Differential testing</dfn></dt><dd id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</dd></div>
-    <div><dt><dfn>OCPP</dfn></dt><dd id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</dd></div>
-    <div><dt><dfn>CGV</dfn></dt><dd id="def-cgv">Contract graph verifier: a tool that follows data through a Python project and checks that each step keeps the data rules declared for it, such as a field’s length limit.</dd></div>
-    <div><dt><dfn>byfuglien</dfn></dt><dd id="def-byfuglien">The name of Crosscheck’s agent for checking code. It picks the right proof, test or review step for the job you describe.</dd></div>
-    <div><dt><dfn>Trusted base</dfn></dt><dd id="def-trusted-base">The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.</dd></div>
-  </dl>
-</section>
-
 </main>
 
 <footer class="colophon">
   <a class="brand" href="./">Crosscheck</a>
-  <div>
-    <h2>Sources for this page</h2>
-    <ul>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md">The vision</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md">Plugin README</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/pull/144">EVerest study, pull request #144</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck/blob/d41f08251ceeb70f53bc98d850fe56d70fc190c0/formal-verification/tests/ocpp16_composite/drt_report.md">EVerest test report</a></li>
+  <div class="colophon-links">
+    <nav aria-label="Site">
+      <ul>
+        <li><a href="./#everest">Case study</a></li>
+        <li><a href="./#how">How to use it</a></li>
+        <li><a href="./#install">Install</a></li>
+        <li><a href="glossary.html">Glossary</a></li>
+      </ul>
+    </nav>
+    <ul aria-label="Elsewhere">
+      <li><a href="https://x.com/" target="_blank" rel="noopener">X<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
     </ul>
+    <p class="copyright">© 2026 Nicholls Inc</p>
   </div>
 </footer>
 
+</div>
+<!-- Tip text. glossary.html is the page readers see; scripts/check-site-glossary.mjs fails if these differ from it. -->
+<div id="definitions" hidden>
+  <p id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</p>
+  <p id="def-dafny">A language and tool for checking that code follows written rules. It can turn checked code into Python or Go.</p>
+  <p id="def-lean">A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.</p>
+  <p id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</p>
+  <p id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</p>
+  <p id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</p>
+  <p id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</p>
+  <p id="def-cgv">Contract graph verifier: a tool that follows data through a Python project and checks that each step keeps the data rules declared for it, such as a field’s length limit.</p>
+  <p id="def-byfuglien">The name of Crosscheck’s agent for checking code. It picks the right proof, test or review step for the job you describe.</p>
+  <p id="def-trusted-base">The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.</p>
 </div>
 <div class="tip" id="tip" role="tooltip" hidden></div>
 </body>

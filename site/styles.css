@@ -105,6 +105,15 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 }
 [tabindex="-1"]:focus { outline: none; }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .page {
   max-width: 1680px;
   margin: 0 auto;
@@ -142,6 +151,7 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
   text-decoration-color: #8d8f98;
 }
 .masthead nav a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
+.masthead nav a[aria-current="page"] { text-decoration-color: var(--ink); text-decoration-thickness: 2px; }
 
 /* Introduction */
 
@@ -374,7 +384,7 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 
 .covers, .how, .today, .reprise, .terms { padding: 44px 0 48px; }
 .reprise .actions { justify-content: flex-start; margin-top: 0; padding-left: 0; }
-.band h2 {
+.band h2, .terms h1 {
   font-size: 32px;
   line-height: 38px;
   letter-spacing: -0.022em;
@@ -471,8 +481,23 @@ pre code { font-size: inherit; }
   border-top: 1px solid var(--rule-strong);
 }
 .colophon .brand { padding-left: 4px; font-size: 22px; }
-.colophon h2 { font-family: var(--sans); font-size: var(--label-size); line-height: 20px; font-weight: 500; letter-spacing: var(--label-track); }
-.colophon ul { display: flex; flex-wrap: wrap; column-gap: 32px; row-gap: 4px; margin-top: 8px; font-size: 17.5px; }
+.colophon-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 48px;
+  row-gap: 12px;
+  padding-top: 7px;
+}
+.colophon ul { display: flex; flex-wrap: wrap; column-gap: 32px; row-gap: 4px; }
+.copyright {
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: var(--label-size);
+  line-height: 22px;
+  letter-spacing: var(--label-track);
+  color: var(--muted);
+}
 
 /* The two step tables sit side by side only when there is room for both */
 
@@ -505,7 +530,8 @@ pre code { font-size: inherit; }
 @media (max-width: 640px) {
   body { font-size: 18px; }
   .masthead { flex-wrap: wrap; row-gap: 6px; padding-top: 20px; }
-  .masthead ul { gap: 20px; }
+  .masthead ul { flex-wrap: wrap; column-gap: 20px; row-gap: 2px; }
+  .masthead nav a { white-space: nowrap; }
   .intro { padding-top: 28px; }
   .intro h1 { font-size: 32px; line-height: 38px; text-align: left; }
   .intro-columns { justify-content: stretch; }
@@ -530,7 +556,8 @@ pre code { font-size: inherit; }
   .ledger caption { display: block; }
   .finding { margin: 0 0 0 -8px; padding: 2px 8px; }
   .source-links { column-gap: 24px; }
-  .band h2 { font-size: 28px; line-height: 34px; }
+  .band h2, .terms h1 { font-size: 28px; line-height: 34px; }
+  .copyright { margin-left: 0; flex-basis: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -222,7 +222,7 @@ A near-monochrome paper-and-ink palette with one link blue and one highlighter y
 - **Body note** (380, 17.5px/25px): notes, scope statements, figure captions, source links, capped at 36ch to 72ch depending on context.
 - **Table** (380, 17px/24px, tabular lining numerals): ledger rows, glossary entries, and the Graphite explanations under readings and step tables.
 - **Tip** (400, 15.5px/22px): help explanations.
-- **Label** (Public Sans 500, 13.5px/22px, +0.01em): every table header (column and row), the Strength column, witness labels, the copy control and its status, the footer heading. Sentence case. Mobile row labels run at 13px in Graphite.
+- **Label** (Public Sans 500, 13.5px/22px, +0.01em): every table header (column and row), the Strength column, witness labels, the copy control and its status, the footer copyright line (in Graphite). Sentence case. Mobile row labels run at 13px in Graphite.
 - **Button** (Public Sans 500, 15px/20px, +0.01em): the filled button label. Public Sans runs large beside Newsreader, so 15px sits level with the 19px serif link beside it.
 - **Nav** (Public Sans 400, 14px/20px, +0.01em): masthead links.
 - **Mono** (IBM Plex Mono 400, 13.5px/23px): command blocks; inline code at 0.82em.
@@ -238,9 +238,11 @@ A single centred page up to 1680px wide with a fluid gutter (16px to 48px). Belo
 
 The introduction is the one centred composition: a centred display heading over two narrow prose columns (about 432px and 418px, 60px apart) and a centred action row.
 
-Responsive behaviour: at 1100px the aside fixes at 300px and the gap narrows to 36px. At 860px every band and the footer collapse to one column in source order; definition grids go to one column. At 640px the masthead wraps, ledger tables become labelled rows (each cell preceded by its column name in a small sans label), and the action row left-aligns.
+Responsive behaviour: at 1100px the aside fixes at 300px and the gap narrows to 36px. At 860px every band and the footer collapse to one column in source order; definition grids go to one column. At 640px the masthead wraps (nav items wrap whole, never mid-label), ledger tables become labelled rows (each cell preceded by its column name in a small sans label), and the action row left-aligns.
 
 Spacing is set per context in pixel values rather than a strict scale; the recurring steps are 4px, 8px, 12px to 18px between related blocks, 28px band entry, 36px to 48px column gaps, and 44px to 48px section padding.
+
+The footer repeats the band grid: the wordmark in the aside, then site links, the X and GitHub links, and the copyright line pushed to the right edge. On phones they stack in that order. The glossary page (`glossary.html`) is a single band: a Headline-sized page title and short note in the aside, the two-column definition list beside it.
 
 ## Elevation & Depth
 
@@ -265,11 +267,12 @@ Quiet and decisive; there is exactly one filled button style.
 
 ### Links
 - Record Blue, 1px underline at 4px offset, underline at 70% strength; hover to Deep Record Blue with a full-strength underline, 120ms ease-out.
+- External links open in a new tab (`target="_blank" rel="noopener"`), with a visually hidden "(opens in a new tab)" for screen readers. Links within the site open in place.
 - Standalone links (the link beside the button, stacked and source link lists, step and driver links, footer links) are Public Sans 15px/22px with +0.01em tracking and a 5px underline offset. Links inside a sentence stay in the surrounding Newsreader.
 - Masthead links are ink-coloured Public Sans 14px with a grey underline at 6px offset, turning blue on hover.
 
 ### Help Terms and Tips (signature)
-- **Term:** an inline button that inherits the surrounding type exactly, with a 1.5px dotted underline in Help Dot at 4px offset and a help cursor. Hover, or the open state (marked with a `data-open` attribute), darkens the dots to ink. Used only for specialist verification and domain terms defined in the page glossary.
+- **Term:** an inline button that inherits the surrounding type exactly, with a 1.5px dotted underline in Help Dot at 4px offset and a help cursor. Hover, or the open state (marked with a `data-open` attribute), darkens the dots to ink. Used only for specialist verification and domain terms defined on the glossary page.
 - **Tip:** paper-coloured panel, 1px grey border, 2px corners, 11px/13px padding, Newsreader 15.5px, width 228px to 290px. Opens left of, below or above the term with a pointer arrow. Fades in over 140ms and rises 2px over 220ms on cubic-bezier(.16,1,.3,1). Opens on hover, focus and tap; stays open while the pointer moves onto it; Escape and outside clicks close it.
 
 ### Ledger Tables (signature)

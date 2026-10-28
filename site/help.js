@@ -1,6 +1,6 @@
 // Help terms, the evidence highlight, and the copy button.
-// Every explanation is read from the glossary on the page (#def-<term>), so a
-// term has one definition wherever it appears and the page reads fine without JS.
+// Every explanation is read from the hidden definitions on the page (#def-<term>),
+// which match glossary.html, so a term reads the same wherever it appears.
 
 document.documentElement.classList.add("js");
 
@@ -97,13 +97,13 @@ document.addEventListener("click", (e) => { if (state && !tip.contains(e.target)
 window.addEventListener("resize", () => { if (state) place(state.term); });
 
 // ?explain=<term> opens that term's explanation, so a definition can be linked to.
-// An unknown term lands on the glossary instead of doing nothing.
+// An unknown term goes to the glossary page instead of doing nothing.
 const asked = new URLSearchParams(location.search).get("explain");
 if (asked) {
   const term = document.querySelector(`.term[data-term="${CSS.escape(asked)}"]`);
   document.fonts.ready.then(() => {
     if (term) open(term, "link");
-    else document.getElementById("terms")?.scrollIntoView();
+    else location.assign("glossary.html");
   });
 }
 
