@@ -7,10 +7,13 @@ essay, the EVerest OCPP study, and the existing Crosscheck installation workflow
 Serve this directory with any static server, for example from the repository root:
 
 ```sh
-python3 -m http.server 8766 --bind 127.0.0.1 --directory site
+python3 -m http.server 8765 --bind 127.0.0.1 --directory "$PWD/site"
 ```
 
-Open `http://127.0.0.1:8766`. No build step, browser API key, analytics, external
+Open `http://127.0.0.1:8765`. If that port already serves another worktree, stop
+that preview first and run the command from this worktree's repository root.
+Each worktree has its own `site/`; rebuilding one does not update a server rooted
+in another. No build step, browser API key, analytics, external
 font service, package installation or client-side framework is required.
 
 ## Updating the publication
