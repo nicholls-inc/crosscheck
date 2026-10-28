@@ -1,4 +1,4 @@
-// Help terms, the evidence highlight, and the copy button.
+// Help terms, the evidence filter, and the copy button.
 // Every explanation is read from the hidden definitions on the page (#def-<term>),
 // which match glossary.html, so a term reads the same wherever it appears.
 
@@ -107,38 +107,24 @@ if (asked) {
   });
 }
 
-/* The early clock reading is highlighted once, as the page opens. */
+/* Sections and evidence entries are <details>, so they open without JavaScript.
+   A link to one (#panel-finding, #witness) opens it and any entry it sits in. */
 
-const clockMark = document.querySelector(".clock-mark");
-if (clockMark && !reduceMotion) {
-  clockMark.classList.add("is-waiting");
-  document.fonts.ready.then(() => requestAnimationFrame(() => {
-    clockMark.classList.add("is-marked");
-    clockMark.classList.remove("is-waiting");
-  }));
-}
-
-/* Index tabs: one panel open at a time, and all of them may be closed. */
-
-const tabButtons = [...document.querySelectorAll(".tab-head button")];
-function setTab(open) {
-  for (const button of tabButtons) {
-    const expanded = button === open;
-    button.setAttribute("aria-expanded", String(expanded));
-    document.getElementById(button.getAttribute("aria-controls")).hidden = !expanded;
+function openTarget(hash) {
+  const target = hash.length > 1 && document.getElementById(decodeURIComponent(hash.slice(1)));
+  if (!target) return null;
+  for (let el = target; el; el = el.parentElement.closest("details")) {
+    if (el.tagName === "DETAILS") el.open = true;
+    if (!el.parentElement) break;
   }
+  return target;
 }
-for (const button of tabButtons) {
-  button.addEventListener("click", () => setTab(button.getAttribute("aria-expanded") === "true" ? null : button));
-}
-// A link to a panel (#panel-finding) opens that tab; otherwise the first tab is open.
-const linkedTab = tabButtons.find((b) => location.hash === `#${b.getAttribute("aria-controls")}`);
-if (tabButtons.length) setTab(linkedTab || tabButtons[0]);
 
 /* Questions filter the evidence, and the strength filter narrows it further.
-   Without JavaScript every block shows and each question is a jump link. */
+   Without JavaScript every entry shows and each question is a jump link. */
 
 const blocks = [...document.querySelectorAll(".block")];
+const groups = [...document.querySelectorAll(".group")];
 const questionLinks = [...document.querySelectorAll("[data-question]")];
 const strengthButtons = [...document.querySelectorAll(".strengths button")];
 const answer = document.getElementById("answer");
@@ -152,7 +138,7 @@ if (blocks.length && answer) {
   const count = answer.querySelector(".answer-count");
   const showAll = answer.querySelector(".show-all");
   const words = (value) => (value || "").split(" ").filter(Boolean);
-  const strengthName = (key) => strengthButtons.find((b) => b.dataset.strength === key).textContent.toLowerCase();
+  const strengthName = (key) => strengthButtons.find((b) => b.dataset.strength === key).textContent.trim().toLowerCase();
   const pieces = (n) => (n === 1 ? "1 piece" : `${n} pieces`);
 
   function apply() {
@@ -160,13 +146,10 @@ if (blocks.length && answer) {
     for (const block of blocks) {
       const visible = (!filter.question || words(block.dataset.q).includes(filter.question))
         && (!filter.strength || words(block.dataset.strength).includes(filter.strength));
-      if (visible && block.hidden) {
-        block.classList.add("is-entering");
-        block.addEventListener("animationend", () => block.classList.remove("is-entering"), { once: true });
-      }
       block.hidden = !visible;
       if (visible) shown += 1;
     }
+    for (const group of groups) group.hidden = !group.querySelector(".block:not([hidden])");
     for (const link of questionLinks) {
       if (link.dataset.question === filter.question) link.setAttribute("aria-current", "true");
       else link.removeAttribute("aria-current");
@@ -203,8 +186,12 @@ if (blocks.length && answer) {
       choose(filter.question === link.dataset.question ? "" : link.dataset.question);
     });
   }
+  // A strength works like a document type on the archive: press it to filter, press again to clear.
   for (const button of strengthButtons) {
-    button.addEventListener("click", () => { filter.strength = button.dataset.strength; apply(); });
+    button.addEventListener("click", () => {
+      filter.strength = filter.strength === button.dataset.strength ? "" : button.dataset.strength;
+      apply();
+    });
   }
   showAll.addEventListener("click", () => {
     if (showAll.textContent === "Clear the strength filter") { filter.strength = ""; apply(); return; }
@@ -213,21 +200,26 @@ if (blocks.length && answer) {
     document.getElementById("questions").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
   });
 
-  // A link to a block the filters hide clears them first, so it never lands on nothing.
+  // A link into the page clears any filter hiding its target, then opens it.
   document.addEventListener("click", (e) => {
     const link = e.target.closest('a[href^="#"]');
     if (!link || link.dataset.question) return;
     const target = document.getElementById(link.getAttribute("href").slice(1));
-    if (target && target.closest(".block[hidden]")) {
+    if (target && target.closest("[hidden]")) {
       filter.strength = "";
       choose("", { push: false, scroll: false });
     }
+    if (target) openTarget(link.getAttribute("href"));
   });
 
   const fromHash = () => {
     const match = /^#q-([a-z-]+)$/.exec(location.hash);
     const question = match && questionLinks.some((l) => l.dataset.question === match[1]) ? match[1] : "";
     if (question !== filter.question) choose(question, { push: false, scroll: Boolean(question) });
+    if (!question) {
+      const target = openTarget(location.hash);
+      if (target) target.scrollIntoView();
+    }
   };
   window.addEventListener("popstate", fromHash);
   fromHash();

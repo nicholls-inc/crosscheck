@@ -20,7 +20,7 @@ export async function checkPublicSite(input) {
   if (!base.pathname.endsWith('/')) base.pathname += '/';
 
   const study = await (await responseAt(base, './')).text();
-  if (!study.includes('EVerest restarts a daily charging schedule one second early.') || !study.includes('id="questions"')) throw new Error('Home page is missing the current case-study entry or question filter.');
+  if (!study.includes('EVerest OCPP lib: a formal study') || !study.includes('id="questions"')) throw new Error('Home page is missing the current case-study entry or question filter.');
   for (const id of ['contribution', 'decisions', 'witness', 'results', 'limits', 'replay']) {
     if (!study.includes(`id="${id}"`)) throw new Error(`Study is missing ${id}.`);
   }
