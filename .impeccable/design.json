@@ -1,0 +1,538 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T20:09:42+00:00",
+  "title": "Design System: Crosscheck",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Warm Paper",
+        "canonical": "#f8f7f4",
+        "tonalRamp": [
+          "#0c0b09",
+          "#262523",
+          "#434240",
+          "#62615f",
+          "#838280",
+          "#a6a5a2",
+          "#cac9c6",
+          "#efeeeb"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#18191b",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Body Ink",
+        "canonical": "#25282e",
+        "tonalRamp": [
+          "#090b10",
+          "#22252b",
+          "#3f4249",
+          "#5e6168",
+          "#7f828a",
+          "#a1a5ad",
+          "#c5c9d1",
+          "#eaeff7"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#4f535b",
+        "tonalRamp": [
+          "#080b11",
+          "#22252c",
+          "#3e424a",
+          "#5d616a",
+          "#7e828b",
+          "#a1a5ae",
+          "#c4c9d3",
+          "#eaeff8"
+        ]
+      },
+      "code-ink": {
+        "role": "neutral",
+        "displayName": "Code Ink",
+        "canonical": "#33363d",
+        "tonalRamp": [
+          "#090b11",
+          "#22252c",
+          "#3f4249",
+          "#5e6169",
+          "#7f828a",
+          "#a1a5ad",
+          "#c5c9d2",
+          "#eaeef8"
+        ]
+      },
+      "rule-header": {
+        "role": "neutral",
+        "displayName": "Header Rule",
+        "canonical": "#5d5f68",
+        "tonalRamp": [
+          "#090b11",
+          "#23252c",
+          "#40414a",
+          "#5f616a",
+          "#80828b",
+          "#a2a4ae",
+          "#c6c9d3",
+          "#ebeef9"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "#7d808a",
+        "tonalRamp": [
+          "#090b12",
+          "#22252d",
+          "#3f424b",
+          "#5e616a",
+          "#7f828c",
+          "#a1a5af",
+          "#c5c9d4",
+          "#ebeef9"
+        ]
+      },
+      "nav-underline": {
+        "role": "neutral",
+        "displayName": "Nav Underline",
+        "canonical": "#8d8f98",
+        "tonalRamp": [
+          "#090b11",
+          "#23252c",
+          "#404249",
+          "#5f6169",
+          "#80828b",
+          "#a2a4ae",
+          "#c6c9d2",
+          "#eceef8"
+        ]
+      },
+      "tip-border": {
+        "role": "neutral",
+        "displayName": "Tip Border",
+        "canonical": "#9a9da2",
+        "tonalRamp": [
+          "#090b0f",
+          "#232529",
+          "#404246",
+          "#5f6166",
+          "#808287",
+          "#a2a5aa",
+          "#c6c9ce",
+          "#ebeff4"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#b6b8be",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#232529",
+          "#404247",
+          "#5f6166",
+          "#808288",
+          "#a3a5ab",
+          "#c7c9cf",
+          "#eceef5"
+        ]
+      },
+      "rule-faint": {
+        "role": "neutral",
+        "displayName": "Faint Rule",
+        "canonical": "#d9dadd",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "link": {
+        "role": "primary",
+        "displayName": "Record Blue",
+        "canonical": "#2a5a9e",
+        "tonalRamp": [
+          "#00003c",
+          "#001f5d",
+          "#104080",
+          "#3161a4",
+          "#5283c9",
+          "#74a7f0",
+          "#97cbff",
+          "#bbf1ff"
+        ]
+      },
+      "link-hover": {
+        "role": "primary",
+        "displayName": "Deep Record Blue",
+        "canonical": "#153c74",
+        "tonalRamp": [
+          "#000136",
+          "#002157",
+          "#1a4179",
+          "#39619c",
+          "#5983c1",
+          "#7ba7e7",
+          "#9ecbff",
+          "#c3f1ff"
+        ]
+      },
+      "mark": {
+        "role": "secondary",
+        "displayName": "Highlighter Yellow",
+        "canonical": "#f8eab4",
+        "tonalRamp": [
+          "#150900",
+          "#302400",
+          "#4e410b",
+          "#6e612f",
+          "#8f8250",
+          "#b3a572",
+          "#d7c995",
+          "#fdefb9"
+        ]
+      },
+      "button": {
+        "role": "neutral",
+        "displayName": "Press Black (reserved)",
+        "canonical": "#232322",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#252524",
+          "#424241",
+          "#616160",
+          "#828281",
+          "#a5a5a4",
+          "#c9c9c8",
+          "#eeeeed"
+        ]
+      },
+      "button-hover": {
+        "role": "neutral",
+        "displayName": "Press Black Hover (reserved)",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "button-label": {
+        "role": "neutral",
+        "displayName": "Press Label (reserved)",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "help": {
+        "role": "neutral",
+        "displayName": "Help Dot",
+        "canonical": "#6d717a",
+        "tonalRamp": [
+          "#080b11",
+          "#22252c",
+          "#3e424a",
+          "#5d616a",
+          "#7e828c",
+          "#a1a5af",
+          "#c5c9d3",
+          "#eaeef9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The hero finding sentence; 36px/42px at 1100px and below, 32px/38px at 640px and below."
+      },
+      "clock": {
+        "displayName": "Clock",
+        "purpose": "The two hero clock readings; clamp(52px, 17vw, 76px) at 640px and below."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "The masthead brand."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "Witness figure values; 38px/44px at 860px and below."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Band headings, the answer heading and the glossary title; 28px/34px on phones."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Visible table captions; hidden on the study page where band headings repeat them."
+      },
+      "tab": {
+        "displayName": "Tab",
+        "purpose": "Index-tab labels and tab leads; 23px/29px in the 641px-860px accordion and without script."
+      },
+      "answer": {
+        "displayName": "Answer",
+        "purpose": "The short answer to the chosen question; 19px/27px on phones."
+      },
+      "question": {
+        "displayName": "Question",
+        "purpose": "Question links; 19px/26px on phones."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Wide-column prose with no smaller role, capped at 70ch; 18px on phones."
+      },
+      "body-note": {
+        "displayName": "Body note",
+        "purpose": "Hero note, aside notes, tab text, evidence notes, study prose and lists."
+      },
+      "table": {
+        "displayName": "Table",
+        "purpose": "Ledger cells, glossary entries, explanations under readings."
+      },
+      "tip": {
+        "displayName": "Tip",
+        "purpose": "Help explanations."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table headers, strength tags, clock and witness labels, status and count lines."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Strength toggles and Show everything."
+      },
+      "nav": {
+        "displayName": "Nav",
+        "purpose": "Masthead links."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Command blocks; inline code at 0.82em."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "Tooltip rise, tab mark, highlighter wipe and evidence-block entry."
+      },
+      {
+        "name": "state-change",
+        "value": "120ms ease-out",
+        "purpose": "Link, toggle and tab-label colour changes."
+      },
+      {
+        "name": "tip-in",
+        "value": "opacity 140ms, transform 220ms (2px rise)",
+        "purpose": "Tooltip opening."
+      },
+      {
+        "name": "tab-mark",
+        "value": "background-size 220ms",
+        "purpose": "Plus turning to minus on the open tab."
+      },
+      {
+        "name": "clock-wipe",
+        "value": "background-size 1100ms, 350ms delay, once after fonts load",
+        "purpose": "Highlighter stroke under the early clock reading."
+      },
+      {
+        "name": "block-in",
+        "value": "420ms, opacity 0 to 1 with a 6px rise",
+        "purpose": "An evidence block revealed by a filter."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "all transitions and animations removed; highlighter strokes fully drawn",
+        "purpose": "prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "two-step-tables",
+        "value": "1281px"
+      },
+      {
+        "name": "aside-fixed",
+        "value": "1100px"
+      },
+      {
+        "name": "single-column",
+        "value": "860px"
+      },
+      {
+        "name": "phone",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Inline Link",
+      "kind": "custom",
+      "refersTo": "link",
+      "description": "Every link in prose: solid Record Blue underline at 70%; hover deepens and the underline goes to full strength.",
+      "html": "<p class=\"ds-p\">Read the <a class=\"ds-link\" href=\"#\">written rules</a> behind the study.</p>",
+      "css": ".ds-p{font:380 19px/26px Newsreader,'Iowan Old Style',Georgia,serif;color:#25282e;background:#f8f7f4;margin:0;} .ds-link{color:#2a5a9e;text-decoration:underline 1px;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,#2a5a9e 70%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-link:hover{color:#153c74;text-decoration-color:currentColor;} .ds-link:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Index Tabs",
+      "kind": "nav",
+      "refersTo": "index-tab",
+      "description": "Ruled disclosure tabs: closed labels Graphite, the open label ink with a 2px ink bar on the strip rule, and a drawn +/- mark.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab\" aria-expanded=\"true\">About this page</button><button class=\"ds-tab\" aria-expanded=\"false\">The charger</button><button class=\"ds-tab\" aria-expanded=\"false\">The finding</button></div>",
+      "css": ".ds-tabs{display:flex;gap:44px;padding-left:4px;border-bottom:1px solid #7d808a;background:#f8f7f4;} .ds-tab{position:relative;display:flex;align-items:center;gap:12px;padding:16px 0 14px;border:0;background:none;color:#4f535b;font:400 21px/28px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.01em;font-variation-settings:'opsz' 36;cursor:pointer;transition:color 120ms ease-out;} .ds-tab:hover,.ds-tab[aria-expanded=true]{color:#18191b;} .ds-tab::after{content:'';flex:none;width:11px;height:11px;background:linear-gradient(currentColor,currentColor) center/11px 1.5px no-repeat,linear-gradient(currentColor,currentColor) center/1.5px 11px no-repeat;transition:background-size 220ms cubic-bezier(.16,1,.3,1);} .ds-tab[aria-expanded=true]::after{background-size:11px 1.5px,1.5px 0;} .ds-tab[aria-expanded=true]::before{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#18191b;} .ds-tab:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Question List",
+      "kind": "nav",
+      "refersTo": "question-link",
+      "description": "Two ruled columns of serif question links; the chosen one turns ink under a highlighter stroke.",
+      "html": "<ol class=\"ds-questions\"><li><a href=\"#\" aria-current=\"true\"><span>What went wrong?</span></a></li><li><a href=\"#\"><span>Does a one-second error matter?</span></a></li><li><a href=\"#\"><span>What wasn’t checked?</span></a></li><li><a href=\"#\"><span>Can I run it myself?</span></a></li></ol>",
+      "css": ".ds-questions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:0;padding:0;list-style:none;border-top:1px solid #7d808a;background:#f8f7f4;} .ds-questions li{border-bottom:1px solid #b6b8be;} .ds-questions a{display:block;padding:11px 0 12px;font:380 20px/27px Newsreader,'Iowan Old Style',Georgia,serif;color:#2a5a9e;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-questions a:hover{color:#153c74;text-decoration-color:currentColor;} .ds-questions a[aria-current=true]{color:#18191b;text-decoration-color:transparent;} .ds-questions a[aria-current=true] span{background-image:linear-gradient(transparent 58%,#f8eab4 58%,#f8eab4 92%,transparent 92%);} .ds-questions a:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Strength Toggle",
+      "kind": "chip",
+      "refersTo": "strength-toggle",
+      "description": "Text-styled filter buttons after a Graphite group label; pressed is ink, weight 500 and a 2px ink underline.",
+      "html": "<div class=\"ds-strengths\"><span class=\"ds-strength-label\">Evidence strength</span><button class=\"ds-toggle\" aria-pressed=\"true\">All</button><button class=\"ds-toggle\" aria-pressed=\"false\">Proved</button><button class=\"ds-toggle\" aria-pressed=\"false\">Tested</button><button class=\"ds-toggle\" aria-pressed=\"false\">Decided by a person</button></div>",
+      "css": ".ds-strengths{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:22px;background:#f8f7f4;} .ds-strength-label{font:500 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#4f535b;margin-right:4px;} .ds-toggle{min-height:44px;padding:0;border:0;background:none;font:400 14px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;cursor:pointer;text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-toggle:hover{color:#153c74;text-decoration-color:currentColor;} .ds-toggle[aria-pressed=true]{color:#18191b;font-weight:500;text-decoration-color:#18191b;text-decoration-thickness:2px;} .ds-toggle:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Clock Readings",
+      "kind": "custom",
+      "refersTo": "clock",
+      "description": "Two huge tabular clock readings on a ruled ledger; the early one sits under a highlighter stroke.",
+      "html": "<dl class=\"ds-clocks\"><div><dt>The schedule should restart at</dt><dd><span class=\"ds-clock\">11:00:00</span></dd></div><div><dt>EVerest restarts it at</dt><dd><span class=\"ds-clock\"><span class=\"ds-clock-mark\">10:59:59</span></span></dd></div></dl>",
+      "css": ".ds-clocks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:0;border-top:1px solid #7d808a;background:#f8f7f4;} .ds-clocks>div{padding:12px 0 14px;border-bottom:1px solid #b6b8be;} .ds-clocks dt{font:500 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#18191b;} .ds-clocks dd{margin:0;} .ds-clock{display:block;margin:6px 0 4px;color:#18191b;font:380 clamp(56px,7.2vw,112px)/1 Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.035em;font-variation-settings:'opsz' 72;font-variant-numeric:lining-nums tabular-nums;} .ds-clock-mark{margin-left:-0.08em;padding:0 0.1em 0 0.08em;background:linear-gradient(transparent 58%,#f8eab4 58%,#f8eab4 94%,transparent 94%);}"
+    },
+    {
+      "name": "Help Term and Tip",
+      "kind": "custom",
+      "refersTo": "help-term",
+      "description": "Dotted-underline term that opens a paper tooltip with a 1px Tip Border outline and a pointer.",
+      "html": "<p class=\"ds-note\">Found by comparing with a <button class=\"ds-term\" data-open>reference program</button>.</p><div class=\"ds-tip\">A program describing the behavior we expect. We compare its answers with the code being checked.</div>",
+      "css": ".ds-note{font:380 17.5px/25px Newsreader,'Iowan Old Style',Georgia,serif;color:#25282e;margin:0 0 16px;} .ds-term{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:help;text-decoration:underline dotted 1.5px;text-underline-offset:4px;text-decoration-color:#6d717a;border-radius:1px;} .ds-term:hover,.ds-term[data-open]{text-decoration-color:#18191b;} .ds-term:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;} .ds-tip{position:relative;width:260px;padding:11px 13px 12px;background:#f8f7f4;color:#18191b;border:1px solid #9a9da2;border-radius:2px;font:400 15.5px/22px Newsreader,'Iowan Old Style',Georgia,serif;} .ds-tip::before{content:'';position:absolute;bottom:100%;left:24px;border:solid transparent;border-width:0 9px 12px;border-bottom-color:#9a9da2;transform:translateX(-50%);} .ds-tip::after{content:'';position:absolute;bottom:calc(100% - 1px);left:24px;border:solid transparent;border-width:0 8px 11px;border-bottom-color:#f8f7f4;transform:translateX(-50%);}"
+    },
+    {
+      "name": "Ledger Table",
+      "kind": "card",
+      "refersTo": "ledger-cell",
+      "description": "Ruled evidence table: sans headers over a Header Rule, serif tabular cells, sans Strength values, no vertical rules.",
+      "html": "<table class=\"ds-ledger\"><thead><tr><th>What was checked</th><th>Cases</th><th>Strength</th></tr></thead><tbody><tr><td>Combined limit under the charger-wide limit</td><td>All</td><td class=\"ds-strength\">Proved</td></tr><tr><td>EVerest against the reference program</td><td>2,000</td><td class=\"ds-strength\">Tested</td></tr></tbody></table>",
+      "css": ".ds-ledger{width:100%;border-collapse:collapse;background:#f8f7f4;font:380 17px/24px Newsreader,'Iowan Old Style',Georgia,serif;font-variant-numeric:lining-nums tabular-nums;color:#25282e;} .ds-ledger th,.ds-ledger td{text-align:left;vertical-align:middle;padding:8px 10px 9px 12px;height:42px;} .ds-ledger th{color:#18191b;font:500 13.5px/20px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;border-top:1px solid #7d808a;border-bottom:1px solid #5d5f68;} .ds-ledger td{border-bottom:1px solid #b6b8be;} .ds-strength{font:500 13.5px/24px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#18191b;}"
+    },
+    {
+      "name": "Answer Band",
+      "kind": "card",
+      "refersTo": "answer-text",
+      "description": "The chosen question as a Headline, a 21px ink answer, and a Graphite count line with Show everything.",
+      "html": "<div class=\"ds-answer\"><h2>What went wrong?</h2><div><p class=\"ds-answer-text\">In the study’s smallest example, EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00.</p><p class=\"ds-answer-meta\">2 pieces of evidence <button class=\"ds-show-all\">Show everything</button></p></div></div>",
+      "css": ".ds-answer{display:grid;grid-template-columns:300px minmax(0,1fr);column-gap:48px;padding:36px 0 34px;border-bottom:1px solid #7d808a;background:#f8f7f4;} .ds-answer h2{margin:0;padding-left:4px;color:#18191b;font:400 32px/38px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.022em;font-variation-settings:'opsz' 48;max-width:16ch;} .ds-answer-text{margin:0;font:380 21px/30px Newsreader,'Iowan Old Style',Georgia,serif;color:#18191b;max-width:56ch;font-variation-settings:'opsz' 24;} .ds-answer-meta{margin:8px 0 0;font:400 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#4f535b;} .ds-show-all{margin-left:14px;min-height:44px;padding:0;border:0;background:none;font:inherit;color:#2a5a9e;cursor:pointer;text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-show-all:hover{color:#153c74;text-decoration-color:currentColor;} .ds-show-all:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Command Block and Copy",
+      "kind": "custom",
+      "refersTo": "code-block",
+      "description": "Unboxed Plex Mono commands that wrap under a 2ch hanging indent, with a text-styled copy control.",
+      "html": "<pre class=\"ds-cmds\"><code><span class=\"ds-cmd\">python3 formal-verification/tests/ocpp16_composite/drt_harness.py <span class=\"ds-flag\">--count</span> 2000 <span class=\"ds-flag\">--seed</span> 20261024 <span class=\"ds-flag\">--old-anchors</span></span></code></pre><button class=\"ds-copy\">Copy commands</button>",
+      "css": ".ds-cmds{margin:0;font:400 13.5px/22px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#33363d;white-space:normal;background:#f8f7f4;} .ds-cmd{display:block;white-space:pre-wrap;overflow-wrap:normal;padding-left:2ch;text-indent:-2ch;} .ds-flag{white-space:nowrap;} .ds-copy{display:inline-flex;align-items:center;min-height:44px;padding:0;border:0;background:none;font:400 13.5px/20px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;cursor:pointer;text-decoration:underline 1px;text-underline-offset:4px;} .ds-copy:hover{color:#153c74;} .ds-copy:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Evidence Record",
+    "overview": "**Creative North Star: \"The Evidence Record\"**\n\nThe page reads like a well-set research record: a warm paper ground, dark ink, a text serif doing nearly all the talking, and fine horizontal rules that divide the page into bands. Every visual device either helps someone read a claim or helps them inspect the evidence behind it. A wide ledger table carries the evidence; narrow columns carry the prose. There are no cards, no shadows, no gradients for atmosphere and no imagery that is not itself evidence.\n\nHierarchy comes from serif size, optical sizing and position, not from colour or weight. Weight stays near regular (380 for reading, 400 for headings, 500 only for table headers, small sans labels and a pressed filter). The one warm accent, a pale highlighter yellow, marks the single result a reader most needs to see. Links look like links: blue and underlined. Specialist terms carry a dotted underline that opens a plain-English explanation; the two underline styles never trade meanings.\n\nDensity is moderate: generous enough to read, tight enough that the finding sentence, both clock readings and the index-tab strip share the first desktop viewport. On narrow screens everything stacks in source order and tables become labelled rows rather than shrinking.",
+    "keyCharacteristics": [
+      "Warm off-white paper ground with near-black ink and greys tuned slightly cool.",
+      "Newsreader for reading, headings, tab labels and data; Public Sans only for navigation, controls and labels; IBM Plex Mono only for commands and identifiers.",
+      "Bands: a narrow summary column beside a wide evidence column, each band closed by a 1px rule.",
+      "Ruled ledger tables with tabular numerals as the primary evidence form.",
+      "One highlighter accent, used on a single finding per band.",
+      "Solid underline means navigation; dotted underline means explanation."
+    ],
+    "rules": [
+      {
+        "name": "The One Mark Rule",
+        "body": "Highlighter yellow marks the one result a reader must not miss in a given band. If two things are highlighted, neither is.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Hierarchy Rule",
+        "body": "Hierarchy is carried by ink depth (ink, text, muted) and type size, never by introducing a new hue.",
+        "section": "colors"
+      },
+      {
+        "name": "The Serif Carries It Rule",
+        "body": "Prose, headings, tab labels, questions, table cells and numbers are all Newsreader. The sans names things the reader acts on or scans by: navigation, filter controls, standalone links, table headers, strength tags and data labels. It never sets a heading or a paragraph, and it always carries +0.01em tracking at these sizes.",
+        "section": "typography"
+      },
+      {
+        "name": "The Reading Measure Rule",
+        "body": "A wide page does not mean wide prose. Aside notes stay near 36ch, the answer at 56ch, and prose in the wide column at 65ch to 70ch at most; only tables, the clock ledger and the question list use the full evidence column.",
+        "section": "typography"
+      },
+      {
+        "name": "The Ruled, Not Lifted Rule",
+        "body": "Separate content with 1px horizontal rules. Never with shadows, tinted panels or cards.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do set prose, headings, tab labels, questions, tables and numbers in Newsreader, with optical sizing and tabular lining numerals in tables, clocks and readings.",
+      "Do keep prose at a reading measure even on a wide page: about 36ch in the aside, 56ch for the answer, 65ch to 70ch in the wide column.",
+      "Do put evidence in ruled ledger tables in the wide column, with the summary in the narrow aside.",
+      "Do separate bands and rows with 1px horizontal rules in the rule tones.",
+      "Do underline every link solidly in Record Blue, and give every specialist term a dotted Help Dot underline with a working explanation on hover, focus and tap.",
+      "Do mark state with ink and a 2px ink stroke: the bar under the open index tab, the underline of a pressed toggle.",
+      "Do keep every tab panel and every evidence block readable without script.",
+      "Do keep table labels visible on phones by turning rows into labelled blocks.",
+      "Do honour reduced motion: highlighter strokes appear fully drawn and transitions and animations are removed."
+    ],
+    "donts": [
+      "Don't add box shadows, cards, tinted panels or vertical table rules.",
+      "Don't fill, box or border index tabs; they sit on the rule.",
+      "Don't use Highlighter Yellow for decoration or on more than the one decisive result in a band.",
+      "Don't give familiar words (AI, plugin, code, tests) the dotted help treatment, and don't use a dotted underline on a link.",
+      "Don't set headings or paragraphs in Public Sans, or add uppercase tracked labels.",
+      "Don't add outlined, ghost or pill buttons, chip toggles, or corners rounder than 3px.",
+      "Don't use typed glyphs or icon fonts for disclosure marks; draw them with strokes."
+    ]
+  }
+}
