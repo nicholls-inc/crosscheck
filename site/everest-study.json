@@ -1,0 +1,218 @@
+{
+  "format": "crosscheck-publication-snapshot/1",
+  "title": "A one-second difference you can inspect",
+  "status": "WIP study; reported results, not independently rerun for this website",
+  "repository": "https://github.com/nicholls-inc/crosscheck",
+  "studyCommit": "7d05c4e62284b4101e8f23722ee3b6111e5ca0e9",
+  "everestCommit": "dd696165d407d461a724232a4d77fe476a964ef1",
+  "essay": "https://brainflow.substack.com/p/review-evidence-not-code",
+  "pullRequest": "https://github.com/nicholls-inc/crosscheck/pull/144",
+  "runDate": "2026-10-24",
+  "measurementDate": "2026-10-27",
+  "seed": 20261024,
+  "tolerance": "0.05 of the profile's unit (A or W)",
+  "sources": {
+    "spec": "formal-verification/specs/ocpp16_composite_informal.md",
+    "model": "formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean",
+    "review": "formal-verification/correspondence/Ocpp16Composite.md",
+    "report": "formal-verification/tests/ocpp16_composite/drt_report.md",
+    "driver": "formal-verification/tests/ocpp16_composite/everest_driver/README.md",
+    "build": "formal-verification/tests/ocpp16_composite/everest_driver/build.sh",
+    "harness": "formal-verification/tests/ocpp16_composite/drt_harness.py",
+    "proofCheck": "formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh"
+  },
+  "claims": [
+    {
+      "strength": "Proved",
+      "statement": "Three rules of the reference program",
+      "support": "Lean checks the proofs",
+      "boundary": "About the Lean model, not a proof of EVerest's implementation.",
+      "summary": "Three rules proved about the model"
+    },
+    {
+      "strength": "Tested",
+      "statement": "Schedules anchored in 2017–2025",
+      "support": "2,000 generated cases",
+      "boundary": "All 2,000 pass; 57,304 instants with a model limit agree within tolerance, and neither program gives a limit at the other 10,226 instants.",
+      "summary": "All 2,000 agree on sampled inputs"
+    },
+    {
+      "strength": "Tested",
+      "statement": "Schedules anchored in 2010–2016",
+      "support": "2,000 generated cases",
+      "boundary": "835 pass, 92 warn, 1,073 fail, as reported. The report also records 1,081 instants with an extra EVerest limit; see the classification caveat.",
+      "summary": "835 pass, 92 warn, 1,073 fail (reported)"
+    },
+    {
+      "strength": "Unfinished",
+      "statement": "A fourth model rule",
+      "support": "Stated without a completed proof",
+      "boundary": "No proof claimed.",
+      "summary": "No proof claimed"
+    }
+  ],
+  "results": [
+    {
+      "configuration": "Anchors 2017–2025",
+      "cases": 2000,
+      "pass": 2000,
+      "warn": 0,
+      "fail": 0
+    },
+    {
+      "configuration": "Anchors 2010–2016",
+      "cases": 2000,
+      "pass": 835,
+      "warn": 92,
+      "fail": 1073
+    },
+    {
+      "configuration": "Older anchors, shifted by leap seconds",
+      "cases": 2000,
+      "pass": 2000,
+      "warn": 0,
+      "fail": 0
+    },
+    {
+      "configuration": "Mutation self-test (seed 1)",
+      "cases": 300,
+      "pass": 181,
+      "warn": 34,
+      "fail": 85
+    }
+  ],
+  "counters": {
+    "recent": {
+      "instants": 67530,
+      "modelHasLimit": 57304,
+      "exact": 57304,
+      "below": 0,
+      "aboveOrMissing": 0,
+      "extraLimit": 0,
+      "neither": 10226,
+      "vacuousCases": 55
+    },
+    "older": {
+      "instants": 78263,
+      "modelHasLimit": 66541,
+      "exact": 56902,
+      "below": 4331,
+      "aboveOrMissing": 5308,
+      "extraLimit": 1081,
+      "neither": 10641,
+      "vacuousCases": 64
+    }
+  },
+  "classificationCaveat": "The pinned report is internally inconsistent about extra limits: its updated Q4 header calls an EVerest limit where the model has none a warning, while a retained note says these instants were unclassified. Its counters record 1,081 such instants in the older run. The totals here are the report's published totals, not a reconstruction or a new run. A pass is not a general claim of exact agreement.",
+  "witness": {
+    "profile": "One daily TxDefaultProfile on connector 0, stack level 3, with no duration",
+    "anchor": "2016-09-14T11:00:00Z",
+    "window": "2026-08-13T03:00:00Z for 24 hours",
+    "periods": [
+      {
+        "offsetSeconds": 0,
+        "limitWatts": 9249.9
+      },
+      {
+        "offsetSeconds": 40500,
+        "limitWatts": 6543.6
+      }
+    ],
+    "readAt": "2026-08-13T10:59:59Z",
+    "modelWatts": 6543.6,
+    "everestWatts": 9249.9,
+    "expectedRestart": "11:00:00 UTC",
+    "actualRestart": "10:59:59 UTC",
+    "severity": "Low, as rated by the study; one to three seconds of drift in the reported examples."
+  },
+  "modelProperties": [
+    "The combined limit is never above the charger-wide limit.",
+    "It is never above the applicable transaction limit.",
+    "While a transaction's own schedule applies, changing default schedules does not change the limit."
+  ],
+  "unfinishedProperty": "Adding a lower-priority schedule that does not apply leaves the limit unchanged (I4).",
+  "humanDecisions": [
+    "The owner approved interpretations A1 and A2 and reclassified two AI correspondence-review findings as abstractions rather than approximations.",
+    "The owner confirmed restoring the missing s ≤ t condition in D4 on 2026-10-27.",
+    "Q4 treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here."
+  ],
+  "trustedDependencies": [
+    "Lean v4.28.0 and its standard axioms propext, Classical.choice and Quot.sound for the stated completed proofs.",
+    "The reviewed interpretation of OCPP 1.6 edition 2 and the Lean model's correspondence to it.",
+    "The C++ compiler, driver, copied installation/orchestration glue, two shim headers, Python harness, JSON adapter and model runner.",
+    "The operating system timezone database read by the driver; its leap-second table must contain exactly the three leap seconds since 2010 (2012-06-30, 2015-06-30, 2016-12-31)."
+  ],
+  "environment": {
+    "lean": "leanprover/lean4:v4.28.0",
+    "compiler": "Apple clang 21.0.0, C++17; reported on macOS arm64",
+    "boost": "1.92.0, headers under /opt/homebrew/include",
+    "fmt": "12.2.0, header-only under /opt/homebrew/include",
+    "date": "HowardHinnant/date 3.0.1; USE_OS_TZDB=1, HAS_REMOTE_API=0",
+    "json": "nlohmann/json 3.11.3",
+    "otherPrerequisites": [
+      "git",
+      "curl",
+      "Python 3",
+      "elan with the Lean toolchain installed"
+    ],
+    "buildDownloadHashes": {
+      "everest.tar.gz": "64a902ec5476bd1fd235439a96afdbc704d18e8805c138bd2ebdc2be1aab9431",
+      "date.tar.gz": "7a390f200f0ccd207e8cff6757e04817c1a0aec3e327b006b7eb451c57ee3538",
+      "json.hpp": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6",
+      "json_fwd.hpp": "5cefbba751baf5243033fd894c70be9b37103d64b3d3a959e4173197d71137b9"
+    },
+    "boundary": "Source and downloaded inputs are pinned. The host compiler, system headers and timezone database still need matching; this is not a hermetically pinned environment."
+  },
+  "coverage": "At most 2 charger-wide, 3 default and 2 transaction profiles, up to 4 periods per profile, 15-minute offsets, 24- or 48-hour windows in 2026, on connector 1. Absolute, daily and weekly schedules are generated. Each case samples transition instants from either program and one second either side.",
+  "notYetReached": [
+    {
+      "behavior": "Relative profiles",
+      "blocker": "No transaction start time in the model",
+      "question": "How should transaction-relative time enter the model?"
+    },
+    {
+      "behavior": "Phases and minimum charging rate",
+      "blocker": "One scalar limit and no phase count",
+      "question": "How should phase-dependent limits be represented?"
+    },
+    {
+      "behavior": "Conversion between amps and watts",
+      "blocker": "No voltage or phase inputs",
+      "question": "What assumptions justify conversion between units?"
+    },
+    {
+      "behavior": "Connector-0 aggregate",
+      "blocker": "No allocation state across connectors",
+      "question": "How should the station-wide sum be constrained?"
+    },
+    {
+      "behavior": "Offline behavior",
+      "blocker": "No connectivity state",
+      "question": "How should connectivity change profile selection?"
+    },
+    {
+      "behavior": "Transaction ID matching",
+      "blocker": "No transaction ID field or active-transaction input",
+      "question": "How should transaction identity constrain applicability?"
+    },
+    {
+      "behavior": "OCPP 2.x",
+      "blocker": "Different profile structure and separate production code",
+      "question": "Which rules and model changes are needed for OCPP 2.x?"
+    }
+  ],
+  "ambiguity": "Default profiles on connectors 0 and 1 together are not generated: the signed spec leaves their interaction unresolved. The recurrence wording also admits another interpretation; the study records it as OCA note N4.",
+  "upstreamStatus": "The pinned study contains a draft EVerest issue awaiting human review. It records no upstream filing. This website does not submit one.",
+  "commands": [
+    "git clone https://github.com/nicholls-inc/crosscheck crosscheck-everest-study",
+    "cd crosscheck-everest-study",
+    "git checkout --detach 7d05c4e62284b4101e8f23722ee3b6111e5ca0e9",
+    "formal-verification/tests/ocpp16_composite/everest_driver/build.sh",
+    "formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh",
+    "python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024",
+    "python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors",
+    "python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors --leap-correct"
+  ],
+  "replayNote": "The older-anchor run is expected to report failures; a nonzero exit is a reproduced finding, not an installation failure. --leap-correct changes input anchors for diagnosis and does not fix EVerest. A run writes drt_report_latest.md; preserve the pinned historical report.",
+  "publicationNote": "This editorial snapshot summarizes linked historical evidence. It is not evidence-record/1, an automatic attestation, a new experimental run, or independent proof rechecking."
+}

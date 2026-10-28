@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossary: Crosscheck</title>
+<meta name="description" content="Plain-English explanations of the specialist terms used on the Crosscheck site.">
+<link rel="preload" href="fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="page">
+
+<header class="masthead">
+  <a class="brand" href="./">Crosscheck</a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="./#everest">Case study</a></li>
+      <li><a href="./#how">How to use it</a></li>
+      <li><a href="./#install">Install</a></li>
+      <li><a href="glossary.html" aria-current="page">Glossary</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="terms band" id="terms" aria-labelledby="terms-title">
+  <div>
+    <h1 id="terms-title">Glossary</h1>
+    <p class="aside-note">The specialist terms used on this site, in plain English. On the <a href="./">home page</a>, each dotted term opens the same explanation.</p>
+  </div>
+  <dl class="glossary">
+    <div id="proof"><dt><dfn>Proof</dfn></dt><dd id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</dd></div>
+    <div id="dafny"><dt><dfn>Dafny</dfn></dt><dd id="def-dafny">A language and tool for checking that code follows written rules. It can turn checked code into Python or Go.</dd></div>
+    <div id="lean"><dt><dfn>Lean</dfn></dt><dd id="def-lean">A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.</dd></div>
+    <div id="reference-program"><dt><dfn>Reference program</dfn></dt><dd id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</dd></div>
+    <div id="leap-second"><dt><dfn>Leap second</dfn></dt><dd id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</dd></div>
+    <div id="differential-testing"><dt><dfn>Differential testing</dfn></dt><dd id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</dd></div>
+    <div id="ocpp"><dt><dfn>OCPP</dfn></dt><dd id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</dd></div>
+    <div id="cgv"><dt><dfn>CGV</dfn></dt><dd id="def-cgv">Contract graph verifier: a tool that follows data through a Python project and checks that each step keeps the data rules declared for it, such as a field’s length limit.</dd></div>
+    <div id="byfuglien"><dt><dfn>byfuglien</dfn></dt><dd id="def-byfuglien">The name of Crosscheck’s agent for checking code. It picks the right proof, test or review step for the job you describe.</dd></div>
+    <div id="trusted-base"><dt><dfn>Trusted base</dfn></dt><dd id="def-trusted-base">The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.</dd></div>
+  </dl>
+</section>
+
+</main>
+
+<footer class="colophon">
+  <a class="brand" href="./">Crosscheck</a>
+  <div class="colophon-links">
+    <nav aria-label="Site">
+      <ul>
+        <li><a href="./#everest">Case study</a></li>
+        <li><a href="./#how">How to use it</a></li>
+        <li><a href="./#install">Install</a></li>
+        <li><a href="glossary.html">Glossary</a></li>
+      </ul>
+    </nav>
+    <ul aria-label="Elsewhere">
+      <li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">X<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      <li><a href="https://github.com/hnipps" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+    </ul>
+    <p class="copyright">© 2026 Nicholls Inc</p>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

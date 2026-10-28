@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crosscheck: see what the evidence supports</title>
+<meta name="description" content="Crosscheck is a Claude Code plugin that checks claims about AI-written code with proofs and tests you can repeat. Read what was checked, see the results, and inspect the assumptions.">
+<link rel="preload" href="fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="help.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="page">
+
+<header class="masthead">
+  <a class="brand" href="./">Crosscheck</a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="#everest">Case study</a></li>
+      <li><a href="#how">How to use it</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="glossary.html">Glossary</a></li>
+      <li><a href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="intro" aria-labelledby="title">
+  <h1 id="title">See what the evidence supports.</h1>
+  <div class="intro-columns">
+    <p data-gloss="margin">Crosscheck checks claims about code with <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> and repeatable tests. Each claim says what was checked, what it trusts, and where the result stops.</p>
+    <p>The EVerest study puts that approach to work on electric-vehicle charging software. Start with its evidence, then read the argument behind it in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+  </div>
+  <p class="actions">
+    <a class="button" href="everest.html">Inspect the EVerest evidence</a>
+    <a href="#install">Install the plugin</a>
+  </p>
+</section>
+
+<section class="study band" id="everest" aria-labelledby="everest-title">
+  <div class="study-summary">
+    <h2 id="everest-title" class="study-name">EVerest</h2>
+    <p class="study-meta">OCPP 1.6 charging schedules<br>Study in progress · PR #144</p>
+    <p class="study-finding">A daily schedule restarts at 10:59:59 instead of 11:00:00. The study traced the difference to <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap seconds</button>. It rates the impact as low.</p>
+    <ul class="stacked-links">
+      <li><a href="everest.html">Read the full study</a></li>
+      <li><a href="everest.html#replay">Repeat the run</a></li>
+      <li><a href="everest-study.json" download>Download the publication record (JSON)</a></li>
+    </ul>
+  </div>
+  <div class="evidence">
+<!-- publication:claims -->
+<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference program</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">Three rules proved about the model</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 agree on sampled inputs</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn, 1,073 fail (reported)</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Unfinished</td><td data-label="Result and boundary">No proof claimed</td></tr></tbody></table>
+<p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>
+<!-- /publication:claims -->
+    <p class="evidence-note">Read the <a href="everest.html#results">reported totals and their classification caveat</a> before interpreting pass and warning counts.</p>
+  </div>
+</section>
+
+<section class="covers band" id="covers" aria-labelledby="covers-title">
+  <div>
+    <h2 id="covers-title">Follow one claim</h2>
+    <p class="aside-note">A rule about clock time leads to a concrete difference in the charging limit. Inspect the input, the model and the production result.</p>
+    <p class="aside-note"><a href="everest.html#witness">Open the witness and its interpretation</a></p>
+  </div>
+  <div>
+<!-- publication:witness -->
+<figure class="witness"><figcaption>One daily default schedule, first started at <time datetime="2016-09-14T11:00:00Z">11:00:00 UTC on 14 September 2016</time>.
+<span class="witness-time">Read at <time datetime="2026-08-13T10:59:59Z">10:59:59 UTC on 13 August 2026</time></span></figcaption><dl>
+<div><dt>The reference program</dt><dd><span class="reading">6,543.6&nbsp;W</span><span class="why">The second period still applies. Restart is at 11:00:00 UTC.</span></dd></div>
+<div><dt>EVerest at <code>dd696165</code></dt><dd><span class="reading reading-off">9,249.9&nbsp;W</span><span class="why">It has already restarted, one second early, so the limit is too high.</span></dd></div>
+</dl></figure>
+<!-- /publication:witness -->
+    <p class="evidence-scope">This is a reproducible finding on a pinned revision. It does not establish correctness of the whole charging system.</p>
+  </div>
+</section>
+
+<section class="publication band" aria-labelledby="publication-title">
+  <div>
+    <h2 id="publication-title">From the argument to your own evidence</h2>
+    <p class="aside-note">One goal connects the essay, the study and Crosscheck: make claims readable, inspectable and repeatable.</p>
+  </div>
+  <ol class="publication-path">
+    <li><h3><a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Read the argument<span class="visually-hidden"> (opens in a new tab)</span></a></h3><p>The published essay explains evidence-carrying code and why proofs, tests, observation and human judgment support different claims.</p></li>
+    <li><h3><a href="everest.html">Inspect the worked example</a></h3><p>The EVerest study follows a written rule through a model, a test witness and repeatable results, with its assumptions and gaps visible.</p></li>
+    <li><h3><a href="#how">Try the workflow</a></h3><p>Choose a small behavior in your own code, write its rules, then produce evidence that says exactly what you checked.</p></li>
+  </ol>
+</section>
+
+<section class="install band" id="install" aria-labelledby="install-title" tabindex="-1">
+  <div>
+    <h2 id="install-title">Start with the plugin</h2>
+    <p class="aside-note">You will need Docker, Node.js 18 or later, and Claude Code. The <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> and <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks run in Docker containers with no network access.</p>
+  </div>
+  <ol class="install-steps">
+    <li>
+      <p class="step-label">Install the plugin from the marketplace.</p>
+      <div class="commands">
+        <pre id="install-commands" tabindex="0" aria-label="Install commands"><code>claude plugin marketplace add nicholls-inc/claude-code-marketplace
+claude plugin install crosscheck@nicholls</code></pre>
+        <button type="button" class="copy" data-copy="install-commands">Copy commands</button>
+        <span class="copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </li>
+    <li>
+      <p class="step-label">Build the checker images once, from a clone of the repository. The Lean image is slow the first time.</p>
+      <div class="commands">
+        <pre id="build-commands" tabindex="0" aria-label="Commands to build the checker images"><code>git clone https://github.com/nicholls-inc/crosscheck &amp;&amp; cd crosscheck/crosscheck
+./scripts/build-docker.sh
+./scripts/build-lean-docker.sh</code></pre>
+        <button type="button" class="copy" data-copy="build-commands">Copy commands</button>
+        <span class="copy-status" role="status" aria-live="polite"></span>
+        <p class="step-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md#prerequisites" target="_blank" rel="noopener">Full setup in the README<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section class="how band" id="how" aria-labelledby="how-title">
+  <div>
+    <h2 id="how-title">How to use it</h2>
+    <p class="aside-note">Install the plugin, then ask Claude in plain words. For example: “Use the <button type="button" class="term" data-term="byfuglien" aria-describedby="def-byfuglien">byfuglien</button> agent to verify your bug fix.” You can also run each step yourself as a skill.</p>
+  </div>
+  <div class="paths">
+    <div class="path">
+    <table class="ledger ledger-steps">
+      <caption>Prove a small piece of code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></caption>
+      <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Step"><code>/spec-iterate</code></td><td data-label="What it does">Writes the rules for the code with you, until they say what you mean.</td></tr>
+        <tr><td data-label="Step"><code>/generate-verified</code></td><td data-label="What it does">Writes code, and <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> checks that it follows those rules.</td></tr>
+        <tr><td data-label="Step"><code>/extract-code</code></td><td data-label="What it does">Turns the checked code into Python or Go for your project.</td></tr>
+      </tbody>
+    </table>
+    <p class="path-note">This suits pure, self-contained logic. Fitting the generated code into your application is still your job, and the step that turns <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> into Python or Go is assumed correct, not proved.</p>
+    </div>
+
+    <div class="path">
+    <table class="ledger ledger-steps">
+      <caption>Model existing code with <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and test it</caption>
+      <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Step"><code>/informal-spec</code></td><td data-label="What it does">Writes the rules in plain English, from the standard or the intent.</td></tr>
+        <tr><td data-label="Step"><code>/lean-spec</code></td><td data-label="What it does">Restates those rules precisely in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>.</td></tr>
+        <tr><td data-label="Step"><code>/lean-impl</code></td><td data-label="What it does">Builds the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and states the rules about it, ready to prove. A proof can stay unfinished, as the fourth rule’s did here.</td></tr>
+        <tr><td data-label="Step"><code>/correspondence-review</code></td><td data-label="What it does">An AI compares each part of the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> with the written rules and the code. A person decides what to do with each finding.</td></tr>
+        <tr><td data-label="Step"><code>/drt-oracle</code></td><td data-label="What it does">Runs your code and the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> on the same generated inputs, then reports each difference it finds, with an example. This is <button type="button" class="term" data-term="differential-testing" aria-describedby="def-differential-testing">differential testing</button>.</td></tr>
+      </tbody>
+    </table>
+    <p class="path-note">The EVerest study above followed these five steps.</p>
+    </div>
+  </div>
+</section>
+
+<section class="today band" id="today" aria-labelledby="today-title">
+  <div>
+    <h2 id="today-title">Today and the vision</h2>
+    <p class="aside-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md" target="_blank" rel="noopener">vision<span class="visually-hidden"> (opens in a new tab)</span></a> is a readable, checkable claim for every code change. Some of that ships now. The rest has not been reached yet, and the table says what blocks it.</p>
+  </div>
+  <table class="ledger ledger-status">
+    <thead><tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col">What counts as evidence</th></tr></thead>
+    <tbody>
+      <tr><td data-label="Check"><button type="button" class="term" data-term="proof" aria-describedby="def-proof">Proofs</button> about small, self-contained code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></td><td data-label="Status">Ships today</td><td data-label="What counts as evidence"><button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button>’s check</td></tr>
+      <tr><td data-label="Check"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">Reference programs</button> in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>, tested against your code</td><td data-label="Status">Ships today</td><td data-label="What counts as evidence"><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>’s check, and test results you can repeat</td></tr>
+      <tr><td data-label="Check">Data rules along Python data paths (<button type="button" class="term" data-term="cgv" aria-describedby="def-cgv">CGV</button>)</td><td data-label="Status">Ships today, for Django and plain Python data classes. The plugin calls it, but you build CGV from a clone of the repository</td><td data-label="What counts as evidence">A checker proved in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>. Its description of how each library behaves is assumed, not proved</td></tr>
+      <tr><td data-label="Check">Whether written rules match what you meant</td><td data-label="Status">Search only</td><td data-label="What counts as evidence">AI output is search, not evidence. Recorded human decisions are judged evidence</td></tr>
+      <tr><td data-label="Check">Whether the written rules are complete</td><td data-label="Status">Not yet reached</td><td data-label="What counts as evidence">Blocked until each rule is tied to a formal requirement</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="reprise band" aria-labelledby="reprise-title">
+  <div>
+    <h2 id="reprise-title">Try it on your own code</h2>
+    <p class="aside-note">Install the plugin, then ask Claude to check a change. Or repeat the EVerest run yourself and compare your numbers with ours.</p>
+  </div>
+  <p class="actions">
+    <a class="button" href="#install">Install the plugin</a>
+    <a href="everest.html#replay">Rerun the EVerest check</a>
+  </p>
+</section>
+
+</main>
+
+<footer class="colophon">
+  <a class="brand" href="./">Crosscheck</a>
+  <div class="colophon-links">
+    <nav aria-label="Site">
+      <ul>
+        <li><a href="./#everest">Case study</a></li>
+        <li><a href="./#how">How to use it</a></li>
+        <li><a href="./#install">Install</a></li>
+        <li><a href="glossary.html">Glossary</a></li>
+      </ul>
+    </nav>
+    <ul aria-label="Elsewhere">
+      <li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">X<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      <li><a href="https://github.com/hnipps" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+    </ul>
+    <p class="copyright">© 2026 Nicholls Inc</p>
+  </div>
+</footer>
+
+</div>
+<!-- Tip text. glossary.html is the page readers see; scripts/check-site-glossary.mjs fails if these differ from it. -->
+<div id="definitions" hidden>
+  <p id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</p>
+  <p id="def-dafny">A language and tool for checking that code follows written rules. It can turn checked code into Python or Go.</p>
+  <p id="def-lean">A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.</p>
+  <p id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</p>
+  <p id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</p>
+  <p id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</p>
+  <p id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</p>
+  <p id="def-cgv">Contract graph verifier: a tool that follows data through a Python project and checks that each step keeps the data rules declared for it, such as a field’s length limit.</p>
+  <p id="def-byfuglien">The name of Crosscheck’s agent for checking code. It picks the right proof, test or review step for the job you describe.</p>
+  <p id="def-trusted-base">The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.</p>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>
