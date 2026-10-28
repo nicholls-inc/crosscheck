@@ -107,27 +107,128 @@ if (asked) {
   });
 }
 
-/* The finding is marked as it scrolls into view. If it is already on screen
-   when the page loads, the mark is simply there. */
+/* The early clock reading is highlighted once, as the page opens. */
 
-const finding = document.querySelector(".finding");
-if (finding && "IntersectionObserver" in window && !reduceMotion) {
-  let first = true;
-  const io = new IntersectionObserver((entries) => {
-    const visible = entries.some((e) => e.isIntersecting);
-    if (first) {
-      first = false;
-      if (visible) { io.disconnect(); return; }
-      finding.classList.add("is-waiting");
-      return;
+const clockMark = document.querySelector(".clock-mark");
+if (clockMark && !reduceMotion) {
+  clockMark.classList.add("is-waiting");
+  document.fonts.ready.then(() => requestAnimationFrame(() => {
+    clockMark.classList.add("is-marked");
+    clockMark.classList.remove("is-waiting");
+  }));
+}
+
+/* Index tabs: one panel open at a time, and all of them may be closed. */
+
+const tabButtons = [...document.querySelectorAll(".tab-head button")];
+function setTab(open) {
+  for (const button of tabButtons) {
+    const expanded = button === open;
+    button.setAttribute("aria-expanded", String(expanded));
+    document.getElementById(button.getAttribute("aria-controls")).hidden = !expanded;
+  }
+}
+for (const button of tabButtons) {
+  button.addEventListener("click", () => setTab(button.getAttribute("aria-expanded") === "true" ? null : button));
+}
+if (tabButtons.length) setTab(tabButtons[0]);
+
+/* Questions filter the evidence, and the strength filter narrows it further.
+   Without JavaScript every block shows and each question is a jump link. */
+
+const blocks = [...document.querySelectorAll(".block")];
+const questionLinks = [...document.querySelectorAll("[data-question]")];
+const strengthButtons = [...document.querySelectorAll(".strengths button")];
+const answer = document.getElementById("answer");
+const filter = { question: "", strength: "" };
+
+if (blocks.length && answer) {
+  document.querySelector(".strengths").hidden = false;
+  const status = document.querySelector(".filter-status");
+  const title = document.getElementById("answer-title");
+  const text = answer.querySelector(".answer-text");
+  const count = answer.querySelector(".answer-count");
+  const showAll = answer.querySelector(".show-all");
+  const words = (value) => (value || "").split(" ").filter(Boolean);
+  const strengthName = (key) => strengthButtons.find((b) => b.dataset.strength === key).textContent.toLowerCase();
+  const pieces = (n) => (n === 1 ? "1 piece" : `${n} pieces`);
+
+  function apply() {
+    let shown = 0;
+    for (const block of blocks) {
+      const visible = (!filter.question || words(block.dataset.q).includes(filter.question))
+        && (!filter.strength || words(block.dataset.strength).includes(filter.strength));
+      if (visible && block.hidden) {
+        block.classList.add("is-entering");
+        block.addEventListener("animationend", () => block.classList.remove("is-entering"), { once: true });
+      }
+      block.hidden = !visible;
+      if (visible) shown += 1;
     }
-    if (!visible) return;
-    io.disconnect();
-    finding.classList.add("is-marked");
-    void finding.offsetWidth;
-    finding.classList.remove("is-waiting");
-  }, { threshold: 0.35 });
-  io.observe(finding);
+    for (const link of questionLinks) {
+      if (link.dataset.question === filter.question) link.setAttribute("aria-current", "true");
+      else link.removeAttribute("aria-current");
+    }
+    for (const button of strengthButtons) button.setAttribute("aria-pressed", String(button.dataset.strength === filter.strength));
+
+    const marked = filter.strength ? ` marked ${strengthName(filter.strength)}` : "";
+    answer.hidden = !filter.question;
+    if (filter.question) {
+      title.textContent = questionLinks.find((l) => l.dataset.question === filter.question).textContent;
+      text.innerHTML = document.querySelector(`[data-answer="${filter.question}"]`).innerHTML;
+      const empty = shown === 0;
+      count.textContent = empty
+        ? `None of the evidence for this question is${marked}.`
+        : `Showing ${pieces(shown)} of evidence${marked}, out of ${blocks.length}.`;
+      showAll.textContent = empty ? "Clear the strength filter" : "Show everything";
+    }
+    status.textContent = !filter.question && filter.strength ? `Showing ${pieces(shown)} of evidence${marked}, out of ${blocks.length}.` : "";
+  }
+
+  function choose(question, { push = true, scroll = true } = {}) {
+    filter.question = question;
+    apply();
+    if (push) history.pushState(null, "", question ? `#q-${question}` : location.pathname + location.search);
+    if (question && scroll) {
+      title.focus({ preventScroll: true });
+      answer.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    }
+  }
+
+  for (const link of questionLinks) {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      choose(filter.question === link.dataset.question ? "" : link.dataset.question);
+    });
+  }
+  for (const button of strengthButtons) {
+    button.addEventListener("click", () => { filter.strength = button.dataset.strength; apply(); });
+  }
+  showAll.addEventListener("click", () => {
+    if (showAll.textContent === "Clear the strength filter") { filter.strength = ""; apply(); return; }
+    filter.strength = "";
+    choose("", { scroll: false });
+    document.getElementById("questions").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+  });
+
+  // A link to a block the filters hide clears them first, so it never lands on nothing.
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest('a[href^="#"]');
+    if (!link || link.dataset.question) return;
+    const target = document.getElementById(link.getAttribute("href").slice(1));
+    if (target && target.closest(".block[hidden]")) {
+      filter.strength = "";
+      choose("", { push: false, scroll: false });
+    }
+  });
+
+  const fromHash = () => {
+    const match = /^#q-([a-z-]+)$/.exec(location.hash);
+    const question = match && questionLinks.some((l) => l.dataset.question === match[1]) ? match[1] : "";
+    if (question !== filter.question) choose(question, { push: false, scroll: Boolean(question) });
+  };
+  window.addEventListener("popstate", fromHash);
+  fromHash();
 }
 
 /* Copy the install commands */

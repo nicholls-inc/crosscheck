@@ -33,20 +33,20 @@ test('changing the publication seed requires regeneration', () => {
   });
   const stale = run('build-site.mjs', '--check');
   assert.equal(stale.status, 1);
-  assert.match(stale.stderr, /everest.html: publication fragments need regeneration/);
+  assert.match(stale.stderr, /index.html: publication fragments need regeneration/);
   assert.equal(run('build-site.mjs').status, 0);
   assert.equal(run('build-site.mjs', '--check').status, 0);
 });
 
 test('a moving artifact link cannot masquerade as the pinned study', () => {
-  edit('everest.html', (text) => text.replace(/\/blob\/[a-f0-9]{40}\//, '/blob/main/'));
+  edit('index.html', (text) => text.replace(/\/blob\/[a-f0-9]{40}\//, '/blob/main/'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /moving or mismatched study source/);
 });
 
 test('broken replay navigation and glossary drift fail validation', () => {
-  edit('everest.html', (text) => text.replace('id="replay"', 'id="renamed-replay"').replace('An extra second sometimes added', 'A changed definition sometimes added'));
+  edit('index.html', (text) => text.replace('id="replay"', 'id="renamed-replay"').replace('An extra second sometimes added', 'A changed definition sometimes added'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /missing anchor:.*replay/);
@@ -74,7 +74,7 @@ test('author contribution is rendered from the record, not stale article copy', 
   });
   assert.equal(run('build-site.mjs', '--check').status, 1);
   assert.equal(run('build-site.mjs').status, 0);
-  const article = readFileSync(join(fixture, 'site/everest.html'), 'utf8');
+  const article = readFileSync(join(fixture, 'site/index.html'), 'utf8');
   assert.ok(article.includes('A revised contribution account.'));
   assert.ok(article.includes('AI assistance'));
   assert.ok(article.includes('id="decisions"'));

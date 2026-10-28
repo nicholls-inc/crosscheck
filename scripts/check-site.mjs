@@ -55,7 +55,8 @@ for (const name of readdirSync(site).filter((name) => name.endsWith('.html'))) {
       requireThat(content.includes(`id="${anchor}"`), `${name}: missing anchor: ${value}`);
     }
   }
-  if (name === 'glossary.html') continue;
+  // The glossary is the source of the definitions; a forwarding page has no content to check.
+  if (name === 'glossary.html' || html.includes('http-equiv="refresh"')) continue;
   const tips = definitions(html);
   requireThat(tips.size === glossary.size, `${name}: glossary definition count differs`);
   for (const [id, text] of glossary) requireThat(tips.get(id) === text, `${name}: definition ${id} differs from glossary`);

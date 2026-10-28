@@ -19,12 +19,13 @@ export async function checkPublicSite(input) {
   if (base.username || base.password || base.search || base.hash) throw new Error('Supply a site URL without credentials, query or fragment.');
   if (!base.pathname.endsWith('/')) base.pathname += '/';
 
-  const home = await (await responseAt(base, './')).text();
-  if (!home.includes('See what the evidence supports.') || !home.includes('everest.html#contribution')) throw new Error('Home page is missing the current evidence-led entry or contribution link.');
-  const study = await (await responseAt(base, 'everest.html')).text();
+  const study = await (await responseAt(base, './')).text();
+  if (!study.includes('EVerest restarts a daily charging schedule one second early.') || !study.includes('id="questions"')) throw new Error('Home page is missing the current case-study entry or question filter.');
   for (const id of ['contribution', 'decisions', 'witness', 'results', 'limits', 'replay']) {
     if (!study.includes(`id="${id}"`)) throw new Error(`Study is missing ${id}.`);
   }
+  const moved = await (await responseAt(base, 'everest.html')).text();
+  if (!moved.includes('url=./')) throw new Error('everest.html no longer forwards old links to the study.');
   const remote = await (await responseAt(base, 'everest-study.json')).json();
   const expected = JSON.parse(readFileSync(resolve(site, 'everest-study.json'), 'utf8'));
   if (!isDeepStrictEqual(remote, expected)) throw new Error('Publication snapshot differs from this release. Check the origin worktree or edge cache.');
@@ -34,7 +35,7 @@ export async function checkPublicSite(input) {
     const deployed = Buffer.from(await (await responseAt(base, path)).arrayBuffer());
     if (!deployed.equals(readFileSync(resolve(site, path)))) throw new Error(`${path}: deployed file differs from this release.`);
   }
-  return [`Release matches at ${base.href}`, `Study: ${new URL('everest.html', base).href}`, `Snapshot: ${expected.studyCommit}`, 'Contribution, decisions, replay, record, glossary, styles, script and fonts passed.'];
+  return [`Release matches at ${base.href}`, `Study: ${base.href}`, `Snapshot: ${expected.studyCommit}`, 'Contribution, decisions, replay, old-link forwarding, record, glossary, styles, script and fonts passed.'];
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

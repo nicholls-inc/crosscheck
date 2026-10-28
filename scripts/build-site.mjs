@@ -10,8 +10,8 @@ const number = (value) => value.toLocaleString('en-GB');
 const source = (key, label) => `<a href="${record.repository}/blob/${record.studyCommit}/${record.sources[key]}" target="_blank" rel="noopener">${esc(label)}<span class="visually-hidden"> (opens in a new tab)</span></a>`;
 const list = (items) => `<ul class="study-list">${items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`;
 
-function claims(compact) {
-  return `<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody>${record.claims.map((c) => `<tr><td data-label="What was checked">${esc(c.statement)}</td><td data-label="How it was checked">${esc(c.support)}</td><td class="strength" data-label="Strength">${esc(c.strength)}</td><td data-label="Result and boundary">${esc(compact ? c.summary : c.boundary)}</td></tr>`).join('')}</tbody></table>
+function claims() {
+  return `<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody>${record.claims.map((c) => `<tr><td data-label="What was checked">${esc(c.statement)}</td><td data-label="How it was checked">${esc(c.support)}</td><td class="strength" data-label="Strength">${esc(c.strength)}</td><td data-label="Result and boundary">${esc(c.boundary)}</td></tr>`).join('')}</tbody></table>
 <p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>`;
 }
 
@@ -75,11 +75,11 @@ const fragments = {claims, witness, results, counters, replay, limits, sources, 
 };
 
 let stale = false;
-for (const name of ['index.html', 'everest.html']) {
+for (const name of ['index.html']) {
   const path = resolve(root, 'site', name);
   const before = readFileSync(path, 'utf8');
   const after = before.replace(/<!-- publication:([a-z]+) -->[\s\S]*?<!-- \/publication:\1 -->/g,
-    (_, key) => `<!-- publication:${key} -->\n${fragments[key](name === 'index.html')}\n<!-- /publication:${key} -->`);
+    (_, key) => `<!-- publication:${key} -->\n${fragments[key]()}\n<!-- /publication:${key} -->`);
   if (before === after) continue;
   if (process.argv.includes('--check')) { console.error(`${name}: publication fragments need regeneration`); stale = true; }
   else writeFileSync(path, after);

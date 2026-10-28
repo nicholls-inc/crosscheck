@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Crosscheck: see what the evidence supports</title>
-<meta name="description" content="Crosscheck is a Claude Code plugin that checks claims about AI-written code with proofs and tests you can repeat. Read what was checked, see the results, and inspect the assumptions.">
+<title>One second early: a study of EVerest's charging schedules</title>
+<meta name="description" content="EVerest restarts a daily charging schedule one second early. Ask a question and see only the evidence that answers it: what is proved, tested, decided by a person, assumed and not yet reached.">
 <link rel="preload" href="fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
@@ -13,61 +13,133 @@
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="page">
-
 <header class="masthead">
-  <a class="brand" href="./">Crosscheck</a>
-  <nav aria-label="Main">
-    <ul>
-      <li><a href="#everest">Case study</a></li>
-      <li><a href="#how">How to use it</a></li>
-      <li><a href="#install">Install</a></li>
-      <li><a href="glossary.html">Glossary</a></li>
-      <li><a href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
-    </ul>
-  </nav>
+  <a class="brand" href="./">The EVerest study</a>
+  <nav aria-label="Main"><ul>
+    <li><a href="#questions">Questions</a></li>
+    <li><a href="#evidence">Evidence</a></li>
+    <li><a href="#replay">Repeat the run</a></li>
+    <li><a href="glossary.html">Glossary</a></li>
+  </ul></nav>
 </header>
-
 <main id="main">
 
-<section class="intro" aria-labelledby="title">
-  <h1 id="title">See what the evidence supports.</h1>
-  <div class="intro-columns">
-    <p data-gloss="margin">Crosscheck checks claims about code with <button type="button" class="term" data-term="proof" aria-describedby="def-proof">proofs</button> and repeatable tests. Each claim says what was checked, what it trusts, and where the result stops.</p>
-    <p>The EVerest study puts that approach to work on electric-vehicle charging software. Start with its evidence, then read the argument behind it in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
-  </div>
-  <p class="actions">
-    <a class="button" href="everest.html">Inspect the EVerest evidence</a>
-    <a href="#install">Install the plugin</a>
-  </p>
-  <p class="author-note">A project by <a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls<span class="visually-hidden"> (opens in a new tab)</span></a>. <a href="everest.html#contribution">My contribution to the EVerest study</a>.</p>
-</section>
-
-<section class="study band" id="everest" aria-labelledby="everest-title">
-  <div class="study-summary">
-    <h2 id="everest-title" class="study-name">EVerest</h2>
-    <p class="study-meta">OCPP 1.6 charging schedules<br>Study in progress · PR #144</p>
-    <p class="study-finding">A daily schedule restarts at 10:59:59 instead of 11:00:00. The study traced the difference to <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap seconds</button>. It rates the impact as low.</p>
-    <ul class="stacked-links">
-      <li><a href="everest.html">Read the full study</a></li>
-      <li><a href="everest.html#decisions">See the engineering decisions</a></li>
-      <li><a href="everest.html#replay">Repeat the run</a></li>
-      <li><a href="everest-study.json" download>Download the publication record (JSON)</a></li>
-    </ul>
-  </div>
-  <div class="evidence">
-<!-- publication:claims -->
-<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference program</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">Three rules proved about the model</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 agree on sampled inputs</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn, 1,073 fail (reported)</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Unfinished</td><td data-label="Result and boundary">No proof claimed</td></tr></tbody></table>
-<p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>
-<!-- /publication:claims -->
-    <p class="evidence-note">Read the <a href="everest.html#results">reported totals and their classification caveat</a> before interpreting pass and warning counts.</p>
-  </div>
-</section>
-
-<section class="covers band" id="covers" aria-labelledby="covers-title">
+<section class="hero band" aria-labelledby="title">
   <div>
-    <h2 id="covers-title">Follow one claim</h2>
-    <p class="aside-note">A rule about clock time leads to a concrete difference in the charging limit. Inspect the input, the model and the production result.</p>
-    <p class="aside-note"><a href="everest.html#witness">Open the witness and its interpretation</a></p>
+    <h1 id="title">EVerest restarts a daily charging schedule one second early.</h1>
+    <p class="hero-note">Low severity. Caused by <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap seconds</button>. Found by comparing EVerest’s scheduling code with a <span class="keep-together"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>.</span></p>
+  </div>
+  <dl class="clocks">
+    <div><dt>The schedule should restart at</dt><dd><span class="clock">11:00:00</span><span class="why">Under the study’s signed reading of the standard.</span></dd></div>
+    <div><dt>EVerest restarts it at</dt><dd><span class="clock"><span class="clock-mark">10:59:59</span></span><span class="why">In the study’s smallest example. Small in effect, but concrete and repeatable.</span></dd></div>
+  </dl>
+</section>
+
+<div class="tabs" id="about">
+  <h2 class="tab-head"><button type="button" id="tab-page" aria-controls="panel-page">About this page</button></h2>
+  <div class="tab-panel" id="panel-page" role="region" aria-labelledby="tab-page">
+    <p class="tab-lead">One finding, and the evidence behind it.</p>
+    <div class="tab-text">
+      <p>This page follows one result from a study of EVerest’s charging-schedule code: what was found, how it was checked, and where the result stops.</p>
+      <p>Pick a question below to see only the evidence that answers it. Each piece of evidence says how strong it is: proved, tested, decided by a person, assumed, or not yet reached.</p>
+      <p>It is a worked example of the argument in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>. By <a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls<span class="visually-hidden"> (opens in a new tab)</span></a>, who directed the study and built the tool used to run it.</p>
+    </div>
+  </div>
+  <h2 class="tab-head"><button type="button" id="tab-charger" aria-controls="panel-charger">The charger</button></h2>
+  <div class="tab-panel" id="panel-charger" role="region" aria-labelledby="tab-charger">
+    <p class="tab-lead">Chargers follow schedules that limit their power.</p>
+    <div class="tab-text">
+      <p><button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button> 1.6 is a shared set of rules for how charging stations talk to the software that manages them. Part of it says how a charger combines its schedules into one limit.</p>
+      <p>A schedule is a list of periods, each with a limit in amps or watts, starting at an offset from the schedule’s start. A charger can hold charger-wide, default and transaction schedules at once. Daily and weekly schedules repeat.</p>
+      <p>EVerest is charging-station software. The study tested its unmodified C++ scheduling code at revision <code>dd696165</code>.</p>
+    </div>
+  </div>
+  <h2 class="tab-head"><button type="button" id="tab-finding" aria-controls="panel-finding">The finding</button></h2>
+  <div class="tab-panel" id="panel-finding" role="region" aria-labelledby="tab-finding">
+    <p class="tab-lead">One second early, under the study’s reading of the standard.</p>
+    <div class="tab-text">
+      <p>A daily schedule first started at 11:00:00 UTC on 14 September 2016. At 10:59:59 UTC on 13 August 2026 the reference program gives a limit of 6,543.6&nbsp;W. EVerest has already restarted the schedule and gives 9,249.9&nbsp;W.</p>
+      <p>EVerest counts elapsed UTC seconds, which include leap seconds. The reference program follows the signed clock-time reading. Daily and weekly restarts drift by one second per leap second since the schedule first started.</p>
+      <p class="tab-link"><a href="#witness">See the evidence for the finding</a></p>
+    </div>
+  </div>
+  <h2 class="tab-head"><button type="button" id="tab-study" aria-controls="panel-study">The study</button></h2>
+  <div class="tab-panel" id="panel-study" role="region" aria-labelledby="tab-study">
+    <p class="tab-lead">A model with proved rules, compared with the real code.</p>
+    <div class="tab-text">
+      <p>A reference program written in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> states the charging rules. Lean checks proofs of three of its rules; a fourth is unfinished. The proofs are about the model, not about EVerest.</p>
+      <p>A harness runs EVerest’s scheduling code and the reference program on 2,000 generated cases per configuration and compares their limits where schedules change, and one second either side.</p>
+      <p>AI agents drafted the specifications, Lean code, proof attempts and test tooling. Harry Nicholls approved the readings of the standard and decided which claims the evidence supports.</p>
+      <p class="tab-link"><a href="#contribution">See who decided what</a></p>
+    </div>
+  </div>
+  <h2 class="tab-head"><button type="button" id="tab-repeat" aria-controls="panel-repeat">Repeat it</button></h2>
+  <div class="tab-panel" id="panel-repeat" role="region" aria-labelledby="tab-repeat">
+    <p class="tab-lead">Every input is pinned to one revision.</p>
+    <div class="tab-text">
+      <p>Start from study revision <code>7d05c4e6</code>, not the moving pull request. Setup needs elan with Lean v4.28.0, Python 3, git, curl and a C++ compiler.</p>
+      <p>The run with older schedule anchors is expected to report failures. That is the finding reproduced, not a broken install.</p>
+      <p class="tab-link"><a href="#replay">Get the replay commands</a></p>
+    </div>
+  </div>
+</div>
+
+<section class="ask band" id="questions" aria-labelledby="questions-title">
+  <div>
+    <h2 id="questions-title">Ask the evidence</h2>
+    <p class="aside-note">Each question shows a short answer, then only the evidence behind it.</p>
+  </div>
+  <div>
+    <ol class="questions">
+      <li><a href="#q-went-wrong" data-question="went-wrong"><span>What went wrong?</span></a></li>
+      <li><a href="#q-matter" data-question="matter"><span>Does a one-second error matter?</span></a></li>
+      <li><a href="#q-proof" data-question="proof"><span>Is this a proof that EVerest is wrong?</span></a></li>
+      <li><a href="#q-tested" data-question="tested"><span>How was EVerest tested, and what came back?</span></a></li>
+      <li><a href="#q-people" data-question="people"><span>What did a person decide, and what did the AI do?</span></a></li>
+      <li><a href="#q-depends" data-question="depends"><span>What does the result depend on?</span></a></li>
+      <li><a href="#q-unchecked" data-question="unchecked"><span>What wasn’t checked?</span></a></li>
+      <li><a href="#q-run" data-question="run"><span>Can I run it myself?</span></a></li>
+    </ol>
+    <div class="strengths" role="group" aria-labelledby="strength-label" hidden>
+      <span id="strength-label">Evidence strength</span>
+      <button type="button" data-strength="" aria-pressed="true">All</button>
+      <button type="button" data-strength="proved" aria-pressed="false">Proved</button>
+      <button type="button" data-strength="tested" aria-pressed="false">Tested</button>
+      <button type="button" data-strength="decided" aria-pressed="false">Decided by a person</button>
+      <button type="button" data-strength="assumed" aria-pressed="false">Assumed</button>
+      <button type="button" data-strength="unreached" aria-pressed="false">Unfinished or not yet reached</button>
+    </div>
+    <p class="filter-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="answer band" id="answer" aria-labelledby="answer-title" hidden>
+  <div><h2 id="answer-title" tabindex="-1"></h2></div>
+  <div>
+    <p class="answer-text"></p>
+    <p class="answer-meta"><span class="answer-count"></span> <button type="button" class="show-all">Show everything</button></p>
+  </div>
+</section>
+
+<div id="answers" hidden>
+  <p data-answer="went-wrong">In the study’s smallest example, EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00. For that second its limit is 9,249.9&nbsp;W where the reference program gives 6,543.6&nbsp;W. The cause is leap seconds.</p>
+  <p data-answer="matter">The study rates it low severity. The physical impact is small, but the difference is concrete and repeatable, and restarts drift one more second for each leap second since the schedule first started.</p>
+  <p data-answer="proof">No. The proofs are about the reference program, not EVerest’s C++ code. EVerest was compared with that program on generated inputs, and the finding rests on a signed reading of the standard whose wording also admits another reading.</p>
+  <p data-answer="tested">A driver runs EVerest’s unmodified scheduling code against the reference program on 2,000 generated cases per configuration. Schedules anchored in 2017–2025 all pass. Schedules anchored in 2010–2016 give 835 passes, 92 warnings and 1,073 failures, as reported.</p>
+  <p data-answer="people">Harry Nicholls directed the study, approved the readings of the charging rules and decided which claims the evidence supports. AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI review searched for mismatches; its verdicts do not count as evidence.</p>
+  <p data-answer="depends">On Lean and its standard axioms, the reviewed reading of OCPP 1.6, the compiler, driver and test harness, and a timezone database that lists exactly the three leap seconds since 2010.</p>
+  <p data-answer="unchecked">Inputs are bounded: at most 2 charger-wide, 3 default and 2 transaction profiles, on connector 1, in 2026. Relative profiles, phases, unit conversion, the connector-0 aggregate, offline behavior, transaction IDs and OCPP 2.x are not yet reached, and a fourth model rule has no finished proof.</p>
+  <p data-answer="run">Yes. Check out the pinned study revision, build the driver, run the proof check, then run the test harness three times. The older-anchor run is expected to report failures.</p>
+</div>
+
+<div class="evidence-blocks" id="evidence">
+
+<span class="q-anchor" id="q-went-wrong"></span><span class="q-anchor" id="q-matter"></span>
+<section class="block band" id="witness" data-q="went-wrong matter" data-strength="tested" aria-labelledby="witness-title">
+  <div>
+    <h2 id="witness-title">One second before 11:00</h2>
+    <p class="strength-tags">Tested</p>
+    <p class="aside-note">The study rates this low severity. Daily and weekly restarts drift by one second per <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button> since the schedule first started.</p>
   </div>
   <div>
 <!-- publication:witness -->
@@ -77,138 +149,212 @@
 <div><dt>EVerest at <code>dd696165</code></dt><dd><span class="reading reading-off">9,249.9&nbsp;W</span><span class="why">It has already restarted, one second early, so the limit is too high.</span></dd></div>
 </dl></figure>
 <!-- /publication:witness -->
-    <p class="evidence-scope">This is a reproducible finding on a pinned revision. It does not establish correctness of the whole charging system.</p>
+    <p class="study-prose">The input has one daily default profile, no duration, and two periods: 9,249.9 W from offset 0, then 6,543.6 W from offset 40,500 seconds. Its query window begins at 03:00:00 UTC on 13 August 2026 and lasts 24 hours.</p>
   </div>
 </section>
 
-<section class="publication band" aria-labelledby="publication-title">
+<span class="q-anchor" id="q-proof"></span>
+<section class="block band" id="cause" data-q="went-wrong matter proof" data-strength="tested decided" aria-labelledby="cause-title">
   <div>
-    <h2 id="publication-title">From the argument to your own evidence</h2>
-    <p class="aside-note">One goal connects the essay, the study and Crosscheck: make claims readable, inspectable and repeatable.</p>
+    <h2 id="cause-title">Why it happens</h2>
+    <p class="strength-tags">Tested · Decided by a person</p>
+    <p class="aside-note">The finding depends on how the standard is read. That reading is a stated premise, not a hidden one.</p>
   </div>
-  <ol class="publication-path">
-    <li><h3><a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Read the argument<span class="visually-hidden"> (opens in a new tab)</span></a></h3><p>The published essay explains evidence-carrying code and why proofs, tests, observation and human judgment support different claims.</p></li>
-    <li><h3><a href="everest.html">Inspect the worked example</a></h3><p>The EVerest study follows a written rule through a model, a test witness and repeatable results, with its assumptions and gaps visible.</p></li>
-    <li><h3><a href="#how">Try the workflow</a></h3><p>Choose a small behavior in your own code, write its rules, then produce evidence that says exactly what you checked.</p></li>
-  </ol>
-</section>
-
-<section class="install band" id="install" aria-labelledby="install-title" tabindex="-1">
   <div>
-    <h2 id="install-title">Start with the plugin</h2>
-    <p class="aside-note">You will need Docker, Node.js 18 or later, and Claude Code. The <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> and <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks run in Docker containers with no network access.</p>
+    <p class="study-prose">The signed interpretation is that a daily schedule restarts at the clock time in its <code>startSchedule</code>. The study records that the standard’s wording also admits another reading.</p>
+    <p class="study-prose">EVerest calculates recurrence using elapsed UTC seconds, which include leap seconds. The reference program follows the signed clock-time reading.</p>
+    <p class="study-prose">A diagnostic rerun shifts older anchors forward by the leap seconds in between, and all 2,000 cases then pass. That changes the inputs to isolate the cause. It is not a fix to EVerest.</p>
   </div>
-  <ol class="install-steps">
-    <li>
-      <p class="step-label">Install the plugin from the marketplace.</p>
-      <div class="commands">
-        <pre id="install-commands" tabindex="0" aria-label="Install commands"><code>claude plugin marketplace add nicholls-inc/claude-code-marketplace
-claude plugin install crosscheck@nicholls</code></pre>
-        <button type="button" class="copy" data-copy="install-commands">Copy commands</button>
-        <span class="copy-status" role="status" aria-live="polite"></span>
-      </div>
-    </li>
-    <li>
-      <p class="step-label">Build the checker images once, from a clone of the repository. The Lean image is slow the first time.</p>
-      <div class="commands">
-        <pre id="build-commands" tabindex="0" aria-label="Commands to build the checker images"><code>git clone https://github.com/nicholls-inc/crosscheck &amp;&amp; cd crosscheck/crosscheck
-./scripts/build-docker.sh
-./scripts/build-lean-docker.sh</code></pre>
-        <button type="button" class="copy" data-copy="build-commands">Copy commands</button>
-        <span class="copy-status" role="status" aria-live="polite"></span>
-        <p class="step-link"><a href="https://github.com/nicholls-inc/crosscheck/blob/main/crosscheck/README.md#prerequisites" target="_blank" rel="noopener">Full setup in the README<span class="visually-hidden"> (opens in a new tab)</span></a></p>
-      </div>
-    </li>
-  </ol>
 </section>
 
-<section class="how band" id="how" aria-labelledby="how-title">
+<section class="block band" id="record" data-q="proof tested" data-strength="proved tested unreached" aria-labelledby="record-title">
   <div>
-    <h2 id="how-title">How to use it</h2>
-    <p class="aside-note">Install the plugin, then ask Claude in plain words. For example: “Use the <button type="button" class="term" data-term="byfuglien" aria-describedby="def-byfuglien">byfuglien</button> agent to verify your bug fix.” You can also run each step yourself as a skill.</p>
+    <h2 id="record-title">The evidence at a glance</h2>
+    <p class="strength-tags">Proved · Tested · Unfinished</p>
+    <p class="aside-note">Proofs cover the reference program. Production code is compared with it on generated inputs.</p>
+    <p class="aside-note"><a href="everest-study.json" download>Download the publication record (JSON)</a></p>
   </div>
-  <div class="paths">
-    <div class="path">
-    <table class="ledger ledger-steps">
-      <caption>Prove a small piece of code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></caption>
-      <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
-      <tbody>
-        <tr><td data-label="Step"><code>/spec-iterate</code></td><td data-label="What it does">Writes the rules for the code with you, until they say what you mean.</td></tr>
-        <tr><td data-label="Step"><code>/generate-verified</code></td><td data-label="What it does">Writes code, and <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> checks that it follows those rules.</td></tr>
-        <tr><td data-label="Step"><code>/extract-code</code></td><td data-label="What it does">Turns the checked code into Python or Go for your project.</td></tr>
-      </tbody>
-    </table>
-    <p class="path-note">This suits pure, self-contained logic. Fitting the generated code into your application is still your job, and the step that turns <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button> into Python or Go is assumed correct, not proved.</p>
-    </div>
-
-    <div class="path">
-    <table class="ledger ledger-steps">
-      <caption>Model existing code with <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and test it</caption>
-      <thead><tr><th scope="col">Step</th><th scope="col">What it does</th></tr></thead>
-      <tbody>
-        <tr><td data-label="Step"><code>/informal-spec</code></td><td data-label="What it does">Writes the rules in plain English, from the standard or the intent.</td></tr>
-        <tr><td data-label="Step"><code>/lean-spec</code></td><td data-label="What it does">Restates those rules precisely in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>.</td></tr>
-        <tr><td data-label="Step"><code>/lean-impl</code></td><td data-label="What it does">Builds the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> and states the rules about it, ready to prove. A proof can stay unfinished, as the fourth rule’s did here.</td></tr>
-        <tr><td data-label="Step"><code>/correspondence-review</code></td><td data-label="What it does">An AI compares each part of the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> with the written rules and the code. A person decides what to do with each finding.</td></tr>
-        <tr><td data-label="Step"><code>/drt-oracle</code></td><td data-label="What it does">Runs your code and the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> on the same generated inputs, then reports each difference it finds, with an example. This is <button type="button" class="term" data-term="differential-testing" aria-describedby="def-differential-testing">differential testing</button>.</td></tr>
-      </tbody>
-    </table>
-    <p class="path-note">The EVerest study above followed these five steps.</p>
-    </div>
+  <div class="evidence">
+<!-- publication:claims -->
+<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference program</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">About the Lean model, not a proof of EVerest&#39;s implementation.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 pass; 57,304 instants with a model limit agree within tolerance, and neither program gives a limit at the other 10,226 instants.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn, 1,073 fail, as reported. The report also records 1,081 instants with an extra EVerest limit; see the classification caveat.</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Unfinished</td><td data-label="Result and boundary">No proof claimed.</td></tr></tbody></table>
+<p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>
+<!-- /publication:claims -->
   </div>
 </section>
 
-<section class="today band" id="today" aria-labelledby="today-title">
+<section class="block band" id="proved" data-q="proof" data-strength="proved unreached" aria-labelledby="proved-title">
   <div>
-    <h2 id="today-title">Today and the vision</h2>
-    <p class="aside-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/main/docs/VISION.md" target="_blank" rel="noopener">vision<span class="visually-hidden"> (opens in a new tab)</span></a> is a readable, checkable claim for every code change. Some of that ships now. The rest has not been reached yet, and the table says what blocks it.</p>
+    <h2 id="proved-title">What is proved</h2>
+    <p class="strength-tags">Proved · Unfinished</p>
+    <p class="aside-note"><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks mathematical arguments about the model. This is not a proof of the C++ implementation.</p>
   </div>
-  <table class="ledger ledger-status">
-    <thead><tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col">What counts as evidence</th></tr></thead>
-    <tbody>
-      <tr><td data-label="Check"><button type="button" class="term" data-term="proof" aria-describedby="def-proof">Proofs</button> about small, self-contained code with <button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button></td><td data-label="Status">Ships today</td><td data-label="What counts as evidence"><button type="button" class="term" data-term="dafny" aria-describedby="def-dafny">Dafny</button>’s check</td></tr>
-      <tr><td data-label="Check"><button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">Reference programs</button> in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>, tested against your code</td><td data-label="Status">Ships today</td><td data-label="What counts as evidence"><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>’s check, and test results you can repeat</td></tr>
-      <tr><td data-label="Check">Data rules along Python data paths (<button type="button" class="term" data-term="cgv" aria-describedby="def-cgv">CGV</button>)</td><td data-label="Status">Ships today, for Django and plain Python data classes. The plugin calls it, but you build CGV from a clone of the repository</td><td data-label="What counts as evidence">A checker proved in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button>. Its description of how each library behaves is assumed, not proved</td></tr>
-      <tr><td data-label="Check">Whether written rules match what you meant</td><td data-label="Status">Search only</td><td data-label="What counts as evidence">AI output is search, not evidence. Recorded human decisions are judged evidence</td></tr>
-      <tr><td data-label="Check">Whether the written rules are complete</td><td data-label="Status">Not yet reached</td><td data-label="What counts as evidence">Blocked until each rule is tied to a formal requirement</td></tr>
-    </tbody>
-  </table>
-</section>
-
-<section class="reprise band" aria-labelledby="reprise-title">
   <div>
-    <h2 id="reprise-title">Try it on your own code</h2>
-    <p class="aside-note">Install the plugin, then ask Claude to check a change. Or repeat the EVerest run yourself and compare your numbers with ours.</p>
+<!-- publication:properties -->
+<ul class="study-list"><li>The combined limit is never above the charger-wide limit.</li><li>It is never above the applicable transaction limit.</li><li>While a transaction&#39;s own schedule applies, changing default schedules does not change the limit.</li></ul><p class="evidence-note">Unfinished: Adding a lower-priority schedule that does not apply leaves the limit unchanged (I4).</p>
+<!-- /publication:properties -->
+    <p class="evidence-note">The proof check names the completed theorems and rejects dependencies on <code>sorryAx</code> or non-standard axioms. The fourth, unfinished statement is not counted as proved.</p>
   </div>
-  <p class="actions">
-    <a class="button" href="#install">Install the plugin</a>
-    <a href="everest.html#replay">Rerun the EVerest check</a>
-  </p>
 </section>
 
+<span class="q-anchor" id="q-tested"></span>
+<section class="block band" id="results" data-q="tested" data-strength="tested" aria-labelledby="results-title">
+  <div>
+    <h2 id="results-title">What the tests report</h2>
+    <p class="strength-tags">Tested</p>
+    <p class="aside-note">A passing case meets the study’s comparison rule. On its own it does not mean exact agreement.</p>
+    <p class="aside-note">These are the study’s reported results. They were not rerun to build this website.</p>
+  </div>
+  <div>
+<!-- publication:results -->
+<table class="ledger"><caption>Reported case totals</caption><thead><tr><th scope="col">Configuration</th><th scope="col">Pass</th><th scope="col">Warn</th><th scope="col">Fail</th></tr></thead><tbody><tr><td data-label="Configuration">Anchors 2017–2025</td><td data-label="Pass">2,000</td><td data-label="Warn">0</td><td data-label="Fail">0</td></tr><tr><td data-label="Configuration">Anchors 2010–2016</td><td data-label="Pass">835</td><td data-label="Warn">92</td><td data-label="Fail">1,073</td></tr><tr><td data-label="Configuration">Older anchors, shifted by leap seconds</td><td data-label="Pass">2,000</td><td data-label="Warn">0</td><td data-label="Fail">0</td></tr><tr><td data-label="Configuration">Mutation self-test (seed 1)</td><td data-label="Pass">181</td><td data-label="Warn">34</td><td data-label="Fail">85</td></tr></tbody></table>
+<p class="evidence-note">Seed 20261024; 2,000 cases per main configuration. The mutation self-test uses 300 cases and seed 1. Exact means within 0.05 of the profile&#39;s unit (A or W).</p>
+<p class="evidence-note">The pinned report is internally inconsistent about extra limits: its updated Q4 header calls an EVerest limit where the model has none a warning, while a retained note says these instants were unclassified. Its counters record 1,081 such instants in the older run. The totals here are the report&#39;s published totals, not a reconstruction or a new run. A pass is not a general claim of exact agreement.</p>
+<!-- /publication:results -->
+    <p class="evidence-note">The mutation self-test deliberately changes stack selection to check that the harness detects differences. It is not another production defect.</p>
+  </div>
+</section>
+
+<section class="block band" id="instants" data-q="tested" data-strength="tested" aria-labelledby="instants-title">
+  <div>
+    <h2 id="instants-title">Agreement at each instant</h2>
+    <p class="strength-tags">Tested</p>
+    <p class="aside-note">Each case is compared at the moments where schedules change, and one second either side.</p>
+  </div>
+  <div>
+<!-- publication:counters -->
+<table class="ledger"><caption>Agreement at individual instants</caption><thead><tr><th scope="col">Counter</th><th scope="col">2017–2025 anchors</th><th scope="col">2010–2016 anchors</th></tr></thead><tbody><tr><td data-label="Counter">Instants compared</td><td data-label="2017–2025 anchors">67,530</td><td data-label="2010–2016 anchors">78,263</td></tr><tr><td data-label="Counter">Model gives a limit</td><td data-label="2017–2025 anchors">57,304</td><td data-label="2010–2016 anchors">66,541</td></tr><tr><td data-label="Counter">EVerest agrees within tolerance</td><td data-label="2017–2025 anchors">57,304</td><td data-label="2010–2016 anchors">56,902</td></tr><tr><td data-label="Counter">EVerest below the model</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">4,331</td></tr><tr><td data-label="Counter">EVerest above, or missing a required limit</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">5,308</td></tr><tr><td data-label="Counter">EVerest gives a limit; model gives none</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">1,081</td></tr><tr><td data-label="Counter">Neither gives a limit</td><td data-label="2017–2025 anchors">10,226</td><td data-label="2010–2016 anchors">10,641</td></tr><tr><td data-label="Counter">Cases with no model limit anywhere</td><td data-label="2017–2025 anchors">55</td><td data-label="2010–2016 anchors">64</td></tr></tbody></table>
+<!-- /publication:counters -->
+    <p class="evidence-note">The 55 recent-anchor cases with no model limit anywhere are vacuous passes.</p>
+  </div>
+</section>
+
+<span class="q-anchor" id="q-people"></span>
+<section class="block band" id="contribution" data-q="people" data-strength="decided" aria-labelledby="contribution-title">
+  <div>
+    <h2 id="contribution-title">Who did what</h2>
+    <p class="strength-tags">Decided by a person</p>
+    <p class="aside-note">AI drafted. Deterministic checks and a person’s recorded decisions are what count as evidence.</p>
+  </div>
+  <div>
+<!-- publication:contribution -->
+<p class="study-prose">I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest&#39;s scheduling code.</p>
+<dl class="contribution"><div><dt>My contribution</dt><dd>I directed the study, approved interpretations of the charging rules, reviewed correspondence findings and decided which claims the evidence supports. The signed spec and owner decisions record that judgment.</dd></div>
+<div><dt>AI assistance</dt><dd>AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Its verdicts needed review; they do not count as evidence.</dd></div>
+<div><dt>What the checks establish</dt><dd>Lean checks the completed proofs about the model. A differential harness compares generated inputs with EVerest&#39;s unmodified scheduling code through a driver. The compiler, model interpretation, driver and harness remain trusted dependencies.</dd></div>
+<div><dt>The reported result</dt><dd>The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation.</dd></div></dl>
+<p class="evidence-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">signed interpretation decisions<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">correspondence review with owner decisions<span class="visually-hidden"> (opens in a new tab)</span></a> record the human judgments behind this account.</p>
+<!-- /publication:contribution -->
+  </div>
+</section>
+
+<section class="block band" id="judgment" data-q="people proof" data-strength="decided" aria-labelledby="judgment-title">
+  <div>
+    <h2 id="judgment-title">Where the owner decided</h2>
+    <p class="strength-tags">Decided by a person</p>
+    <p class="aside-note">An AI correspondence review searched for likely problems. Its verdict is not evidence; the owner’s recorded decisions are.</p>
+  </div>
+  <div>
+<!-- publication:decisions -->
+<ul class="study-list"><li>The owner approved interpretations A1 and A2 and reclassified two AI correspondence-review findings as abstractions rather than approximations.</li><li>The owner confirmed restoring the missing s ≤ t condition in D4 on 2026-10-27.</li><li>Q4 treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here.</li></ul>
+<!-- /publication:decisions -->
+  </div>
+</section>
+
+<section class="block band" id="decisions" data-q="people unchecked" data-strength="decided" aria-labelledby="decisions-title">
+  <div>
+    <h2 id="decisions-title">Why the study is built this way</h2>
+    <p class="strength-tags">Decided by a person</p>
+    <p class="aside-note">Each choice comes with the boundary it leaves.</p>
+  </div>
+  <div>
+<!-- publication:choices -->
+<dl class="contribution"><div><dt>Separate the model from the production implementation</dt><dd>A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation. <span class="decision-boundary">A proof about that model does not establish correspondence with all production behavior.</span></dd></div><div><dt>Check the moments where schedules change</dt><dd>The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible. <span class="decision-boundary">The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs.</span></dd></div><div><dt>Record interpretation decisions before judging differences</dt><dd>The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions. <span class="decision-boundary">A difference caused by a disputed reading of the standard must remain distinct from an implementation defect.</span></dd></div><div><dt>Publish the limits beside the result</dt><dd>The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs. <span class="decision-boundary">The leap-second input shift is a diagnostic experiment, not an upstream repair.</span></dd></div></dl>
+<!-- /publication:choices -->
+  </div>
+</section>
+
+<span class="q-anchor" id="q-depends"></span>
+<section class="block band" id="trust" data-q="depends" data-strength="assumed" aria-labelledby="trust-title">
+  <div>
+    <h2 id="trust-title">What the result depends on</h2>
+    <p class="strength-tags">Assumed</p>
+    <p class="aside-note">The <button type="button" class="term" data-term="trusted-base" aria-describedby="def-trusted-base">trusted base</button> is part of the claim, not a footnote to it.</p>
+  </div>
+  <div>
+<!-- publication:trust -->
+<ul class="study-list"><li>Lean v4.28.0 and its standard axioms propext, Classical.choice and Quot.sound for the stated completed proofs.</li><li>The reviewed interpretation of OCPP 1.6 edition 2 and the Lean model&#39;s correspondence to it.</li><li>The C++ compiler, driver, copied installation/orchestration glue, two shim headers, Python harness, JSON adapter and model runner.</li><li>The operating system timezone database read by the driver; its leap-second table must contain exactly the three leap seconds since 2010 (2012-06-30, 2015-06-30, 2016-12-31).</li></ul>
+<!-- /publication:trust -->
+    <p class="evidence-note">The driver compiles unmodified EVerest scheduling code, but supplies its own installation and orchestration glue and two shim headers. Those are part of what the comparison trusts.</p>
+  </div>
+</section>
+
+<span class="q-anchor" id="q-unchecked"></span>
+<section class="block band" id="limits" data-q="unchecked proof" data-strength="unreached" aria-labelledby="limits-title">
+  <div>
+    <h2 id="limits-title">Where the result stops</h2>
+    <p class="strength-tags">Not yet reached</p>
+    <p class="aside-note">Matching these inputs does not establish all OCPP behavior. Each unreached behavior needs a model extension or an explicit assumption.</p>
+  </div>
+  <div>
+<!-- publication:limits -->
+<p>At most 2 charger-wide, 3 default and 2 transaction profiles, up to 4 periods per profile, 15-minute offsets, 24- or 48-hour windows in 2026, on connector 1. Absolute, daily and weekly schedules are generated. Each case samples transition instants from either program and one second either side.</p><p class="evidence-note">Default profiles on connectors 0 and 1 together are not generated: the signed spec leaves their interaction unresolved. The recurrence wording also admits another interpretation; the study records it as OCA note N4.</p><table class="ledger"><caption>Not yet reached by this study</caption><thead><tr><th scope="col">Behavior</th><th scope="col">Blocking property</th><th scope="col">Open modeling question</th></tr></thead><tbody><tr><td data-label="Behavior">Relative profiles</td><td data-label="Blocking property">No transaction start time in the model</td><td data-label="Open modeling question">How should transaction-relative time enter the model?</td></tr><tr><td data-label="Behavior">Phases and minimum charging rate</td><td data-label="Blocking property">One scalar limit and no phase count</td><td data-label="Open modeling question">How should phase-dependent limits be represented?</td></tr><tr><td data-label="Behavior">Conversion between amps and watts</td><td data-label="Blocking property">No voltage or phase inputs</td><td data-label="Open modeling question">What assumptions justify conversion between units?</td></tr><tr><td data-label="Behavior">Connector-0 aggregate</td><td data-label="Blocking property">No allocation state across connectors</td><td data-label="Open modeling question">How should the station-wide sum be constrained?</td></tr><tr><td data-label="Behavior">Offline behavior</td><td data-label="Blocking property">No connectivity state</td><td data-label="Open modeling question">How should connectivity change profile selection?</td></tr><tr><td data-label="Behavior">Transaction ID matching</td><td data-label="Blocking property">No transaction ID field or active-transaction input</td><td data-label="Open modeling question">How should transaction identity constrain applicability?</td></tr><tr><td data-label="Behavior">OCPP 2.x</td><td data-label="Blocking property">Different profile structure and separate production code</td><td data-label="Open modeling question">Which rules and model changes are needed for OCPP 2.x?</td></tr></tbody></table>
+<!-- /publication:limits -->
+  </div>
+</section>
+
+<span class="q-anchor" id="q-run"></span>
+<section class="block band" id="replay" data-q="run" aria-labelledby="replay-title">
+  <div>
+    <h2 id="replay-title">Repeat the run</h2>
+    <p class="aside-note">Start from the pinned study revision, not the moving pull request. Setup downloads dependencies; this is not the plugin’s Docker workflow.</p>
+  </div>
+  <div class="repeat">
+<!-- publication:replay -->
+<p>Install elan with <code>leanprover/lean4:v4.28.0</code>, Python 3, git and curl. The recorded driver build used Apple clang 21.0.0, C++17; reported on macOS arm64, Boost 1.92.0, headers under /opt/homebrew/include and fmt 12.2.0, header-only under /opt/homebrew/include. See <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md" target="_blank" rel="noopener">the driver prerequisites<span class="visually-hidden"> (opens in a new tab)</span></a> before running.</p>
+<p class="evidence-note">Source and downloaded inputs are pinned. The host compiler, system headers and timezone database still need matching; this is not a hermetically pinned environment. The leap-second table must list the three leap seconds since 2010. The driver build checks downloaded sources against SHA-256 hashes in <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh" target="_blank" rel="noopener">the pinned build script<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat the study"><code>git clone https://github.com/nicholls-inc/crosscheck crosscheck-everest-study
+cd crosscheck-everest-study
+git checkout --detach 7d05c4e62284b4101e8f23722ee3b6111e5ca0e9
+formal-verification/tests/ocpp16_composite/everest_driver/build.sh
+formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh
+python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024
+python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors
+python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors --leap-correct</code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
+<p class="evidence-note">The older-anchor run is expected to report failures; a nonzero exit is a reproduced finding, not an installation failure. --leap-correct changes input anchors for diagnosis and does not fix EVerest. A run writes drt_report_latest.md; preserve the pinned historical report.</p>
+<!-- /publication:replay -->
+  </div>
+</section>
+
+<section class="block band" id="sources" data-q="run depends" aria-labelledby="sources-title">
+  <div>
+    <h2 id="sources-title">Inspect the sources</h2>
+    <p class="aside-note">Every source below names the same study revision. The <a href="https://github.com/nicholls-inc/crosscheck/pull/144" target="_blank" rel="noopener">live pull request<span class="visually-hidden"> (opens in a new tab)</span></a> may have moved on since.</p>
+  </div>
+  <div>
+<!-- publication:sources -->
+<p>Study snapshot: <code class="revision">7d05c4e62284b4101e8f23722ee3b6111e5ca0e9</code>. EVerest source: <a href="https://github.com/EVerest/EVerest/tree/dd696165d407d461a724232a4d77fe476a964ef1" target="_blank" rel="noopener"><code>dd696165</code><span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+<ul class="source-links"><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">Written rules<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean" target="_blank" rel="noopener">Model and proofs<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">Correspondence review<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_report.md" target="_blank" rel="noopener">Test report<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md" target="_blank" rel="noopener">Driver and shims<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh" target="_blank" rel="noopener">Build inputs<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_harness.py" target="_blank" rel="noopener">Test harness<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh" target="_blank" rel="noopener">Proof check<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
+<p class="evidence-note">WIP study; reported results, not independently rerun for this website. Main runs dated 2026-10-24; comparison counters measured 2026-10-27.</p>
+<p class="evidence-note">This editorial snapshot summarizes linked historical evidence. It is not evidence-record/1, an automatic attestation, a new experimental run, or independent proof rechecking.</p>
+<!-- /publication:sources -->
+<!-- publication:upstream -->
+<p>The pinned study contains a draft EVerest issue awaiting human review. It records no upstream filing. This website does not submit one.</p>
+<!-- /publication:upstream -->
+  </div>
+</section>
+
+</div>
 </main>
-
 <footer class="colophon">
-  <a class="brand" href="./">Crosscheck</a>
+  <p class="made-with">The tool behind this study: <a href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener">Crosscheck<span class="visually-hidden"> (opens in a new tab)</span></a></p>
   <div class="colophon-links">
-    <nav aria-label="Site">
-      <ul>
-        <li><a href="./#everest">Case study</a></li>
-        <li><a href="./#how">How to use it</a></li>
-        <li><a href="./#install">Install</a></li>
-        <li><a href="glossary.html">Glossary</a></li>
-      </ul>
-    </nav>
-    <ul aria-label="Elsewhere">
-      <li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">X<span class="visually-hidden"> (opens in a new tab)</span></a></li>
-      <li><a href="https://github.com/hnipps" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li>
-    </ul>
+    <nav aria-label="Site"><ul><li><a href="./#questions">Questions</a></li><li><a href="./#replay">Repeat the run</a></li><li><a href="everest-study.json" download>Publication record</a></li><li><a href="glossary.html">Glossary</a></li></ul></nav>
+    <ul aria-label="Elsewhere"><li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">X<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/hnipps" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
     <p class="copyright">© 2026 Nicholls Inc</p>
   </div>
 </footer>
-
 </div>
-<!-- Tip text. glossary.html is the page readers see; scripts/check-site-glossary.mjs fails if these differ from it. -->
+<!-- Tip text. glossary.html is the page readers see; scripts/check-site.mjs fails if these differ from it. -->
 <div id="definitions" hidden>
   <p id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</p>
   <p id="def-dafny">A language and tool for checking that code follows written rules. It can turn checked code into Python or Go.</p>
