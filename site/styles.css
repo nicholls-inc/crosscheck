@@ -669,6 +669,7 @@ pre code { font-size: inherit; }
 .section-more { padding: 4px 0 16px 18px; max-width: calc(65ch + 18px); }
 .section-more p { font-size: 17.5px; line-height: 25px; }
 .section-more p + p { margin-top: 12px; }
+.section-more strong { font-weight: 550; color: var(--ink); }
 .section-more .tab-link a { font: 15px/22px var(--sans); letter-spacing: var(--label-track); text-underline-offset: 5px; }
 .section[open] summary { padding-bottom: 8px; }
 .section:focus-within summary:focus-visible { outline-offset: 2px; }
