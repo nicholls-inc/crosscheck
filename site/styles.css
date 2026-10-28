@@ -807,9 +807,10 @@ pre code { font-size: inherit; }
 
 /* Each replay command wraps under itself instead of running off the edge */
 .commands pre { white-space: normal; }
-.commands .cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.commands .cmd { display: block; white-space: pre-wrap; overflow-wrap: normal; padding-left: 2ch; text-indent: -2ch; }
 .commands .cmd + .cmd { margin-top: 2px; }
 .commands .flag { white-space: nowrap; }
+.commands .hash { word-break: break-all; }
 
 .made-with { padding-left: 4px; font-size: 17.5px; line-height: 25px; color: var(--text); }
 .colophon-links > ul { display: flex; flex-wrap: wrap; column-gap: 32px; row-gap: 4px; }

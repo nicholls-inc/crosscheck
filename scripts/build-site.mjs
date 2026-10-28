@@ -38,7 +38,7 @@ function counters() {
 function replay() {
   return `<p>Install elan with <code>${esc(record.environment.lean)}</code>, Python 3, git and curl. The recorded driver build used ${esc(record.environment.compiler)}, Boost ${esc(record.environment.boost)} and fmt ${esc(record.environment.fmt)}. See ${source('driver', 'the driver prerequisites')} before running.</p>
 <p class="evidence-note">${esc(record.environment.boundary)} The leap-second table must list the three leap seconds since 2010. The driver build checks downloaded sources against SHA-256 hashes in ${source('build', 'the pinned build script')}.</p>
-<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat the study"><code>${record.commands.map((c) => `<span class="cmd">${esc(c).replace(/(--[a-z-]+)/g, '<span class="flag">$1</span>')}</span>`).join('\n')}</code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
+<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat the study"><code>${record.commands.map((c) => `<span class="cmd">${esc(c).replace(/\//g, '/<wbr>').replace(/(--[a-z-]+)/g, '<span class="flag">$1</span>').replace(/\b([a-f0-9]{40})\b/g, '<span class="hash">$1</span>')}</span>`).join('\n')}</code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
 <p class="evidence-note">${esc(record.replayNote)}</p>`;
 }
 
