@@ -30,7 +30,7 @@
   <details class="section" id="panel-about">
     <summary><span class="section-name">About</span><span class="section-first">A study of EVerest, open-source software for electric-vehicle chargers, and how it follows OCPP.</span></summary>
     <div class="section-more">
-      <p><strong><button type="button" class="term" data-term="everest" aria-describedby="def-everest">EVerest</button></strong> is a full software stack for running a charging station, maintained as a Linux Foundation Energy project. <strong><button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button></strong>, the Open Charge Point Protocol, is the open standard a charger uses to talk to the software that manages its charging network. Version 1.6, the one checked here, lets the network send a charger schedules that limit how much power it gives, and the charger must combine them into one limit at each moment.</p>
+      <p><strong><button type="button" class="term" data-term="everest" aria-describedby="def-everest">EVerest</button></strong> is a full software stack for running a charging station, maintained as a Linux Foundation Energy project. <strong><button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button></strong>, the Open Charge Point Protocol, is the open standard a charger uses to talk to the software that manages its charging network. Version 1.6, the one checked here, lets the network send a charger schedules that limit how much power it gives, and the charger must combine them into one limit at each moment. The study works from <a href="https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f/" target="_blank" rel="noopener">OCPP 1.6 edition 2<span class="visually-hidden"> (opens in a new tab)</span></a>, sections 3.13.1 to 3.13.3, 3.13.7 and 7.8 to 7.14.</p>
       <p>The study compared EVerest’s code for that combining with a <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>, and found one difference: EVerest restarts a daily schedule one second early. That holds under the study’s <button type="button" class="term" data-term="signed-reading" aria-describedby="def-signed-reading">signed reading</button> of the standard and in its smallest example; the drift grows by a second for each <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button> since a schedule first started. The study rates it low severity.</p>
       <p>Pick a question below to see a short answer and only the evidence behind it. Each piece of evidence carries one of five strengths: Proved, Tested, Decided by a person, Assumed or Not yet reached. Not yet reached also covers a proof that is not yet finished. The <a href="glossary.html#everest">glossary</a> says more about EVerest and OCPP, with links to their own documentation.</p>
       <p>It is a worked example of the argument in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>. By <a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls<span class="visually-hidden"> (opens in a new tab)</span></a>, who directed the study and built the tool used to run it.</p>
@@ -171,7 +171,7 @@
   <summary><span class="entry-line"><span class="entry-title">Why it happens</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Written rules and test report · Tested, Decided by a person</span></summary>
   <div class="entry-body">
     <p class="aside-note">The finding depends on how the standard is read. That reading is a stated premise, not a hidden one.</p>
-    <p class="study-prose">The signed interpretation is that a daily schedule restarts at the clock time in its <code>startSchedule</code>. The study records that the standard’s wording also admits another reading.</p>
+    <p class="study-prose">The signed interpretation is that a daily schedule restarts at the clock time in its <code>startSchedule</code>. The study records that the wording of the <a href="https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f/" target="_blank" rel="noopener">OCPP 1.6 specification<span class="visually-hidden"> (opens in a new tab)</span></a> also admits another reading.</p>
     <p class="study-prose">EVerest calculates recurrence using elapsed UTC seconds, which include leap seconds. The reference program follows the signed clock-time reading.</p>
     <p class="study-prose">A diagnostic rerun shifts older <button type="button" class="term" data-term="schedule-anchor" aria-describedby="def-schedule-anchor">anchors</button> forward by the leap seconds in between, and all 2,000 cases then pass. That changes the inputs to isolate the cause. It is not a fix to EVerest.</p>
     <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
@@ -221,45 +221,6 @@
 </details>
 </div></div>
 
-<div class="group"><h3 class="group-title">People</h3><div>
-<span class="q-anchor" id="q-people"></span>
-<details class="entry block" id="contribution" data-q="people" data-strength="decided">
-  <summary><span class="entry-line"><span class="entry-title">Who did what</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Harry Nicholls’s account · Decided by a person</span></summary>
-  <div class="entry-body">
-    <p class="aside-note">In Harry Nicholls’s own words. AI drafted; deterministic checks and the owner’s recorded decisions are what count as evidence.</p>
-<!-- publication:contribution -->
-<p class="study-prose">I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest&#39;s scheduling code.</p>
-<dl class="contribution"><div><dt>My contribution</dt><dd>I directed the study, approved interpretations of the charging rules, reviewed correspondence findings and decided which claims the evidence supports. The signed spec and owner decisions record that judgment.</dd></div>
-<div><dt>AI assistance</dt><dd>AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Its verdicts needed review; they do not count as evidence.</dd></div>
-<div><dt>What the checks establish</dt><dd>Lean checks the completed proofs about the model. A differential harness compares generated inputs with EVerest&#39;s unmodified scheduling code through a driver. The compiler, model interpretation, driver and harness remain trusted dependencies.</dd></div>
-<div><dt>The reported result</dt><dd>The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation.</dd></div></dl>
-<p class="evidence-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">signed interpretation decisions<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">correspondence review with owner decisions<span class="visually-hidden"> (opens in a new tab)</span></a> record the human judgments behind this account.</p>
-<!-- /publication:contribution -->
-    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
-  </div>
-</details>
-<details class="entry block" id="judgment" data-q="people proof" data-strength="decided">
-  <summary><span class="entry-line"><span class="entry-title">Where the owner decided</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Correspondence review · Decided by a person</span></summary>
-  <div class="entry-body">
-    <p class="aside-note">An AI <button type="button" class="term" data-term="correspondence-review" aria-describedby="def-correspondence-review">correspondence review</button> searched for likely problems. Its verdict is not evidence; the owner’s recorded decisions are.</p>
-<!-- publication:decisions -->
-<ul class="study-list"><li>The owner approved interpretations A1 (a profile applies only while its schedule covers the moment) and A2 (a transaction profile overrules the default profiles only while its own schedule covers the moment) and reclassified two AI correspondence-review findings as abstractions rather than approximations.</li><li>The owner confirmed restoring the missing s ≤ t condition (the moment t cannot come before the schedule&#39;s start s) in D4, the rule for when a schedule covers a moment, on 2026-10-27.</li><li>Q4, the conformance rule (EVerest&#39;s limit conforms when it is at or below the model&#39;s, or is anything when the model gives none), treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here.</li></ul>
-<!-- /publication:decisions -->
-    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
-  </div>
-</details>
-<span class="q-anchor" id="q-unchecked"></span>
-<details class="entry block" id="decisions" data-q="people unchecked" data-strength="decided">
-  <summary><span class="entry-line"><span class="entry-title">Why the study is built this way</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Study design · Decided by a person</span></summary>
-  <div class="entry-body">
-    <p class="aside-note">Each choice comes with the boundary it leaves.</p>
-<!-- publication:choices -->
-<dl class="contribution"><div><dt>Separate the model from the production implementation</dt><dd>A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation. <span class="decision-boundary">A proof about that model does not establish correspondence with all production behavior.</span></dd></div><div><dt>Check the moments where schedules change</dt><dd>The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible. <span class="decision-boundary">The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs.</span></dd></div><div><dt>Record interpretation decisions before judging differences</dt><dd>The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions. <span class="decision-boundary">A difference caused by a disputed reading of the standard must remain distinct from an implementation defect.</span></dd></div><div><dt>Publish the limits beside the result</dt><dd>The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs. <span class="decision-boundary">The leap-second input shift is a diagnostic experiment, not an upstream repair.</span></dd></div></dl>
-<!-- /publication:choices -->
-    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
-  </div>
-</details>
-</div></div>
 
 <div class="group"><h3 class="group-title">Assumptions</h3><div>
 <span class="q-anchor" id="q-depends"></span>
@@ -277,6 +238,7 @@
 </div></div>
 
 <div class="group"><h3 class="group-title">Limits</h3><div>
+<span class="q-anchor" id="q-unchecked"></span>
 <details class="entry block" id="limits" data-q="unchecked proof" data-strength="unreached">
   <summary><span class="entry-line"><span class="entry-title">Where the result stops</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></span><span class="entry-meta">Written rules and generator bounds · Not yet reached</span></summary>
   <div class="entry-body">
@@ -322,8 +284,47 @@
 <p class="evidence-note">This editorial snapshot summarizes linked historical evidence. It is not evidence-record/1, an automatic attestation, a new experimental run, or independent proof rechecking.</p>
 <!-- /publication:sources -->
 <!-- publication:upstream -->
-<p>The pinned study contains a draft EVerest issue awaiting human review. It records no upstream filing. This website does not submit one.</p>
+<p>EVerest issue #3323 was filed on 2026-10-29 and is open. This website does not submit or update upstream issues. <a href="https://github.com/EVerest/everest/issues/3323" target="_blank" rel="noopener">View filed issue<span class="visually-hidden"> (opens in a new tab)</span></a></p>
 <!-- /publication:upstream -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">People</h3><div>
+<span class="q-anchor" id="q-people"></span>
+<details class="entry block" id="contribution" data-q="people" data-strength="decided">
+  <summary><span class="entry-line"><span class="entry-title">Who did what</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Harry Nicholls’s account · Decided by a person</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">In Harry Nicholls’s own words. AI drafted; deterministic checks and the owner’s recorded decisions are what count as evidence.</p>
+<!-- publication:contribution -->
+<p class="study-prose">I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest&#39;s scheduling code.</p>
+<dl class="contribution"><div><dt>My contribution</dt><dd>I directed the study, approved interpretations of the charging rules, reviewed correspondence findings and decided which claims the evidence supports. The signed spec and owner decisions record that judgment.</dd></div>
+<div><dt>AI assistance</dt><dd>AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Its verdicts needed review; they do not count as evidence.</dd></div>
+<div><dt>What the checks establish</dt><dd>Lean checks the completed proofs about the model. A differential harness compares generated inputs with EVerest&#39;s unmodified scheduling code through a driver. The compiler, model interpretation, driver and harness remain trusted dependencies.</dd></div>
+<div><dt>The reported result</dt><dd>The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation.</dd></div></dl>
+<p class="evidence-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">signed interpretation decisions<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">correspondence review with owner decisions<span class="visually-hidden"> (opens in a new tab)</span></a> record the human judgments behind this account.</p>
+<!-- /publication:contribution -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="judgment" data-q="people proof" data-strength="decided">
+  <summary><span class="entry-line"><span class="entry-title">Where the owner decided</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Correspondence review · Decided by a person</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">An AI <button type="button" class="term" data-term="correspondence-review" aria-describedby="def-correspondence-review">correspondence review</button> searched for likely problems. Its verdict is not evidence; the owner’s recorded decisions are.</p>
+<!-- publication:decisions -->
+<ul class="study-list"><li>The owner approved interpretations A1 (a profile applies only while its schedule covers the moment) and A2 (a transaction profile overrules the default profiles only while its own schedule covers the moment) and reclassified two AI correspondence-review findings as abstractions rather than approximations.</li><li>The owner confirmed restoring the missing s ≤ t condition (the moment t cannot come before the schedule&#39;s start s) in D4, the rule for when a schedule covers a moment, on 2026-10-27.</li><li>Q4, the conformance rule (EVerest&#39;s limit conforms when it is at or below the model&#39;s, or is anything when the model gives none), treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here.</li></ul>
+<!-- /publication:decisions -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="decisions" data-q="people unchecked" data-strength="decided">
+  <summary><span class="entry-line"><span class="entry-title">Why the study is built this way</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Study design · Decided by a person</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">Each choice comes with the boundary it leaves.</p>
+<!-- publication:choices -->
+<dl class="contribution"><div><dt>Separate the model from the production implementation</dt><dd>A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation. <span class="decision-boundary">A proof about that model does not establish correspondence with all production behavior.</span></dd></div><div><dt>Check the moments where schedules change</dt><dd>The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible. <span class="decision-boundary">The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs.</span></dd></div><div><dt>Record interpretation decisions before judging differences</dt><dd>The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions. <span class="decision-boundary">A difference caused by a disputed reading of the standard must remain distinct from an implementation defect.</span></dd></div><div><dt>Publish the limits beside the result</dt><dd>The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs. <span class="decision-boundary">The leap-second input shift is a diagnostic experiment, not an upstream repair.</span></dd></div></dl>
+<!-- /publication:choices -->
     <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
 </details>
@@ -334,7 +335,7 @@
 <footer class="colophon">
   <p class="made-with">The tool behind this study: <a class="made-with-link" href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener"><svg class="mark-inline" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg>Crosscheck<span class="visually-hidden"> (opens in a new tab)</span></a></p>
   <div class="colophon-links">
-    <nav aria-label="Site"><ul><li><a href="./#questions">Questions</a></li><li><a href="./#replay">Repeat the run</a></li><li><a href="everest-study.json" download>Publication record</a></li><li><a href="glossary.html">Glossary</a></li></ul></nav>
+    <nav aria-label="Site"><ul><li><a href="./#questions">Questions</a></li><li><a href="./#replay">Repeat the run</a></li><li><a href="everest-study.json" download>Publication record</a></li><li><a href="https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f/" target="_blank" rel="noopener">OCPP 1.6 specification (zip)<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="glossary.html">Glossary</a></li></ul></nav>
     <ul aria-label="Elsewhere"><li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">X<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/hnipps" target="_blank" rel="noopener">GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
     <p class="copyright">© 2026 Nicholls Inc</p>
   </div>
