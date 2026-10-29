@@ -94,15 +94,15 @@ None.
 
 | Divergence | Class | Next step |
 | --- | --- | --- |
-| Recurrence drift of one second per leap second | Production-code gap, plus spec wording (N4) | Draft an EVerest issue with the witness. File only after human review, per EVerest's contribution policy for AI-assisted work. Include in the OCA report as N4. |
+| Recurrence drift of one second per leap second | Production-code gap, plus spec wording (N4) | Filed as [EVerest#3323](https://github.com/EVerest/EVerest/issues/3323) on 2026-10-29, after human review, per EVerest's contribution policy for AI-assisted work. Include in the OCA report as N4. |
 
 No model errors were found in DRT. Model and spec errors found earlier by /correspondence-review (CR-OC16-01, CR-OC16-02) were fixed before these runs.
 
 Absence of other divergences is evidence, not proof. The generator bounds are at most 2 ChargePointMaxProfiles, 3 TxDefaultProfiles and 2 TxProfiles per case, at most 4 periods each, 15-minute period offsets, 24- or 48-hour windows in 2026, and connector 1.
 
-## Draft EVerest issue (not filed)
+## EVerest issue (filed as #3323)
 
-For a human to review, edit and file at https://github.com/EVerest/EVerest/issues. EVerest's contributor policy requires every AI-assisted contribution to be reviewed and understood by a human first.
+Filed on 2026-10-29 as https://github.com/EVerest/EVerest/issues/3323, after a human reviewed it, as EVerest's contributor policy requires for AI-assisted contributions. The filed issue follows EVerest's bug-report form, adds an AI disclosure, and notes that the code is unchanged on `main` at `e44703dc`. The original draft is kept below.
 
 > **Title.** fix(ocpp): OCPP 1.6 Recurring charging profiles restart early by one second per leap second
 >
