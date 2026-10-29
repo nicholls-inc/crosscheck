@@ -17,7 +17,7 @@
   <symbol id="i-tested" viewBox="0 0 16 16"><path d="M2 5.5h12M2 10.5h12"/></symbol>
   <symbol id="i-decided" viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.75"/><path d="M2.5 14.5c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/></symbol>
   <symbol id="i-assumed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" stroke-dasharray="2.2 2.2"/></symbol>
-  <symbol id="i-unreached" viewBox="0 0 16 16"><path d="M8 1.75a6.25 6.25 0 1 1-6.25 6.25"/></symbol>
+  <symbol id="i-unreached" viewBox="0 0 16 16"><circle cx="2.5" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="13.5" cy="8" r="1.5" fill="currentColor" stroke="none"/></symbol>
 </svg>
 <div class="page">
 <header class="title-block">
@@ -46,9 +46,9 @@
     </div>
   </details>
   <details class="section" id="panel-study">
-    <summary><span class="section-name">Study</span><span class="section-first">A <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button> written in <button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> states the charging rules, and EVerest’s code is compared with it.</span></summary>
+    <summary><span class="section-name">Study</span><span class="section-first">A reference program written in Lean states the charging rules, and EVerest’s code is compared with it.</span></summary>
     <div class="section-more">
-      <p>Lean checks proofs of three of the program’s rules; a fourth is unfinished. The proofs are about the model, not about EVerest.</p>
+      <p><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks proofs of three of the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference program</button>’s rules; a fourth is unfinished. The proofs are about the model, not about EVerest.</p>
       <p>A harness runs EVerest’s scheduling code and the reference program on 2,000 generated cases per configuration and compares their limits where schedules change, and one second either side.</p>
       <p>AI agents drafted the specifications, Lean code, proof attempts and test tooling. Harry Nicholls approved the readings of the standard and decided which claims the evidence supports.</p>
       <p class="tab-link"><a href="#contribution">Open who decided what</a></p>
@@ -113,10 +113,11 @@
 </section>
 
 <section class="answer" id="answer" aria-labelledby="answer-title" hidden>
+  <p class="answer-label" aria-hidden="true">Answer</p>
   <div><h2 id="answer-title" tabindex="-1"></h2></div>
   <div>
     <p class="answer-text"></p>
-    <p class="answer-meta"><span class="answer-count"></span><button type="button" class="show-all">Show everything</button></p>
+    <p class="answer-meta"><span class="answer-count" role="status" aria-live="polite"></span><button type="button" class="show-all">Show everything</button></p>
   </div>
 </section>
 
