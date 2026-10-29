@@ -520,6 +520,11 @@ pre code { font-size: inherit; }
   color: var(--ink);
 }
 .section[open] .section-first { white-space: normal; overflow: visible; max-width: 62ch; }
+/* The finding is the point of the page, so its line is never cut short */
+#panel-finding .section-first { white-space: normal; overflow: visible; text-overflow: clip; }
+#panel-finding[open] .section-first { max-width: 62ch; }
+.time { color: var(--ink); font-weight: 500; font-variant-numeric: lining-nums tabular-nums; }
+.time-early { background-image: linear-gradient(transparent 58%, var(--mark) 58%, var(--mark) 92%, transparent 92%); }
 .section-more { padding: 4px 0 16px 18px; max-width: calc(65ch + 18px); }
 .section-more p { font-size: 17.5px; line-height: 25px; }
 .section-more p + p { margin-top: 12px; }
@@ -717,6 +722,7 @@ pre code { font-size: inherit; }
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  #panel-finding:not([open]) .section-first { display: block; -webkit-line-clamp: unset; overflow: visible; }
   .section-more { padding-left: 18px; }
   .questions a { font-size: 18px; line-height: 25px; }
   .entry-title { font-size: 19px; line-height: 26px; }

@@ -31,7 +31,7 @@ function results() {
 }
 
 function counters() {
-  const labels = {instants: 'Instants compared', modelHasLimit: 'Model gives a limit', exact: 'EVerest agrees within tolerance', below: 'EVerest below the model', aboveOrMissing: 'EVerest above, or missing a required limit', extraLimit: 'EVerest gives a limit; model gives none', neither: 'Neither gives a limit', vacuousCases: 'Cases with no model limit anywhere'};
+  const labels = {instants: 'Instants compared', modelHasLimit: 'Model gives a limit', exact: 'EVerest agrees within <button type="button" class="term" data-term="tolerance" aria-describedby="def-tolerance">tolerance</button>', below: 'EVerest below the model', aboveOrMissing: 'EVerest above, or missing a required limit', extraLimit: 'EVerest gives a limit; model gives none', neither: 'Neither gives a limit', vacuousCases: 'Cases with no model limit anywhere'};
   return `<table class="ledger"><caption>Agreement at individual instants</caption><thead><tr><th scope="col">Counter</th><th scope="col">2017–2025 anchors</th><th scope="col">2010–2016 anchors</th></tr></thead><tbody>${Object.entries(labels).map(([key, label]) => `<tr><td data-label="Counter">${label}</td><td data-label="2017–2025 anchors">${number(record.counters.recent[key])}</td><td data-label="2010–2016 anchors">${number(record.counters.older[key])}</td></tr>`).join('')}</tbody></table>`;
 }
 
