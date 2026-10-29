@@ -68,7 +68,7 @@ function choices() {
 }
 
 const fragments = {claims, witness, results, counters, replay, limits, sources, contribution, choices,
-  properties: () => list(record.modelProperties) + `<p class="evidence-note">Unfinished: ${esc(record.unfinishedProperty)}</p>`,
+  properties: () => list(record.modelProperties) + `<p class="evidence-note">Not yet reached: ${esc(record.unfinishedProperty)}</p>`,
   decisions: () => list(record.humanDecisions),
   trust: () => list(record.trustedDependencies),
   upstream: () => `<p>${esc(record.upstreamStatus)}</p>`,

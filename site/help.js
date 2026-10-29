@@ -128,9 +128,18 @@ const questionLinks = [...document.querySelectorAll("[data-question]")];
 const strengthButtons = [...document.querySelectorAll(".strengths button")];
 const answer = document.getElementById("answer");
 const filter = { question: "", strength: "" };
+// The one name each strength goes by wherever the script writes it. index.html uses the same names.
+const STRENGTH_NAMES = {
+  proved: "Proved",
+  tested: "Tested",
+  decided: "Decided by a person",
+  assumed: "Assumed",
+  unreached: "Not yet reached",
+};
 
 if (blocks.length && answer) {
   document.querySelector(".strengths").hidden = false;
+  for (const button of strengthButtons) button.querySelector("span").textContent = STRENGTH_NAMES[button.dataset.strength];
   // The q-anchor ids exist only for the jump without JavaScript. With it, the browser's own
   // fragment scroll would run after the script anchors and undo it.
   for (const span of document.querySelectorAll(".q-anchor")) span.removeAttribute("id");
@@ -141,7 +150,7 @@ if (blocks.length && answer) {
   const count = answer.querySelector(".answer-count");
   const showAll = answer.querySelector(".show-all");
   const words = (value) => (value || "").split(" ").filter(Boolean);
-  const strengthName = (key) => strengthButtons.find((b) => b.dataset.strength === key).textContent.trim().toLowerCase();
+  const strengthName = (key) => STRENGTH_NAMES[key];
   const pieces = (n) => (n === 1 ? "1 piece" : `${n} pieces`);
 
   // A chosen question opens the evidence that answers it. The entries the filter opened are

@@ -68,16 +68,29 @@
   <h2 id="filter-title">Filter</h2>
   <div class="filter-questions">
     <h3>Questions</h3>
-    <ol class="questions">
-      <li><a href="#q-went-wrong" data-question="went-wrong"><span>What went wrong?</span></a></li>
-      <li><a href="#q-matter" data-question="matter"><span>Does a one-second error matter?</span></a></li>
-      <li><a href="#q-proof" data-question="proof"><span>Is this a proof that EVerest is wrong?</span></a></li>
-      <li><a href="#q-tested" data-question="tested"><span>How was EVerest tested, and what came back?</span></a></li>
-      <li><a href="#q-people" data-question="people"><span>What did a person decide, and what did the AI do?</span></a></li>
-      <li><a href="#q-depends" data-question="depends"><span>What does the result depend on?</span></a></li>
-      <li><a href="#q-unchecked" data-question="unchecked"><span>What wasn’t checked?</span></a></li>
-      <li><a href="#q-run" data-question="run"><span>Can I run it myself?</span></a></li>
-    </ol>
+    <div class="question-group">
+      <h4 class="question-group-title">What happened</h4>
+      <ol class="questions">
+        <li><a href="#q-went-wrong" data-question="went-wrong"><span>What went wrong?</span></a></li>
+        <li><a href="#q-matter" data-question="matter"><span>Does a one-second error matter?</span></a></li>
+      </ol>
+    </div>
+    <div class="question-group">
+      <h4 class="question-group-title">How sure is it</h4>
+      <ol class="questions">
+        <li><a href="#q-proof" data-question="proof"><span>Is this a proof that EVerest is wrong?</span></a></li>
+        <li><a href="#q-tested" data-question="tested"><span>How was EVerest tested, and what came back?</span></a></li>
+        <li><a href="#q-people" data-question="people"><span>What did a person decide, and what did the AI do?</span></a></li>
+        <li><a href="#q-depends" data-question="depends"><span>What does the result depend on?</span></a></li>
+        <li><a href="#q-unchecked" data-question="unchecked"><span>What wasn’t checked?</span></a></li>
+      </ol>
+    </div>
+    <div class="question-group">
+      <h4 class="question-group-title">Do it yourself</h4>
+      <ol class="questions">
+        <li><a href="#q-run" data-question="run"><span>Can I run it myself?</span></a></li>
+      </ol>
+    </div>
   </div>
   <div class="filter-strengths">
     <h3 id="strength-label">Evidence strength</h3>
@@ -86,14 +99,14 @@
       <li><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg>Tested</li>
       <li><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg>Decided by a person</li>
       <li><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg>Assumed</li>
-      <li><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg>Unfinished or not yet reached</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg>Not yet reached</li>
     </ul>
     <ul class="strengths" role="group" aria-labelledby="strength-label" hidden>
       <li><button type="button" data-strength="proved" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><span>Proved</span></button></li>
       <li><button type="button" data-strength="tested" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><span>Tested</span></button></li>
       <li><button type="button" data-strength="decided" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg><span>Decided by a person</span></button></li>
       <li><button type="button" data-strength="assumed" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg><span>Assumed</span></button></li>
-      <li><button type="button" data-strength="unreached" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg><span>Unfinished or not yet reached</span></button></li>
+      <li><button type="button" data-strength="unreached" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg><span>Not yet reached</span></button></li>
     </ul>
     <p class="filter-status" role="status" aria-live="polite"></p>
   </div>
@@ -121,6 +134,20 @@
 <section class="evidence" id="evidence" aria-labelledby="evidence-title">
 <h2 class="evidence-heading" id="evidence-title">Evidence</h2>
 
+<div class="group"><h3 class="group-title">Overview</h3><div>
+<details class="entry block" id="record" data-q="proof tested" data-strength="proved tested unreached">
+  <summary><span class="entry-line"><span class="entry-title">The evidence at a glance</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></span><span class="entry-meta">Publication record · Proved, Tested, Not yet reached</span></summary>
+  <div class="entry-body evidence">
+    <p class="aside-note">Proofs cover the reference program. Production code is compared with it on generated inputs.</p>
+<!-- publication:claims -->
+<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference program</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">About the Lean model, not a proof of EVerest&#39;s implementation.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 pass; 57,304 instants with a model limit agree within tolerance, and neither program gives a limit at the other 10,226 instants.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn, 1,073 fail, as reported. The report also records 1,081 instants with an extra EVerest limit; see the classification caveat.</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Unfinished</td><td data-label="Result and boundary">No proof claimed.</td></tr></tbody></table>
+<p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>
+<!-- /publication:claims -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
 <div class="group"><h3 class="group-title">Finding</h3><div>
 <span class="q-anchor" id="q-went-wrong"></span><span class="q-anchor" id="q-matter"></span>
 <details class="entry block entry-key" id="witness" data-q="went-wrong matter" data-strength="tested">
@@ -140,7 +167,7 @@
 </details>
 <span class="q-anchor" id="q-proof"></span>
 <details class="entry block" id="cause" data-q="went-wrong matter proof" data-strength="tested decided">
-  <summary><span class="entry-line"><span class="entry-title">Why it happens</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Written rules and test report · Tested, decided by a person</span></summary>
+  <summary><span class="entry-line"><span class="entry-title">Why it happens</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></span><span class="entry-meta">Written rules and test report · Tested, Decided by a person</span></summary>
   <div class="entry-body">
     <p class="aside-note">The finding depends on how the standard is read. That reading is a stated premise, not a hidden one.</p>
     <p class="study-prose">The signed interpretation is that a daily schedule restarts at the clock time in its <code>startSchedule</code>. The study records that the standard’s wording also admits another reading.</p>
@@ -152,24 +179,12 @@
 </div></div>
 
 <div class="group"><h3 class="group-title">Proof</h3><div>
-<span class="q-anchor" id="q-tested"></span>
-<details class="entry block" id="record" data-q="proof tested" data-strength="proved tested unreached">
-  <summary><span class="entry-line"><span class="entry-title">The evidence at a glance</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></span><span class="entry-meta">Publication record · Proved, tested, unfinished</span></summary>
-  <div class="entry-body evidence">
-    <p class="aside-note">Proofs cover the reference program. Production code is compared with it on generated inputs.</p>
-<!-- publication:claims -->
-<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference program</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">About the Lean model, not a proof of EVerest&#39;s implementation.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 pass; 57,304 instants with a model limit agree within tolerance, and neither program gives a limit at the other 10,226 instants.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn, 1,073 fail, as reported. The report also records 1,081 instants with an extra EVerest limit; see the classification caveat.</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Unfinished</td><td data-label="Result and boundary">No proof claimed.</td></tr></tbody></table>
-<p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. Results are reported by the study, not rerun for this website.</p>
-<!-- /publication:claims -->
-    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
-  </div>
-</details>
 <details class="entry block" id="proved" data-q="proof" data-strength="proved unreached">
-  <summary><span class="entry-line"><span class="entry-title">What is proved</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></span><span class="entry-meta">Model and proofs · Proved, unfinished</span></summary>
+  <summary><span class="entry-line"><span class="entry-title">What is proved</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></span><span class="entry-meta">Model and proofs · Proved, Not yet reached</span></summary>
   <div class="entry-body">
     <p class="aside-note"><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks mathematical arguments about the model. This is not a proof of the C++ implementation.</p>
 <!-- publication:properties -->
-<ul class="study-list"><li>The combined limit is never above the charger-wide limit.</li><li>It is never above the applicable transaction limit.</li><li>While a transaction&#39;s own schedule applies, changing default schedules does not change the limit.</li></ul><p class="evidence-note">Unfinished: Adding a lower-priority schedule that does not apply leaves the limit unchanged (I4, the fourth model rule).</p>
+<ul class="study-list"><li>The combined limit is never above the charger-wide limit.</li><li>It is never above the applicable transaction limit.</li><li>While a transaction&#39;s own schedule applies, changing default schedules does not change the limit.</li></ul><p class="evidence-note">Not yet reached: Adding a lower-priority schedule that does not apply leaves the limit unchanged (I4, the fourth model rule).</p>
 <!-- /publication:properties -->
     <p class="evidence-note">The proof check names the completed theorems and rejects dependencies on <code>sorryAx</code>, the placeholder Lean records for an unfinished proof, or on non-standard axioms. The fourth, unfinished statement is not counted as proved.</p>
     <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
@@ -178,6 +193,7 @@
 </div></div>
 
 <div class="group"><h3 class="group-title">Tests</h3><div>
+<span class="q-anchor" id="q-tested"></span>
 <details class="entry block" id="results" data-q="tested" data-strength="tested">
   <summary><span class="entry-line"><span class="entry-title">What the tests report</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></span><span class="entry-meta">Test report, main runs dated 2026-10-24 · Tested</span></summary>
   <div class="entry-body">
