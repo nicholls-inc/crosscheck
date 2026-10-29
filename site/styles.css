@@ -520,10 +520,9 @@ pre code { font-size: inherit; }
   text-overflow: ellipsis;
   color: var(--ink);
 }
-.section[open] .section-first { white-space: normal; overflow: visible; max-width: 62ch; }
+.section[open] .section-first { white-space: normal; overflow: visible; }
 /* The finding is the point of the page, so its line is never cut short */
 #panel-finding .section-first { white-space: normal; overflow: visible; text-overflow: clip; }
-#panel-finding[open] .section-first { max-width: 62ch; }
 .time { color: var(--ink); font-weight: 500; font-variant-numeric: lining-nums tabular-nums; }
 .time-early { background-image: linear-gradient(transparent 58%, var(--mark) 58%, var(--mark) 92%, transparent 92%); }
 .section-more { padding: 4px 0 16px 18px; max-width: calc(65ch + 18px); }
