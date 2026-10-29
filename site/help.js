@@ -144,6 +144,25 @@ if (blocks.length && answer) {
   const strengthName = (key) => strengthButtons.find((b) => b.dataset.strength === key).textContent.trim().toLowerCase();
   const pieces = (n) => (n === 1 ? "1 piece" : `${n} pieces`);
 
+  // A chosen question opens the evidence that answers it. The entries the filter opened are
+  // remembered, so clearing the question closes those and leaves any the reader opened.
+  const openedByFilter = new Set();
+  const offered = new Set();
+  let offeredFor = "";
+  function openForQuestion() {
+    if (!filter.question) {
+      for (const block of openedByFilter) block.open = false;
+      openedByFilter.clear();
+    }
+    if (offeredFor !== filter.question) { offered.clear(); offeredFor = filter.question; }
+    if (!filter.question) return;
+    for (const block of blocks) {
+      if (block.hidden || offered.has(block)) continue;
+      offered.add(block);
+      if (!block.open) { block.open = true; openedByFilter.add(block); }
+    }
+  }
+
   function apply() {
     let shown = 0;
     for (const block of blocks) {
@@ -159,7 +178,7 @@ if (blocks.length && answer) {
     }
     for (const button of strengthButtons) button.setAttribute("aria-pressed", String(button.dataset.strength === filter.strength));
 
-    document.body.classList.toggle("is-filtering", Boolean(filter.question || filter.strength));
+    openForQuestion();
     const marked = filter.strength ? ` marked ${strengthName(filter.strength)}` : "";
     answer.hidden = !filter.question;
     if (filter.question) {
@@ -181,7 +200,12 @@ if (blocks.length && answer) {
   const wide = window.matchMedia("(min-width: 861px)");
   function anchor() {
     const target = wide.matches ? filters : (filter.question ? answer : document.getElementById("evidence"));
-    window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
+    // Pad the page by exactly what the target needs to reach the top of the screen.
+    document.body.style.paddingBottom = "";
+    const top = target.getBoundingClientRect().top + window.scrollY;
+    const needed = Math.ceil(top - (document.documentElement.scrollHeight - window.innerHeight));
+    if (needed > 0) document.body.style.paddingBottom = `${needed}px`;
+    window.scrollTo({ top, behavior: "instant" });
   }
 
   function choose(question, { push = true, scroll = true } = {}) {
