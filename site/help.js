@@ -131,6 +131,10 @@ const filter = { question: "", strength: "" };
 
 if (blocks.length && answer) {
   document.querySelector(".strengths").hidden = false;
+  // The q-anchor ids exist only for the jump without JavaScript. With it, the browser's own
+  // fragment scroll would run after the script anchors and undo it.
+  for (const span of document.querySelectorAll(".q-anchor")) span.removeAttribute("id");
+  history.scrollRestoration = "manual";
   const status = document.querySelector(".filter-status");
   const title = document.getElementById("answer-title");
   const text = answer.querySelector(".answer-text");
@@ -220,17 +224,21 @@ if (blocks.length && answer) {
     if (target) openTarget(link.getAttribute("href"));
   });
 
-  const fromHash = () => {
+  const fromHash = ({ scroll = true } = {}) => {
     const match = /^#q-([a-z-]+)$/.exec(location.hash);
     const question = match && questionLinks.some((l) => l.dataset.question === match[1]) ? match[1] : "";
-    if (question !== filter.question) choose(question, { push: false, scroll: Boolean(question) });
+    if (question !== filter.question) choose(question, { push: false, scroll: scroll && Boolean(question) });
     if (!question) {
       const target = openTarget(location.hash);
       if (target) target.scrollIntoView();
     }
   };
-  window.addEventListener("popstate", fromHash);
-  fromHash();
+  window.addEventListener("popstate", () => fromHash());
+  fromHash({ scroll: false });
+  // Anchor once the page has its final layout, after the load event and a frame.
+  const settle = () => requestAnimationFrame(() => { if (filter.question) anchor(); });
+  if (document.readyState === "complete") settle();
+  else window.addEventListener("load", settle, { once: true });
 }
 
 /* Copy the install commands */
