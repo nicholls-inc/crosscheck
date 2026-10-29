@@ -453,7 +453,7 @@ pre code { font-size: inherit; }
 }
 .mark { display: block; width: 22px; height: 22px; }
 .brand-name {
-  font: 400 22px/22px var(--serif);
+  font: 400 28px/28px var(--serif);
   letter-spacing: -0.012em;
   font-variation-settings: "opsz" 36;
   /* Flex centres the line box; this centres the capitals on the mark (measured at 4x) */
