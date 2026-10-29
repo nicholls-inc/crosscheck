@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T20:09:42+00:00",
+  "generatedAt": "2026-10-29T19:07:43+00:00",
   "title": "Design System: Crosscheck",
   "extensions": {
     "colorMeta": {
@@ -109,21 +109,6 @@
           "#ebeef9"
         ]
       },
-      "nav-underline": {
-        "role": "neutral",
-        "displayName": "Nav Underline",
-        "canonical": "#8d8f98",
-        "tonalRamp": [
-          "#090b11",
-          "#23252c",
-          "#404249",
-          "#5f6169",
-          "#80828b",
-          "#a2a4ae",
-          "#c6c9d2",
-          "#eceef8"
-        ]
-      },
       "tip-border": {
         "role": "neutral",
         "displayName": "Tip Border",
@@ -152,21 +137,6 @@
           "#a3a5ab",
           "#c7c9cf",
           "#eceef5"
-        ]
-      },
-      "rule-faint": {
-        "role": "neutral",
-        "displayName": "Faint Rule",
-        "canonical": "#d9dadd",
-        "tonalRamp": [
-          "#0a0b0d",
-          "#242527",
-          "#414244",
-          "#606164",
-          "#818285",
-          "#a4a5a8",
-          "#c8c9cc",
-          "#edeef1"
         ]
       },
       "link": {
@@ -214,51 +184,6 @@
           "#fdefb9"
         ]
       },
-      "button": {
-        "role": "neutral",
-        "displayName": "Press Black (reserved)",
-        "canonical": "#232322",
-        "tonalRamp": [
-          "#0b0b0a",
-          "#252524",
-          "#424241",
-          "#616160",
-          "#828281",
-          "#a5a5a4",
-          "#c9c9c8",
-          "#eeeeed"
-        ]
-      },
-      "button-hover": {
-        "role": "neutral",
-        "displayName": "Press Black Hover (reserved)",
-        "canonical": "#000000",
-        "tonalRamp": [
-          "#0b0b0b",
-          "#252525",
-          "#424242",
-          "#616161",
-          "#828282",
-          "#a5a5a5",
-          "#c9c9c9",
-          "#eeeeee"
-        ]
-      },
-      "button-label": {
-        "role": "neutral",
-        "displayName": "Press Label (reserved)",
-        "canonical": "#ffffff",
-        "tonalRamp": [
-          "#0b0b0b",
-          "#252525",
-          "#424242",
-          "#616161",
-          "#828282",
-          "#a5a5a5",
-          "#c9c9c9",
-          "#eeeeee"
-        ]
-      },
       "help": {
         "role": "neutral",
         "displayName": "Help Dot",
@@ -276,69 +201,65 @@
       }
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Display",
-        "purpose": "The hero finding sentence; 36px/42px at 1100px and below, 32px/38px at 640px and below."
-      },
-      "clock": {
-        "displayName": "Clock",
-        "purpose": "The two hero clock readings; clamp(52px, 17vw, 76px) at 640px and below."
-      },
-      "wordmark": {
-        "displayName": "Wordmark",
-        "purpose": "The masthead brand."
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The study title (the page's one primary heading) and the glossary heading; the title is 26px/32px on phones, the glossary heading 28px/34px."
       },
       "reading": {
         "displayName": "Reading",
         "purpose": "Witness figure values; 38px/44px at 860px and below."
       },
-      "headline": {
-        "displayName": "Headline",
-        "purpose": "Band headings, the answer heading and the glossary title; 28px/34px on phones."
+      "question-heading": {
+        "displayName": "Question heading",
+        "purpose": "The chosen question heading the answer, capped at 28ch."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Visible table captions; hidden on the study page where band headings repeat them."
+        "purpose": "A visible ledger caption; captions that repeat an entry title are kept for screen readers."
       },
-      "tab": {
-        "displayName": "Tab",
-        "purpose": "Index-tab labels and tab leads; 23px/29px in the 641px-860px accordion and without script."
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "\"Crosscheck\" beside the 22px mark, nudged down 0.11em to centre its capitals."
       },
       "answer": {
         "displayName": "Answer",
-        "purpose": "The short answer to the chosen question; 19px/27px on phones."
+        "purpose": "The short answer to the chosen question, 56ch; 19px/27px on phones."
       },
-      "question": {
-        "displayName": "Question",
-        "purpose": "Question links; 19px/26px on phones."
+      "entry-title": {
+        "displayName": "Entry title",
+        "purpose": "Each evidence entry's title; 19px/26px on phones."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Wide-column prose with no smaller role, capped at 70ch; 18px on phones."
+        "purpose": "Section first lines, question links and prose with no smaller role; 18px on phones."
       },
       "body-note": {
         "displayName": "Body note",
-        "purpose": "Hero note, aside notes, tab text, evidence notes, study prose and lists."
+        "purpose": "Opened section text, aside notes, study prose and lists, evidence notes, the footer sentence."
       },
       "table": {
         "displayName": "Table",
         "purpose": "Ledger cells, glossary entries, explanations under readings."
       },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "The Graphite line under each entry title naming source and strength."
+      },
       "tip": {
         "displayName": "Tip",
         "purpose": "Help explanations."
       },
-      "label": {
-        "displayName": "Label",
-        "purpose": "Table headers, strength tags, clock and witness labels, status and count lines."
+      "section-label": {
+        "displayName": "Section label",
+        "purpose": "The Record Blue labels of the one-line sections, each with a colon."
       },
       "control": {
         "displayName": "Control",
-        "purpose": "Strength toggles and Show everything."
+        "purpose": "Strength toggles, the no-script strength key and standalone links."
       },
-      "nav": {
-        "displayName": "Nav",
-        "purpose": "Masthead links."
+      "label": {
+        "displayName": "Label",
+        "purpose": "Filter and evidence labels, group titles, table headers, status and count lines, Show everything, the copy control."
       },
       "mono": {
         "displayName": "Mono",
@@ -350,12 +271,12 @@
       {
         "name": "ease-out-expo",
         "value": "cubic-bezier(.16,1,.3,1)",
-        "purpose": "Tooltip rise, tab mark, highlighter wipe and evidence-block entry."
+        "purpose": "Tooltip rise and the evidence entry opening."
       },
       {
         "name": "state-change",
         "value": "120ms ease-out",
-        "purpose": "Link, toggle and tab-label colour changes."
+        "purpose": "Link colour and underline changes."
       },
       {
         "name": "tip-in",
@@ -363,33 +284,24 @@
         "purpose": "Tooltip opening."
       },
       {
-        "name": "tab-mark",
-        "value": "background-size 220ms",
-        "purpose": "Plus turning to minus on the open tab."
+        "name": "entry-in",
+        "value": "360ms, opacity 0 to 1 with a 4px rise",
+        "purpose": "An evidence entry's body when it opens, with script."
       },
       {
-        "name": "clock-wipe",
-        "value": "background-size 1100ms, 350ms delay, once after fonts load",
-        "purpose": "Highlighter stroke under the early clock reading."
-      },
-      {
-        "name": "block-in",
-        "value": "420ms, opacity 0 to 1 with a 6px rise",
-        "purpose": "An evidence block revealed by a filter."
+        "name": "filter-anchor",
+        "value": "instant scroll",
+        "purpose": "After a filter change the filter row's top edge returns to the top of the screen (the answer or evidence list below 861px)."
       },
       {
         "name": "reduced-motion",
-        "value": "all transitions and animations removed; highlighter strokes fully drawn",
+        "value": "all transitions and animations removed",
         "purpose": "prefers-reduced-motion: reduce."
       }
     ],
     "breakpoints": [
       {
-        "name": "two-step-tables",
-        "value": "1281px"
-      },
-      {
-        "name": "aside-fixed",
+        "name": "filter-two-columns",
         "value": "1100px"
       },
       {
@@ -404,44 +316,52 @@
   },
   "components": [
     {
-      "name": "Inline Link",
-      "kind": "custom",
-      "refersTo": "link",
-      "description": "Every link in prose: solid Record Blue underline at 70%; hover deepens and the underline goes to full strength.",
-      "html": "<p class=\"ds-p\">Read the <a class=\"ds-link\" href=\"#\">written rules</a> behind the study.</p>",
-      "css": ".ds-p{font:380 19px/26px Newsreader,'Iowan Old Style',Georgia,serif;color:#25282e;background:#f8f7f4;margin:0;} .ds-link{color:#2a5a9e;text-decoration:underline 1px;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,#2a5a9e 70%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-link:hover{color:#153c74;text-decoration-color:currentColor;} .ds-link:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+      "name": "Lockup and Title",
+      "kind": "nav",
+      "refersTo": "wordmark",
+      "description": "The 22px Counterproof mark beside the 22px Newsreader wordmark, then the 32px study title as the page's one primary heading.",
+      "html": "<header class=\"ds-title-block\"><a class=\"ds-brand\" href=\"#\"><svg class=\"ds-mark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z\" fill=\"currentColor\" fill-rule=\"evenodd\"/></svg><span class=\"ds-brand-name\">Crosscheck</span></a><h1 class=\"ds-title\">EVerest OCPP lib: a formal study</h1></header>",
+      "css": ".ds-title-block{background:#f8f7f4;padding:40px 0 0;} .ds-brand{display:inline-flex;align-items:center;gap:10px;color:#18191b;text-decoration:none;} .ds-mark{display:block;width:22px;height:22px;} .ds-brand-name{font:400 22px/22px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.012em;font-variation-settings:'opsz' 36;transform:translateY(0.11em);} .ds-brand:hover .ds-brand-name{text-decoration:underline;text-underline-offset:5px;} .ds-brand:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;} .ds-title{margin:26px 0 0;color:#18191b;font:400 32px/38px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.022em;font-variation-settings:'opsz' 48;}"
     },
     {
-      "name": "Index Tabs",
-      "kind": "nav",
-      "refersTo": "index-tab",
-      "description": "Ruled disclosure tabs: closed labels Graphite, the open label ink with a 2px ink bar on the strip rule, and a drawn +/- mark.",
-      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab\" aria-expanded=\"true\">About this page</button><button class=\"ds-tab\" aria-expanded=\"false\">The charger</button><button class=\"ds-tab\" aria-expanded=\"false\">The finding</button></div>",
-      "css": ".ds-tabs{display:flex;gap:44px;padding-left:4px;border-bottom:1px solid #7d808a;background:#f8f7f4;} .ds-tab{position:relative;display:flex;align-items:center;gap:12px;padding:16px 0 14px;border:0;background:none;color:#4f535b;font:400 21px/28px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.01em;font-variation-settings:'opsz' 36;cursor:pointer;transition:color 120ms ease-out;} .ds-tab:hover,.ds-tab[aria-expanded=true]{color:#18191b;} .ds-tab::after{content:'';flex:none;width:11px;height:11px;background:linear-gradient(currentColor,currentColor) center/11px 1.5px no-repeat,linear-gradient(currentColor,currentColor) center/1.5px 11px no-repeat;transition:background-size 220ms cubic-bezier(.16,1,.3,1);} .ds-tab[aria-expanded=true]::after{background-size:11px 1.5px,1.5px 0;} .ds-tab[aria-expanded=true]::before{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#18191b;} .ds-tab:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+      "name": "Section Line",
+      "kind": "custom",
+      "refersTo": "section-label",
+      "description": "A native disclosure: Record Blue label with a drawn plus and a colon, then the first sentence in ink on one line until opened.",
+      "html": "<div class=\"ds-sections\"><details class=\"ds-section\"><summary><span class=\"ds-section-name\">About</span><span class=\"ds-section-first\">A study of EVerest, open-source software that runs electric-vehicle chargers, and of how it follows OCPP, the standard chargers use to talk to their network.</span></summary><div class=\"ds-section-more\"><p>The study compared EVerest’s code with a reference program and found one difference.</p></div></details><details class=\"ds-section\" open><summary><span class=\"ds-section-name\">Finding</span><span class=\"ds-section-first\">A daily schedule should restart at 11:00:00; in the study’s smallest example, EVerest restarts it at 10:59:59.</span></summary><div class=\"ds-section-more\"><p>The schedule first started at 11:00:00 UTC on 14 September 2016.</p></div></details></div>",
+      "css": ".ds-sections{background:#f8f7f4;padding:22px 0 30px;border-bottom:1px solid #7d808a;font:380 19px/26px Newsreader,'Iowan Old Style',Georgia,serif;color:#25282e;} .ds-section summary{display:flex;align-items:baseline;gap:0 10px;padding:5px 0;list-style:none;cursor:pointer;} .ds-section summary::-webkit-details-marker{display:none;} .ds-section summary:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;} .ds-section-name{flex:none;position:relative;padding-left:18px;font:500 15px/26px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 60%,transparent);} .ds-section-name::before{content:'';position:absolute;left:0;top:8px;width:10px;height:10px;background:linear-gradient(currentColor,currentColor) center/10px 1.5px no-repeat,linear-gradient(currentColor,currentColor) center/1.5px 10px no-repeat;} .ds-section[open] .ds-section-name::before{background-size:10px 1.5px,1.5px 0;} .ds-section-name::after{content:':';} .ds-section summary:hover .ds-section-name{color:#153c74;text-decoration-color:currentColor;} .ds-section-first{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#18191b;} .ds-section[open] .ds-section-first{white-space:normal;overflow:visible;max-width:62ch;} .ds-section[open] summary{padding-bottom:8px;} .ds-section-more{padding:4px 0 16px 18px;max-width:calc(65ch + 18px);} .ds-section-more p{margin:0;font-size:17.5px;line-height:25px;}"
     },
     {
       "name": "Question List",
       "kind": "nav",
       "refersTo": "question-link",
-      "description": "Two ruled columns of serif question links; the chosen one turns ink under a highlighter stroke.",
-      "html": "<ol class=\"ds-questions\"><li><a href=\"#\" aria-current=\"true\"><span>What went wrong?</span></a></li><li><a href=\"#\"><span>Does a one-second error matter?</span></a></li><li><a href=\"#\"><span>What wasn’t checked?</span></a></li><li><a href=\"#\"><span>Can I run it myself?</span></a></li></ol>",
-      "css": ".ds-questions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:0;padding:0;list-style:none;border-top:1px solid #7d808a;background:#f8f7f4;} .ds-questions li{border-bottom:1px solid #b6b8be;} .ds-questions a{display:block;padding:11px 0 12px;font:380 20px/27px Newsreader,'Iowan Old Style',Georgia,serif;color:#2a5a9e;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-questions a:hover{color:#153c74;text-decoration-color:currentColor;} .ds-questions a[aria-current=true]{color:#18191b;text-decoration-color:transparent;} .ds-questions a[aria-current=true] span{background-image:linear-gradient(transparent 58%,#f8eab4 58%,#f8eab4 92%,transparent 92%);} .ds-questions a:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+      "description": "A list of 19px serif question links; the chosen one turns ink under a highlighter stroke.",
+      "html": "<div class=\"ds-filter-col\"><h3 class=\"ds-label\">Questions</h3><ol class=\"ds-questions\"><li><a href=\"#\" aria-current=\"true\"><span>What went wrong?</span></a></li><li><a href=\"#\"><span>Does a one-second error matter?</span></a></li><li><a href=\"#\"><span>What wasn’t checked?</span></a></li><li><a href=\"#\"><span>Can I run it myself?</span></a></li></ol></div>",
+      "css": ".ds-filter-col{background:#f8f7f4;} .ds-label{margin:0 0 8px;font:500 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#18191b;} .ds-questions{margin:0;padding:0;list-style:none;} .ds-questions a{display:inline-block;padding:5px 0;font:380 19px/26px Newsreader,'Iowan Old Style',Georgia,serif;color:#2a5a9e;text-decoration:underline 1px;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-questions a:hover{color:#153c74;text-decoration-color:currentColor;} .ds-questions a[aria-current=true]{color:#18191b;text-decoration-color:transparent;} .ds-questions a[aria-current=true] span{background-image:linear-gradient(transparent 58%,#f8eab4 58%,#f8eab4 92%,transparent 92%);} .ds-questions a:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
     },
     {
-      "name": "Strength Toggle",
+      "name": "Strength Filter",
       "kind": "chip",
       "refersTo": "strength-toggle",
-      "description": "Text-styled filter buttons after a Graphite group label; pressed is ink, weight 500 and a 2px ink underline.",
-      "html": "<div class=\"ds-strengths\"><span class=\"ds-strength-label\">Evidence strength</span><button class=\"ds-toggle\" aria-pressed=\"true\">All</button><button class=\"ds-toggle\" aria-pressed=\"false\">Proved</button><button class=\"ds-toggle\" aria-pressed=\"false\">Tested</button><button class=\"ds-toggle\" aria-pressed=\"false\">Decided by a person</button></div>",
-      "css": ".ds-strengths{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:22px;background:#f8f7f4;} .ds-strength-label{font:500 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#4f535b;margin-right:4px;} .ds-toggle{min-height:44px;padding:0;border:0;background:none;font:400 14px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;cursor:pointer;text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-toggle:hover{color:#153c74;text-decoration-color:currentColor;} .ds-toggle[aria-pressed=true]{color:#18191b;font-weight:500;text-decoration-color:#18191b;text-decoration-thickness:2px;} .ds-toggle:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+      "description": "Stacked text-styled toggles, each a drawn 16px icon and a 15px sans label; pressed is ink, 500 and a 2px ink underline.",
+      "html": "<div class=\"ds-filter-col\"><h3 class=\"ds-label\">Evidence strength</h3><ul class=\"ds-strengths\"><li><button type=\"button\" aria-pressed=\"false\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><rect x=\"1.75\" y=\"1.75\" width=\"12.5\" height=\"12.5\" rx=\"1\"/><path d=\"M4.5 8.2l2.4 2.4 4.6-5\"/></svg><span>Proved</span></button></li><li><button type=\"button\" aria-pressed=\"true\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2 5.5h12M2 10.5h12\"/></svg><span>Tested</span></button></li><li><button type=\"button\" aria-pressed=\"false\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"5\" r=\"2.75\"/><path d=\"M2.5 14.5c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6\"/></svg><span>Decided by a person</span></button></li><li><button type=\"button\" aria-pressed=\"false\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"6.25\" stroke-dasharray=\"2.2 2.2\"/></svg><span>Assumed</span></button></li><li><button type=\"button\" aria-pressed=\"false\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8 1.75a6.25 6.25 0 1 1-6.25 6.25\"/></svg><span>Unfinished or not yet reached</span></button></li></ul></div>",
+      "css": ".ds-filter-col{background:#f8f7f4;} .ds-label{margin:0 0 8px;font:500 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#18191b;} .ds-strengths{margin:0;padding:0;list-style:none;} .ds-strengths button{display:inline-flex;align-items:center;gap:10px;min-height:36px;padding:0;border:0;background:none;font:400 15px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;cursor:pointer;text-align:left;} .ds-strengths button span{text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);} .ds-strengths button:hover{color:#153c74;} .ds-strengths button[aria-pressed=true]{color:#18191b;font-weight:500;} .ds-strengths button[aria-pressed=true] span{text-decoration-color:#18191b;text-decoration-thickness:2px;} .ds-strengths button:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;} .ds-icon{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}"
     },
     {
-      "name": "Clock Readings",
-      "kind": "custom",
-      "refersTo": "clock",
-      "description": "Two huge tabular clock readings on a ruled ledger; the early one sits under a highlighter stroke.",
-      "html": "<dl class=\"ds-clocks\"><div><dt>The schedule should restart at</dt><dd><span class=\"ds-clock\">11:00:00</span></dd></div><div><dt>EVerest restarts it at</dt><dd><span class=\"ds-clock\"><span class=\"ds-clock-mark\">10:59:59</span></span></dd></div></dl>",
-      "css": ".ds-clocks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:0;border-top:1px solid #7d808a;background:#f8f7f4;} .ds-clocks>div{padding:12px 0 14px;border-bottom:1px solid #b6b8be;} .ds-clocks dt{font:500 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#18191b;} .ds-clocks dd{margin:0;} .ds-clock{display:block;margin:6px 0 4px;color:#18191b;font:380 clamp(56px,7.2vw,112px)/1 Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.035em;font-variation-settings:'opsz' 72;font-variant-numeric:lining-nums tabular-nums;} .ds-clock-mark{margin-left:-0.08em;padding:0 0.1em 0 0.08em;background:linear-gradient(transparent 58%,#f8eab4 58%,#f8eab4 94%,transparent 94%);}"
+      "name": "Answer",
+      "kind": "card",
+      "refersTo": "answer-text",
+      "description": "The chosen question as a 28px heading over a 21px ink answer, then a Graphite count line with Show everything.",
+      "html": "<section class=\"ds-answer\"><div class=\"ds-answer-main\"><h2>What went wrong?</h2></div><div class=\"ds-answer-main\"><p class=\"ds-answer-text\">Under the study’s signed reading of the standard, and in its smallest example, EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00.</p><p class=\"ds-answer-meta\"><span>Showing 2 pieces of evidence, out of 13.</span><button type=\"button\" class=\"ds-show-all\">Show everything</button></p></div></section>",
+      "css": ".ds-answer{display:grid;grid-template-columns:180px minmax(0,1fr);column-gap:48px;row-gap:12px;padding:34px 0 32px;border-bottom:1px solid #7d808a;background:#f8f7f4;} .ds-answer-main{grid-column:2;} .ds-answer h2{margin:0;color:#18191b;font:400 28px/34px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.02em;font-variation-settings:'opsz' 48;max-width:28ch;} .ds-answer-text{margin:0;font:380 21px/30px Newsreader,'Iowan Old Style',Georgia,serif;color:#18191b;max-width:56ch;font-variation-settings:'opsz' 24;} .ds-answer-meta{display:flex;flex-wrap:wrap;align-items:center;column-gap:14px;margin:6px 0 0;font:400 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#4f535b;} .ds-show-all{min-height:44px;padding:0;border:0;background:none;font:400 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;cursor:pointer;text-decoration:underline;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);} .ds-show-all:hover{color:#153c74;text-decoration-color:currentColor;} .ds-show-all:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Evidence Entry",
+      "kind": "card",
+      "refersTo": "entry-title",
+      "description": "A group title in the label column beside unboxed disclosures: 20px ink title, Graphite strength icons and a 16px meta line; the key entry's title carries the highlighter until opened.",
+      "html": "<div class=\"ds-group\"><h3 class=\"ds-group-title\">Finding</h3><div><details class=\"ds-entry ds-entry-key\"><summary><span class=\"ds-entry-line\"><span class=\"ds-entry-title\">One second before 11:00</span><span class=\"ds-entry-icons\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2 5.5h12M2 10.5h12\"/></svg></span></span><span class=\"ds-entry-meta\">Test report · Tested</span></summary><div class=\"ds-entry-body\"><p class=\"ds-note\">The study rates this low severity.</p></div></details><details class=\"ds-entry\"><summary><span class=\"ds-entry-line\"><span class=\"ds-entry-title\">Why it happens</span><span class=\"ds-entry-icons\"><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2 5.5h12M2 10.5h12\"/></svg><svg class=\"ds-icon\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"5\" r=\"2.75\"/><path d=\"M2.5 14.5c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6\"/></svg></span></span><span class=\"ds-entry-meta\">Written rules and test report · Tested, decided by a person</span></summary><div class=\"ds-entry-body\"><p class=\"ds-note\">The finding depends on how the standard is read.</p></div></details></div></div>",
+      "css": ".ds-group{display:grid;grid-template-columns:180px minmax(0,1fr);column-gap:48px;padding:14px 0 10px;border-top:1px solid #b6b8be;background:#f8f7f4;} .ds-group-title{margin:0;padding:6px 0 0 4px;font:400 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#4f535b;} .ds-entry summary{display:block;padding:6px 0 9px;list-style:none;cursor:pointer;} .ds-entry summary::-webkit-details-marker{display:none;} .ds-entry summary:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;} .ds-entry-line{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;} .ds-entry-title{font:450 20px/27px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.005em;color:#18191b;} .ds-entry summary:hover .ds-entry-title{text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:#7d808a;} .ds-entry-key .ds-entry-title{background-image:linear-gradient(transparent 58%,#f8eab4 58%,#f8eab4 92%,transparent 92%);} .ds-entry-key[open] .ds-entry-title{background-image:none;} .ds-entry-icons{display:inline-flex;gap:6px;color:#4f535b;} .ds-entry-meta{display:block;margin-top:1px;font:380 16px/23px Newsreader,'Iowan Old Style',Georgia,serif;color:#4f535b;} .ds-entry-body{padding:10px 0 30px;} .ds-entry[open] .ds-entry-body{animation:ds-entry-in 360ms cubic-bezier(.16,1,.3,1) both;} @keyframes ds-entry-in{from{opacity:0;transform:translateY(4px);}} .ds-note{margin:0;font:380 17.5px/25px Newsreader,'Iowan Old Style',Georgia,serif;color:#4f535b;max-width:65ch;} .ds-icon{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}"
     },
     {
       "name": "Help Term and Tip",
@@ -460,37 +380,38 @@
       "css": ".ds-ledger{width:100%;border-collapse:collapse;background:#f8f7f4;font:380 17px/24px Newsreader,'Iowan Old Style',Georgia,serif;font-variant-numeric:lining-nums tabular-nums;color:#25282e;} .ds-ledger th,.ds-ledger td{text-align:left;vertical-align:middle;padding:8px 10px 9px 12px;height:42px;} .ds-ledger th{color:#18191b;font:500 13.5px/20px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;border-top:1px solid #7d808a;border-bottom:1px solid #5d5f68;} .ds-ledger td{border-bottom:1px solid #b6b8be;} .ds-strength{font:500 13.5px/24px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#18191b;}"
     },
     {
-      "name": "Answer Band",
-      "kind": "card",
-      "refersTo": "answer-text",
-      "description": "The chosen question as a Headline, a 21px ink answer, and a Graphite count line with Show everything.",
-      "html": "<div class=\"ds-answer\"><h2>What went wrong?</h2><div><p class=\"ds-answer-text\">In the study’s smallest example, EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00.</p><p class=\"ds-answer-meta\">2 pieces of evidence <button class=\"ds-show-all\">Show everything</button></p></div></div>",
-      "css": ".ds-answer{display:grid;grid-template-columns:300px minmax(0,1fr);column-gap:48px;padding:36px 0 34px;border-bottom:1px solid #7d808a;background:#f8f7f4;} .ds-answer h2{margin:0;padding-left:4px;color:#18191b;font:400 32px/38px Newsreader,'Iowan Old Style',Georgia,serif;letter-spacing:-0.022em;font-variation-settings:'opsz' 48;max-width:16ch;} .ds-answer-text{margin:0;font:380 21px/30px Newsreader,'Iowan Old Style',Georgia,serif;color:#18191b;max-width:56ch;font-variation-settings:'opsz' 24;} .ds-answer-meta{margin:8px 0 0;font:400 13.5px/22px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#4f535b;} .ds-show-all{margin-left:14px;min-height:44px;padding:0;border:0;background:none;font:inherit;color:#2a5a9e;cursor:pointer;text-decoration:underline 1px;text-underline-offset:5px;text-decoration-color:color-mix(in srgb,#2a5a9e 45%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-show-all:hover{color:#153c74;text-decoration-color:currentColor;} .ds-show-all:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
-    },
-    {
       "name": "Command Block and Copy",
       "kind": "custom",
       "refersTo": "code-block",
       "description": "Unboxed Plex Mono commands that wrap under a 2ch hanging indent, with a text-styled copy control.",
       "html": "<pre class=\"ds-cmds\"><code><span class=\"ds-cmd\">python3 formal-verification/tests/ocpp16_composite/drt_harness.py <span class=\"ds-flag\">--count</span> 2000 <span class=\"ds-flag\">--seed</span> 20261024 <span class=\"ds-flag\">--old-anchors</span></span></code></pre><button class=\"ds-copy\">Copy commands</button>",
       "css": ".ds-cmds{margin:0;font:400 13.5px/22px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#33363d;white-space:normal;background:#f8f7f4;} .ds-cmd{display:block;white-space:pre-wrap;overflow-wrap:normal;padding-left:2ch;text-indent:-2ch;} .ds-flag{white-space:nowrap;} .ds-copy{display:inline-flex;align-items:center;min-height:44px;padding:0;border:0;background:none;font:400 13.5px/20px 'Public Sans','Helvetica Neue',Arial,sans-serif;letter-spacing:0.01em;color:#2a5a9e;cursor:pointer;text-decoration:underline 1px;text-underline-offset:4px;} .ds-copy:hover{color:#153c74;} .ds-copy:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
+    },
+    {
+      "name": "Inline Link",
+      "kind": "custom",
+      "refersTo": "link",
+      "description": "Every link in prose: solid Record Blue underline at 70%; hover deepens and the underline goes to full strength.",
+      "html": "<p class=\"ds-p\">Read the <a class=\"ds-link\" href=\"#\">written rules</a> behind the study.</p>",
+      "css": ".ds-p{font:380 19px/26px Newsreader,'Iowan Old Style',Georgia,serif;color:#25282e;background:#f8f7f4;margin:0;} .ds-link{color:#2a5a9e;text-decoration:underline 1px;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,#2a5a9e 70%,transparent);transition:color 120ms ease-out,text-decoration-color 120ms ease-out;} .ds-link:hover{color:#153c74;text-decoration-color:currentColor;} .ds-link:focus-visible{outline:2px solid #2a5a9e;outline-offset:3px;border-radius:1px;}"
     }
   ],
   "narrative": {
     "northStar": "The Evidence Record",
-    "overview": "**Creative North Star: \"The Evidence Record\"**\n\nThe page reads like a well-set research record: a warm paper ground, dark ink, a text serif doing nearly all the talking, and fine horizontal rules that divide the page into bands. Every visual device either helps someone read a claim or helps them inspect the evidence behind it. A wide ledger table carries the evidence; narrow columns carry the prose. There are no cards, no shadows, no gradients for atmosphere and no imagery that is not itself evidence.\n\nHierarchy comes from serif size, optical sizing and position, not from colour or weight. Weight stays near regular (380 for reading, 400 for headings, 500 only for table headers, small sans labels and a pressed filter). The one warm accent, a pale highlighter yellow, marks the single result a reader most needs to see. Links look like links: blue and underlined. Specialist terms carry a dotted underline that opens a plain-English explanation; the two underline styles never trade meanings.\n\nDensity is moderate: generous enough to read, tight enough that the finding sentence, both clock readings and the index-tab strip share the first desktop viewport. On narrow screens everything stacks in source order and tables become labelled rows rather than shrinking.",
+    "overview": "**Creative North Star: \"The Evidence Record\"**\n\nThe page reads like a well-set research record: a warm paper ground, dark ink, a text serif doing nearly all the talking, and fine horizontal rules that divide the page into regions. Every visual device either helps someone read a claim or helps them inspect the evidence behind it. Content opens in place rather than being laid out all at once: one-line sections at the top, a filter row of questions and evidence strengths, then a grouped list of collapsed evidence entries, as in a well-kept archive. There are no cards, no shadows, no gradients for atmosphere and no imagery that is not itself evidence.\n\nHierarchy comes from serif size, optical sizing and position, not from colour or weight. Weight stays near regular (380 for reading, 400 for headings, 450 for evidence entry titles, 500 only for small sans labels, glossary terms and a pressed filter). The one warm accent, a pale highlighter yellow, marks the single result a reader most needs to see. Links look like links: blue and underlined. Specialist terms carry a dotted underline that opens a plain-English explanation; the two underline styles never trade meanings.\n\nDensity is calm: a small lockup, the study title, four single lines and the filter row share the first desktop viewport, with the page in a centred column and wide margins either side. On narrow screens everything stacks in source order, the margins shrink to 24px, and tables become labelled rows rather than shrinking.",
     "keyCharacteristics": [
       "Warm off-white paper ground with near-black ink and greys tuned slightly cool.",
-      "Newsreader for reading, headings, tab labels and data; Public Sans only for navigation, controls and labels; IBM Plex Mono only for commands and identifiers.",
-      "Bands: a narrow summary column beside a wide evidence column, each band closed by a 1px rule.",
+      "Newsreader for reading, headings, questions, entry titles and data; Public Sans only for controls, standalone links and small labels; IBM Plex Mono only for commands and identifiers.",
+      "A narrow label column beside a wide content column, repeated by the filter row, the answer, each evidence group and the footer.",
+      "Native disclosures that open in place: one-line sections and collapsed evidence entries.",
       "Ruled ledger tables with tabular numerals as the primary evidence form.",
-      "One highlighter accent, used on a single finding per band.",
+      "One highlighter accent, used on a single result per region.",
       "Solid underline means navigation; dotted underline means explanation."
     ],
     "rules": [
       {
         "name": "The One Mark Rule",
-        "body": "Highlighter yellow marks the one result a reader must not miss in a given band. If two things are highlighted, neither is.",
+        "body": "Highlighter yellow marks the one result a reader must not miss in a given region. If two things are highlighted, neither is. The key entry's title gives up its mark when the entry opens, because the reading inside carries it.",
         "section": "colors"
       },
       {
@@ -500,12 +421,12 @@
       },
       {
         "name": "The Serif Carries It Rule",
-        "body": "Prose, headings, tab labels, questions, table cells and numbers are all Newsreader. The sans names things the reader acts on or scans by: navigation, filter controls, standalone links, table headers, strength tags and data labels. It never sets a heading or a paragraph, and it always carries +0.01em tracking at these sizes.",
+        "body": "Prose, the title, questions, answers, entry titles, table cells and numbers are all Newsreader. The sans names things the reader acts on or scans by: section labels, filter controls, standalone links, the small labels that head the filter row and the evidence groups, table headers and data labels. It never sets the title, a question, an answer, an entry title or a paragraph, and it always carries +0.01em tracking at these sizes.",
         "section": "typography"
       },
       {
         "name": "The Reading Measure Rule",
-        "body": "A wide page does not mean wide prose. Aside notes stay near 36ch, the answer at 56ch, and prose in the wide column at 65ch to 70ch at most; only tables, the clock ledger and the question list use the full evidence column.",
+        "body": "A wide page does not mean wide prose. An opened section's first line stops at 62ch and its text at 65ch, the answer at 56ch, and prose in evidence entries at 65ch to 70ch at most; only tables and the witness figure use the full content column.",
         "section": "typography"
       },
       {
@@ -515,24 +436,26 @@
       }
     ],
     "dos": [
-      "Do set prose, headings, tab labels, questions, tables and numbers in Newsreader, with optical sizing and tabular lining numerals in tables, clocks and readings.",
-      "Do keep prose at a reading measure even on a wide page: about 36ch in the aside, 56ch for the answer, 65ch to 70ch in the wide column.",
-      "Do put evidence in ruled ledger tables in the wide column, with the summary in the narrow aside.",
-      "Do separate bands and rows with 1px horizontal rules in the rule tones.",
+      "Do set prose, the title, questions, answers, entry titles, tables and numbers in Newsreader, with optical sizing and tabular lining numerals in tables and readings.",
+      "Do keep prose at a reading measure even on a wide page: 62ch for an opened section's first line, 65ch for section text, 56ch for the answer, 65ch to 70ch in evidence entries.",
+      "Do hold labels in the narrow label column and content in the wide column, in every region that uses the grid.",
+      "Do let sections and evidence entries open in place as native disclosures, readable and usable without script.",
+      "Do put evidence in ruled ledger tables, and separate regions and rows with 1px horizontal rules in the rule tones.",
       "Do underline every link solidly in Record Blue, and give every specialist term a dotted Help Dot underline with a working explanation on hover, focus and tap.",
-      "Do mark state with ink and a 2px ink stroke: the bar under the open index tab, the underline of a pressed toggle.",
-      "Do keep every tab panel and every evidence block readable without script.",
+      "Do mark state with ink: the chosen question, the pressed toggle with its 2px ink underline.",
+      "Do draw every mark and icon as an SVG or CSS stroke in currentColor.",
       "Do keep table labels visible on phones by turning rows into labelled blocks.",
-      "Do honour reduced motion: highlighter strokes appear fully drawn and transitions and animations are removed."
+      "Do honour reduced motion: transitions and animations are removed."
     ],
     "donts": [
       "Don't add box shadows, cards, tinted panels or vertical table rules.",
-      "Don't fill, box or border index tabs; they sit on the rule.",
-      "Don't use Highlighter Yellow for decoration or on more than the one decisive result in a band.",
+      "Don't box or border sections or evidence entries; they open on the rule.",
+      "Don't add a hero, a masthead or a navigation header above the lockup.",
+      "Don't use Highlighter Yellow for decoration or on more than the one decisive result in a region.",
       "Don't give familiar words (AI, plugin, code, tests) the dotted help treatment, and don't use a dotted underline on a link.",
-      "Don't set headings or paragraphs in Public Sans, or add uppercase tracked labels.",
-      "Don't add outlined, ghost or pill buttons, chip toggles, or corners rounder than 3px.",
-      "Don't use typed glyphs or icon fonts for disclosure marks; draw them with strokes."
+      "Don't set the title, questions, answers, entry titles or paragraphs in Public Sans, or add uppercase tracked labels.",
+      "Don't add filled, outlined, ghost or pill buttons, chip toggles, or corners rounder than 2px.",
+      "Don't use typed glyphs, emoji or icon fonts for disclosure marks or strength icons."
     ]
   }
 }
