@@ -525,7 +525,14 @@ pre code { font-size: inherit; }
 #panel-finding .section-first { white-space: normal; overflow: visible; text-overflow: clip; }
 .time { color: var(--ink); font-weight: 500; font-variant-numeric: lining-nums tabular-nums; }
 .time-early { background-image: linear-gradient(transparent 58%, var(--mark) 58%, var(--mark) 92%, transparent 92%); }
-.section-more { padding: 4px 0 16px 18px; max-width: calc(65ch + 18px); }
+.section-more { padding: 4px 0 26px 18px; max-width: calc(65ch + 18px); }
+/* Wider screens hang the labels in a margin column, so every first line and its
+   paragraphs share one left edge; the column fits the longest label, "Finding:" */
+@media (min-width: 641px) {
+  .sections { --section-label: 92px; }
+  .section summary { display: grid; grid-template-columns: var(--section-label) minmax(0, 1fr); column-gap: 0; }
+  .section-more { padding-left: var(--section-label); max-width: calc(65ch + var(--section-label)); }
+}
 .section-more p { font-size: 17.5px; line-height: 25px; }
 .section-more p + p { margin-top: 12px; }
 .section-more strong { font-weight: 550; color: var(--ink); }
