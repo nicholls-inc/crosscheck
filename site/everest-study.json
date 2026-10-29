@@ -103,7 +103,7 @@
       "vacuousCases": 64
     }
   },
-  "classificationCaveat": "The pinned report is internally inconsistent about extra limits: its updated header for Q4, the conformance rule that EVerest's limit must be at or below the model's, calls an EVerest limit where the model has none a warning, while a retained note says these instants were unclassified. Its counters record 1,081 such instants in the older run. The totals here are the report's published totals, not a reconstruction or a new run. A pass is not a general claim of exact agreement.",
+  "classificationCaveat": "The pinned report is internally inconsistent about extra limits: its updated header for Q4, the conformance rule that EVerest's limit must be at or below the model's, or may be anything when the model gives none, calls an EVerest limit where the model has none a warning, while a retained note says these instants were unclassified. Its counters record 1,081 such instants in the older run. The totals here are the report's published totals, not a reconstruction or a new run. A pass is not a general claim of exact agreement.",
   "witness": {
     "profile": "One daily TxDefaultProfile on connector 0, stack level 3, with no duration",
     "anchor": "2016-09-14T11:00:00Z",
@@ -134,7 +134,7 @@
   "humanDecisions": [
     "The owner approved interpretations A1 (a profile applies only while its schedule covers the moment) and A2 (a transaction profile overrules the default profiles only while its own schedule covers the moment) and reclassified two AI correspondence-review findings as abstractions rather than approximations.",
     "The owner confirmed restoring the missing s ≤ t condition (the moment t cannot come before the schedule's start s) in D4, the rule for when a schedule covers a moment, on 2026-10-27.",
-    "Q4, the conformance rule (EVerest's limit conforms when it is at or below the model's), treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here."
+    "Q4, the conformance rule (EVerest's limit conforms when it is at or below the model's, or is anything when the model gives none), treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here."
   ],
   "trustedDependencies": [
     "Lean v4.28.0 and its standard axioms propext, Classical.choice and Quot.sound for the stated completed proofs.",
