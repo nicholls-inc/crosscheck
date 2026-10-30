@@ -78,6 +78,25 @@ for (const [key, text] of questions) {
 }
 for (const key of answerKeys) requireThat(questions.has(key), `index.html: answer ${key} has no question`);
 
+// Absolute URLs into the site's own origin must resolve inside this release, and preview cards must be the size the pages declare.
+const origin = index.match(/<link rel="canonical" href="(https:\/\/[^"]+\/)">/)?.[1];
+requireThat(origin, 'index.html: needs an absolute canonical URL ending in /');
+for (const name of [...readdirSync(site).filter((name) => /\.(html|txt|xml)$/.test(name))]) {
+  const content = readFileSync(resolve(site, name), 'utf8');
+  for (const [url] of origin ? content.matchAll(new RegExp(`${origin.replace(/[.]/g, '\\.')}[^"\\s)<#]*`, 'g')) : []) {
+    const local = url.slice(origin.length) || 'index.html';
+    requireThat(existsSync(resolve(site, local)), `${name}: ${url} has no file in this release`);
+  }
+  if (!name.endsWith('.html')) continue;
+  const card = content.match(/<meta property="og:image" content="([^"]+)">/)?.[1];
+  requireThat(card?.startsWith(origin), `${name}: needs an og:image on the site's origin`);
+  if (card?.startsWith(origin) && existsSync(resolve(site, card.slice(origin.length)))) {
+    const png = readFileSync(resolve(site, card.slice(origin.length)));
+    const declared = ['width', 'height'].map((side) => Number(content.match(new RegExp(`<meta property="og:image:${side}" content="(\\d+)">`))?.[1]));
+    requireThat(png.readUInt32BE(16) === declared[0] && png.readUInt32BE(20) === declared[1], `${name}: ${card} is not the declared ${declared.join('x')}`);
+  }
+}
+
 const css = readFileSync(resolve(site, 'styles.css'), 'utf8');
 for (const [, asset] of css.matchAll(/url\("([^"]+)"\)/g)) requireThat(existsSync(resolve(site, asset)), `missing stylesheet asset: ${asset}`);
 

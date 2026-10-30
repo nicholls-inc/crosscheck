@@ -42,6 +42,13 @@ study, when that commit is available in the local Git object store:
 node scripts/check-site.mjs --verify-sources
 ```
 
+The build also writes each page's head metadata (canonical URL, preview tags,
+icons and JSON-LD), `robots.txt`, `sitemap.xml` and `llms.txt` from the record,
+the page titles and descriptions, and the glossary. The icons and preview cards
+in `cards/` are drawn by `node scripts/render-site-images.mjs`, which needs
+ImageMagick and Google Chrome; rerun it after changing the mark, the study
+title or the palette.
+
 The checks fail on stale generated fragments, broken local links, mismatched
 study revisions, inconsistent counters, missing assets or divergent glossary
 help. HTML is checked in and fully readable without JavaScript. `help.js` adds

@@ -6,6 +6,12 @@ guide does not create a tunnel, change DNS or edit existing public routes.
 
 ## Prepare a release
 
+Choose the public hostname first. Canonical links, preview images, the sitemap
+and `llms.txt` use absolute URLs, so the release is built for one origin. Set
+`origin` near the end of `scripts/build-site.mjs` to the public URL with a
+trailing slash, then run `node scripts/build-site.mjs` and commit the result.
+The public check below fails if the deployed pages name a different origin.
+
 From the committed checkout:
 
 ```sh
@@ -79,6 +85,28 @@ Open the home page, `/everest.html#contribution`, `/everest.html#witness` and
 `/everest.html#replay` on desktop and phone. Download the record and follow its
 pinned links. Record the checked release commit and public URL in your local
 launch notes. A local preview or a prepared config is not a completed launch.
+
+## Search, link previews and AI crawlers
+
+The site allows every crawler in `robots.txt` and lists its two pages in
+`sitemap.xml`. `llms.txt` gives agents a plain-text summary with links to the
+pages, the JSON record and the pinned sources. Each page carries Open Graph and
+X card tags with a 1200 by 630 preview image, and schema.org JSON-LD.
+
+Cloudflare can override these at the edge. In the zone's bot settings, leave
+AI crawler blocking and the managed `robots.txt` off if AI agents should read
+the study. Then check what the edge serves:
+
+```sh
+curl -s https://YOUR-HOSTNAME/robots.txt
+curl -sA GPTBot -o /dev/null -w '%{http_code}\n' https://YOUR-HOSTNAME/
+```
+
+The first should match `site/robots.txt` and the second should print 200.
+To appear in search results sooner, add the site to Google Search Console and
+Bing Webmaster Tools and submit `https://YOUR-HOSTNAME/sitemap.xml`. Paste the
+URL into a link-preview inspector, such as LinkedIn's Post Inspector, to see
+the card.
 
 ## Connect the publications
 

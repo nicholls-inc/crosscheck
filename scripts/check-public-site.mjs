@@ -6,6 +6,12 @@ import { isDeepStrictEqual } from 'node:util';
 
 const site = fileURLToPath(new URL('../site/', import.meta.url));
 
+// Canonical, preview and sitemap URLs are absolute, so a release built for another origin points readers and crawlers away from this one.
+export function originMismatch(html, base) {
+  const canonical = html.match(/<link rel="canonical" href="([^"]+)">/)?.[1];
+  return canonical === base.href ? null : `The release names ${canonical ?? 'no canonical URL'} as its address, not ${base.href}. Set the origin in scripts/build-site.mjs, rebuild and redeploy.`;
+}
+
 async function responseAt(base, path) {
   const response = await fetch(new URL(path, base), { redirect: 'error', signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
@@ -21,6 +27,8 @@ export async function checkPublicSite(input) {
 
   const study = await (await responseAt(base, './')).text();
   if (!study.includes('EVerest and OCPP 1.6: a formal study') || !study.includes('id="questions"')) throw new Error('Home page is missing the current case-study entry or question filter.');
+  const mismatch = originMismatch(study, base);
+  if (mismatch && !loopback) throw new Error(mismatch);
   for (const id of ['contribution', 'decisions', 'witness', 'results', 'limits', 'replay']) {
     if (!study.includes(`id="${id}"`)) throw new Error(`Study is missing ${id}.`);
   }
@@ -32,11 +40,12 @@ export async function checkPublicSite(input) {
   const studyText = study.replace(/<[^>]+>/g, '');
   if (!studyText.includes(expected.studyCommit) || !studyText.includes('git checkout --detach')) throw new Error('Study is missing pinned replay instructions.');
 
-  for (const path of ['glossary.html', 'styles.css', 'help.js', 'fonts/newsreader-roman.woff2', 'fonts/public-sans.woff2', 'fonts/ibm-plex-mono.woff2']) {
+  for (const path of ['glossary.html', 'styles.css', 'help.js', 'fonts/newsreader-roman.woff2', 'fonts/public-sans.woff2', 'fonts/ibm-plex-mono.woff2',
+    'favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'cards/study.png', 'cards/glossary.png', 'robots.txt', 'sitemap.xml', 'llms.txt']) {
     const deployed = Buffer.from(await (await responseAt(base, path)).arrayBuffer());
     if (!deployed.equals(readFileSync(resolve(site, path)))) throw new Error(`${path}: deployed file differs from this release.`);
   }
-  return [`Release matches at ${base.href}`, `Study: ${base.href}`, `Snapshot: ${expected.studyCommit}`, 'Contribution, decisions, replay, old-link forwarding, record, glossary, styles, script and fonts passed.'];
+  return [`Release matches at ${base.href}`, `Study: ${base.href}`, `Snapshot: ${expected.studyCommit}`, 'Contribution, decisions, replay, old-link forwarding, record, glossary, styles, script, fonts, icons, preview cards, robots.txt, sitemap and llms.txt passed.'];
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

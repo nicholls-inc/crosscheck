@@ -111,3 +111,20 @@ test('a claim strength outside the five strengths fails validation', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /claim strength must be one of the five strengths: Unfinished/);
 });
+
+test('a glossary edit reaches llms.txt and the structured data only through a rebuild', () => {
+  edit('glossary.html', (text) => text.replace('<dd id="def-leap-second">An extra second', '<dd id="def-leap-second">A second'));
+  const stale = run('build-site.mjs', '--check');
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /llms.txt: generated contents need regeneration/);
+  assert.match(stale.stderr, /glossary.html: publication fragments need regeneration/);
+  assert.equal(run('build-site.mjs').status, 0);
+  assert.ok(readFileSync(join(fixture, 'site/llms.txt'), 'utf8').includes('A second sometimes added'));
+});
+
+test('a preview card missing from the release fails validation', () => {
+  rmSync(join(fixture, 'site/cards/glossary.png'));
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /cards\/glossary.png has no file in this release/);
+});

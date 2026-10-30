@@ -77,14 +77,123 @@ const fragments = {claims, witness, results, counters, replay, limits, sources, 
   upstream: () => `<p>${prose(record.upstreamStatus)} <a href="${esc(record.upstreamIssueUrl)}" target="_blank" rel="noopener">View filed issue<span class="visually-hidden"> (opens in a new tab)</span></a></p>`,
 };
 
+// The public origin. Every absolute URL the site publishes is built from it, and check-public-site.mjs refuses a deployment that names another.
+const origin = 'https://crosscheck.harrynicholls.com/';
+const x = 'harrynicholls';
+// A forwarding page shares its target's metadata, so a preview of an old link matches the study.
+const pages = {
+  'index.html': { path: '', type: 'article', card: 'cards/study.png', cardAlt: 'Crosscheck: EVerest and OCPP 1.6, a formal study. EVerest restarts a daily charging schedule one second early.' },
+  'glossary.html': { path: 'glossary.html', type: 'website', card: 'cards/glossary.png', cardAlt: 'Crosscheck: the glossary of the EVerest and OCPP 1.6 study.' },
+  'everest.html': { sameAs: 'index.html' },
+};
+const read = (name) => readFileSync(resolve(root, 'site', name), 'utf8');
+const unesc = (value) => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]);
+const text = (html) => unesc(html.replace(/<[^>]+>/g, '')).trim();
+const describe = (name) => {
+  const html = read(name);
+  return { title: text(html.match(/<title>([\s\S]*?)<\/title>/)[1]), description: unesc(html.match(/<meta name="description" content="([^"]*)">/)[1]) };
+};
+const glossaryTerms = () => [...read('glossary.html').matchAll(/<div id="([a-z-]+)"><dt><dfn>([\s\S]*?)<\/dfn><\/dt><dd id="def-\1">([\s\S]*?)<\/dd>/g)]
+  .map(([, id, name, definition]) => ({ id, name: text(name), definition: text(definition) }));
+const json = (value) => JSON.stringify(value).replace(/</g, '\\u003c');
+
+function structuredData(name, url, title, description) {
+  const website = { '@type': 'WebSite', '@id': `${origin}#website`, url: origin, name: 'Crosscheck' };
+  const person = { '@type': 'Person', '@id': `${origin}#author`, name: record.author.name, url: record.author.profile, sameAs: [`https://x.com/${x}`, record.author.profile] };
+  const page = name === 'index.html'
+    ? { '@type': 'TechArticle', headline: title, author: { '@id': person['@id'] }, image: origin + pages[name].card, citation: record.essay, isBasedOn: `${record.repository}/tree/${record.studyCommit}`, about: { '@type': 'SoftwareApplication', name: 'EVerest', url: 'https://github.com/EVerest/EVerest' } }
+    : { '@type': 'DefinedTermSet', hasDefinedTerm: glossaryTerms().map((t) => ({ '@type': 'DefinedTerm', name: t.name, description: t.definition, url: `${url}#${t.id}` })) };
+  return { '@context': 'https://schema.org', '@graph': [website, person, { ...page, '@id': `${url}#page`, url, name: title, description, inLanguage: 'en', isPartOf: { '@id': website['@id'] } }] };
+}
+
+function head(name) {
+  const own = pages[name].sameAs ?? name;
+  const { path, type, card, cardAlt } = pages[own];
+  const { title, description } = describe(own);
+  const url = origin + path;
+  return [
+    `<link rel="canonical" href="${url}">`,
+    '<link rel="icon" href="favicon.ico" sizes="32x32">',
+    '<link rel="icon" href="favicon.svg" type="image/svg+xml">',
+    '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
+    ...(own === 'index.html' ? ['<link rel="alternate" type="application/json" href="everest-study.json" title="Publication record">'] : []),
+    `<meta name="author" content="${esc(record.author.name)}">`,
+    `<meta property="og:type" content="${type}">`,
+    '<meta property="og:site_name" content="Crosscheck">',
+    `<meta property="og:title" content="${esc(title)}">`,
+    `<meta property="og:description" content="${esc(description)}">`,
+    `<meta property="og:url" content="${url}">`,
+    `<meta property="og:image" content="${origin}${card}">`,
+    '<meta property="og:image:width" content="1200">',
+    '<meta property="og:image:height" content="630">',
+    `<meta property="og:image:alt" content="${esc(cardAlt)}">`,
+    '<meta name="twitter:card" content="summary_large_image">',
+    `<meta name="twitter:creator" content="@${x}">`,
+    ...(pages[name].sameAs ? [] : [`<script type="application/ld+json">${json(structuredData(name, url, title, description))}</script>`]),
+  ].join('\n');
+}
+
+const sourceLabels = {spec: 'Written rules', model: 'Model and proofs', review: 'Correspondence review', report: 'Test report', driver: 'Driver and shims', build: 'Build inputs', harness: 'Test harness', proofCheck: 'Proof check'};
+const listed = Object.entries(pages).filter(([, page]) => !page.sameAs);
+
+function llms() {
+  const study = describe('index.html');
+  const glossary = describe('glossary.html');
+  return `# ${study.title}
+
+> ${study.description}
+
+${record.status}. ${record.publicationNote} The study page and its glossary are plain HTML that reads in full without script.
+
+What the evidence says, by strength:
+
+${record.claims.map((c) => `- ${c.strength}: ${c.statement}. ${c.support}. ${c.boundary}`).join('\n')}
+
+${record.upstreamStatus}
+
+## Pages
+
+- [${study.title}](${origin}): ${study.description}
+- [${glossary.title}](${origin}glossary.html): ${glossary.description}
+
+## Data
+
+- [Publication record (JSON)](${origin}everest-study.json): The editorial snapshot the study page is built from: claims, test totals, agreement counters, the witness case, limits and replay commands.
+
+## Sources
+
+- [Crosscheck repository](${record.repository}): The tool behind the study.
+- [Review Evidence, Not Code](${record.essay}): The essay this study is a worked example of.
+- [Study pull request](${record.pullRequest}): The change that added the study.
+- [EVerest issue #3323](${record.upstreamIssueUrl}): The finding, reported upstream.
+${Object.entries(sourceLabels).map(([key, label]) => `- [${label}](${record.repository}/blob/${record.studyCommit}/${record.sources[key]}): Pinned at the study commit.`).join('\n')}
+
+## Glossary
+
+${glossaryTerms().map((t) => `- [${t.name}](${origin}glossary.html#${t.id}): ${t.definition}`).join('\n')}
+`;
+}
+
+const files = {
+  'robots.txt': () => `User-agent: *\nAllow: /\n\nSitemap: ${origin}sitemap.xml\n`,
+  'sitemap.xml': () => `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${listed.map(([, page]) => `  <url><loc>${origin}${page.path}</loc></url>`).join('\n')}\n</urlset>\n`,
+  'llms.txt': llms,
+};
+
 let stale = false;
-for (const name of ['index.html']) {
-  const path = resolve(root, 'site', name);
-  const before = readFileSync(path, 'utf8');
-  const after = before.replace(/<!-- publication:([a-z]+) -->[\s\S]*?<!-- \/publication:\1 -->/g,
-    (_, key) => `<!-- publication:${key} -->\n${fragments[key]()}\n<!-- /publication:${key} -->`);
-  if (before === after) continue;
-  if (process.argv.includes('--check')) { console.error(`${name}: publication fragments need regeneration`); stale = true; }
-  else writeFileSync(path, after);
+const update = (name, before, after, what) => {
+  if (before === after) return;
+  if (process.argv.includes('--check')) { console.error(`${name}: ${what} need regeneration`); stale = true; }
+  else writeFileSync(resolve(root, 'site', name), after);
+};
+for (const name of Object.keys(pages)) {
+  const before = read(name);
+  update(name, before, before.replace(/<!-- publication:([a-z]+) -->[\s\S]*?<!-- \/publication:\1 -->/g,
+    (_, key) => `<!-- publication:${key} -->\n${key === 'head' ? head(name) : fragments[key]()}\n<!-- /publication:${key} -->`), 'publication fragments');
+}
+for (const [name, render] of Object.entries(files)) {
+  let before = '';
+  try { before = read(name); } catch {}
+  update(name, before, render(), 'generated contents');
 }
 if (stale) process.exitCode = 1;
