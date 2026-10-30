@@ -18,11 +18,11 @@ colors:
 typography:
   headline:
     fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
-    fontSize: "32px"
-    fontWeight: 400
-    lineHeight: "38px"
-    letterSpacing: "-0.022em"
-    fontVariation: "\"opsz\" 48"
+    fontSize: "min(36px, 8.4vw)"
+    fontWeight: 320
+    lineHeight: "1.12"
+    letterSpacing: "-0.03em"
+    fontVariation: "\"opsz\" 72"
   reading:
     fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
     fontSize: "46px"
@@ -47,11 +47,11 @@ typography:
     fontVariation: "\"opsz\" 36"
   wordmark:
     fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
-    fontSize: "22px"
-    fontWeight: 400
-    lineHeight: "22px"
-    letterSpacing: "-0.012em"
-    fontVariation: "\"opsz\" 36"
+    fontSize: "20px"
+    fontWeight: 520
+    lineHeight: "20px"
+    letterSpacing: "-0.004em"
+    fontVariation: "\"opsz\" 24"
   answer:
     fontFamily: "Newsreader, Iowan Old Style, Georgia, serif"
     fontSize: "21px"
@@ -135,7 +135,7 @@ components:
     typography: "{typography.wordmark}"
   brand-mark:
     textColor: "{colors.ink}"
-    size: "22px"
+    size: "18px"
   study-title:
     textColor: "{colors.ink}"
     typography: "{typography.headline}"
@@ -273,10 +273,10 @@ A near-monochrome paper-and-ink palette with one link blue and one highlighter y
 
 ### Hierarchy
 - **Reading** (380, 46px/52px, -0.02em, opsz 60, tabular lining numerals): the two measured values in the witness figure, the largest type on the site. 38px/44px at 860px and below.
-- **Headline** (400, 32px/38px, -0.022em, opsz 48): the study title, the page's one primary heading, and the glossary heading. The title drops to 26px/32px on phones, the glossary heading to 28px/34px.
+- **Headline** (320, min(36px, 8.4vw)/1.12, -0.03em, opsz 72): the study title on both pages, the page's one primary heading. A light cut at the largest optical size, so the title reads as display type while the heavier wordmark above stays smaller; weight, not size, separates them. It scales with the viewport (about 33px at 390px). The glossary's own heading keeps 32px/38px at 400 (28px/34px on phones).
 - **Question heading** (400, 28px/34px, -0.02em, opsz 48, 28ch): the chosen question heading the answer.
 - **Title** (400, 24px/31px, -0.012em, opsz 36): a visible ledger caption. Captions that only repeat an entry title are kept for screen readers.
-- **Wordmark** (400, 22px/22px, -0.012em, opsz 36): "Crosscheck" beside the mark, nudged down 0.11em so its capitals centre on the 22px mark.
+- **Wordmark** (520, 20px/20px, -0.004em, opsz 24): "Crosscheck" beside the 18px mark, nudged down 0.11em so its capitals centre on it. Heavier and smaller than the light title below.
 - **Answer** (380, 21px/30px, opsz 24, ink, 56ch): the short answer to the chosen question. 19px/27px on phones.
 - **Entry title** (450, 20px/27px, -0.005em, ink): each evidence entry's title. 19px/26px on phones.
 - **Body** (380, 19px/26px): the first line of each section (ink), the question links, and prose with no smaller role. 18px on phones, where the section first line and the questions drop to 17.5px/25px and 18px/25px.
@@ -300,7 +300,7 @@ A centred column at most 1200px wide inside fluid gutters of clamp(20px, 12vw, 2
 
 The page runs in this order: lockup and title, sections, filter row, answer (shown only once a question is chosen), evidence list, footer.
 
-- **Lockup and title.** 40px from the top (26px on phones): the 22px mark and the wordmark, 10px apart, linking to the repository; then the study title 26px below (18px on phones).
+- **Lockup and title.** 40px from the top (26px on phones): the 18px mark and the wordmark, 9px apart, linking to the repository; then the study title 22px below.
 - **Sections.** Four one-line disclosures, all closed by default, full width, 22px above and 30px below, closed by a strong rule. Their text is indented 18px under the label to clear the drawn plus.
 - **Label-column grid.** The filter row, the answer, each evidence group and the footer share one grid: a label column of clamp(140px, 15vw, 220px), a 48px gap (36px at 1100px and below), and the content column. Labels in that column sit 4px in.
 - **Filter row.** Three columns: the Questions label with a Graphite hint 4px under it in the Label role at 400 (13.5px/20px, capped at 26ch), the quietest text in the row ("Each shows a short answer and the evidence for it."); the questions themselves, lifted 9px so the first one sits on the labels' line; and the Evidence strength label and toggles at 250px to 320px. The row carries two labels and no others: no row-wide "Filter" label and no group titles over the questions; 36px above, 34px below, closed by a strong rule. At 1100px and below the strengths move under the questions; at 860px all three stack.
@@ -332,7 +332,7 @@ Every mark is drawn, never typed. The Crosscheck mark, Counterproof, is two fill
 ## Components
 
 ### Lockup
-The 22px Counterproof mark and the 22px Newsreader wordmark in ink, 10px apart, with no underline at rest; hovering underlines the wordmark at 5px offset. It links to the repository in a new tab. The study title below it is the page's one primary heading. On the study page it is not a link; on the glossary it links home without an underline.
+The 18px Counterproof mark and the 20px Newsreader wordmark at weight 520 in ink, 9px apart, with no underline at rest; hovering underlines the wordmark at 5px offset. It links to the repository in a new tab. The study title below it is the page's one primary heading. On the study page it is not a link; on the glossary it links home without an underline.
 
 ### Sections (signature)
 Native disclosures, one line each until opened. The summary holds a Record Blue section label with a drawn plus to its left and a colon after it, then the section's first sentence in ink at Body size, truncated with an ellipsis. Hovering deepens the label and its underline. Opened, the plus becomes a minus, the first sentence wraps and stops at 62ch, and the rest follows in Body note at 65ch with one standalone link at the end. On phones the first sentence sits under the label, clamped to one line until opened.
