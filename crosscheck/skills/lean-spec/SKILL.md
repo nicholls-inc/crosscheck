@@ -85,10 +85,10 @@ For each domain type and property, decide which Mathlib namespaces you need. Com
 |---|---|
 | Lists, sequences | `import Mathlib.Data.List.Basic` |
 | Finite sets / multisets | `import Mathlib.Data.Finset.Basic`, `import Mathlib.Data.Multiset.Basic` |
-| Natural-number arithmetic, ordering, `Nat.lt_irrefl` etc. | `import Mathlib.Data.Nat.Defs` |
+| Natural-number arithmetic, ordering, `Nat.lt_irrefl` etc. | `import Mathlib.Data.Nat.Basic` |
 | Linear arithmetic in proof obligations | `import Mathlib.Tactic.Linarith` |
-| Decidability of order / equality on derived types | `import Mathlib.Tactic.DeriveDecidableEq` |
-| Real-number / measure-theoretic claims | `import Mathlib.Analysis.SpecialFunctions.Basic` (only if the informal spec explicitly uses reals) |
+| Decidability of order / equality on derived types | no import: `deriving DecidableEq` is in core Lean |
+| Real-number / measure-theoretic claims | `import Mathlib.Data.Real.Basic` (only if the informal spec explicitly uses reals) |
 
 The harness Docker image pre-builds Mathlib, so `lake build` on a small file completes in seconds. Do not micro-optimise imports — pulling in `Mathlib.Data.List.Basic` is cheap and saves a typecheck-fail loop. If in doubt, import.
 
@@ -162,7 +162,7 @@ For each `must-fix` failure, apply these repair strategies before retrying:
 | `unknown identifier 'X'` from Mathlib | Add the import that defines `X`. |
 | `type mismatch ... expected Y got Z` in a theorem statement | Re-read the informal spec — the property's actual statement may have been mis-translated. |
 | `unexpected token` / `function expected at` | Parse-level Lean syntax bug; fix and retry. |
-| `failed to synthesize instance Decidable ...` | Add `deriving DecidableEq` to the relevant structure, or import `Mathlib.Tactic.DeriveDecidableEq`. |
+| `failed to synthesize instance Decidable ...` | Add `deriving DecidableEq` to the relevant structure. It is in core Lean and needs no import. |
 | `cannot find file ... in search path` | Lake / Mathlib import path issue — check the import string against Mathlib's current module layout via the harness. |
 
 **Retry budget: 5 attempts.** On each attempt:
