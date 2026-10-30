@@ -24,7 +24,7 @@
   "claims": [
     {
       "strength": "Proved",
-      "statement": "Three rules of the reference program",
+      "statement": "Three rules of the reference model",
       "support": "Lean checks the proofs",
       "boundary": "About the Lean model, not a proof about EVerest's code.",
       "summary": "Three rules proved about the model"
@@ -230,7 +230,7 @@
   "engineeringDecisions": [
     {
       "choice": "Separate the model from the production implementation",
-      "reason": "A reference program in Lean lets the study state and prove rules about the model, then compare its answers with EVerest's existing C++ code.",
+      "reason": "A reference model in Lean lets the study state and prove rules about the model, then compare its answers with EVerest's existing C++ code.",
       "boundary": "A proof about the model does not show that the production code behaves the same way."
     },
     {

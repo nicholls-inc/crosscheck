@@ -178,15 +178,6 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 
 /* Bands: a narrow summary beside wide evidence */
 
-.band {
-  display: grid;
-  grid-template-columns: var(--aside) minmax(0, 1fr);
-  column-gap: var(--col-gap);
-  padding: var(--band-pad) 0 26px;
-  border-bottom: 1px solid var(--rule-strong);
-}
-.band > :first-child { padding-left: 4px; }
-.band > :not(:first-child) { grid-column: 2; }
 
 .ledger {
   width: 100%;
@@ -269,16 +260,6 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 .copy:hover { color: var(--link-hover); }
 .copy-status { margin-left: 12px; vertical-align: middle; font-family: var(--sans); font-size: var(--label-size); letter-spacing: var(--label-track); color: var(--muted); }
 
-/* The glossary page */
-
-.terms { padding: 44px 0 48px; }
-
-.terms h1 {
-  font-size: 32px;
-  line-height: 38px;
-  letter-spacing: -0.022em;
-  font-variation-settings: "opsz" 48;
-}
 .aside-note { margin-top: 14px; font-size: 17.5px; line-height: 25px; color: var(--muted); max-width: 36ch; }
 
 code { font-family: var(--mono); font-size: 0.82em; color: #33363d; }
@@ -333,18 +314,45 @@ pre code { font-size: inherit; }
   padding-bottom: 8px;
 }
 
-.glossary {
+/* The glossary is set as the study page's evidence list: groups with a label column, each term
+   an always-open entry with the entry title's type and a definition at reading measure */
+.glossary-page { margin-top: 28px; padding-top: 0; border-top: 1px solid var(--rule-strong); }
+/* The page's subject leads in the question-heading role, on the content column's edge like the terms */
+.glossary-intro {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 48px;
-  border-top: 1px solid var(--rule-strong);
+  grid-template-columns: var(--aside) minmax(0, 1fr);
+  column-gap: var(--col-gap);
+  padding: 34px 0 30px;
 }
-.glossary > div { padding: 12px 0 14px; border-bottom: 1px solid var(--rule); }
-.glossary dt { color: var(--ink); font-weight: 500; font-size: 17px; }
+.glossary-intro > * { grid-column: 2; }
+/* The way back sits in the heading row's empty label column, its line centred on the heading's */
+.glossary-intro .back-to-study {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  align-self: start;
+  margin-top: -5px;
+  padding: 11px 0 11px 4px;
+  font: 15px/22px var(--sans);
+  letter-spacing: var(--label-track);
+  text-underline-offset: 5px;
+}
+.glossary-intro h1 { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; font-variation-settings: "opsz" 48; }
+.glossary-hint { margin-top: 8px; max-width: 56ch; font-size: 17.5px; line-height: 25px; color: var(--muted); }
+.glossary-index ul { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 16px; max-width: 72ch; }
+.glossary-index a { display: inline-block; padding: 11px 0; font: 400 15px/22px var(--sans); letter-spacing: var(--label-track); text-underline-offset: 5px; text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent); }
+.glossary > div { padding: 6px 0 16px; }
+/* Each line is measured in its own size, so the 16px account does not run longer than the definition */
+.glossary dt, .glossary dd { max-width: 65ch; }
+.glossary dt { font-size: 20px; line-height: 27px; font-weight: 450; letter-spacing: -0.005em; color: var(--ink); }
 .glossary dfn { font-style: normal; }
-.glossary dd { margin-top: 3px; font-size: 17px; line-height: 24px; }
+.term-link { color: inherit; text-decoration: none; }
+.term-link:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 5px; text-decoration-color: var(--rule-strong); }
+/* A link into the glossary marks the term it lands on, as the study page marks the one result to see */
+.glossary > div:target dfn { background-image: linear-gradient(transparent 58%, var(--mark) 58%, var(--mark) 92%, transparent 92%); }
+.glossary dd { margin-top: 4px; font-size: 17.5px; line-height: 25px; color: var(--text); }
 /* The longer account under a definition; tooltips use only the first line */
-.glossary dd.more { margin-top: 8px; color: var(--muted); }
+.glossary dd.more { margin-top: 8px; font-size: 16px; line-height: 24px; color: var(--muted); }
 .glossary dd.more a { white-space: nowrap; }
 
 
@@ -356,13 +364,12 @@ pre code { font-size: inherit; }
 }
 
 @media (max-width: 860px) {
-  .band { grid-template-columns: minmax(0, 1fr); row-gap: 20px; }
-  .band > :not(:first-child) { grid-column: 1; }
-  .band > :first-child { padding-left: 0; }
+  .glossary-intro { grid-template-columns: minmax(0, 1fr); padding: 26px 0 22px; }
+  .glossary-intro > * { grid-column: 1; }
+  .glossary-intro .back-to-study { grid-row: auto; margin: -11px 0 4px; padding-left: 0; }
 
   .aside-note { max-width: 60ch; }
 
-  .glossary { grid-template-columns: minmax(0, 1fr); }
   .witness dl { grid-template-columns: minmax(0, 1fr); }
   .witness .reading { font-size: 38px; line-height: 44px; }
 }
@@ -393,7 +400,6 @@ pre code { font-size: inherit; }
   .ledger caption { display: block; }
 
   .source-links { column-gap: 24px; }
-  .terms h1 { font-size: 28px; line-height: 34px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -414,7 +420,6 @@ pre code { font-size: inherit; }
 #limits .ledger { margin-top: 24px; }
 #sources p + p { margin-top: 16px; }
 .repeat { min-width: 0; }
-.band > div { min-width: 0; }
 
 /* Definition lists for who did what and the study's design decisions */
 
@@ -463,12 +468,13 @@ pre code { font-size: inherit; }
   color: var(--ink);
   font-size: min(36px, 8.4vw);
   line-height: 1.12;
+  /* The glossary sets this title in a p, which would otherwise take the paragraphs' "pretty" wrap */
+  text-wrap: balance;
   font-weight: 320;
   letter-spacing: -0.03em;
   font-variation-settings: "opsz" 72;
 }
 .title-block h1 a, .title-block .site-title a { color: inherit; text-decoration: none; }
-.terms { border-top: 1px solid var(--rule-strong); margin-top: 28px; }
 
 /* Sections, one line each until opened */
 
@@ -728,6 +734,9 @@ pre code { font-size: inherit; }
 .block[hidden] { display: none; }
 /* Without JavaScript the filters cannot follow the reader, so each entry links back to them */
 .back-to-filters { margin-top: 18px; }
+/* A route from evidence to the glossary's longer account, for the terms that have one */
+.glossary-link { margin-top: 14px; }
+.glossary-link a { display: inline-block; padding: 11px 0; font: 15px/22px var(--sans); letter-spacing: var(--label-track); text-underline-offset: 5px; }
 .back-to-filters a { font: 14px/22px var(--sans); letter-spacing: var(--label-track); text-underline-offset: 5px; }
 /* Wide screens keep the filters in view, so only a phone, where they scroll away, keeps the link */
 @media (min-width: 861px) { .js .back-to-filters { display: none; } }
@@ -782,8 +791,9 @@ pre code { font-size: inherit; }
   .filter-label, .answer > :first-child, .group-title, .evidence-heading { padding-left: 0; }
   .filter-hint, .filter-notice { max-width: none; }
   .group { row-gap: 2px; }
-  .entry summary, .entry-body { padding-left: 18px; }
-  .entry summary::before { left: 0; }
+  /* With one column, the plus hangs in the page margin so entry text keeps the same left
+     edge as group titles and the same margin on both sides */
+  .entry summary::before { left: -17px; }
   .colophon { grid-template-columns: minmax(0, 1fr); }
   .colophon-group + .colophon-group { grid-column: 1; }
   .colophon-credit { padding-left: 0; }
@@ -792,16 +802,15 @@ pre code { font-size: inherit; }
   /* Wide margins are a desktop idea; a phone keeps its width for reading */
   :root { --gutter: 24px; }
   .title-block { padding-top: 26px; }
-  .section summary { flex-wrap: wrap; }
-  .section-first { flex-basis: 100%; padding-left: 18px; white-space: normal; overflow: visible; font-size: 17.5px; line-height: 25px; }
-  .section:not([open]) .section-first {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  #panel-finding:not([open]) .section-first { display: block; -webkit-line-clamp: unset; overflow: visible; }
-  .section-more { padding-left: 18px; }
+  /* Each first line is one sentence, so a phone shows all of it rather than cutting it short,
+     and the plus hangs in the margin like the entries' so every line starts on the same edge */
+  /* On a phone the label runs into its sentence, like a run-in heading, and the text wraps
+     under it; the plus is placed on the summary so it centres on the first line */
+  .section summary { display: block; position: relative; line-height: 25px; }
+  .section-name { display: inline; position: static; padding-left: 0; margin-right: 0.3em; line-height: inherit; }
+  .section-name::before { left: -17px; top: 12px; }
+  .section-first { display: inline; white-space: normal; overflow: visible; text-overflow: clip; font-size: 17.5px; line-height: 25px; }
+  .section-more { padding-left: 0; }
   .questions a { font-size: 18px; line-height: 25px; padding: 9.5px 0; }
   .entry-title { font-size: 19px; line-height: 26px; }
   .answer-text { font-size: 19px; line-height: 27px; }

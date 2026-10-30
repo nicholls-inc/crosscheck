@@ -14,14 +14,14 @@ const list = (items) => `<ul class="study-list">${items.map((item) => `<li>${pro
 
 function claims() {
   return `<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody>${record.claims.map((c) => `<tr><td data-label="What was checked">${prose(c.statement)}</td><td data-label="How it was checked">${prose(c.support)}</td><td class="strength" data-label="Strength">${esc(c.strength)}</td><td data-label="Result and boundary">${prose(c.boundary)}</td></tr>`).join('')}</tbody></table>
-<p class="evidence-scope">Proofs cover the reference program. Tests compare EVerest with it on the inputs tried. The study reports these results; this website did not rerun them.</p>`;
+<p class="evidence-scope">Proofs cover the reference model. Tests compare EVerest with it on the inputs tried. The study reports these results; this website did not rerun them.</p>`;
 }
 
 function witness() {
   const w = record.witness;
   return `<figure class="witness"><figcaption>One daily default schedule, first started at <time datetime="${w.anchor}">11:00:00 UTC on 14 September 2016</time>.
 <span class="witness-time">Read at <time datetime="${w.readAt}">10:59:59 UTC on 13 August 2026</time></span></figcaption><dl>
-<div><dt>The reference program</dt><dd><span class="reading">${number(w.modelWatts)}&nbsp;W</span><span class="why">The second period still applies. Restart is at ${esc(w.expectedRestart)}.</span></dd></div>
+<div><dt>The reference model</dt><dd><span class="reading">${number(w.modelWatts)}&nbsp;W</span><span class="why">The second period still applies. Restart is at ${esc(w.expectedRestart)}.</span></dd></div>
 <div><dt>EVerest at <code>${record.everestCommit.slice(0, 8)}</code></dt><dd><span class="reading reading-off">${number(w.everestWatts)}&nbsp;W</span><span class="why">It has already restarted, one second early, so the limit is too high.</span></dd></div>
 </dl></figure>`;
 }

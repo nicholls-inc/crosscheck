@@ -1,5 +1,56 @@
 # Website journal
 
+## 2026-10-30 — The glossary reads like the study page
+
+**Type:** fix
+**Touches:** site/glossary.html, site/styles.css, DESIGN.md
+**Why:** The glossary used the same tokens but a different arrangement: a large serif
+heading, a two-column grid of small terms and a rule under every term. It read like
+another site.
+
+The glossary is now set as the study page's evidence list: a small "Glossary" label
+and hint, then two groups ("EVerest and OCPP", "How the study checks") with their
+titles in the label column, and each term as an open entry in the entry-title type with
+its definition at reading measure. Definition text, ids and deep links are unchanged, so
+check-site's match with the study page's tooltips still holds. The `.band` and `.terms`
+rules, used only by the old glossary, are deleted. Two sentences in the longer accounts
+lost a colon and an "admits".
+
+A layout and type pass followed. "Glossary" had become the smallest heading on its own
+page, so it moved into the question-heading role (28px) on the content column's edge.
+The nine-term "How the study checks" group split into the study page's own groups
+(Proof, Tests, Assumptions, People). The longer accounts dropped to 16px so the
+definition leads, and a link into the glossary now highlights the term it lands on.
+The Impeccable type and layout scans are clean.
+
+A critique of the glossary (22/32) followed. Its longer accounts were the least plain
+prose on the site and nothing on the study page led to them. They are now plain and one
+idea per paragraph, with "profile", "warning" and the smallest example explained. Three
+evidence entries on the study page link to the account for their term. The glossary has
+a jump list of all thirteen terms, each term links to itself, each line is measured in
+its own size, and jump targets land 24px down instead of 48px. "Reference program"
+became "reference model", the term Lean-based differential testing uses (Cedar's Lean
+model, Resonate's reference model), with "the model" kept as its short form. The page
+metadata was left to another agent. The glossary also gained a plain "Back to the study"
+link in its heading row.
+
+On phones, Harry noticed two inconsistencies. The Finding first line wrapped while the
+other three were cut short with an ellipsis, and evidence text sat 42px from the left
+but 24px from the right, because entries and sections indented 18px to make room for
+their plus mark. Now every first line wraps to its full sentence, and the plus marks
+hang in the page margin, so every text block on a 390px phone measures 24px on both
+sides. Measured with .impeccable/measure-phone.mjs; 36 browser checks pass. Harry then
+asked for each label to share its sentence's first line, so on phones the label now runs
+into the sentence like a run-in heading ("+ About: A study of EVerest…") and the rest
+wraps beneath it.
+
+The study title broke differently on the two pages. The study page sets it in an h1,
+which takes `text-wrap: balance`; the glossary sets it in a p, which took the paragraphs'
+`pretty` wrap. The shared title rule now sets `balance` itself. A comparison of every
+shared element (lockup, title, footer, copyright) across both pages at 1440, 700 and
+390px now finds no difference, and every glossary block has the same 24px margin on
+both sides at 390px as the study page.
+
 ## 2026-10-30 — The first screen explains itself and the filters can be shared
 
 **Type:** fix

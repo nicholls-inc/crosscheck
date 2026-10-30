@@ -102,7 +102,7 @@ if (asked) {
   const term = document.querySelector(`.term[data-term="${CSS.escape(asked)}"]`);
   document.fonts.ready.then(() => {
     if (term) open(term, "link");
-    else location.assign("glossary.html");
+    else location.assign("glossary.html#" + encodeURIComponent(asked));
   });
 }
 
