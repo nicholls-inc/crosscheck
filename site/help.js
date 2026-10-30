@@ -132,19 +132,49 @@ const filter = { question: "", strength: "" };
 const STRENGTH_NAMES = {
   proved: "Proved",
   tested: "Tested",
-  decided: "Decided by a person",
+  decided: "Decided by Harry",
   assumed: "Assumed",
   unreached: "Not yet reached",
 };
+const QUESTION_KEYS = new Set(questionLinks.map((l) => l.dataset.question));
+
+// The URL fragment is the filter's one serialization: "", "#q-<question>", "#s=<strength>"
+// or both joined by "&".
+function serialize({ question, strength }) {
+  const parts = [question && `q-${question}`, strength && `s=${strength}`].filter(Boolean);
+  return parts.length ? `#${parts.join("&")}` : "";
+}
+
+// A fragment that is neither filter (#witness) is not unknown, it is a plain link target.
+function parse(hash) {
+  const next = { question: "", strength: "", unknown: false };
+  if (!/^#(q-|s=)/.test(hash)) return next;
+  for (const part of hash.slice(1).split("&")) {
+    if (part.startsWith("q-") && !next.question && QUESTION_KEYS.has(part.slice(2))) next.question = part.slice(2);
+    else if (part.startsWith("s=") && !next.strength && Object.hasOwn(STRENGTH_NAMES, part.slice(2))) next.strength = part.slice(2);
+    else next.unknown = true;
+  }
+  return next;
+}
 
 if (blocks.length && answer) {
   document.querySelector(".strengths").hidden = false;
-  for (const button of strengthButtons) button.querySelector("span").textContent = STRENGTH_NAMES[button.dataset.strength];
+  for (const button of strengthButtons) {
+    const label = button.querySelector("span");
+    label.textContent = STRENGTH_NAMES[button.dataset.strength];
+    // The visible count is aria-hidden in the markup. This suffix sits inside the label, because
+    // flex items are read as separate words, and gives "Proved, 2 pieces" instead of "Proved2".
+    const spoken = document.createElement("span");
+    spoken.className = "visually-hidden strength-spoken";
+    label.append(spoken);
+  }
   // The q-anchor ids exist only for the jump without JavaScript. With it, the browser's own
   // fragment scroll would run after the script anchors and undo it.
   for (const span of document.querySelectorAll(".q-anchor")) span.removeAttribute("id");
   history.scrollRestoration = "manual";
   const status = document.querySelector(".filter-status");
+  // A bad link is reported under the Questions label, which stays on screen at every width.
+  const notice = document.querySelector(".filter-notice");
   const title = document.getElementById("answer-title");
   const text = answer.querySelector(".answer-text");
   const count = answer.querySelector(".answer-count");
@@ -172,26 +202,43 @@ if (blocks.length && answer) {
     }
   }
 
-  function apply() {
+  function apply(unknown = false) {
     let shown = 0;
+    const perStrength = Object.fromEntries(Object.keys(STRENGTH_NAMES).map((key) => [key, 0]));
     for (const block of blocks) {
-      const visible = (!filter.question || words(block.dataset.q).includes(filter.question))
-        && (!filter.strength || words(block.dataset.strength).includes(filter.strength));
+      const inQuestion = !filter.question || words(block.dataset.q).includes(filter.question);
+      if (inQuestion) for (const key of words(block.dataset.strength)) perStrength[key] += 1;
+      const visible = inQuestion && (!filter.strength || words(block.dataset.strength).includes(filter.strength));
       block.hidden = !visible;
       if (visible) shown += 1;
     }
     for (const group of groups) group.hidden = !group.querySelector(".block:not([hidden])");
     for (const link of questionLinks) {
-      if (link.dataset.question === filter.question) link.setAttribute("aria-current", "true");
-      else link.removeAttribute("aria-current");
+      const chosen = link.dataset.question === filter.question;
+      const hint = link.querySelector(".chosen-hint");
+      if (chosen) {
+        link.setAttribute("aria-current", "true");
+        if (!hint) link.append(chosenHint());
+      } else {
+        link.removeAttribute("aria-current");
+        if (hint) hint.remove();
+      }
     }
-    for (const button of strengthButtons) button.setAttribute("aria-pressed", String(button.dataset.strength === filter.strength));
+    for (const button of strengthButtons) {
+      const key = button.dataset.strength;
+      const pressed = key === filter.strength;
+      button.setAttribute("aria-pressed", String(pressed));
+      // Counts warn of a dead end, which only exists once a question narrows the list.
+      button.querySelector(".strength-count").textContent = filter.question ? perStrength[key] : "";
+      button.querySelector(".strength-spoken").textContent = filter.question ? `, ${pieces(perStrength[key])}` : "";
+      button.toggleAttribute("data-empty", Boolean(filter.question) && perStrength[key] === 0 && !pressed);
+    }
 
     openForQuestion();
     const marked = filter.strength ? ` marked ${strengthName(filter.strength)}` : "";
     answer.hidden = !filter.question;
     if (filter.question) {
-      title.textContent = questionLinks.find((l) => l.dataset.question === filter.question).textContent;
+      title.textContent = questionLinks.find((l) => l.dataset.question === filter.question).querySelector("span").textContent;
       text.innerHTML = document.querySelector(`[data-answer="${filter.question}"]`).innerHTML;
       const empty = shown === 0;
       count.textContent = empty
@@ -199,7 +246,15 @@ if (blocks.length && answer) {
         : `Showing ${pieces(shown)} of evidence${marked}, out of ${blocks.length}.`;
       showAll.textContent = empty ? "Clear the strength filter" : "Show everything";
     }
+    notice.textContent = unknown ? "That link names a question or strength this page doesn\u2019t have. Pick a question from the list." : "";
     status.textContent = !filter.question && filter.strength ? `Showing ${pieces(shown)} of evidence${marked}, out of ${blocks.length}.` : "";
+  }
+
+  function chosenHint() {
+    const hint = document.createElement("span");
+    hint.className = "visually-hidden chosen-hint";
+    hint.textContent = " (chosen; choose it again to clear)";
+    return hint;
   }
 
   // Every filter change leaves the filters where they were: their top edge at the top of the
@@ -217,59 +272,69 @@ if (blocks.length && answer) {
     window.scrollTo({ top, behavior: "instant" });
   }
 
-  function choose(question, { push = true, scroll = true } = {}) {
-    filter.question = question;
-    apply();
-    if (push) history.pushState(null, "", question ? `#q-${question}` : location.pathname + location.search);
-    if (question) title.focus({ preventScroll: true });
+  // Every filter change goes through here: the state, the view, the history entry and the scroll.
+  function update(next, { push = true, scroll = true, unknown = false } = {}) {
+    const questionChanged = next.question !== filter.question;
+    filter.question = next.question;
+    filter.strength = next.strength;
+    apply(unknown);
+    if (push) history.pushState(null, "", serialize(filter) || location.pathname + location.search);
+    if (filter.question && questionChanged) title.focus({ preventScroll: true });
     if (scroll) anchor();
   }
 
   for (const link of questionLinks) {
     link.addEventListener("click", (e) => {
       e.preventDefault();
-      choose(filter.question === link.dataset.question ? "" : link.dataset.question);
+      update({ question: filter.question === link.dataset.question ? "" : link.dataset.question, strength: filter.strength });
     });
   }
   // A strength works like a document type on the archive: press it to filter, press again to clear.
   for (const button of strengthButtons) {
     button.addEventListener("click", () => {
-      filter.strength = filter.strength === button.dataset.strength ? "" : button.dataset.strength;
-      apply();
-      anchor();
+      update({ question: filter.question, strength: filter.strength === button.dataset.strength ? "" : button.dataset.strength });
     });
   }
   showAll.addEventListener("click", () => {
-    filter.strength = "";
-    if (showAll.textContent === "Clear the strength filter") { apply(); anchor(); return; }
-    choose("");
+    const strengthOnly = showAll.textContent === "Clear the strength filter";
+    update({ question: strengthOnly ? filter.question : "", strength: "" });
   });
 
   // A link into the page clears any filter hiding its target, then opens it.
+  // A link back to the filters only scrolls: a fragment jump would reach popstate and clear the filter.
   document.addEventListener("click", (e) => {
     const link = e.target.closest('a[href^="#"]');
     if (!link || link.dataset.question) return;
-    const target = document.getElementById(link.getAttribute("href").slice(1));
-    if (target && target.closest("[hidden]")) {
-      filter.strength = "";
-      choose("", { push: false, scroll: false });
+    if (link.getAttribute("href") === "#questions") {
+      e.preventDefault();
+      filters.scrollIntoView({ behavior: "instant" });
+      return;
     }
+    const target = document.getElementById(link.getAttribute("href").slice(1));
+    if (target && target.closest("[hidden]")) update({ question: "", strength: "" }, { push: false, scroll: false });
     if (target) openTarget(link.getAttribute("href"));
   });
 
   const fromHash = ({ scroll = true } = {}) => {
-    const match = /^#q-([a-z-]+)$/.exec(location.hash);
-    const question = match && questionLinks.some((l) => l.dataset.question === match[1]) ? match[1] : "";
-    if (question !== filter.question) choose(question, { push: false, scroll: scroll && Boolean(question) });
-    if (!question) {
+    const next = parse(location.hash);
+    const filtered = Boolean(next.question || next.strength);
+    if (next.question !== filter.question || next.strength !== filter.strength || next.unknown) {
+      update(next, { push: false, scroll: scroll && filtered, unknown: next.unknown });
+    }
+    if (!filtered) {
       const target = openTarget(location.hash);
       if (target) target.scrollIntoView();
+      else if (next.unknown && scroll) filters.scrollIntoView({ behavior: "instant" });
     }
   };
   window.addEventListener("popstate", () => fromHash());
+  apply();
   fromHash({ scroll: false });
   // Anchor once the page has its final layout, after the load event and a frame.
-  const settle = () => requestAnimationFrame(() => { if (filter.question) anchor(); });
+  const settle = () => requestAnimationFrame(() => {
+    if (filter.question || filter.strength) anchor();
+    else if (notice.textContent) filters.scrollIntoView({ behavior: "instant" });
+  });
   if (document.readyState === "complete") settle();
   else window.addEventListener("load", settle, { once: true });
 }

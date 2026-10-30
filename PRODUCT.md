@@ -33,7 +33,7 @@ AI platform and developer-tool teams, and teams applying AI to real problems.
 The work supports applications for Senior/Staff Software Engineer and Product
 Engineer roles as well as problem-specific side-door conversations.
 Keep the study useful to engineers rather than turning it into a job
-advertisement; the author appears in one line of the About tab. Application and side-door drafts live in publication docs;
+advertisement. The study is a one-person study, so it names Harry for every human decision ("Decided by Harry", "Harry approved"), never "a person" or "the owner". The full name appears in the About byline and the footer links, and "Harry" everywhere else. Harry's first-person account is set as a quote. Application and side-door drafts live in publication docs;
 personal job filters stay in local preparation notes outside the public output.
 
 ## Product truth

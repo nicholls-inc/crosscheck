@@ -99,5 +99,5 @@ recipient or employer list in this document.
 > [public study URL].
 
 Use this only after the public site check passes. Keep the study's reported/WIP
-status clear; do not describe the draft upstream issue as filed or a diagnostic
-input change as a production fix.
+status clear; describe EVerest issue #3323 as a filed, open report, not a confirmed
+fix, and do not present a diagnostic input change as a production fix.

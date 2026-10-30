@@ -25,6 +25,13 @@ test('checked-in publication is fresh and local navigation is intact', () => {
   assert.equal(run('check-site.mjs').status, 0);
 });
 
+test('the filed upstream issue is linked from the publication', () => {
+  const record = JSON.parse(readFileSync(join(fixture, 'site/everest-study.json'), 'utf8'));
+  const article = readFileSync(join(fixture, 'site/index.html'), 'utf8');
+  assert.ok(article.includes(record.upstreamStatus));
+  assert.ok(article.includes(`<a href="${record.upstreamIssueUrl}" target="_blank" rel="noopener">View filed issue`));
+});
+
 test('changing the publication seed requires regeneration', () => {
   edit('everest-study.json', (text) => {
     const record = JSON.parse(text);
@@ -53,6 +60,20 @@ test('broken replay navigation and glossary drift fail validation', () => {
   assert.match(result.stderr, /definition def-leap-second differs/);
 });
 
+test('an answer shown without script must repeat the question it answers', () => {
+  edit('index.html', (text) => text.replace('<p class="answer-inline-q">What went wrong?</p>', '<p class="answer-inline-q">What went wrong, exactly?</p>'));
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /the question above the went-wrong answer must read "What went wrong\?"/);
+});
+
+test('a question with a second answer fails validation', () => {
+  edit('index.html', (text) => text.replace('<p class="answer-inline-q">Can I run it myself?</p>', '<p class="answer-inline-q">Can I run it myself?</p>\n<div data-answer="run"></div>'));
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /question run must have exactly one answer/);
+});
+
 test('case and instant totals must balance independently', () => {
   edit('everest-study.json', (text) => {
     const record = JSON.parse(text);
@@ -78,4 +99,15 @@ test('author contribution is rendered from the record, not stale article copy', 
   assert.ok(article.includes('A revised contribution account.'));
   assert.ok(article.includes('AI assistance'));
   assert.ok(article.includes('id="decisions"'));
+});
+
+test('a claim strength outside the five strengths fails validation', () => {
+  edit('everest-study.json', (text) => {
+    const record = JSON.parse(text);
+    record.claims[3].strength = 'Unfinished';
+    return JSON.stringify(record);
+  });
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /claim strength must be one of the five strengths: Unfinished/);
 });

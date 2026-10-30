@@ -33,8 +33,15 @@ EVerest case study.
 The page becomes `site/index.html`. The current `index.html` landing page is
 retired, and `everest.html` redirects to the new index or is removed.
 
-Top: five expandable sections. "About this page" is open by default. Each opens
-to two to four short paragraphs.
+Top: expandable sections, all closed by default, so the finding's one line and
+the filters share the first screen. Each opens to short paragraphs of one idea
+each, as many as the content needs (amended 2026-10-30 from "two to four" to follow
+Harry's one-idea-per-paragraph rule).
+The build has four (About, Finding, Study, Repeat); the charger folded into
+About. The one line on how to use the questions sits under the Filter label,
+where it stays visible. (Amended 2026-10-30: this said "About this page" was
+open by default; the build had closed it, and the owner chose to keep it
+closed.)
 
 | Section | Holds |
 | --- | --- |

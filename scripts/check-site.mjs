@@ -16,6 +16,8 @@ requireThat(/^[a-f0-9]{40}$/.test(record.studyCommit), 'study revision must be a
 requireThat(/^[a-f0-9]{40}$/.test(record.everestCommit), 'EVerest revision must be a full immutable commit');
 requireThat(record.commands.includes(`git checkout --detach ${record.studyCommit}`), 'replay must check out the publication revision');
 requireThat(record.classificationCaveat.includes('1,081'), 'retain the extra-limit classification caveat');
+const STRENGTHS = ['Proved', 'Tested', 'Decided by Harry', 'Assumed', 'Not yet reached'];
+for (const c of record.claims) requireThat(STRENGTHS.includes(c.strength), `claim strength must be one of the five strengths: ${c.strength}`);
 for (const r of record.results) {
   requireThat([r.pass, r.warn, r.fail].every(Number.isSafeInteger), `${r.configuration}: counts must be integers`);
   requireThat(r.pass + r.warn + r.fail === r.cases, `${r.configuration}: totals must equal case count`);
@@ -63,6 +65,19 @@ for (const name of readdirSync(site).filter((name) => name.endsWith('.html'))) {
   for (const [, term] of html.matchAll(/data-term="([a-z-]+)"/g)) requireThat(tips.has(`def-${term}`), `${name}: undefined term ${term}`);
   for (const [, target] of html.matchAll(/data-copy="([^"]+)"/g)) requireThat(ids.includes(target), `${name}: missing copy target ${target}`);
 }
+// Without script the answers are the only copy of each answer a reader sees, so each one must sit under the question it answers.
+const index = readFileSync(resolve(site, 'index.html'), 'utf8');
+const questions = new Map([...index.matchAll(/<a href="#q-([a-z-]+)" data-question="\1"><span>(.+?)<\/span><\/a>/g)].map((m) => [m[1], m[2].replace(/<[^>]+>/g, '')]));
+const inlineQuestions = [...index.matchAll(/<p class="answer-inline-q">([^<]*)<\/p>\s*<div data-answer="([a-z-]+)">/g)].map((m) => ({ key: m[2], text: m[1] }));
+const answerKeys = [...index.matchAll(/data-answer="([a-z-]+)"/g)].map((m) => m[1]);
+requireThat(questions.size > 0, 'index.html: no questions found');
+for (const [key, text] of questions) {
+  requireThat(answerKeys.filter((k) => k === key).length === 1, `index.html: question ${key} must have exactly one answer`);
+  const inline = inlineQuestions.filter((q) => q.key === key);
+  requireThat(inline.length === 1 && inline[0].text === text, `index.html: the question above the ${key} answer must read "${text}"`);
+}
+for (const key of answerKeys) requireThat(questions.has(key), `index.html: answer ${key} has no question`);
+
 const css = readFileSync(resolve(site, 'styles.css'), 'utf8');
 for (const [, asset] of css.matchAll(/url\("([^"]+)"\)/g)) requireThat(existsSync(resolve(site, asset)), `missing stylesheet asset: ${asset}`);
 

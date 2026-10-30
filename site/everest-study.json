@@ -1,7 +1,7 @@
 {
   "format": "crosscheck-publication-snapshot/1",
   "title": "A one-second difference you can inspect",
-  "status": "WIP study; reported results, not independently rerun for this website",
+  "status": "Work in progress. These are the study's reported results, and this website did not rerun them",
   "repository": "https://github.com/nicholls-inc/crosscheck",
   "studyCommit": "7d05c4e62284b4101e8f23722ee3b6111e5ca0e9",
   "everestCommit": "dd696165d407d461a724232a4d77fe476a964ef1",
@@ -26,25 +26,25 @@
       "strength": "Proved",
       "statement": "Three rules of the reference program",
       "support": "Lean checks the proofs",
-      "boundary": "About the Lean model, not a proof of EVerest's implementation.",
+      "boundary": "About the Lean model, not a proof about EVerest's code.",
       "summary": "Three rules proved about the model"
     },
     {
       "strength": "Tested",
       "statement": "Schedules anchored in 2017–2025",
       "support": "2,000 generated cases",
-      "boundary": "All 2,000 pass; 57,304 instants with a model limit agree within tolerance, and neither program gives a limit at the other 10,226 instants.",
+      "boundary": "All 2,000 pass. At the 57,304 moments where the model gives a limit, the two agree within tolerance. At the other 10,226 moments, neither gives a limit.",
       "summary": "All 2,000 agree on sampled inputs"
     },
     {
       "strength": "Tested",
       "statement": "Schedules anchored in 2010–2016",
       "support": "2,000 generated cases",
-      "boundary": "835 pass, 92 warn, 1,073 fail, as reported. The report also records 1,081 instants with an extra EVerest limit; see the classification caveat.",
+      "boundary": "835 pass, 92 warn and 1,073 fail, as the study reported. The report also counts 1,081 moments where only EVerest gives a limit; see the caveat on how those are classified.",
       "summary": "835 pass, 92 warn, 1,073 fail (reported)"
     },
     {
-      "strength": "Unfinished",
+      "strength": "Not yet reached",
       "statement": "A fourth model rule",
       "support": "Stated without a completed proof",
       "boundary": "No proof claimed.",
@@ -103,7 +103,7 @@
       "vacuousCases": 64
     }
   },
-  "classificationCaveat": "The pinned report is internally inconsistent about extra limits: its updated header for Q4, the conformance rule that EVerest's limit must be at or below the model's, or may be anything when the model gives none, calls an EVerest limit where the model has none a warning, while a retained note says these instants were unclassified. Its counters record 1,081 such instants in the older run. The totals here are the report's published totals, not a reconstruction or a new run. A pass is not a general claim of exact agreement.",
+  "classificationCaveat": "The pinned report contradicts itself about extra limits, where EVerest gives a limit and the model gives none. Its updated header for the conformance rule (Q4) calls these moments warnings. An older note it kept says they were left unclassified. Its counters record 1,081 of them in the older run. The totals shown here are the report's own published totals. A pass does not mean the limits agree exactly.",
   "witness": {
     "profile": "One daily TxDefaultProfile on connector 0, stack level 3, with no duration",
     "anchor": "2016-09-14T11:00:00Z",
@@ -130,23 +130,23 @@
     "It is never above the applicable transaction limit.",
     "While a transaction's own schedule applies, changing default schedules does not change the limit."
   ],
-  "unfinishedProperty": "Adding a lower-priority schedule that does not apply leaves the limit unchanged (I4, the fourth model rule).",
+  "unfinishedProperty": "Adding a lower-priority schedule that does not apply leaves the limit unchanged (the fourth model rule, I4).",
   "humanDecisions": [
-    "The owner approved interpretations A1 (a profile applies only while its schedule covers the moment) and A2 (a transaction profile overrules the default profiles only while its own schedule covers the moment) and reclassified two AI correspondence-review findings as abstractions rather than approximations.",
-    "The owner confirmed restoring the missing s ≤ t condition (the moment t cannot come before the schedule's start s) in D4, the rule for when a schedule covers a moment, on 2026-10-27.",
-    "Q4, the conformance rule (EVerest's limit conforms when it is at or below the model's, or is anything when the model gives none), treats lower limits as conforming; the owner chose to warn about lost charging. The report retains the classification caveat recorded here."
+    "Harry approved two readings of the standard. A profile applies only while its schedule covers the moment (A1). A transaction profile overrules the default profiles only while its own schedule covers the moment (A2). Harry also reclassified two findings from the AI correspondence review as abstractions rather than approximations.",
+    "On 2026-10-27, Harry confirmed adding back a missing condition to the rule for when a schedule covers a moment (D4). The condition is s ≤ t, which says the moment t cannot come before the schedule's start s.",
+    "The conformance rule (Q4) says EVerest's limit conforms if it is at or below the model's, or if the model gives no limit. So a lower limit counts as conforming. Harry chose to have the report warn about it anyway, because a lower limit means lost charging. The report keeps the classification caveat recorded here."
   ],
   "trustedDependencies": [
-    "Lean v4.28.0 and its standard axioms propext, Classical.choice and Quot.sound for the stated completed proofs.",
-    "The reviewed interpretation of OCPP 1.6 edition 2 and the Lean model's correspondence to it.",
-    "The C++ compiler, driver, copied installation/orchestration glue, two shim headers, Python harness, JSON adapter and model runner.",
-    "The operating system timezone database read by the driver; its leap-second table must contain exactly the three leap seconds since 2010 (2012-06-30, 2015-06-30, 2016-12-31)."
+    "Lean v4.28.0 and its standard axioms (propext, Classical.choice and Quot.sound), for the completed proofs.",
+    "The reading of OCPP 1.6 edition 2 that Harry approved, and the Lean model matching that reading.",
+    "The C++ compiler, the driver with its copied installation glue and two shim headers, the Python harness, the JSON adapter and the model runner.",
+    "The operating system's timezone database, which the driver reads. Its leap-second table must list exactly the three leap seconds since 2010 (2012-06-30, 2015-06-30 and 2016-12-31)."
   ],
   "environment": {
     "lean": "leanprover/lean4:v4.28.0",
-    "compiler": "Apple clang 21.0.0, C++17; reported on macOS arm64",
-    "boost": "1.92.0, headers under /opt/homebrew/include",
-    "fmt": "12.2.0, header-only under /opt/homebrew/include",
+    "compiler": "Apple clang 21.0.0 with C++17, on macOS arm64",
+    "boost": "1.92.0, headers in /opt/homebrew/include",
+    "fmt": "12.2.0, header-only, in /opt/homebrew/include",
     "date": "HowardHinnant/date 3.0.1; USE_OS_TZDB=1, HAS_REMOTE_API=0",
     "json": "nlohmann/json 3.11.3",
     "otherPrerequisites": [
@@ -161,9 +161,9 @@
       "json.hpp": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6",
       "json_fwd.hpp": "5cefbba751baf5243033fd894c70be9b37103d64b3d3a959e4173197d71137b9"
     },
-    "boundary": "Source and downloaded inputs are pinned. The host compiler, system headers and timezone database still need matching; this is not a hermetically pinned environment."
+    "boundary": "Source and downloaded inputs are pinned. Your compiler, system headers and timezone database still need to match the study's, so the environment is not fully pinned."
   },
-  "coverage": "At most 2 charger-wide, 3 default and 2 transaction profiles, up to 4 periods per profile, 15-minute offsets, 24- or 48-hour windows in 2026, on connector 1. Absolute, daily and weekly schedules are generated. Each case samples transition instants from either program and one second either side.",
+  "coverage": "Each case has at most 2 charger-wide, 3 default and 2 transaction profiles, with up to 4 periods per profile. Offsets come in 15-minute steps, and windows are 24 or 48 hours in 2026, all on connector 1. The generator makes absolute, daily and weekly schedules. Each case checks the moments where either program's limit changes, and one second either side.",
   "notYetReached": [
     {
       "behavior": "Relative profiles",
@@ -201,8 +201,9 @@
       "question": "Which rules and model changes are needed for OCPP 2.x?"
     }
   ],
-  "ambiguity": "Default profiles on connectors 0 and 1 together are not generated: the signed spec leaves their interaction unresolved. The recurrence wording also admits another interpretation; the study records it as note N4 for the Open Charge Alliance (OCA): once a leap second falls between a schedule's start and now, \"every 24 hours, at the same time\" can mean elapsed seconds or clock time.",
-  "upstreamStatus": "The pinned study contains a draft EVerest issue awaiting human review. It records no upstream filing. This website does not submit one.",
+  "ambiguity": "No case has default profiles on connectors 0 and 1 together, because the signed spec leaves open how they interact. The standard's wording on repeating schedules also allows a second reading. Once a leap second falls between a schedule's start and now, \"every 24 hours, at the same time\" can mean 24 hours of elapsed seconds or the same clock time. The study records this for the Open Charge Alliance (OCA) as note N4.",
+  "upstreamStatus": "EVerest issue #3323 reports the finding upstream. It was filed on 2026-10-29 and is open. This website does not file or update upstream issues.",
+  "upstreamIssueUrl": "https://github.com/EVerest/everest/issues/3323",
   "commands": [
     "git clone https://github.com/nicholls-inc/crosscheck crosscheck-everest-study",
     "cd crosscheck-everest-study",
@@ -213,39 +214,39 @@
     "python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors",
     "python3 formal-verification/tests/ocpp16_composite/drt_harness.py --count 2000 --seed 20261024 --old-anchors --leap-correct"
   ],
-  "replayNote": "The older-anchor run is expected to report failures; a nonzero exit is a reproduced finding, not an installation failure. --leap-correct changes input anchors for diagnosis and does not fix EVerest. A run writes drt_report_latest.md; preserve the pinned historical report.",
-  "publicationNote": "This editorial snapshot summarizes linked historical evidence. It is not evidence-record/1, an automatic attestation, a new experimental run, or independent proof rechecking.",
+  "replayNote": "The run with older anchors should report failures. A nonzero exit there reproduces the finding; it does not mean the install failed. --leap-correct shifts the input anchors to confirm the cause, and does not fix EVerest. Each run writes drt_report_latest.md. Do not overwrite the pinned historical report.",
+  "publicationNote": "This page summarizes evidence from the linked study. It is not an evidence-record/1 file, an automatic attestation, a new run of the experiment, or a fresh check of the proofs.",
   "author": {
     "name": "Harry Nicholls",
     "profile": "https://github.com/hnipps"
   },
   "contribution": {
     "summary": "I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest's scheduling code.",
-    "human": "I directed the study, approved interpretations of the charging rules, reviewed correspondence findings and decided which claims the evidence supports. The signed spec and owner decisions record that judgment.",
-    "agents": "AI agents drafted specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Its verdicts needed review; they do not count as evidence.",
-    "checks": "Lean checks the completed proofs about the model. A differential harness compares generated inputs with EVerest's unmodified scheduling code through a driver. The compiler, model interpretation, driver and harness remain trusted dependencies.",
-    "result": "The study reports a low-severity recurrence drift caused by leap seconds, with a concrete witness and diagnostic reruns. It does not establish a deployed fix, full OCPP conformance or a proof of the production implementation."
+    "human": "I directed the study, approved the readings of the charging rules, reviewed the correspondence findings and decided which claims the evidence supports. The signed spec and my recorded decisions show that judgment.",
+    "agents": "AI agents drafted the specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Harry reviewed its verdicts, and they do not count as evidence.",
+    "checks": "Lean checks the completed proofs about the model. A test harness sends generated inputs to EVerest's unchanged scheduling code, through a driver, and to the model, then compares their answers. The study still trusts the compiler, its reading of the standard, the driver and the harness.",
+    "result": "The study reports a low-severity drift in repeating schedules, caused by leap seconds. It shows one concrete example and diagnostic reruns. It does not show a deployed fix, full OCPP conformance or a proof about the production code."
   },
   "engineeringDecisions": [
     {
       "choice": "Separate the model from the production implementation",
-      "reason": "A Lean reference program lets the study state and prove model properties, then compare its answers with the existing C++ implementation.",
-      "boundary": "A proof about that model does not establish correspondence with all production behavior."
+      "reason": "A reference program in Lean lets the study state and prove rules about the model, then compare its answers with EVerest's existing C++ code.",
+      "boundary": "A proof about the model does not show that the production code behaves the same way."
     },
     {
       "choice": "Check the moments where schedules change",
-      "reason": "The harness compares transition instants from either program and one second either side. That makes a one-second timing difference visible.",
-      "boundary": "The generator still has bounded profiles, periods and time windows; agreement does not cover other inputs."
+      "reason": "The harness compares the moments where either program's limit changes, and one second either side. That makes a one-second timing difference visible.",
+      "boundary": "The generator still limits profiles, periods and time windows. Agreement says nothing about other inputs."
     },
     {
       "choice": "Record interpretation decisions before judging differences",
-      "reason": "The owner resolved ambiguities in the signed spec and reviewed the correspondence findings against those decisions.",
-      "boundary": "A difference caused by a disputed reading of the standard must remain distinct from an implementation defect."
+      "reason": "Harry settled the ambiguities in the signed spec, then reviewed the correspondence findings against those decisions.",
+      "boundary": "A difference that comes from a disputed reading of the standard has to stay separate from a real defect in the code."
     },
     {
       "choice": "Publish the limits beside the result",
-      "reason": "The study keeps the unfinished fourth proof, trusted dependencies and classification inconsistency visible, with pinned replay inputs.",
-      "boundary": "The leap-second input shift is a diagnostic experiment, not an upstream repair."
+      "reason": "The study keeps the unfinished fourth proof, the trusted dependencies and the report's inconsistency in plain view, with pinned inputs for replay.",
+      "boundary": "Shifting the inputs by the leap seconds is a diagnostic experiment. It does not fix EVerest."
     }
   ]
 }
