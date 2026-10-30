@@ -1,0 +1,21 @@
+{
+	admin off
+	persist_config off
+	auto_https off
+}
+
+# Origin for a cloudflared agent running on this same host.
+http://:8787 {
+	bind 127.0.0.1
+	root * {$CROSSCHECK_SITE_ROOT:/srv/crosscheck/site}
+	encode zstd gzip
+
+	@notes path /README.md /JOURNAL.md /LAUNCH.md /fonts/README.md
+	respond @notes 404
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Cache-Control "no-cache"
+	}
+	file_server
+}

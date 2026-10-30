@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVerest and OCPP 1.6: a formal study</title>
+<meta name="description" content="EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.">
+<!-- publication:head -->
+<link rel="canonical" href="https://crosscheck.harrynicholls.com/">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="alternate" type="application/json" href="everest-study.json" title="Publication record">
+<meta name="author" content="Harry Nicholls">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Crosscheck">
+<meta property="og:title" content="EVerest and OCPP 1.6: a formal study">
+<meta property="og:description" content="EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.">
+<meta property="og:url" content="https://crosscheck.harrynicholls.com/">
+<meta property="og:image" content="https://crosscheck.harrynicholls.com/cards/study.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crosscheck: EVerest and OCPP 1.6, a formal study. EVerest restarts a daily charging schedule one second early.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:creator" content="@harrynicholls">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://crosscheck.harrynicholls.com/#website","url":"https://crosscheck.harrynicholls.com/","name":"Crosscheck"},{"@type":"Person","@id":"https://crosscheck.harrynicholls.com/#author","name":"Harry Nicholls","url":"https://github.com/hnipps","sameAs":["https://x.com/harrynicholls","https://github.com/hnipps"]},{"@type":"TechArticle","headline":"EVerest and OCPP 1.6: a formal study","author":{"@id":"https://crosscheck.harrynicholls.com/#author"},"image":"https://crosscheck.harrynicholls.com/cards/study.png","citation":"https://brainflow.substack.com/p/review-evidence-not-code","isBasedOn":"https://github.com/nicholls-inc/crosscheck/tree/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9","about":{"@type":"SoftwareApplication","name":"EVerest","url":"https://github.com/EVerest/EVerest"},"@id":"https://crosscheck.harrynicholls.com/#page","url":"https://crosscheck.harrynicholls.com/","name":"EVerest and OCPP 1.6: a formal study","description":"EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.","inLanguage":"en","isPartOf":{"@id":"https://crosscheck.harrynicholls.com/#website"}}]}</script>
+<!-- /publication:head -->
+<!-- publication:head -->
+<link rel="canonical" href="https://crosscheck.harrynicholls.com/">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="alternate" type="application/json" href="everest-study.json" title="Publication record">
+<meta name="author" content="Harry Nicholls">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Crosscheck">
+<meta property="og:title" content="EVerest and OCPP 1.6: a formal study">
+<meta property="og:description" content="EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.">
+<meta property="og:url" content="https://crosscheck.harrynicholls.com/">
+<meta property="og:image" content="https://crosscheck.harrynicholls.com/cards/study.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crosscheck: EVerest and OCPP 1.6, a formal study. EVerest restarts a daily charging schedule one second early.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:creator" content="@harrynicholls">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://crosscheck.harrynicholls.com/#website","url":"https://crosscheck.harrynicholls.com/","name":"Crosscheck"},{"@type":"Person","@id":"https://crosscheck.harrynicholls.com/#author","name":"Harry Nicholls","url":"https://github.com/hnipps","sameAs":["https://x.com/harrynicholls","https://github.com/hnipps"]},{"@type":"TechArticle","headline":"EVerest and OCPP 1.6: a formal study","author":{"@id":"https://crosscheck.harrynicholls.com/#author"},"image":"https://crosscheck.harrynicholls.com/cards/study.png","citation":"https://brainflow.substack.com/p/review-evidence-not-code","isBasedOn":"https://github.com/nicholls-inc/crosscheck/tree/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9","about":{"@type":"SoftwareApplication","name":"EVerest","url":"https://github.com/EVerest/EVerest"},"@id":"https://crosscheck.harrynicholls.com/#page","url":"https://crosscheck.harrynicholls.com/","name":"EVerest and OCPP 1.6: a formal study","description":"EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.","inLanguage":"en","isPartOf":{"@id":"https://crosscheck.harrynicholls.com/#website"}}]}</script>
+<!-- /publication:head -->
+<link rel="preload" href="fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="help.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-proved" viewBox="0 0 16 16"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="1"/><path d="M4.5 8.2l2.4 2.4 4.6-5"/></symbol>
+  <symbol id="i-tested" viewBox="0 0 16 16"><path d="M6 1.75h4M6.75 1.75v4.5L2.6 12.9a1 1 0 0 0 .85 1.35h9.1a1 1 0 0 0 .85-1.35L9.25 6.25v-4.5M4.4 10.25h7.2"/></symbol>
+  <symbol id="i-decided" viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.75"/><path d="M2.5 14.5c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/></symbol>
+  <symbol id="i-assumed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" stroke-dasharray="2.2 2.2"/></symbol>
+  <symbol id="i-unreached" viewBox="0 0 16 16"><path d="M10 1.75H1.75v12.5h12.5V6"/></symbol>
+</svg>
+<div class="page">
+<header class="title-block">
+  <a class="brand-mark" href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg><span class="brand-name">Crosscheck</span><span class="visually-hidden"> (opens in a new tab)</span></a>
+  <h1 id="title">EVerest and OCPP 1.6: a formal study</h1>
+</header>
+<main id="main">
+
+<div class="sections" id="about">
+  <details class="section" id="panel-about">
+    <summary><span class="section-name">About</span><span class="section-first">A study of EVerest, open-source software for electric-vehicle chargers, and how it follows OCPP.</span></summary>
+    <div class="section-more">
+      <p><strong><button type="button" class="term" data-term="everest" aria-describedby="def-everest">EVerest</button></strong> is open-source software that runs a charging station. The Linux Foundation Energy project maintains it.</p>
+      <p><strong><button type="button" class="term" data-term="ocpp" aria-describedby="def-ocpp">OCPP</button></strong>, the Open Charge Point Protocol, is the standard a charger uses to talk to the network that manages it. In version 1.6, the network can send a charger schedules that cap how much power it gives. The charger combines those schedules into one limit for each moment. The study works from <a href="https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f/" target="_blank" rel="noopener">OCPP 1.6 edition 2<span class="visually-hidden"> (opens in a new tab)</span></a>, sections 3.13.1 to 3.13.3, 3.13.7 and 7.8 to 7.14.</p>
+      <p>The study compared EVerest’s code for combining schedules with a <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference model</button>. It found one difference. EVerest restarts a daily schedule one second early.</p>
+      <p>That result uses the study’s <button type="button" class="term" data-term="signed-reading" aria-describedby="def-signed-reading">signed reading</button> of the standard, in its smallest example. The gap grows by one second for each <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button> since the schedule first started. The study rates it low severity.</p>
+      <p>Each piece of evidence has one of five strengths: Proved, Tested, Decided by Harry, Assumed or Not yet reached. Not yet reached also covers a proof that is not finished yet. The <a href="glossary.html#everest">glossary</a> says more about EVerest and OCPP, with links to their own documentation.</p>
+      <p>The study is a worked example of the argument in <a href="https://brainflow.substack.com/p/review-evidence-not-code" target="_blank" rel="noopener">Review Evidence, Not Code<span class="visually-hidden"> (opens in a new tab)</span></a>. <a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls<span class="visually-hidden"> (opens in a new tab)</span></a> directed it and built the tool it uses.</p>
+      <p class="tab-link"><a href="everest-study.json" download>Download the publication record (JSON)</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-finding">
+    <summary><span class="section-name">Finding</span><span class="section-first">A daily schedule should restart at <span class="time">11:00:00</span>; in the study’s smallest example, EVerest restarts it at <span class="time time-early">10:59:59</span>, a leap second early.</span></summary>
+    <div class="section-more">
+      <p>The schedule first started at 11:00:00 UTC on 14 September 2016. At 10:59:59 UTC on 13 August 2026 the reference model gives a limit of 6,543.6&nbsp;W. EVerest has already restarted the schedule and gives 9,249.9&nbsp;W.</p>
+      <p>EVerest counts elapsed UTC seconds, and those include leap seconds. The reference model restarts at the clock time, as the signed reading says.</p>
+      <p>The effect on charging is small. The difference happens the same way every time.</p>
+      <!-- publication:upstream -->
+<p>EVerest issue #3323 reports the finding upstream. It was filed on 2026-10-29 and is open. This website does not file or update upstream issues. <a href="https://github.com/EVerest/everest/issues/3323" target="_blank" rel="noopener">View filed issue<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+<!-- /publication:upstream -->
+      <p class="tab-link"><a href="#witness">Open the evidence for the finding</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-study">
+    <summary><span class="section-name">Study</span><span class="section-first">A reference model written in Lean states the charging rules, and the study compares EVerest’s code with it.</span></summary>
+    <div class="section-more">
+      <p><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks proofs of three of the <button type="button" class="term" data-term="reference-program" aria-describedby="def-reference-program">reference model</button>’s rules. The proof of a fourth is unfinished. The proofs are about the model, not about EVerest.</p>
+      <p>A test harness runs EVerest’s scheduling code and the reference model on 2,000 generated cases per configuration. It compares their limits at each moment a schedule changes, and one second either side.</p>
+      <p>AI agents drafted the specifications, Lean code, proof attempts and test tooling. Harry approved the readings of the standard and decided which claims the evidence supports.</p>
+      <p class="tab-link"><a href="#contribution">Open who decided what</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-repeat">
+    <summary><span class="section-name">Repeat</span><span class="section-first">The source and downloaded inputs are pinned to one study revision, <code>7d05c4e6</code>.</span></summary>
+    <div class="section-more">
+      <p>Start from that revision, not the pull request, which may have moved on. Setup needs elan with Lean v4.28.0, Python 3, git, curl, a C++ compiler, Boost and fmt.</p>
+      <p>Your compiler, system headers and timezone database still need to match the study’s, so the environment is not fully pinned.</p>
+      <p>The run with older schedule anchors should report failures. Those failures are the finding, reproduced. They do not mean the install is broken.</p>
+      <p class="tab-link"><a href="#replay">Open the replay commands</a></p>
+    </div>
+  </details>
+</div>
+
+<section class="filters" id="questions" aria-label="Filter the evidence">
+  <div class="filter-label">
+    <h2 id="filter-title">Questions</h2>
+    <p class="filter-hint">Each shows a short answer and the evidence for it.</p>
+    <p class="filter-notice" role="status" aria-live="polite"></p>
+  </div>
+  <div class="filter-questions">
+    <ol class="questions">
+      <li><a href="#q-went-wrong" data-question="went-wrong"><span>What went wrong?</span></a></li>
+      <li><a href="#q-matter" data-question="matter"><span>Does a one-second error matter?</span></a></li>
+    </ol>
+    <ol class="questions">
+      <li><a href="#q-proof" data-question="proof"><span>Is this a proof that EVerest is wrong?</span></a></li>
+      <li><a href="#q-tested" data-question="tested"><span>How was EVerest tested, and what came back?</span></a></li>
+      <li><a href="#q-people" data-question="people"><span>What did Harry decide, and what did the AI do?</span></a></li>
+      <li><a href="#q-depends" data-question="depends"><span>What does the result depend on?</span></a></li>
+      <li><a href="#q-unchecked" data-question="unchecked"><span>What wasn’t checked?</span></a></li>
+    </ol>
+    <ol class="questions">
+      <li><a href="#q-run" data-question="run"><span>Can I run it mysel<span class="no-kern">f?</span></span></a></li>
+    </ol>
+  </div>
+  <div class="filter-strengths">
+    <h2 id="strength-label">Evidence strength</h2>
+    <ul class="strength-key">
+      <li><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg>Proved</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg>Tested</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg>Decided by Harry</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg>Assumed</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg>Not yet reached</li>
+    </ul>
+    <ul class="strengths" role="group" aria-labelledby="strength-label" hidden>
+      <li><button type="button" data-strength="proved" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><span>Proved</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="tested" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><span>Tested</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="decided" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg><span>Decided by Harry</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="assumed" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg><span>Assumed</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="unreached" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg><span>Not yet reached</span><span class="strength-count" aria-hidden="true"></span></button></li>
+    </ul>
+    <p class="filter-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="answer" id="answer" aria-labelledby="answer-title" hidden>
+  <p class="answer-label" aria-hidden="true">Answer</p>
+  <div><h2 id="answer-title" tabindex="-1"></h2></div>
+  <div>
+    <div class="answer-text"></div>
+    <p class="answer-meta"><span class="answer-count" role="status" aria-live="polite"></span><button type="button" class="show-all">Show everything</button><a class="change-question" href="#questions">Change the question</a></p>
+  </div>
+</section>
+
+<section class="evidence" id="evidence" aria-labelledby="evidence-title">
+<h2 class="evidence-heading" id="evidence-title">Evidence</h2>
+
+<div class="group"><h3 class="group-title">Overview</h3><div>
+<details class="entry block" id="record" data-q="proof tested" data-strength="proved tested unreached">
+  <summary><h4 class="entry-line"><span class="entry-title">The evidence at a glance</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Publication record · Proved, Tested, Not yet reached</span></summary>
+  <div class="entry-body evidence">
+    <p class="aside-note">Proofs cover the reference model. The study compares production code with it on generated inputs.</p>
+<!-- publication:claims -->
+<table class="ledger"><caption>What the evidence says</caption><thead><tr><th scope="col">What was checked</th><th scope="col">How it was checked</th><th scope="col">Strength</th><th scope="col">Result and boundary</th></tr></thead><tbody><tr><td data-label="What was checked">Three rules of the reference model</td><td data-label="How it was checked">Lean checks the proofs</td><td class="strength" data-label="Strength">Proved</td><td data-label="Result and boundary">About the Lean model, not a proof about EVerest’s code.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2017–2025</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">All 2,000 pass. At the 57,304 moments where the model gives a limit, the two agree within tolerance. At the other 10,226 moments, neither gives a limit.</td></tr><tr><td data-label="What was checked">Schedules anchored in 2010–2016</td><td data-label="How it was checked">2,000 generated cases</td><td class="strength" data-label="Strength">Tested</td><td data-label="Result and boundary">835 pass, 92 warn and 1,073 fail, as the study reported. The report also counts 1,081 moments where only EVerest gives a limit; see the caveat on how those are classified.</td></tr><tr><td data-label="What was checked">A fourth model rule</td><td data-label="How it was checked">Stated without a completed proof</td><td class="strength" data-label="Strength">Not yet reached</td><td data-label="Result and boundary">No proof claimed.</td></tr></tbody></table>
+<p class="evidence-scope">Proofs cover the reference model. Tests compare EVerest with it on the inputs tried. The study reports these results; this website did not rerun them.</p>
+<!-- /publication:claims -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Finding</h3><div>
+<span class="q-anchor" id="q-went-wrong"></span><span class="q-anchor" id="q-matter"></span>
+<div class="answer-inline"><p class="answer-inline-q">What went wrong?</p>
+  <div data-answer="went-wrong">
+    <p>EVerest restarts a daily schedule at 10:59:59 instead of 11:00:00. That is in the study’s smallest example, under its signed reading of the standard.</p>
+    <p>For that one second, EVerest’s limit is 9,249.9&nbsp;W. The reference model’s is 6,543.6&nbsp;W.</p>
+    <p>The cause is leap seconds. The gap grows by one second for each leap second since the schedule first started.</p>
+    <p>EVerest issue #3323 reports this upstream. It is open. <a href="https://github.com/EVerest/everest/issues/3323" target="_blank" rel="noopener">View the issue<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+  </div>
+</div>
+<div class="answer-inline"><p class="answer-inline-q">Does a one-second error matter?</p>
+  <div data-answer="matter">
+    <p>The study rates it low severity. For one second, EVerest’s limit is too high.</p>
+    <p>The difference is small, but it happens the same way every time.</p>
+    <p>It also grows. Restarts drift one more second for each leap second since the schedule first started.</p>
+    <p>EVerest issue #3323 reports this upstream. It is open. <a href="https://github.com/EVerest/everest/issues/3323" target="_blank" rel="noopener">View the issue<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+  </div>
+</div>
+<details class="entry block entry-key" id="witness" data-q="went-wrong matter" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">One second before 11:00</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Test report · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note" data-gloss="margin">The study rates this low severity. Daily and weekly restarts drift by one second per <button type="button" class="term" data-term="leap-second" aria-describedby="def-leap-second">leap second</button> since the schedule first started.</p>
+<!-- publication:witness -->
+<figure class="witness"><figcaption>One daily default schedule, first started at <time datetime="2016-09-14T11:00:00Z">11:00:00 UTC on 14 September 2016</time>.
+<span class="witness-time">Read at <time datetime="2026-08-13T10:59:59Z">10:59:59 UTC on 13 August 2026</time></span></figcaption><dl>
+<div><dt>The reference model</dt><dd><span class="reading">6,543.6&nbsp;W</span><span class="why">The second period still applies. Restart is at 11:00:00 UTC.</span></dd></div>
+<div><dt>EVerest at <code>dd696165</code></dt><dd><span class="reading reading-off">9,249.9&nbsp;W</span><span class="why">It has already restarted, one second early, so the limit is too high.</span></dd></div>
+</dl></figure>
+<!-- /publication:witness -->
+    <p class="study-prose">The input has one daily default profile, no duration, and two periods: 9,249.9 W from offset 0, then 6,543.6 W from offset 40,500 seconds. Its query window begins at 03:00:00 UTC on 13 August 2026 and lasts 24 hours.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<span class="q-anchor" id="q-proof"></span>
+<div class="answer-inline"><p class="answer-inline-q">Is this a proof that EVerest is wrong?</p>
+  <div data-answer="proof">
+    <p>No. The proofs are about the reference model, not EVerest’s C++ code.</p>
+    <p>The study tested EVerest by comparing it with that program on generated inputs.</p>
+    <p>The finding also depends on how the study reads the standard. The wording allows another reading, where a daily schedule repeats every 24 hours of elapsed time. That is what EVerest does.</p>
+  </div>
+</div>
+<details class="entry block" id="cause" data-q="went-wrong matter proof" data-strength="tested decided">
+  <summary><h4 class="entry-line"><span class="entry-title">Why it happens</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Written rules and test report · Tested, Decided by Harry</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">The finding depends on how you read the standard. The study writes its reading down in the signed spec, so you can check it.</p>
+    <p class="study-prose">Under the signed reading, a daily schedule restarts at the clock time in its <code>startSchedule</code>. The study notes that the wording of the <a href="https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f/" target="_blank" rel="noopener">OCPP 1.6 specification<span class="visually-hidden"> (opens in a new tab)</span></a> allows another reading too.</p>
+    <p class="study-prose">EVerest works out each restart by counting elapsed UTC seconds, and those include leap seconds. The reference model uses clock time, as the signed reading says.</p>
+    <p class="study-prose">A diagnostic rerun shifts older <button type="button" class="term" data-term="schedule-anchor" aria-describedby="def-schedule-anchor">anchors</button> forward by the leap seconds since then. All 2,000 cases then pass.</p>
+    <p class="study-prose">That rerun changes the inputs to confirm the cause. It does not fix EVerest.</p>
+    <p class="glossary-link"><a href="glossary.html#signed-reading">More on the signed reading in the glossary</a></p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Proof</h3><div>
+<details class="entry block" id="proved" data-q="proof" data-strength="proved unreached">
+  <summary><h4 class="entry-line"><span class="entry-title">What is proved</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Model and proofs · Proved, Not yet reached</span></summary>
+  <div class="entry-body">
+    <p class="aside-note"><button type="button" class="term" data-term="lean" aria-describedby="def-lean">Lean</button> checks mathematical arguments about the model. This is not a proof of the C++ implementation.</p>
+<!-- publication:properties -->
+<ul class="study-list"><li>The combined limit is never above the charger-wide limit.</li><li>It is never above the applicable transaction limit.</li><li>While a transaction’s own schedule applies, changing default schedules does not change the limit.</li></ul><p class="evidence-note">Not yet reached: Adding a lower-priority schedule that does not apply leaves the limit unchanged (the fourth model rule, I4).</p>
+<!-- /publication:properties -->
+    <p class="evidence-note">The proof check lists the completed theorems. It fails if any of them depends on <code>sorryAx</code>, the placeholder Lean uses for an unfinished proof, or on a non-standard axiom. The fourth, unfinished rule does not count as proved.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Tests</h3><div>
+<span class="q-anchor" id="q-tested"></span>
+<div class="answer-inline"><p class="answer-inline-q">How was EVerest tested, and what came back?</p>
+  <div data-answer="tested">
+    <p>A driver runs EVerest’s unmodified scheduling code against the reference model on 2,000 generated cases per configuration.</p>
+    <p>Schedules that first started in 2010–2016 give 835 passes, 92 warnings and 1,073 failures, as the study reported. Those failures are the finding.</p>
+    <p>Schedules that first started in 2017–2025 all pass.</p>
+    <p>A pass means the case met the study’s comparison rule, not that the limits agree exactly.</p>
+    <p>In 55 of those passing cases, the reference model gives no limit at any moment checked. There was nothing for EVerest to agree with, so those cases pass without testing anything.</p>
+  </div>
+</div>
+<details class="entry block" id="results" data-q="tested" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">What the tests report</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Test report, main runs dated 2026-10-24 · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">A passing case met the study’s comparison rule. That alone does not mean the limits agree exactly. These are the study’s reported results, and this website did not rerun them.</p>
+<!-- publication:results -->
+<table class="ledger ledger-numeric"><caption>Reported case totals</caption><thead><tr><th scope="col">Configuration</th><th scope="col">Pass</th><th scope="col">Warn</th><th scope="col">Fail</th></tr></thead><tbody><tr><td data-label="Configuration">Anchors 2017–2025</td><td data-label="Pass">2,000</td><td data-label="Warn">0</td><td data-label="Fail">0</td></tr><tr><td data-label="Configuration">Anchors 2010–2016</td><td data-label="Pass">835</td><td data-label="Warn">92</td><td data-label="Fail">1,073</td></tr><tr><td data-label="Configuration">Older anchors, shifted by leap seconds</td><td data-label="Pass">2,000</td><td data-label="Warn">0</td><td data-label="Fail">0</td></tr><tr><td data-label="Configuration">Mutation self-test (seed 1)</td><td data-label="Pass">181</td><td data-label="Warn">34</td><td data-label="Fail">85</td></tr></tbody></table>
+<p class="evidence-note">Seed 20261024; 2,000 cases per main configuration. The mutation self-test uses 300 cases and seed 1. Exact means within 0.05 of the profile’s unit (A or W).</p>
+<p class="evidence-note">The pinned report contradicts itself about extra limits, where EVerest gives a limit and the model gives none. Its updated header for the conformance rule (Q4) calls these moments warnings. An older note it kept says they were left unclassified. Its counters record 1,081 of them in the older run. The totals shown here are the report’s own published totals. A pass does not mean the limits agree exactly.</p>
+<!-- /publication:results -->
+    <p class="evidence-note">The mutation self-test changes how the code picks between stacked schedules, on purpose, to check that the harness notices. Its failures are not another defect in EVerest.</p>
+    <p class="glossary-link"><a href="glossary.html#schedule-anchor">More on schedule anchors in the glossary</a></p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="instants" data-q="tested" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Agreement at each instant</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Test report, counters measured 2026-10-27 · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">The harness compares each case at the moments where schedules change, and one second either side.</p>
+<!-- publication:counters -->
+<table class="ledger ledger-numeric"><caption>Agreement at individual instants</caption><thead><tr><th scope="col">Counter</th><th scope="col">2017–2025 anchors</th><th scope="col">2010–2016 anchors</th></tr></thead><tbody><tr><td data-label="Counter">Instants compared</td><td data-label="2017–2025 anchors">67,530</td><td data-label="2010–2016 anchors">78,263</td></tr><tr><td data-label="Counter">Model gives a limit</td><td data-label="2017–2025 anchors">57,304</td><td data-label="2010–2016 anchors">66,541</td></tr><tr><td data-label="Counter">EVerest agrees within <button type="button" class="term" data-term="tolerance" aria-describedby="def-tolerance">tolerance</button></td><td data-label="2017–2025 anchors">57,304</td><td data-label="2010–2016 anchors">56,902</td></tr><tr><td data-label="Counter">EVerest below the model</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">4,331</td></tr><tr><td data-label="Counter">EVerest above, or missing a required limit</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">5,308</td></tr><tr><td data-label="Counter">EVerest gives a limit; model gives none</td><td data-label="2017–2025 anchors">0</td><td data-label="2010–2016 anchors">1,081</td></tr><tr><td data-label="Counter">Neither gives a limit</td><td data-label="2017–2025 anchors">10,226</td><td data-label="2010–2016 anchors">10,641</td></tr><tr><td data-label="Counter">Cases with no model limit anywhere</td><td data-label="2017–2025 anchors">55</td><td data-label="2010–2016 anchors">64</td></tr></tbody></table>
+<!-- /publication:counters -->
+    <p class="evidence-note">In 55 recent-anchor cases, the model gives no limit at any moment checked. There is nothing for EVerest to agree with, so those cases pass without testing anything. They are <button type="button" class="term" data-term="vacuous-pass" aria-describedby="def-vacuous-pass">vacuous passes</button>. The finding does not rest on them. It comes from the older-anchor failures.</p>
+    <p class="glossary-link"><a href="glossary.html#vacuous-pass">More on vacuous passes in the glossary</a></p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+
+<div class="group"><h3 class="group-title">Assumptions</h3><div>
+<span class="q-anchor" id="q-depends"></span>
+<div class="answer-inline"><p class="answer-inline-q">What does the result depend on?</p>
+  <div data-answer="depends">
+    <p>It depends on Lean and its standard axioms.</p>
+    <p>The reading of OCPP 1.6 that Harry approved has to be right, and the Lean model has to match it.</p>
+    <p>The compiler, the test harness and the driver, with its installation glue and two shim headers, have to work correctly.</p>
+    <p>The timezone database has to list exactly the three leap seconds since 2010.</p>
+  </div>
+</div>
+<details class="entry block" id="trust" data-q="depends" data-strength="assumed">
+  <summary><h4 class="entry-line"><span class="entry-title">What the result depends on</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Trusted base · Assumed</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">The result holds only if everything in the <button type="button" class="term" data-term="trusted-base" aria-describedby="def-trusted-base">trusted base</button> works correctly.</p>
+<!-- publication:trust -->
+<ul class="study-list"><li>Lean v4.28.0 and its standard axioms (propext, Classical.choice and Quot.sound), for the completed proofs.</li><li>The reading of OCPP 1.6 edition 2 that Harry approved, and the Lean model matching that reading.</li><li>The C++ compiler, the driver with its copied installation glue and two shim headers, the Python harness, the JSON adapter and the model runner.</li><li>The operating system’s timezone database, which the driver reads. Its leap-second table must list exactly the three leap seconds since 2010 (2012-06-30, 2015-06-30 and 2016-12-31).</li></ul>
+<!-- /publication:trust -->
+    <p class="evidence-note">The driver compiles EVerest’s scheduling code unchanged. It adds its own installation glue and two shim headers, and the comparison trusts those too.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Limits</h3><div>
+<span class="q-anchor" id="q-unchecked"></span>
+<div class="answer-inline"><p class="answer-inline-q">What wasn’t checked?</p>
+  <div data-answer="unchecked">
+    <p>The generated inputs have limits. Each case has at most 2 charger-wide, 3 default and 2 transaction profiles, with up to 4 periods each. Offsets come in 15-minute steps, windows are 24 or 48 hours in 2026, and everything is on connector 1.</p>
+    <p>No case has default profiles on connectors 0 and 1 together.</p>
+    <p>The study has not yet reached relative profiles, phases, unit conversion, the connector-0 aggregate, offline behavior, transaction IDs or OCPP 2.x.</p>
+    <p>One of the four model rules has no finished proof.</p>
+  </div>
+</div>
+<details class="entry block" id="limits" data-q="unchecked proof" data-strength="unreached">
+  <summary><h4 class="entry-line"><span class="entry-title">Where the result stops</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Written rules and generator bounds · Not yet reached</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">Agreement on these inputs says nothing about the rest of OCPP. Each behavior not yet reached needs either a bigger model or a stated assumption.</p>
+<!-- publication:limits -->
+<p>Each case has at most 2 charger-wide, 3 default and 2 transaction profiles, with up to 4 periods per profile. Offsets come in 15-minute steps, and windows are 24 or 48 hours in 2026, all on connector 1. The generator makes absolute, daily and weekly schedules. Each case checks the moments where either program’s limit changes, and one second either side.</p><p class="evidence-note">No case has default profiles on connectors 0 and 1 together, because the signed spec leaves open how they interact. The standard’s wording on repeating schedules also allows a second reading. Once a leap second falls between a schedule’s start and now, “every 24 hours, at the same time” can mean 24 hours of elapsed seconds or the same clock time. The study records this for the Open Charge Alliance (OCA) as note N4.</p><table class="ledger"><caption>Not yet reached by this study</caption><thead><tr><th scope="col">Behavior</th><th scope="col">Blocking property</th><th scope="col">Open modeling question</th></tr></thead><tbody><tr><td data-label="Behavior">Relative profiles</td><td data-label="Blocking property">No transaction start time in the model</td><td data-label="Open modeling question">How should transaction-relative time enter the model?</td></tr><tr><td data-label="Behavior">Phases and minimum charging rate</td><td data-label="Blocking property">One scalar limit and no phase count</td><td data-label="Open modeling question">How should phase-dependent limits be represented?</td></tr><tr><td data-label="Behavior">Conversion between amps and watts</td><td data-label="Blocking property">No voltage or phase inputs</td><td data-label="Open modeling question">What assumptions justify conversion between units?</td></tr><tr><td data-label="Behavior">Connector-0 aggregate</td><td data-label="Blocking property">No allocation state across connectors</td><td data-label="Open modeling question">How should the station-wide sum be constrained?</td></tr><tr><td data-label="Behavior">Offline behavior</td><td data-label="Blocking property">No connectivity state</td><td data-label="Open modeling question">How should connectivity change profile selection?</td></tr><tr><td data-label="Behavior">Transaction ID matching</td><td data-label="Blocking property">No transaction ID field or active-transaction input</td><td data-label="Open modeling question">How should transaction identity constrain applicability?</td></tr><tr><td data-label="Behavior">OCPP 2.x</td><td data-label="Blocking property">Different profile structure and separate production code</td><td data-label="Open modeling question">Which rules and model changes are needed for OCPP 2.x?</td></tr></tbody></table>
+<!-- /publication:limits -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Repeat</h3><div>
+<span class="q-anchor" id="q-run"></span>
+<div class="answer-inline"><p class="answer-inline-q">Can I run it myself?</p>
+  <div data-answer="run">
+    <p>Yes. Check out the pinned study revision and build the driver.</p>
+    <p>Run the proof check, then run the test harness three times.</p>
+    <p>The run with older anchors should report failures. Those failures are the finding, reproduced.</p>
+  </div>
+</div>
+<details class="entry block" id="replay" data-q="run">
+  <summary><h4 class="entry-line"><span class="entry-title">Repeat the run</span></h4><span class="visually-hidden">. </span><span class="entry-meta">Pinned study revision 7d05c4e6</span></summary>
+  <div class="entry-body repeat">
+    <p class="aside-note">Start from the pinned study revision, not the pull request, which may have moved on. Setup downloads dependencies.</p>
+<!-- publication:replay -->
+<p>Install elan with <code>leanprover/lean4:v4.28.0</code>, Python 3, git and curl. The recorded driver build used:</p>
+<ul class="study-list"><li>Apple clang 21.0.0 with C++17, on macOS arm64</li><li>Boost 1.92.0, headers in /opt/homebrew/include</li><li>fmt 12.2.0, header-only, in /opt/homebrew/include</li></ul>
+<p>See <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md" target="_blank" rel="noopener">the driver prerequisites<span class="visually-hidden"> (opens in a new tab)</span></a> before running.</p>
+<p class="evidence-note">Source and downloaded inputs are pinned. Your compiler, system headers and timezone database still need to match the study’s, so the environment is not fully pinned. The leap-second table must list the three leap seconds since 2010. The driver build checks downloaded sources against SHA-256 hashes in <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh" target="_blank" rel="noopener">the pinned build script<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat the study"><code><span class="cmd">git clone https:/<wbr>/<wbr>github.com/<wbr>nicholls-inc/<wbr>crosscheck crosscheck-everest-study</span>
+<span class="cmd">cd crosscheck-everest-study</span>
+<span class="cmd">git checkout <span class="flag">--detach</span> <span class="hash">7d05c4e62284b4101e8f23722ee3b6111e5ca0e9</span></span>
+<span class="cmd">formal-verification/<wbr>tests/<wbr>ocpp16_composite/<wbr>everest_driver/<wbr>build.sh</span>
+<span class="cmd">formal-verification/<wbr>lean/<wbr>CrosscheckModel/<wbr>check_ocpp16_composite.sh</span>
+<span class="cmd">python3 formal-verification/<wbr>tests/<wbr>ocpp16_composite/<wbr>drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024</span>
+<span class="cmd">python3 formal-verification/<wbr>tests/<wbr>ocpp16_composite/<wbr>drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024 <span class="flag">--old-anchors</span></span>
+<span class="cmd">python3 formal-verification/<wbr>tests/<wbr>ocpp16_composite/<wbr>drt_harness.py <span class="flag">--count</span> 2000 <span class="flag">--seed</span> 20261024 <span class="flag">--old-anchors</span> <span class="flag">--leap-correct</span></span></code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
+<p class="evidence-note">The run with older anchors should report failures. A nonzero exit there reproduces the finding; it does not mean the install failed. --leap-correct shifts the input anchors to confirm the cause, and does not fix EVerest. Each run writes drt_report_latest.md. Do not overwrite the pinned historical report.</p>
+<!-- /publication:replay -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="sources" data-q="run depends">
+  <summary><h4 class="entry-line"><span class="entry-title">Inspect the sources</span></h4><span class="visually-hidden">. </span><span class="entry-meta">Eight sources at the same revision</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">Every source below names the same study revision. The <a href="https://github.com/nicholls-inc/crosscheck/pull/144" target="_blank" rel="noopener">live pull request<span class="visually-hidden"> (opens in a new tab)</span></a> may have moved on since.</p>
+<!-- publication:sources -->
+<p>Study snapshot: <code class="revision">7d05c4e62284b4101e8f23722ee3b6111e5ca0e9</code>. EVerest source: <a href="https://github.com/EVerest/EVerest/tree/dd696165d407d461a724232a4d77fe476a964ef1" target="_blank" rel="noopener"><code>dd696165</code><span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+<ul class="source-links"><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">Written rules<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean" target="_blank" rel="noopener">Model and proofs<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">Correspondence review<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_report.md" target="_blank" rel="noopener">Test report<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md" target="_blank" rel="noopener">Driver and shims<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh" target="_blank" rel="noopener">Build inputs<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_harness.py" target="_blank" rel="noopener">Test harness<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh" target="_blank" rel="noopener">Proof check<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
+<p class="evidence-note">Work in progress. These are the study’s reported results, and this website did not rerun them. Main runs dated 2026-10-24; comparison counters measured 2026-10-27.</p>
+<p class="evidence-note">This page summarizes evidence from the linked study. It is not an evidence-record/1 file, an automatic attestation, a new run of the experiment, or a fresh check of the proofs.</p>
+<!-- /publication:sources -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">People</h3><div>
+<span class="q-anchor" id="q-people"></span>
+<div class="answer-inline"><p class="answer-inline-q">What did Harry decide, and what did the AI do?</p>
+  <div data-answer="people">
+    <p>Harry directed the study, approved the readings of the charging rules and decided which claims the evidence supports.</p>
+    <p>AI agents drafted the specifications, Lean code, proof attempts and test tooling.</p>
+    <p>An AI review searched for mismatches. Its verdicts do not count as evidence.</p>
+  </div>
+</div>
+<details class="entry block" id="contribution" data-q="people" data-strength="decided">
+  <summary><h4 class="entry-line"><span class="entry-title">Who did what</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Harry’s account · Decided by Harry</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">AI drafted the work. Only deterministic checks and Harry’s recorded decisions count as evidence.</p>
+<!-- publication:contribution -->
+<figure class="quote"><blockquote><p>I built Crosscheck to make claims about AI-written code inspectable. For this study, I used its AI-assisted workflow to model OCPP 1.6 charging schedules and compare the model with EVerest’s scheduling code.</p><p>I directed the study, approved the readings of the charging rules, reviewed the correspondence findings and decided which claims the evidence supports. The signed spec and my recorded decisions show that judgment.</p></blockquote><figcaption>Harry</figcaption></figure>
+<dl class="contribution"><div><dt>AI assistance</dt><dd>AI agents drafted the specifications, Lean code, proof attempts and test tooling. An AI correspondence review searched for mismatches. Harry reviewed its verdicts, and they do not count as evidence.</dd></div>
+<div><dt>What the checks establish</dt><dd>Lean checks the completed proofs about the model. A test harness sends generated inputs to EVerest’s unchanged scheduling code, through a driver, and to the model, then compares their answers. The study still trusts the compiler, its reading of the standard, the driver and the harness.</dd></div>
+<div><dt>The reported result</dt><dd>The study reports a low-severity drift in repeating schedules, caused by leap seconds. It shows one concrete example and diagnostic reruns. It does not show a deployed fix, full OCPP conformance or a proof about the production code.</dd></div></dl>
+<p class="evidence-note">The <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md" target="_blank" rel="noopener">signed interpretation decisions<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md" target="_blank" rel="noopener">correspondence review with Harry’s decisions<span class="visually-hidden"> (opens in a new tab)</span></a> record the human judgments behind this account.</p>
+<!-- /publication:contribution -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="judgment" data-q="people proof" data-strength="decided">
+  <summary><h4 class="entry-line"><span class="entry-title">Where Harry decided</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Correspondence review · Decided by Harry</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">An AI <button type="button" class="term" data-term="correspondence-review" aria-describedby="def-correspondence-review">correspondence review</button> searched for likely problems. Its verdict is not evidence. Harry’s recorded decisions are.</p>
+<!-- publication:decisions -->
+<ul class="study-list"><li>Harry approved two readings of the standard. A profile applies only while its schedule covers the moment (A1). A transaction profile overrules the default profiles only while its own schedule covers the moment (A2). Harry also reclassified two findings from the AI correspondence review as abstractions rather than approximations.</li><li>On 2026-10-27, Harry confirmed adding back a missing condition to the rule for when a schedule covers a moment (D4). The condition is s ≤ t, which says the moment t cannot come before the schedule’s start s.</li><li>The conformance rule (Q4) says EVerest’s limit conforms if it is at or below the model’s, or if the model gives no limit. So a lower limit counts as conforming. Harry chose to have the report warn about it anyway, because a lower limit means lost charging. The report keeps the classification caveat recorded here.</li></ul>
+<!-- /publication:decisions -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="decisions" data-q="people unchecked" data-strength="decided">
+  <summary><h4 class="entry-line"><span class="entry-title">Why the study is built this way</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Study design · Decided by Harry</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">Each choice is listed with what it leaves unchecked.</p>
+<!-- publication:choices -->
+<dl class="contribution"><div><dt>Separate the model from the production implementation</dt><dd>A reference model in Lean lets the study state and prove rules about the model, then compare its answers with EVerest’s existing C++ code. <span class="decision-boundary">A proof about the model does not show that the production code behaves the same way.</span></dd></div><div><dt>Check the moments where schedules change</dt><dd>The harness compares the moments where either program’s limit changes, and one second either side. That makes a one-second timing difference visible. <span class="decision-boundary">The generator still limits profiles, periods and time windows. Agreement says nothing about other inputs.</span></dd></div><div><dt>Record interpretation decisions before judging differences</dt><dd>Harry settled the ambiguities in the signed spec, then reviewed the correspondence findings against those decisions. <span class="decision-boundary">A difference that comes from a disputed reading of the standard has to stay separate from a real defect in the code.</span></dd></div><div><dt>Publish the limits beside the result</dt><dd>The study keeps the unfinished fourth proof, the trusted dependencies and the report’s inconsistency in plain view, with pinned inputs for replay. <span class="decision-boundary">Shifting the inputs by the leap seconds is a diagnostic experiment. It does not fix EVerest.</span></dd></div></dl>
+<!-- /publication:choices -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+</section>
+</main>
+<footer class="colophon">
+  <div class="colophon-credit">
+    <p class="colophon-label">The tool behind this study</p>
+    <a class="brand-mark colophon-brand" href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg><span class="brand-name">Crosscheck</span><span class="visually-hidden"> (opens in a new tab)</span></a>
+  </div>
+  <nav class="colophon-group" aria-labelledby="colophon-study">
+    <p class="colophon-label" id="colophon-study">This study</p>
+    <ul><li><a href="./#questions">Questions</a></li><li><a href="./#replay">Repeat the run</a></li><li><a href="everest-study.json" download>Publication record (JSON)</a></li><li><a href="glossary.html">Glossary</a></li></ul>
+  </nav>
+  <div class="colophon-group">
+    <p class="colophon-label" id="colophon-elsewhere">Elsewhere</p>
+    <ul aria-labelledby="colophon-elsewhere"><li><a href="https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f/" target="_blank" rel="noopener">OCPP 1.6 specification (zip)<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">Harry Nicholls on X<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls on GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
+  </div>
+</footer>
+<p class="copyright">© 2026 Nicholls Inc</p>
+</div>
+<!-- Tip text. glossary.html is the page readers see; scripts/check-site.mjs fails if these differ from it. -->
+<div id="definitions" hidden>
+  <p id="def-proof">A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.</p>
+  <p id="def-lean">A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.</p>
+  <p id="def-reference-program">A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.</p>
+  <p id="def-leap-second">An extra second sometimes added to clock time to keep it in line with Earth’s rotation.</p>
+  <p id="def-differential-testing">Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.</p>
+  <p id="def-everest">Open-source software for running an electric-vehicle charging station, maintained as a Linux Foundation Energy project. This study tested its code for combining charging schedules.</p>
+  <p id="def-ocpp">Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.</p>
+  <p id="def-schedule-anchor">The moment a schedule first started. A daily schedule restarts at that time of day. The study groups its test cases by the year of the anchor.</p>
+  <p id="def-signed-reading">The interpretation of the standard that Harry approved in the signed spec. Where the standard’s wording allows more than one reading, the study follows this one.</p>
+  <p id="def-vacuous-pass">A passing case where the reference model gives no limit at any instant compared, so there was nothing to agree with.</p>
+  <p id="def-tolerance">How close two limits must be to count as agreeing: within 0.05 of the profile’s unit, amps (A) or watts (W).</p>
+  <p id="def-correspondence-review">An AI review that searched for mismatches between the model and the written rules. Its findings needed Harry’s decision and do not count as evidence.</p>
+  <p id="def-trusted-base">The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.</p>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>
