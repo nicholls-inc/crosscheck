@@ -103,8 +103,8 @@ Inherit the imports already declared by `/lean-spec`. Add only what the impl nee
 | Surface | Likely imports |
 |---|---|
 | Recursive functions on `List`, `Array`, `Nat` | `Mathlib.Data.List.Basic` (likely already present) |
-| `List.foldl` / `List.foldr` / `Array.mapIdx` | `Mathlib.Data.List.Basic` / `Mathlib.Data.Array.Basic` |
-| Hash-/tree-map analogues for dictionary code | `Mathlib.Data.HashMap.Basic` (or a `Std.HashMap` substitute) |
+| `List.foldl` / `List.foldr` / `Array.mapIdx` | `Mathlib.Data.List.Basic` / no import for `Array`, which is in core Lean |
+| Hash-/tree-map analogues for dictionary code | `Std.Data.HashMap` (`Std.HashMap`) |
 | Pattern matching on derived ADTs | already covered by `deriving DecidableEq` from spec stub |
 | Termination via well-founded recursion | `decreasing_by` tactics; no extra import needed in Lean 4 |
 | `Option` / `Except` plumbing | core; no import needed |

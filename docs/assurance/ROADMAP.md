@@ -97,6 +97,7 @@ are listed in `.claude/rules/protected-surfaces.md`. Intent:
 | VA-1 | Bring what Crosscheck tells its users in line with the vision | M | [`../VISION.md`](../VISION.md) |
 | ER-1 | Define the evidence record, and emit it from both tools | L | [`../VISION.md`](../VISION.md) |
 | CG-1 | Make CGV findings worth reading on a real codebase | M | [`../../cgv/docs/evaluation/real-codebase-evaluation-2026-09.md`](../../cgv/docs/evaluation/real-codebase-evaluation-2026-09.md) |
+| LT-1 | Keep the Crosscheck Lean image on a Lean and Mathlib release that builds what the pipeline produces | S | [`../../crosscheck/mcp-server/lean-harness/lean-toolchain`](../../crosscheck/mcp-server/lean-harness/lean-toolchain) |
 
 **VA-1 — Status: In progress.** Serves rule 1 and the scope section of the
 vision. Scope: the skills, the agents, `crosscheck/README.md` and
@@ -123,6 +124,19 @@ false errors, fewer real bugs reported as warnings, a baseline mode, a checkable
 witness for each error, and a README that says what exit 0 means. Acceptance:
 the issues below are closed, and `cgv/bench` reports precision on a labelled
 corpus for each release. Issues: #5, #6, #7, #8, #9, #10.
+
+**LT-1 — Status: In progress.** Serves rule 2: a proof that `lean_check` cannot
+build is not evidence. Scope: the image behind `lean_check`, `lean_run` and
+`lean_test` pinned Lean and Mathlib v4.10.0, so it rejected a model that uses
+`List.Pairwise` from Lean core (PR #144). Five imports that the `/lean-spec`,
+`/lean-impl` and `/drt-oracle` skills tell a model to write do not exist in
+either release. Acceptance: the image pins one Lean release and the Mathlib tag
+of the same release, every import a skill names compiles in that image, and
+each model under `formal-verification/lean/` passes `lean_check` there. A CI job
+that compiles the imports the skills name in the pinned image is not yet
+reached. The property that blocks it is that CI does not build the 10.5 GB
+image, and the open question is whether to build it in CI or to check the module
+names against Mathlib's index. Task: LT-1.1.
 
 ### Medium-term (2–3 months)
 

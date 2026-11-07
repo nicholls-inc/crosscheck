@@ -119,7 +119,7 @@ Do not proceed to Step 1 until all eight checks pass.
 
 For each Lean `def` that will be DRT-tested (i.e., classified `exact` or `abstraction` and not on the skip list), generate a thin `main : IO Unit` runner that:
 
-- Reads one input from stdin in a stable JSON-like serialisation (literal Lean `Repr` is acceptable for in-tree types; for richer surfaces, use `Mathlib.Data.Json` or a hand-written parser).
+- Reads one input from stdin in a stable JSON-like serialisation (literal Lean `Repr` is acceptable for in-tree types; for richer surfaces, use `Lean.Data.Json` or a hand-written parser).
 - Calls the Lean def on the parsed input.
 - Prints the result to stdout in a stable form (`IO.println (toString result)` or equivalent).
 - Exits 0 on success, non-zero on a parse error or a Lean runtime exception.
