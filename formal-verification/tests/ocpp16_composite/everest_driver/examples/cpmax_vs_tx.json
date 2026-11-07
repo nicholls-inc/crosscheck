@@ -1,0 +1,49 @@
+{
+  "start": "2026-01-01T00:00:00Z",
+  "end": "2026-01-02T00:00:00Z",
+  "connector": 1,
+  "unit": "A",
+  "session_start": "2026-01-01T00:00:00Z",
+  "profiles": [
+    {
+      "connectorId": 0,
+      "profile": {
+        "chargingProfileId": 1,
+        "stackLevel": 0,
+        "chargingProfilePurpose": "ChargePointMaxProfile",
+        "chargingProfileKind": "Absolute",
+        "chargingSchedule": {
+          "startSchedule": "2026-01-01T00:00:00Z",
+          "duration": 86400,
+          "chargingRateUnit": "A",
+          "chargingSchedulePeriod": [
+            {
+              "startPeriod": 0,
+              "limit": 16
+            }
+          ]
+        }
+      }
+    },
+    {
+      "connectorId": 1,
+      "profile": {
+        "chargingProfileId": 2,
+        "stackLevel": 0,
+        "chargingProfilePurpose": "TxProfile",
+        "chargingProfileKind": "Absolute",
+        "chargingSchedule": {
+          "startSchedule": "2026-01-01T00:00:00Z",
+          "duration": 86400,
+          "chargingRateUnit": "A",
+          "chargingSchedulePeriod": [
+            {
+              "startPeriod": 0,
+              "limit": 32
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
