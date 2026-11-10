@@ -25,27 +25,35 @@ export async function checkPublicSite(input) {
   if (base.username || base.password || base.search || base.hash) throw new Error('Supply a site URL without credentials, query or fragment.');
   if (!base.pathname.endsWith('/')) base.pathname += '/';
 
-  const study = await (await responseAt(base, './')).text();
-  if (!study.includes('EVerest and OCPP 1.6: a formal study') || !study.includes('id="questions"')) throw new Error('Home page is missing the current case-study entry or question filter.');
-  const mismatch = originMismatch(study, base);
+  const home = await (await responseAt(base, './')).text();
+  if (!home.includes('id="studies"') || !home.includes('href="studies/everest-ocpp/"') || !home.includes('href="studies/spec-kit/"')) throw new Error('Home page is missing the current study index.');
+  const mismatch = originMismatch(home, base);
   if (mismatch && !loopback) throw new Error(mismatch);
+
+  const study = await (await responseAt(base, 'studies/everest-ocpp/')).text();
+  if (!study.includes('EVerest and OCPP 1.6: a formal study') || !study.includes('id="questions"')) throw new Error('The EVerest study is missing its current case-study entry or question filter.');
   for (const id of ['contribution', 'decisions', 'witness', 'results', 'limits', 'replay']) {
     if (!study.includes(`id="${id}"`)) throw new Error(`Study is missing ${id}.`);
   }
-  const moved = await (await responseAt(base, 'everest.html')).text();
-  if (!moved.includes('url=./')) throw new Error('everest.html no longer forwards old links to the study.');
-  const remote = await (await responseAt(base, 'everest-study.json')).json();
-  const expected = JSON.parse(readFileSync(resolve(site, 'everest-study.json'), 'utf8'));
-  if (!isDeepStrictEqual(remote, expected)) throw new Error('Publication snapshot differs from this release. Check the origin worktree or edge cache.');
+  for (const [old, target] of [['everest.html', 'studies/everest-ocpp/'], ['glossary.html', 'studies/everest-ocpp/glossary.html']]) {
+    const moved = await (await responseAt(base, old)).text();
+    if (!moved.includes(`url=${target}`)) throw new Error(`${old} no longer forwards old links to ${target}.`);
+  }
+  for (const [path, file] of [['studies/everest-ocpp/everest-study.json', 'studies/everest-ocpp/everest-study.json'], ['studies/spec-kit/spec-kit-study.json', 'studies/spec-kit/spec-kit-study.json']]) {
+    const remote = await (await responseAt(base, path)).json();
+    if (!isDeepStrictEqual(remote, JSON.parse(readFileSync(resolve(site, file), 'utf8')))) throw new Error(`${path}: publication snapshot differs from this release. Check the origin worktree or edge cache.`);
+  }
+  const expected = JSON.parse(readFileSync(resolve(site, 'studies/everest-ocpp/everest-study.json'), 'utf8'));
   const studyText = study.replace(/<[^>]+>/g, '');
   if (!studyText.includes(expected.studyCommit) || !studyText.includes('git checkout --detach')) throw new Error('Study is missing pinned replay instructions.');
 
-  for (const path of ['glossary.html', 'styles.css', 'help.js', 'fonts/newsreader-roman.woff2', 'fonts/public-sans.woff2', 'fonts/ibm-plex-mono.woff2',
-    'favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'cards/study.png', 'cards/glossary.png', 'robots.txt', 'sitemap.xml', 'llms.txt']) {
+  for (const path of ['studies/everest-ocpp/glossary.html', 'studies/spec-kit/index.html', 'studies/spec-kit-expressions/index.html', 'styles.css', 'help.js',
+    'fonts/newsreader-roman.woff2', 'fonts/public-sans.woff2', 'fonts/ibm-plex-mono.woff2', 'favicon.ico', 'favicon.svg', 'apple-touch-icon.png',
+    'cards/home.png', 'cards/study.png', 'cards/glossary.png', 'cards/spec-kit.png', 'cards/spec-kit-expressions.png', 'robots.txt', 'sitemap.xml', 'llms.txt']) {
     const deployed = Buffer.from(await (await responseAt(base, path)).arrayBuffer());
     if (!deployed.equals(readFileSync(resolve(site, path)))) throw new Error(`${path}: deployed file differs from this release.`);
   }
-  return [`Release matches at ${base.href}`, `Study: ${base.href}`, `Snapshot: ${expected.studyCommit}`, 'Contribution, decisions, replay, old-link forwarding, record, glossary, styles, script, fonts, icons, preview cards, robots.txt, sitemap and llms.txt passed.'];
+  return [`Release matches at ${base.href}`, `EVerest study: ${base.href}studies/everest-ocpp/`, `Spec Kit study: ${base.href}studies/spec-kit/`, `EVerest snapshot: ${expected.studyCommit}`, 'Study index, contribution, decisions, replay, old-link forwarding, both records, glossary, Spec Kit pages, styles, script, fonts, icons, preview cards, robots.txt, sitemap and llms.txt passed.'];
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

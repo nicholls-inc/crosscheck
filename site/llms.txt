@@ -1,8 +1,14 @@
-# EVerest and OCPP 1.6: a formal study
+# Crosscheck studies
+
+> Crosscheck checks what an AI coding agent claims about code with proofs, tests and reproductions, and counts only deterministic checks and human decisions as evidence. Each study shows its evidence and its limits.
+
+Every page is plain HTML that reads in full without script. Each study marks its evidence as Proved, Tested, Decided by Harry, Assumed or Not yet reached, and only deterministic checks and human decisions count as evidence.
+
+## EVerest and OCPP 1.6: a formal study
 
 > EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.
 
-Work in progress. These are the study's reported results, and this website did not rerun them. This page summarizes evidence from the linked study. It is not an evidence-record/1 file, an automatic attestation, a new run of the experiment, or a fresh check of the proofs. The study page and its glossary are plain HTML that reads in full without script.
+Work in progress. These are the study's reported results, and this website did not rerun them. This page summarizes evidence from the linked study. It is not an evidence-record/1 file, an automatic attestation, a new run of the experiment, or a fresh check of the proofs.
 
 What the evidence says, by strength:
 
@@ -13,42 +19,57 @@ What the evidence says, by strength:
 
 EVerest issue #3323 reports the finding upstream. It was filed on 2026-10-29 and is open. This website does not file or update upstream issues.
 
+## Spec Kit: 28 reported defects
+
+> 28 defects reported in GitHub’s Spec Kit, each with a reproduction and the line of Spec Kit’s own documentation it contradicts, and what happened to each upstream.
+
+Reported findings and their upstream outcomes as of 2026-11-10. This website did not rerun the reproductions. 28 reports filed on 2026-10-23 against Spec Kit 1.2.4.dev0 at 27d14e20c187c1f2916540ea201ecbdc9f8ed588. By 2026-11-10: 19 with a merged fix, 8 with a fix open, 1 with neither; 16 closed by the maintainers.
+
+## Spec Kit’s workflow expressions
+
+> Spec Kit’s workflow evaluator called itself a safe Jinja2 subset but answered some conditions differently from Jinja2. Three reports, their recorded outputs, and what changed upstream.
+
 ## Pages
 
-- [EVerest and OCPP 1.6: a formal study](https://crosscheck.harrynicholls.com/): EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.
-- [Glossary: EVerest and OCPP 1.6: a formal study](https://crosscheck.harrynicholls.com/glossary.html): Plain-English explanations of the specialist terms used on the Crosscheck site.
+- [Crosscheck: studies of checked code](https://crosscheck.harrynicholls.com/): Crosscheck checks what an AI coding agent claims about code with proofs, tests and reproductions, and counts only deterministic checks and human decisions as evidence. Each study shows its evidence and its limits.
+- [EVerest and OCPP 1.6: a formal study](https://crosscheck.harrynicholls.com/studies/everest-ocpp/): EVerest restarts a daily charging schedule one second early. Each question shows a short answer and the evidence for it, marked as proved, tested, decided by Harry, assumed or not yet reached.
+- [Glossary: EVerest and OCPP 1.6: a formal study](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html): Plain-English explanations of the specialist terms used on the Crosscheck site.
+- [Spec Kit: 28 reported defects](https://crosscheck.harrynicholls.com/studies/spec-kit/): 28 defects reported in GitHub’s Spec Kit, each with a reproduction and the line of Spec Kit’s own documentation it contradicts, and what happened to each upstream.
+- [Spec Kit’s workflow expressions](https://crosscheck.harrynicholls.com/studies/spec-kit-expressions/): Spec Kit’s workflow evaluator called itself a safe Jinja2 subset but answered some conditions differently from Jinja2. Three reports, their recorded outputs, and what changed upstream.
 
 ## Data
 
-- [Publication record (JSON)](https://crosscheck.harrynicholls.com/everest-study.json): The editorial snapshot the study page is built from: claims, test totals, agreement counters, the witness case, limits and replay commands.
+- [EVerest publication record (JSON)](https://crosscheck.harrynicholls.com/studies/everest-ocpp/everest-study.json): The editorial snapshot the EVerest study page is built from: claims, test totals, agreement counters, the witness case, limits and replay commands.
+- [Spec Kit publication record (JSON)](https://crosscheck.harrynicholls.com/studies/spec-kit/spec-kit-study.json): The editorial snapshot both Spec Kit pages are built from: each report, what it contradicts, its upstream state and fixes, and the limits.
 
 ## Sources
 
-- [Crosscheck repository](https://github.com/nicholls-inc/crosscheck): The tool behind the study.
-- [Review Evidence, Not Code](https://brainflow.substack.com/p/review-evidence-not-code): The essay this study is a worked example of.
-- [Study pull request](https://github.com/nicholls-inc/crosscheck/pull/144): The change that added the study.
-- [EVerest issue #3323](https://github.com/EVerest/everest/issues/3323): The finding, reported upstream.
-- [Written rules](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md): Pinned at the study commit.
-- [Model and proofs](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean): Pinned at the study commit.
-- [Correspondence review](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md): Pinned at the study commit.
-- [Test report](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_report.md): Pinned at the study commit.
-- [Driver and shims](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md): Pinned at the study commit.
-- [Build inputs](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh): Pinned at the study commit.
-- [Test harness](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_harness.py): Pinned at the study commit.
-- [Proof check](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh): Pinned at the study commit.
+- [Crosscheck repository](https://github.com/nicholls-inc/crosscheck): The tool behind the studies.
+- [Review Evidence, Not Code](https://brainflow.substack.com/p/review-evidence-not-code): The essay the EVerest study is a worked example of.
+- [EVerest study pull request](https://github.com/nicholls-inc/crosscheck/pull/144): The change that added the EVerest study.
+- [EVerest issue #3323](https://github.com/EVerest/everest/issues/3323): The EVerest finding, reported upstream.
+- [Written rules](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/specs/ocpp16_composite_informal.md): Pinned at the EVerest study commit.
+- [Model and proofs](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/Ocpp16Composite.lean): Pinned at the EVerest study commit.
+- [Correspondence review](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/correspondence/Ocpp16Composite.md): Pinned at the EVerest study commit.
+- [Test report](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_report.md): Pinned at the EVerest study commit.
+- [Driver and shims](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/README.md): Pinned at the EVerest study commit.
+- [Build inputs](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/everest_driver/build.sh): Pinned at the EVerest study commit.
+- [Test harness](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/tests/ocpp16_composite/drt_harness.py): Pinned at the EVerest study commit.
+- [Proof check](https://github.com/nicholls-inc/crosscheck/blob/7d05c4e62284b4101e8f23722ee3b6111e5ca0e9/formal-verification/lean/CrosscheckModel/check_ocpp16_composite.sh): Pinned at the EVerest study commit.
+- [Spec Kit issues #5071 to #5098](https://github.com/github/spec-kit/issues?q=is%3Aissue+author%3Ahnipps): The Spec Kit reports.
 
-## Glossary
+## Glossary of the EVerest study
 
-- [EVerest](https://crosscheck.harrynicholls.com/glossary.html#everest): Open-source software for running an electric-vehicle charging station, maintained as a Linux Foundation Energy project. This study tested its code for combining charging schedules.
-- [OCPP](https://crosscheck.harrynicholls.com/glossary.html#ocpp): Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.
-- [Schedule anchor](https://crosscheck.harrynicholls.com/glossary.html#schedule-anchor): The moment a schedule first started. A daily schedule restarts at that time of day. The study groups its test cases by the year of the anchor.
-- [Leap second](https://crosscheck.harrynicholls.com/glossary.html#leap-second): An extra second sometimes added to clock time to keep it in line with Earth’s rotation.
-- [Reference model](https://crosscheck.harrynicholls.com/glossary.html#reference-program): A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.
-- [Lean](https://crosscheck.harrynicholls.com/glossary.html#lean): A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.
-- [Proof](https://crosscheck.harrynicholls.com/glossary.html#proof): A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.
-- [Differential testing](https://crosscheck.harrynicholls.com/glossary.html#differential-testing): Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.
-- [Tolerance](https://crosscheck.harrynicholls.com/glossary.html#tolerance): How close two limits must be to count as agreeing: within 0.05 of the profile’s unit, amps (A) or watts (W).
-- [Vacuous pass](https://crosscheck.harrynicholls.com/glossary.html#vacuous-pass): A passing case where the reference model gives no limit at any instant compared, so there was nothing to agree with.
-- [Trusted base](https://crosscheck.harrynicholls.com/glossary.html#trusted-base): The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.
-- [Signed reading](https://crosscheck.harrynicholls.com/glossary.html#signed-reading): The interpretation of the standard that Harry approved in the signed spec. Where the standard’s wording allows more than one reading, the study follows this one.
-- [Correspondence review](https://crosscheck.harrynicholls.com/glossary.html#correspondence-review): An AI review that searched for mismatches between the model and the written rules. Its findings needed Harry’s decision and do not count as evidence.
+- [EVerest](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#everest): Open-source software for running an electric-vehicle charging station, maintained as a Linux Foundation Energy project. This study tested its code for combining charging schedules.
+- [OCPP](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#ocpp): Open Charge Point Protocol: shared rules for communication between electric-vehicle charging stations and the software managing them. This study checks charging schedules under version 1.6.
+- [Schedule anchor](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#schedule-anchor): The moment a schedule first started. A daily schedule restarts at that time of day. The study groups its test cases by the year of the anchor.
+- [Leap second](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#leap-second): An extra second sometimes added to clock time to keep it in line with Earth’s rotation.
+- [Reference model](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#reference-program): A program describing the behavior we expect. We compare its answers with the code being checked. It covers only the behavior it describes.
+- [Lean](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#lean): A language for precisely describing how code should behave, and a tool for checking mathematical arguments about those descriptions.
+- [Proof](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#proof): A computer-checked mathematical argument that a rule always holds under stated assumptions. It does not tell us whether the rule is the right one.
+- [Differential testing](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#differential-testing): Run the same chosen inputs through two programs and compare their answers. A difference needs investigation. Matching answers cover only the inputs tried.
+- [Tolerance](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#tolerance): How close two limits must be to count as agreeing: within 0.05 of the profile’s unit, amps (A) or watts (W).
+- [Vacuous pass](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#vacuous-pass): A passing case where the reference model gives no limit at any instant compared, so there was nothing to agree with.
+- [Trusted base](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#trusted-base): The parts assumed to work correctly for a result to hold, such as the program checking the proof and the program running the tests.
+- [Signed reading](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#signed-reading): The interpretation of the standard that Harry approved in the signed spec. Where the standard’s wording allows more than one reading, the study follows this one.
+- [Correspondence review](https://crosscheck.harrynicholls.com/studies/everest-ocpp/glossary.html#correspondence-review): An AI review that searched for mismatches between the model and the written rules. Its findings needed Harry’s decision and do not count as evidence.

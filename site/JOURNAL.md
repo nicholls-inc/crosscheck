@@ -1,5 +1,42 @@
 # Website journal
 
+## 2026-11-10 — The site holds more than one study, and Spec Kit is the second
+
+**Type:** feature
+**Touches:** site/, scripts/build-site.mjs, scripts/site-spec-kit.mjs,
+scripts/check-site.mjs, scripts/check-public-site.mjs, scripts/render-site-images.mjs,
+scripts/site.test.mjs, scripts/check-public-site.test.mjs, PRODUCT.md
+**Why:** Harry filed 28 defect reports against GitHub's Spec Kit on 2026-10-23 and
+wanted them published on the same domain as the EVerest study.
+**Links:** [intent](../intent/2026-11-10-spec-kit-studies.md),
+[the reports](https://github.com/github/spec-kit/issues?q=is%3Aissue+author%3Ahnipps)
+
+The root is now a landing page: a study index, three paragraphs on the tool and the
+install commands. The EVerest study, its glossary and its record moved to
+`studies/everest-ocpp/`. `everest.html`, `glossary.html` and old fragment links on the
+root forward there, fragment included. The study page carried its head metadata twice;
+the move removed the second copy.
+
+`studies/spec-kit/` lists the 28 reports by area, each with the line of Spec Kit's own
+documentation, docstring, test or code it contradicts and its upstream state on
+2026-11-10: 19 with a merged fix, 8 with a fix open, 1 with neither. It uses the EVerest
+page's questions, strengths and entries. `studies/spec-kit-expressions/` looks at
+#5071, #5072 and #5073: the outputs the reports recorded, what Jinja2 gives, and what
+changed upstream. An agent's reading of main's source is shown as Not yet reached.
+
+Nothing on the Spec Kit pages was rerun. The session's auto-mode classifier refused to
+run Spec Kit's code, so the pages report each report's recorded output and say so. The
+reports do not say which Crosscheck skill found each defect, and the pages do not claim
+one. Both gaps are in the limits table with their blocking property and open question.
+
+`check-site.mjs` now walks the study directories, checks the questions on every study
+page, validates the Spec Kit record, and fails if a count the hand-written answers
+repeat no longer matches it. Five new site tests cover those checks and the forwarding.
+The three new preview cards were drawn with a new `PLAYWRIGHT=1` path, because Chrome's
+screenshot mode did not finish in the container. The two EVerest cards were not redrawn.
+Checked in headless Chromium at 1440px and 390px: no console errors, no horizontal
+scroll, the filters work, and the old links forward.
+
 ## 2026-10-30 — The glossary reads like the study page
 
 **Type:** fix

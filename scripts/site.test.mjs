@@ -11,7 +11,7 @@ let fixture;
 beforeEach(() => {
   fixture = mkdtempSync(join(tmpdir(), 'crosscheck-site-'));
   cpSync(join(root, 'site'), join(fixture, 'site'), { recursive: true });
-  for (const script of ['build-site.mjs', 'check-site.mjs']) cpSync(join(root, 'scripts', script), join(fixture, 'scripts', script), { recursive: true });
+  for (const script of ['build-site.mjs', 'check-site.mjs', 'site-spec-kit.mjs']) cpSync(join(root, 'scripts', script), join(fixture, 'scripts', script), { recursive: true });
 });
 afterEach(() => rmSync(fixture, { recursive: true, force: true }));
 const run = (script, ...args) => spawnSync(process.execPath, [join(fixture, 'scripts', script), ...args], { encoding: 'utf8' });
@@ -26,34 +26,34 @@ test('checked-in publication is fresh and local navigation is intact', () => {
 });
 
 test('the filed upstream issue is linked from the publication', () => {
-  const record = JSON.parse(readFileSync(join(fixture, 'site/everest-study.json'), 'utf8'));
-  const article = readFileSync(join(fixture, 'site/index.html'), 'utf8');
+  const record = JSON.parse(readFileSync(join(fixture, 'site/studies/everest-ocpp/everest-study.json'), 'utf8'));
+  const article = readFileSync(join(fixture, 'site/studies/everest-ocpp/index.html'), 'utf8');
   assert.ok(article.includes(record.upstreamStatus));
   assert.ok(article.includes(`<a href="${record.upstreamIssueUrl}" target="_blank" rel="noopener">View filed issue`));
 });
 
 test('changing the publication seed requires regeneration', () => {
-  edit('everest-study.json', (text) => {
+  edit('studies/everest-ocpp/everest-study.json', (text) => {
     const record = JSON.parse(text);
     record.seed = 123;
     return JSON.stringify(record);
   });
   const stale = run('build-site.mjs', '--check');
   assert.equal(stale.status, 1);
-  assert.match(stale.stderr, /index.html: publication fragments need regeneration/);
+  assert.match(stale.stderr, /studies\/everest-ocpp\/index.html: publication fragments need regeneration/);
   assert.equal(run('build-site.mjs').status, 0);
   assert.equal(run('build-site.mjs', '--check').status, 0);
 });
 
 test('a moving artifact link cannot masquerade as the pinned study', () => {
-  edit('index.html', (text) => text.replace(/\/blob\/[a-f0-9]{40}\//, '/blob/main/'));
+  edit('studies/everest-ocpp/index.html', (text) => text.replace(/\/blob\/[a-f0-9]{40}\//, '/blob/main/'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /moving or mismatched study source/);
 });
 
 test('broken replay navigation and glossary drift fail validation', () => {
-  edit('index.html', (text) => text.replace('id="replay"', 'id="renamed-replay"').replace('An extra second sometimes added', 'A changed definition sometimes added'));
+  edit('studies/everest-ocpp/index.html', (text) => text.replace('id="replay"', 'id="renamed-replay"').replace('An extra second sometimes added', 'A changed definition sometimes added'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /missing anchor:.*replay/);
@@ -61,21 +61,21 @@ test('broken replay navigation and glossary drift fail validation', () => {
 });
 
 test('an answer shown without script must repeat the question it answers', () => {
-  edit('index.html', (text) => text.replace('<p class="answer-inline-q">What went wrong?</p>', '<p class="answer-inline-q">What went wrong, exactly?</p>'));
+  edit('studies/everest-ocpp/index.html', (text) => text.replace('<p class="answer-inline-q">What went wrong?</p>', '<p class="answer-inline-q">What went wrong, exactly?</p>'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /the question above the went-wrong answer must read "What went wrong\?"/);
 });
 
 test('a question with a second answer fails validation', () => {
-  edit('index.html', (text) => text.replace('<p class="answer-inline-q">Can I run it myself?</p>', '<p class="answer-inline-q">Can I run it myself?</p>\n<div data-answer="run"></div>'));
+  edit('studies/everest-ocpp/index.html', (text) => text.replace('<p class="answer-inline-q">Can I run it myself?</p>', '<p class="answer-inline-q">Can I run it myself?</p>\n<div data-answer="run"></div>'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /question run must have exactly one answer/);
 });
 
 test('case and instant totals must balance independently', () => {
-  edit('everest-study.json', (text) => {
+  edit('studies/everest-ocpp/everest-study.json', (text) => {
     const record = JSON.parse(text);
     record.results[0].pass -= 1;
     record.counters.older.extraLimit += 1;
@@ -88,21 +88,21 @@ test('case and instant totals must balance independently', () => {
 });
 
 test('author contribution is rendered from the record, not stale article copy', () => {
-  edit('everest-study.json', (text) => {
+  edit('studies/everest-ocpp/everest-study.json', (text) => {
     const record = JSON.parse(text);
     record.contribution.summary = 'A revised contribution account.';
     return JSON.stringify(record);
   });
   assert.equal(run('build-site.mjs', '--check').status, 1);
   assert.equal(run('build-site.mjs').status, 0);
-  const article = readFileSync(join(fixture, 'site/index.html'), 'utf8');
+  const article = readFileSync(join(fixture, 'site/studies/everest-ocpp/index.html'), 'utf8');
   assert.ok(article.includes('A revised contribution account.'));
   assert.ok(article.includes('AI assistance'));
   assert.ok(article.includes('id="decisions"'));
 });
 
 test('a claim strength outside the five strengths fails validation', () => {
-  edit('everest-study.json', (text) => {
+  edit('studies/everest-ocpp/everest-study.json', (text) => {
     const record = JSON.parse(text);
     record.claims[3].strength = 'Unfinished';
     return JSON.stringify(record);
@@ -113,18 +113,77 @@ test('a claim strength outside the five strengths fails validation', () => {
 });
 
 test('a glossary edit reaches llms.txt and the structured data only through a rebuild', () => {
-  edit('glossary.html', (text) => text.replace('<dd id="def-leap-second">An extra second', '<dd id="def-leap-second">A second'));
+  edit('studies/everest-ocpp/glossary.html', (text) => text.replace('<dd id="def-leap-second">An extra second', '<dd id="def-leap-second">A second'));
   const stale = run('build-site.mjs', '--check');
   assert.equal(stale.status, 1);
   assert.match(stale.stderr, /llms.txt: generated contents need regeneration/);
-  assert.match(stale.stderr, /glossary.html: publication fragments need regeneration/);
+  assert.match(stale.stderr, /studies\/everest-ocpp\/glossary.html: publication fragments need regeneration/);
   assert.equal(run('build-site.mjs').status, 0);
   assert.ok(readFileSync(join(fixture, 'site/llms.txt'), 'utf8').includes('A second sometimes added'));
 });
 
 test('a preview card missing from the release fails validation', () => {
-  rmSync(join(fixture, 'site/cards/glossary.png'));
+  rmSync(join(fixture, 'site/cards/spec-kit.png'));
   const result = run('check-site.mjs');
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /cards\/glossary.png has no file in this release/);
+  assert.match(result.stderr, /cards\/spec-kit.png has no file in this release/);
+});
+
+const specKitRecord = 'studies/spec-kit/spec-kit-study.json';
+
+test('a Spec Kit count in the record must match the hand-written answers', () => {
+  edit(specKitRecord, (text) => {
+    const record = JSON.parse(text);
+    record.issues.find((i) => i.number === 5071).fixes[0] = { number: 5203, state: 'merged', date: '2026-11-10', title: 'x' };
+    return JSON.stringify(record);
+  });
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /hand-written count no longer matches the record: expected "20 now have a merged fix"/);
+});
+
+test('a Spec Kit fix marked merged needs a merge date, and a report needs a known area', () => {
+  edit(specKitRecord, (text) => {
+    const record = JSON.parse(text);
+    record.issues[0].fixes[0].date = null;
+    record.issues[0].fixes[0].state = 'merged';
+    record.issues[1].area = 'elsewhere';
+    return JSON.stringify(record);
+  });
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /#5071: fix #5203 state and merge date disagree/);
+  assert.match(result.stderr, /#5072: unknown area elsewhere/);
+});
+
+test('editing a Spec Kit report reaches both study pages only through a rebuild', () => {
+  edit(specKitRecord, (text) => {
+    const record = JSON.parse(text);
+    record.expressions.readingNote = 'A revised note about the reading.';
+    record.issues[0].contradicts = 'A revised statement.';
+    return JSON.stringify(record);
+  });
+  const stale = run('build-site.mjs', '--check');
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /studies\/spec-kit\/index.html: publication fragments need regeneration/);
+  assert.match(stale.stderr, /studies\/spec-kit-expressions\/index.html: publication fragments need regeneration/);
+  assert.equal(run('build-site.mjs').status, 0);
+  assert.ok(readFileSync(join(fixture, 'site/studies/spec-kit/index.html'), 'utf8').includes('A revised statement.'));
+  assert.ok(readFileSync(join(fixture, 'site/studies/spec-kit-expressions/index.html'), 'utf8').includes('A revised note about the reading.'));
+});
+
+test('old addresses forward to the EVerest study, fragment included', () => {
+  const home = readFileSync(join(fixture, 'site/index.html'), 'utf8');
+  assert.match(home, /location\.replace\("studies\/everest-ocpp\/" \+ location\.hash\)/);
+  for (const [page, target] of [['everest.html', 'studies/everest-ocpp/'], ['glossary.html', 'studies/everest-ocpp/glossary.html']]) {
+    const html = readFileSync(join(fixture, 'site', page), 'utf8');
+    assert.ok(html.includes(`url=${target}`) && html.includes(`location.replace("${target}" + location.hash)`), page);
+  }
+});
+
+test('a broken link inside a study directory fails validation', () => {
+  edit('studies/spec-kit/index.html', (text) => text.replace('href="../spec-kit-expressions/"', 'href="../spec-kit-expression/"'));
+  const result = run('check-site.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /studies\/spec-kit\/index.html: missing local target: \.\.\/spec-kit-expression\//);
 });

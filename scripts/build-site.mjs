@@ -1,10 +1,11 @@
 // Render publication fragments into checked-in HTML. No browser fetch is needed.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { resolve, dirname, relative } from 'node:path';
+import { specKitFragments, specKitCounts } from './site-spec-kit.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const record = JSON.parse(readFileSync(resolve(root, 'site/everest-study.json'), 'utf8'));
+const record = JSON.parse(readFileSync(resolve(root, 'site/studies/everest-ocpp/everest-study.json'), 'utf8'));
 const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 // Prose gets typographic quotes and apostrophes before escaping; commands, paths and attributes use esc() alone.
 const prose = (value) => esc(String(value).replace(/"([^"]*)"/g, '\u201C$1\u201D').replace(/'/g, '\u2019'));
@@ -70,21 +71,43 @@ function choices() {
   return `<dl class="contribution">${record.engineeringDecisions.map((d) => `<div><dt>${prose(d.choice)}</dt><dd>${prose(d.reason)} <span class="decision-boundary">${prose(d.boundary)}</span></dd></div>`).join('')}</dl>`;
 }
 
+
+const specKit = JSON.parse(readFileSync(resolve(root, 'site/studies/spec-kit/spec-kit-study.json'), 'utf8'));
+const specKitParts = specKitFragments(specKit);
+const kit = specKitCounts(specKit);
+
+// The study index on the landing page. Each entry's one line is a fact from its record.
+const studies = [
+  { path: 'studies/everest-ocpp/', title: 'EVerest and OCPP 1.6: a formal study', kind: 'Lean reference model and differential tests',
+    line: `EVerest restarts a daily charging schedule one second early. Three rules of a Lean model are proved, and 2,000 generated cases per configuration compare EVerest with it.`, date: record.runDate },
+  { path: 'studies/spec-kit/', title: 'Spec Kit: 28 reported defects', kind: 'Reproduced reports and their upstream outcomes',
+    line: `${kit.total} defects in GitHub’s Spec Kit, each with a reproduction script and the line of Spec Kit’s own documentation it contradicts. ${kit.merged} have a merged fix.`, date: specKit.filedOn },
+  { path: 'studies/spec-kit-expressions/', title: 'Spec Kit’s workflow expressions', kind: 'A closer look at three of the reports',
+    line: 'The evaluator called itself a safe Jinja2 subset, but answered some comparisons differently from Jinja2. What the reports showed, and what changed upstream.', date: specKit.filedOn },
+];
+
 const fragments = {claims, witness, results, counters, replay, limits, sources, contribution, choices,
   properties: () => list(record.modelProperties) + `<p class="evidence-note">Not yet reached: ${prose(record.unfinishedProperty)}</p>`,
   decisions: () => list(record.humanDecisions),
   trust: () => list(record.trustedDependencies),
   upstream: () => `<p>${prose(record.upstreamStatus)} <a href="${esc(record.upstreamIssueUrl)}" target="_blank" rel="noopener">View filed issue<span class="visually-hidden"> (opens in a new tab)</span></a></p>`,
+  studies: () => `<ol class="study-index">${studies.map((s) => `<li><a class="study-index-title" href="${s.path}">${prose(s.title)}</a><p class="study-index-kind">${prose(s.kind)} · <time datetime="${s.date}">${s.date}</time></p><p>${prose(s.line)}</p></li>`).join('')}</ol>`,
+  ...specKitParts,
 };
 
 // The public origin. Every absolute URL the site publishes is built from it, and check-public-site.mjs refuses a deployment that names another.
 const origin = 'https://crosscheck.harrynicholls.com/';
 const x = 'harrynicholls';
-// A forwarding page shares its target's metadata, so a preview of an old link matches the study.
+// Pages by their path inside site/. A forwarding page shares its target's metadata, so a preview of an old link matches where it lands.
+const everest = 'studies/everest-ocpp/index.html';
 const pages = {
-  'index.html': { path: '', type: 'article', card: 'cards/study.png', cardAlt: 'Crosscheck: EVerest and OCPP 1.6, a formal study. EVerest restarts a daily charging schedule one second early.' },
-  'glossary.html': { path: 'glossary.html', type: 'website', card: 'cards/glossary.png', cardAlt: 'Crosscheck: the glossary of the EVerest and OCPP 1.6 study.' },
-  'everest.html': { sameAs: 'index.html' },
+  'index.html': { path: '', type: 'website', kind: 'home', card: 'cards/home.png', cardAlt: 'Crosscheck: studies of code checked with deterministic evidence.' },
+  [everest]: { path: 'studies/everest-ocpp/', type: 'article', kind: 'everest', record: 'everest-study.json', card: 'cards/study.png', cardAlt: 'Crosscheck: EVerest and OCPP 1.6, a formal study. EVerest restarts a daily charging schedule one second early.' },
+  'studies/everest-ocpp/glossary.html': { path: 'studies/everest-ocpp/glossary.html', type: 'website', kind: 'glossary', card: 'cards/glossary.png', cardAlt: 'Crosscheck: the glossary of the EVerest and OCPP 1.6 study.' },
+  'studies/spec-kit/index.html': { path: 'studies/spec-kit/', type: 'article', kind: 'spec-kit', record: 'spec-kit-study.json', card: 'cards/spec-kit.png', cardAlt: `Crosscheck: Spec Kit, 28 reported defects. ${kit.merged} have a merged fix.` },
+  'studies/spec-kit-expressions/index.html': { path: 'studies/spec-kit-expressions/', type: 'article', kind: 'spec-kit', record: '../spec-kit/spec-kit-study.json', card: 'cards/spec-kit-expressions.png', cardAlt: 'Crosscheck: Spec Kit’s workflow expressions. Comparisons that answered differently from Jinja2.' },
+  'everest.html': { sameAs: everest },
+  'glossary.html': { sameAs: 'studies/everest-ocpp/glossary.html' },
 };
 const read = (name) => readFileSync(resolve(root, 'site', name), 'utf8');
 const unesc = (value) => value.replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]);
@@ -93,30 +116,40 @@ const describe = (name) => {
   const html = read(name);
   return { title: text(html.match(/<title>([\s\S]*?)<\/title>/)[1]), description: unesc(html.match(/<meta name="description" content="([^"]*)">/)[1]) };
 };
-const glossaryTerms = () => [...read('glossary.html').matchAll(/<div id="([a-z-]+)"><dt><dfn>([\s\S]*?)<\/dfn><\/dt><dd id="def-\1">([\s\S]*?)<\/dd>/g)]
+const glossaryTerms = () => [...read('studies/everest-ocpp/glossary.html').matchAll(/<div id="([a-z-]+)"><dt><dfn>([\s\S]*?)<\/dfn><\/dt><dd id="def-\1">([\s\S]*?)<\/dd>/g)]
   .map(([, id, name, definition]) => ({ id, name: text(name), definition: text(definition) }));
 const json = (value) => JSON.stringify(value).replace(/</g, '\\u003c');
+// The relative path from a page to the site root, so shared icons resolve at any depth.
+const up = (name) => relative(dirname(resolve(root, 'site', name)), resolve(root, 'site')).replace(/\\/g, '/');
+const toRoot = (name) => (up(name) ? `${up(name)}/` : '');
 
 function structuredData(name, url, title, description) {
+  const { kind, card } = pages[name];
   const website = { '@type': 'WebSite', '@id': `${origin}#website`, url: origin, name: 'Crosscheck' };
   const person = { '@type': 'Person', '@id': `${origin}#author`, name: record.author.name, url: record.author.profile, sameAs: [`https://x.com/${x}`, record.author.profile] };
-  const page = name === 'index.html'
-    ? { '@type': 'TechArticle', headline: title, author: { '@id': person['@id'] }, image: origin + pages[name].card, citation: record.essay, isBasedOn: `${record.repository}/tree/${record.studyCommit}`, about: { '@type': 'SoftwareApplication', name: 'EVerest', url: 'https://github.com/EVerest/EVerest' } }
-    : { '@type': 'DefinedTermSet', hasDefinedTerm: glossaryTerms().map((t) => ({ '@type': 'DefinedTerm', name: t.name, description: t.definition, url: `${url}#${t.id}` })) };
+  const article = (extra) => ({ '@type': 'TechArticle', headline: title, author: { '@id': person['@id'] }, image: origin + card, ...extra });
+  const page = {
+    home: { '@type': 'CollectionPage', hasPart: studies.map((s) => ({ '@type': 'TechArticle', headline: s.title, url: origin + s.path })) },
+    everest: article({ citation: record.essay, isBasedOn: `${record.repository}/tree/${record.studyCommit}`, about: { '@type': 'SoftwareApplication', name: 'EVerest', url: 'https://github.com/EVerest/EVerest' } }),
+    'spec-kit': article({ isBasedOn: `${specKit.subject.repository}/tree/${specKit.filingCommit}`, about: { '@type': 'SoftwareApplication', name: specKit.subject.name, url: specKit.subject.repository } }),
+    glossary: { '@type': 'DefinedTermSet', hasDefinedTerm: glossaryTerms().map((t) => ({ '@type': 'DefinedTerm', name: t.name, description: t.definition, url: `${url}#${t.id}` })) },
+  }[kind];
   return { '@context': 'https://schema.org', '@graph': [website, person, { ...page, '@id': `${url}#page`, url, name: title, description, inLanguage: 'en', isPartOf: { '@id': website['@id'] } }] };
 }
 
 function head(name) {
   const own = pages[name].sameAs ?? name;
-  const { path, type, card, cardAlt } = pages[own];
+  const { path, type, card, cardAlt, record: data } = pages[own];
   const { title, description } = describe(own);
   const url = origin + path;
+  const base = toRoot(name);
+  const dataHref = data && relative(dirname(resolve(root, 'site', name)), resolve(root, 'site', dirname(own), data)).replace(/\\/g, '/');
   return [
     `<link rel="canonical" href="${url}">`,
-    '<link rel="icon" href="favicon.ico" sizes="32x32">',
-    '<link rel="icon" href="favicon.svg" type="image/svg+xml">',
-    '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
-    ...(own === 'index.html' ? ['<link rel="alternate" type="application/json" href="everest-study.json" title="Publication record">'] : []),
+    `<link rel="icon" href="${base}favicon.ico" sizes="32x32">`,
+    `<link rel="icon" href="${base}favicon.svg" type="image/svg+xml">`,
+    `<link rel="apple-touch-icon" href="${base}apple-touch-icon.png">`,
+    ...(data && !pages[name].sameAs ? [`<link rel="alternate" type="application/json" href="${dataHref}" title="Publication record">`] : []),
     `<meta name="author" content="${esc(record.author.name)}">`,
     `<meta property="og:type" content="${type}">`,
     '<meta property="og:site_name" content="Crosscheck">',
@@ -137,13 +170,22 @@ const sourceLabels = {spec: 'Written rules', model: 'Model and proofs', review: 
 const listed = Object.entries(pages).filter(([, page]) => !page.sameAs);
 
 function llms() {
-  const study = describe('index.html');
-  const glossary = describe('glossary.html');
-  return `# ${study.title}
+  const home = describe('index.html');
+  const study = describe(everest);
+  const glossary = describe('studies/everest-ocpp/glossary.html');
+  const kitPage = describe('studies/spec-kit/index.html');
+  const exprPage = describe('studies/spec-kit-expressions/index.html');
+  return `# Crosscheck studies
+
+> ${home.description}
+
+Every page is plain HTML that reads in full without script. Each study marks its evidence as Proved, Tested, Decided by Harry, Assumed or Not yet reached, and only deterministic checks and human decisions count as evidence.
+
+## ${study.title}
 
 > ${study.description}
 
-${record.status}. ${record.publicationNote} The study page and its glossary are plain HTML that reads in full without script.
+${record.status}. ${record.publicationNote}
 
 What the evidence says, by strength:
 
@@ -151,26 +193,41 @@ ${record.claims.map((c) => `- ${c.strength}: ${c.statement}. ${c.support}. ${c.b
 
 ${record.upstreamStatus}
 
+## ${kitPage.title}
+
+> ${kitPage.description}
+
+${specKit.status}. ${kit.total} reports filed on ${specKit.filedOn} against Spec Kit ${specKit.subject.version} at ${specKit.filingCommit}. By ${specKit.checkedOn}: ${kit.merged} with a merged fix, ${kit.openFix} with a fix open, ${kit.noFix} with neither; ${kit.closed} closed by the maintainers.
+
+## ${exprPage.title}
+
+> ${exprPage.description}
+
 ## Pages
 
-- [${study.title}](${origin}): ${study.description}
-- [${glossary.title}](${origin}glossary.html): ${glossary.description}
+- [${home.title}](${origin}): ${home.description}
+- [${study.title}](${origin}${pages[everest].path}): ${study.description}
+- [${glossary.title}](${origin}${pages['studies/everest-ocpp/glossary.html'].path}): ${glossary.description}
+- [${kitPage.title}](${origin}studies/spec-kit/): ${kitPage.description}
+- [${exprPage.title}](${origin}studies/spec-kit-expressions/): ${exprPage.description}
 
 ## Data
 
-- [Publication record (JSON)](${origin}everest-study.json): The editorial snapshot the study page is built from: claims, test totals, agreement counters, the witness case, limits and replay commands.
+- [EVerest publication record (JSON)](${origin}studies/everest-ocpp/everest-study.json): The editorial snapshot the EVerest study page is built from: claims, test totals, agreement counters, the witness case, limits and replay commands.
+- [Spec Kit publication record (JSON)](${origin}studies/spec-kit/spec-kit-study.json): The editorial snapshot both Spec Kit pages are built from: each report, what it contradicts, its upstream state and fixes, and the limits.
 
 ## Sources
 
-- [Crosscheck repository](${record.repository}): The tool behind the study.
-- [Review Evidence, Not Code](${record.essay}): The essay this study is a worked example of.
-- [Study pull request](${record.pullRequest}): The change that added the study.
-- [EVerest issue #3323](${record.upstreamIssueUrl}): The finding, reported upstream.
-${Object.entries(sourceLabels).map(([key, label]) => `- [${label}](${record.repository}/blob/${record.studyCommit}/${record.sources[key]}): Pinned at the study commit.`).join('\n')}
+- [Crosscheck repository](${record.repository}): The tool behind the studies.
+- [Review Evidence, Not Code](${record.essay}): The essay the EVerest study is a worked example of.
+- [EVerest study pull request](${record.pullRequest}): The change that added the EVerest study.
+- [EVerest issue #3323](${record.upstreamIssueUrl}): The EVerest finding, reported upstream.
+${Object.entries(sourceLabels).map(([key, label]) => `- [${label}](${record.repository}/blob/${record.studyCommit}/${record.sources[key]}): Pinned at the EVerest study commit.`).join('\n')}
+- [Spec Kit issues #${specKit.issues[0].number} to #${specKit.issues.at(-1).number}](${specKit.subject.repository}/issues?q=is%3Aissue+author%3A${specKit.reporter}): The Spec Kit reports.
 
-## Glossary
+## Glossary of the EVerest study
 
-${glossaryTerms().map((t) => `- [${t.name}](${origin}glossary.html#${t.id}): ${t.definition}`).join('\n')}
+${glossaryTerms().map((t) => `- [${t.name}](${origin}${pages['studies/everest-ocpp/glossary.html'].path}#${t.id}): ${t.definition}`).join('\n')}
 `;
 }
 
@@ -188,7 +245,7 @@ const update = (name, before, after, what) => {
 };
 for (const name of Object.keys(pages)) {
   const before = read(name);
-  update(name, before, before.replace(/<!-- publication:([a-z]+) -->[\s\S]*?<!-- \/publication:\1 -->/g,
+  update(name, before, before.replace(/<!-- publication:([a-z-]+) -->[\s\S]*?<!-- \/publication:\1 -->/g,
     (_, key) => `<!-- publication:${key} -->\n${key === 'head' ? head(name) : fragments[key]()}\n<!-- /publication:${key} -->`), 'publication fragments');
 }
 for (const [name, render] of Object.entries(files)) {
