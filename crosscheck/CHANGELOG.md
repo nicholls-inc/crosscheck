@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.10.0](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.9.0...crosscheck-v2.10.0) (2026-11-11)
+
+
+### Features
+
+* **crosscheck:** add the cgv_check MCP tool, which runs CGV on a committed Python project (ER-1.20) ([#138](https://github.com/nicholls-inc/crosscheck/issues/138)) ([2226d4a](https://github.com/nicholls-inc/crosscheck/commit/2226d4a2ee43c3ddd617bd0d25421f8d5d9dae67))
+
+
+### Bug Fixes
+
+* **crosscheck:** move the Lean image to v4.28.0 and name imports that exist in the Lean skills ([#145](https://github.com/nicholls-inc/crosscheck/issues/145)) ([c2df9e7](https://github.com/nicholls-inc/crosscheck/commit/c2df9e70910d1916f0bc0a9f08ed21075bd1f507))
+* **crosscheck:** name CGV as Layer 3 reach for Python in assurance-layer-audit ([#136](https://github.com/nicholls-inc/crosscheck/issues/136)) ([9cc239e](https://github.com/nicholls-inc/crosscheck/commit/9cc239e22fb6a61215b8ec5e3a0745e097963cc8))
+
 ## [2.9.0](https://github.com/nicholls-inc/crosscheck/compare/crosscheck-v2.8.0...crosscheck-v2.9.0) (2026-10-07)
 
 
