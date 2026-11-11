@@ -58,6 +58,25 @@ ${Object.entries(counts.triage).map(([label, n]) => `<tr><td data-label="Upstrea
 </tbody></table>
 <p class="evidence-note">Spec Kit’s maintainers give each report a triage verdict. ${Object.entries(record.triageLabels).map(([label, text]) => `“${esc(triageName(label))}” reads: ${prose(text)}.`).join(' ')} None of the ${counts.total} was triaged out of scope.</p>`,
     ...Object.fromEntries(Object.keys(record.areas).map((area) => [`spec-kit-area-${area}`, () => findings(area)])),
+    'spec-kit-cgv': () => {
+      const m = record.method;
+      const t = m.cgvTriage;
+      return `<table class="ledger ledger-cgv"><caption>CGV on Spec Kit at <code>${record.filingCommit.slice(0, 7)}</code></caption><thead><tr><th scope="col">Scope</th><th scope="col">Functions</th><th scope="col">Edges</th><th scope="col">Exit</th><th scope="col">Errors</th><th scope="col">Unverified</th></tr></thead><tbody>${m.cgv.map((c) => `<tr><td data-label="Scope"><code>${esc(c.scope)}</code></td><td data-label="Functions">${c.functions.toLocaleString('en-GB')}</td><td data-label="Edges">${c.edges.toLocaleString('en-GB')}</td><td data-label="Exit">${c.exit}</td><td data-label="Errors">${c.errors}</td><td data-label="Unverified">${c.unverified.toLocaleString('en-GB')}</td></tr>`).join('')}</tbody></table>
+<table class="ledger ledger-numeric"><caption>Triage of the ${t.errors} errors, at ${t.sites} distinct sites</caption><thead><tr><th scope="col">Verdict</th><th scope="col">Sites</th></tr></thead><tbody><tr><td data-label="Verdict">A real bug</td><td data-label="Sites">${t.real}</td></tr><tr><td data-label="Verdict">Only the type annotation is wrong</td><td data-label="Sites">${t.annotationOnly}</td></tr><tr><td data-label="Verdict">False positive</td><td data-label="Sites">${t.falsePositive}</td></tr></tbody></table>
+<p class="evidence-note">${prose(m.cgvNote)} An exit code of 1 means only that the extracted graph has these errors.</p>`;
+    },
+    'spec-kit-method': () => {
+      const m = record.method;
+      return `<p class="study-prose">${prose(m.session)} The requests that started it read:</p>
+<ul class="study-list">${m.requests.map((q) => `<li>“${esc(q)}”</li>`).join('')}</ul>
+<p class="study-prose">CGV ran first. Then ${m.slices.length === 8 ? 'eight' : m.slices.length} subagents each searched one slice of Spec Kit’s source for defects: ${prose(m.slices.map((x, i) => (i ? x.toLowerCase() : x)).join('; '))}.</p>
+<p class="study-prose">${prose(m.rule)} ${prose(m.reasonNote)}</p>
+<p class="study-prose">${prose(m.rerun)} ${prose(m.mergedNote)}</p>
+<p class="study-prose">${prose(m.duplicateSearch)}</p>
+<p class="evidence-note">${prose(m.notRun)}</p>`;
+    },
+    'spec-kit-held': () => `<table class="ledger ledger-reports"><caption class="visually-hidden">Findings not filed</caption><thead><tr><th scope="col">Existing</th><th scope="col">Finding</th><th scope="col">Why it was not filed</th></tr></thead><tbody>${record.heldBack.map((h) => `<tr><td data-label="Existing"><a href="${repo}/${h.kind === 'issue' ? 'issues' : 'pull'}/${h.existing}" target="_blank" rel="noopener">#${h.existing}${newTab}</a></td><td data-label="Finding">${prose(h.title)}</td><td data-label="Why it was not filed">${prose(h.note)}</td></tr>`).join('')}</tbody></table>
+<p class="evidence-note">These were reproduced like the others. They are not counted in the 28.</p>`,
     'spec-kit-invalid': () => `<p>${prose(record.automatedInvalidNote)}</p>`,
     'spec-kit-environments': () => `<ul class="study-list">${record.environments.map((e) => `<li>${prose(e)}</li>`).join('')}</ul>
 <p class="evidence-note">Every report names Spec Kit ${esc(record.subject.version)} at <a href="${repo}/tree/${record.filingCommit}" target="_blank" rel="noopener"><code>${record.filingCommit.slice(0, 7)}</code>${newTab}</a> and ends: “${prose(record.disclosure)}”</p>`,

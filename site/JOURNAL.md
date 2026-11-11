@@ -1,5 +1,27 @@
 # Website journal
 
+## 2026-11-11 — The Spec Kit study says how the defects were found
+
+**Type:** fix
+**Touches:** site/studies/spec-kit/, site/studies/spec-kit-expressions/index.html,
+scripts/site-spec-kit.mjs, scripts/check-site.mjs, site/styles.css
+**Why:** Harry pointed to the session that found the defects. The first version said the
+method was not recorded.
+
+The record gains the method from that session's transcript. CGV ran first: 39 errors on
+`src/`, which an agent's triage found held no real bug (11 annotation-only, 26 false
+positives, 4 of those from a CGV extractor defect). Eight subagents then searched one slice
+each with `/reason`, and a finding counted only when a reproduction showed it. 31 findings
+became the 28 reports, and 6 more were not filed because an open issue or pull request
+covered them; those six are now listed. New entries: "How the defects were found", "What
+CGV found" and "Six findings not filed", under a new question, "How were they found?".
+
+Sentences that said Harry re-ran every reproduction now say the reports state it, because
+the transcript does not show that re-run. The limits drop "which skill" and add CGV's
+missing requirement kinds and the Dafny and Lean pipelines, which did not run without
+Docker. A security finding from the same session is left out. check-site now ties the new
+counts to the record. Checked at 1440px and 390px with no horizontal scroll or errors.
+
 ## 2026-11-10 — The site holds more than one study, and Spec Kit is the second
 
 **Type:** feature

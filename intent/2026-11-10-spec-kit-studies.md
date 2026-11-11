@@ -39,8 +39,14 @@ Readers of the site and anyone holding an old link. `site/`,
   evidence: the page marks it Not yet reached. Upstream triage and merged fixes
   are the maintainers' decisions, reported as such, not as Crosscheck's
   evidence.
-- The reports say Claude Code found the defects; they do not say which
-  Crosscheck skill. The pages do not claim one.
+- The method comes from the transcript of the session that found the
+  defects (2026-10-22), which is not public: CGV first, with no real bug among
+  its 39 errors, then eight `/reason` subagents whose findings counted only when
+  a reproduction showed them. The pages do not link the transcript.
+- The reports state that the reporter re-ran each reproduction. The transcript
+  does not show that re-run, so the pages attribute it to the reports.
+- A security finding from the same session is left out of the pages and the
+  counts until the maintainer decides how to publish it.
 - This session could not run Spec Kit's code (the auto-mode classifier refused
   third-party code), so the pages report the recorded outputs and say that the
   website did not rerun them.

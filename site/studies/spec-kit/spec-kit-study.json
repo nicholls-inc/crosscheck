@@ -708,9 +708,14 @@
  },
  "notYetReached": [
   {
-   "behavior": "Which Crosscheck skill found each defect",
-   "blocker": "The sessions that found the defects kept no record of the skill or prompt behind each one; the reports record only the reproductions.",
-   "question": "What record should a finding carry so that the method behind it can be audited later?"
+   "behavior": "Constraints on strings, paths and the shape of dictionaries, which most of Spec Kit’s defects involve",
+   "blocker": "CGV checks type, nullability and choice requirements, and has no requirement kind for these constraints.",
+   "question": "Which requirement kinds would let CGV check string, path and dictionary-shape constraints, and can their checks be proved sound like the existing ones?"
+  },
+  {
+   "behavior": "A proof or reference model of any Spec Kit component",
+   "blocker": "Dafny and Lean run in Docker, and the container that ran the study had no Docker daemon.",
+   "question": "Is the expression evaluator, the one component with a stated model in Jinja2, specified precisely enough to model in Lean?"
   },
   {
    "behavior": "Whether each defect still reproduces on Spec Kit’s main branch",
@@ -729,8 +734,106 @@
   }
  ],
  "contribution": {
-  "agents": "Claude Code, running autonomously, found each defect and wrote its reproduction and report.",
-  "human": "Harry re-ran every reproduction before filing, and filed the 28 reports under his own account. Each report records the same output on a Linux container and on macOS.",
+  "agents": "Claude Code ran CGV, split Spec Kit’s source into eight slices with one subagent each, and had a ninth triage CGV’s errors and a tenth search for existing reports. The agents found the defects, wrote and ran the reproductions, and drafted the reports.",
+  "human": "Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, asked for the drafts and for the search for existing reports, and filed the 28 reports under his own account. Each report states that the reporter re-ran its reproduction before filing and records a macOS run; that re-run is not in the session transcript.",
   "checks": "Each reproduction is a script with recorded output at the filing commit. The maintainers’ triage and the merged fixes are their own decisions and are reported here, not counted as Crosscheck’s evidence."
- }
+ },
+ "method": {
+  "session": "A Claude Code session on 2026-10-22, from 23:29 to 23:59 UTC, against Spec Kit at the filing commit. The transcript is not public.",
+  "requests": [
+   "Now clone https://github.com/github/spec-kit and run CGV and Crosscheck on it. Orchestrate parallel subagents.",
+   "Draft them in a file",
+   "Also check if our findings match any open issues."
+  ],
+  "cgv": [
+   {
+    "scope": "src/",
+    "functions": 1851,
+    "edges": 17361,
+    "exit": 1,
+    "errors": 39,
+    "unverified": 993
+   },
+   {
+    "scope": "scripts/python/",
+    "functions": 61,
+    "edges": 392,
+    "exit": 0,
+    "errors": 0,
+    "unverified": 17
+   },
+   {
+    "scope": "tests/",
+    "functions": 7568,
+    "edges": 22713,
+    "exit": 0,
+    "errors": 0,
+    "unverified": 1248
+   }
+  ],
+  "cgvTriage": {
+   "errors": 39,
+   "sites": 37,
+   "real": 0,
+   "annotationOnly": 11,
+   "falsePositive": 26,
+   "extractorDefect": 4
+  },
+  "cgvNote": "All 39 errors are nullability errors, most where a workflow step passes a value that may be None to the expression evaluator. A triage agent sorted the 37 distinct sites: 0 real bugs, 11 where only the type annotation is wrong, and 26 false positives where CGV missed a check that rules out None. Four of the false positives come from a defect in CGV’s extractor, which binds a function-local import to the wrong function. CGV found none of the 28 reported defects. The triage verdicts are an AI agent’s judgement, so they are not evidence that any site is safe; only the counts come from CGV itself.",
+  "slices": [
+   "Workflows core",
+   "Workflow commands and steps",
+   "Integrations",
+   "Extensions",
+   "Presets",
+   "Bundles and artifacts",
+   "Security, events and authentication",
+   "Top-level modules and scripts"
+  ],
+  "rule": "A finding counted only when a reproduction script’s actual output showed the wrong behaviour. A finding argued from reading the code alone was dropped or marked unconfirmed.",
+  "reasonNote": "Each subagent followed the certificate steps of Crosscheck’s /reason skill: premises with file and line, traces, and checks of alternative explanations. Those certificates are an AI agent’s reasoning, so they are not evidence; only the reproductions count.",
+  "rerun": "The main agent re-ran every reproduction script from the eight subagents. When drafting, each subagent made its reproduction self-contained and ran it again as written, and the main agent then ran all of them once more.",
+  "filedFindings": 31,
+  "mergedNote": "Four findings about unsupported expression syntax became one report, #5073, so 31 findings became 28 reports.",
+  "duplicateSearch": "A tenth subagent listed the titles of all 81 open issues and 98 open pull requests, ran two to six full-text searches for each finding and read every candidate. GitHub search does not cover comments or diffs.",
+  "notRun": "The container had no Docker daemon, so Crosscheck’s Dafny and Lean pipelines did not run."
+ },
+ "heldBack": [
+  {
+   "title": "Command step options, and workflow-level options, are recorded but never passed to the integration",
+   "existing": 4916,
+   "kind": "issue",
+   "note": "Already reported as an open issue."
+  },
+  {
+   "title": "integration scaffold accepts keys such as base that shadow core modules and break imports",
+   "existing": 4540,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  },
+  {
+   "title": "A preset id with a trailing newline passes validation, installs, and is then ignored by the resolver",
+   "existing": 4745,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  },
+  {
+   "title": "bundle install leaves components installed and unowned when writing the bundle record fails",
+   "existing": 4470,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  },
+  {
+   "title": "The generated .specify/events.py dispatcher prints a traceback on non-UTF-8 input",
+   "existing": 3903,
+   "kind": "pull",
+   "note": "An open pull request fixes it, judged from its commit messages, not its diff."
+  },
+  {
+   "title": "A corrupt step-registry.json is replaced on the next step add, dropping every other installed step",
+   "existing": 3922,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  }
+ ]
 }
