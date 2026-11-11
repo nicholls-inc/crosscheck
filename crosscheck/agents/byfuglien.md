@@ -51,6 +51,12 @@ May receive routed work from `add-orchestrator` after the ADD spec-driven fast p
 | `/locate-fault` | Systematic fault localization: test semantics → code tracing → divergence → ranked predictions |
 | `/trace-execution` | Hypothesis-driven execution path tracing with complete call graphs |
 
+### Contract graph check (CGV-backed)
+
+| Tool | What it does |
+|------|-------------|
+| `cgv_check` (MCP) | Runs CGV's `contracts check` on a committed Python project, optionally against a baseline revision, and returns CGV's findings JSON and CGV's evidence record ([spec](../../intent/2026-10-21-cgv-check-mcp-tool-spec.md)) |
+
 ## Task Classification
 
 Classify the user's request to determine which skill to invoke.
@@ -75,6 +81,9 @@ Classify the user's request to determine which skill to invoke.
 | Bug/fault finding | "Why does this fail?", stack traces, unexpected behavior | `/locate-fault` |
 | Execution tracing | "What happens when X is called?", "Trace the flow" | `/trace-execution` |
 | General code reasoning | Any other code reasoning question | `/reason` |
+| Python data-model change | The change touches a declaration of a Django model, data class, attrs class, pydantic model, `NamedTuple` or `TypedDict`, or any `.py` file of a project that declares one | `cgv_check` with the pull request's base as baseline (see "CGV check" in Phase 3) |
+
+The Python data-model row runs beside the request's other route and replaces none: announce it in Phase 1 with the skill, and run it without offering it as a secondary. Do not try to decide which functions write to a model: CGV's extractor finds them, so route whenever the row matches.
 
 When a request spans multiple categories (e.g., "verify this algorithm and trace how it's called"), address the primary intent first, then offer the secondary skill.
 
@@ -127,6 +136,37 @@ For the Dafny verify-and-extract pipeline (`/spec-iterate` → `/generate-verifi
 
 For the Lean executable-model + DRT pipeline (`/informal-spec` → `/lean-spec` → `/lean-impl` → `/correspondence-review` → `/drt-oracle`), execute sequentially with the contract enforced by each skill: human sign-off after `/informal-spec`, `lake build` clean after `/lean-spec` and `/lean-impl`, mismatch-free correspondence verdict after `/correspondence-review`, then DRT. Do not skip steps; each consumes the previous step's artefact.
 
+#### CGV check
+
+For a Python data-model change, call `cgv_check` with:
+
+- `repoPath`: the absolute path of the work tree.
+- `path`: the deepest directory that holds every changed `.py` file and a `manage.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, relative to the top level. Use `.` when there is none.
+- `baseline`: the merge base with the pull request's base branch, `git merge-base HEAD origin/<base>` (read `<base>` with `gh pr view --json baseRefName` or from the caller). Check `<base>` with `git check-ref-format --branch` and pass it as one quoted argument. `origin/<base>` is the local remote-tracking ref and can be stale, so fetch it first when the network allows, and say in the report when it was not fetched. When the merge base equals `HEAD`, or no base branch can be read, leave `baseline` out and say in the report that the findings are not against a base. Do not guess `main` or `HEAD~1`.
+
+Do not commit, stash or reset the user's work to make the call succeed.
+
+**Not run.** If `cgv_check` returns `success: false`, is not available, or fails, report **CGV: not run** and quote its errors in full, including the build command it prints when the CGV binaries are missing. "Not run" is never a pass. Do not put your own reading of the code in place of the run.
+
+**Result.** On `success: true`, report `commit`, `baseline`, `exitCode`, and each error and warning in `findings`. Read `exitCode` this way:
+
+- With a baseline, read `findings.baseline.new.errors` beside `exitCode`. Exit 1 with a count above 0 means that many errors are new relative to the base. Exit 1 with a count of 0 means the checker exited 1 and reported no error (`cgv/src/baseline.rs`, BL-8): report exactly that, not as a new error. Exit 0 means no error is new. Exit 0 under a baseline is a comparison of findings. No theorem covers it, so say so. A finding matches a baseline entry by class, source, target, failing hop, guarantee, requirement, site file and the text of the site's line, with no line number, so an error removed and an equal one added at the same key is matched and not reported. That case is not yet reached: the key holds no position. Say so beside "no error is new".
+- Without a baseline, exit 1 means CGV found at least one error.
+- A warning marks a requirement CGV could not show. It is an unknown path, not a consistent one.
+
+**Record.** When `record` is not `null`, attach it to the report verbatim as a JSON block. State its claim as the record does: strength `proved`, relative to the translated graph built from what the extractor found at that commit, with the trusted base the record lists. The extractor and `Translation.lean` are not proved, and `BehaviorModel.lean` is trusted, not proved. When `record` is `null`, say that CGV wrote no record because an error remains at HEAD, even when the baseline comparison exits 0.
+
+**What exit 0 does not cover.** Name these in every report with a CGV result (`cgv/README.md`, "What exit 0 promises"):
+
+- paths the extractor did not discover;
+- writes outside the project's code, which are not yet reached: writes Django or DRF makes on the project's behalf (the admin, `ModelForm.save()`, a serializer's `save()`), raw SQL and fixtures;
+- data paths that do not end at a model node;
+- the real behaviour of Django and pydantic: the claim is relative to the translated constraints, and for data class, attrs, `NamedTuple` and `TypedDict` fields it holds only for a type-correct program;
+- a warning can rest on the project's callers: exit 0 no longer says such a read is non-None, and the caller rule assumes the project shows every caller;
+- a missing guarantee is a warning, not an error: CGV warns and still exits 0, and `stepwiseSound` is vacuously true for that hop. A record next to warnings does not cover the paths the warnings name.
+
+Never call a CGV result "verified", "safe" or a "pass", and never state a strength the record does not carry.
+
 ### Phase 4: Validate Output
 
 Every result must pass these quality gates before delivery:
@@ -141,6 +181,13 @@ Every result must pass these quality gates before delivery:
 - **Registry consistency** — `/check-regressions` results match the current state of `.crosscheck/specs.json`
 - **Proposal quality** — `/suggest-specs` proposals are grounded in actual code patterns, not generic suggestions
 - **Actionable output** — every proposal has a clear next step (skill to run, test to execute, or judgment to make)
+
+**For CGV output (`cgv_check`):**
+- **Not run is explicit** — a refusal, a missing tool or missing binaries reads "CGV: not run" with the tool's errors, and nothing in the report treats it as a pass
+- **Record verbatim** — a non-null `record` is attached unchanged; a null one is explained
+- **Baseline kept apart** — exit 0 under a baseline is reported as "no new error" with the same-key caveat, not as the record's claim
+- **Strength and trusted base** — the claim is stated as `proved` relative to the translated graph, with the extractor and `Translation.lean` named as not proved, `BehaviorModel.lean` named as trusted, not proved, and the exit-0 qualifiers listed
+- **No "verified"** — the word, and "safe" or "pass", is not applied to a CGV result
 
 **For semi-formal reasoning output:**
 - **Certificate completeness** — all required sections present and filled in
