@@ -798,7 +798,7 @@
   "duplicateSearch": "A tenth subagent listed the titles of all 81 open issues and 98 open pull requests, ran two to six full-text searches for each finding and read every candidate. GitHub search does not cover comments or diffs.",
   "notRun": "The container had no Docker daemon, so Crosscheck’s Dafny and Lean pipelines did not run.",
   "reproduced": 38,
-  "privateReport": "One more finding was reported privately to GitHub’s security team by email, as Spec Kit’s SECURITY.md asks. By 2026-11-11 no reply had come. This study does not describe it."
+  "privateReport": "One more finding was reported privately to GitHub’s security team by email, as Spec Kit’s SECURITY.md asks. This study does not describe it."
  },
  "heldBack": [
   {

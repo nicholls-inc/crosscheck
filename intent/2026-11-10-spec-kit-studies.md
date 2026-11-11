@@ -46,8 +46,8 @@ Readers of the site and anyone holding an old link. `site/`,
 - Harry confirmed on 2026-11-11 that they re-ran every reproduction before
   filing; the macOS output in each report is that run.
 - A security finding from the same session was emailed to GitHub's security
-  team, with no reply by 2026-11-11. The pages say only that it exists and was
-  reported privately, and nothing about its subject.
+  team. The pages say only that it exists and was reported privately, and
+  nothing about its subject or its status.
 - This session could not run Spec Kit's code (the auto-mode classifier refused
   third-party code), so the pages report the recorded outputs and say that the
   website did not rerun them.

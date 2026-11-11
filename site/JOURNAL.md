@@ -6,11 +6,11 @@
 **Touches:** site/studies/spec-kit/, site/studies/spec-kit-expressions/index.html,
 scripts/site-spec-kit.mjs, scripts/check-site.mjs
 **Why:** Harry confirmed re-running every reproduction before filing, and that the
-security finding was emailed to GitHub's security team with no reply.
+security finding was emailed to GitHub's security team.
 
 The pages now state the re-run as Harry's, and the count reads 38 reproduced findings:
 31 in the 28 reports, 6 already covered upstream, and 1 reported privately. The private
-report is named only as existing; nothing about its subject is published. check-site
+report is named only as existing; nothing about its subject or status is published. check-site
 fails if those parts stop adding up to the total. A sentence that gave Harry a pronoun
 now names Harry instead.
 
