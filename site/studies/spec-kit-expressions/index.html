@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec Kit’s workflow expressions</title>
+<meta name="description" content="Spec Kit’s workflow evaluator called itself a safe Jinja2 subset but answered some conditions differently from Jinja2. Three reports, their recorded outputs, and what changed upstream.">
+<!-- publication:head -->
+<link rel="canonical" href="https://crosscheck.harrynicholls.com/studies/spec-kit-expressions/">
+<link rel="icon" href="../../favicon.ico" sizes="32x32">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="alternate" type="application/json" href="../spec-kit/spec-kit-study.json" title="Publication record">
+<meta name="author" content="Harry Nicholls">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Crosscheck">
+<meta property="og:title" content="Spec Kit’s workflow expressions">
+<meta property="og:description" content="Spec Kit’s workflow evaluator called itself a safe Jinja2 subset but answered some conditions differently from Jinja2. Three reports, their recorded outputs, and what changed upstream.">
+<meta property="og:url" content="https://crosscheck.harrynicholls.com/studies/spec-kit-expressions/">
+<meta property="og:image" content="https://crosscheck.harrynicholls.com/cards/spec-kit-expressions.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crosscheck: Spec Kit’s workflow expressions. Comparisons that answered differently from Jinja2.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:creator" content="@harrynicholls">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://crosscheck.harrynicholls.com/#website","url":"https://crosscheck.harrynicholls.com/","name":"Crosscheck"},{"@type":"Person","@id":"https://crosscheck.harrynicholls.com/#author","name":"Harry Nicholls","url":"https://github.com/hnipps","sameAs":["https://x.com/harrynicholls","https://github.com/hnipps"]},{"@type":"TechArticle","headline":"Spec Kit’s workflow expressions","author":{"@id":"https://crosscheck.harrynicholls.com/#author"},"image":"https://crosscheck.harrynicholls.com/cards/spec-kit-expressions.png","isBasedOn":"https://github.com/github/spec-kit/tree/27d14e20c187c1f2916540ea201ecbdc9f8ed588","about":{"@type":"SoftwareApplication","name":"Spec Kit","url":"https://github.com/github/spec-kit"},"@id":"https://crosscheck.harrynicholls.com/studies/spec-kit-expressions/#page","url":"https://crosscheck.harrynicholls.com/studies/spec-kit-expressions/","name":"Spec Kit’s workflow expressions","description":"Spec Kit’s workflow evaluator called itself a safe Jinja2 subset but answered some conditions differently from Jinja2. Three reports, their recorded outputs, and what changed upstream.","inLanguage":"en","isPartOf":{"@id":"https://crosscheck.harrynicholls.com/#website"}}]}</script>
+<!-- /publication:head -->
+<link rel="preload" href="../../fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../../fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../styles.css">
+<script src="../../help.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-proved" viewBox="0 0 16 16"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="1"/><path d="M4.5 8.2l2.4 2.4 4.6-5"/></symbol>
+  <symbol id="i-tested" viewBox="0 0 16 16"><path d="M6 1.75h4M6.75 1.75v4.5L2.6 12.9a1 1 0 0 0 .85 1.35h9.1a1 1 0 0 0 .85-1.35L9.25 6.25v-4.5M4.4 10.25h7.2"/></symbol>
+  <symbol id="i-decided" viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.75"/><path d="M2.5 14.5c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/></symbol>
+  <symbol id="i-assumed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" stroke-dasharray="2.2 2.2"/></symbol>
+  <symbol id="i-unreached" viewBox="0 0 16 16"><path d="M10 1.75H1.75v12.5h12.5V6"/></symbol>
+</svg>
+<div class="page">
+<header class="title-block">
+  <a class="brand-mark" href="../../"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg><span class="brand-name">Crosscheck</span><span class="visually-hidden">: all studies</span></a>
+  <h1 id="title">Spec Kit’s workflow expressions</h1>
+</header>
+<main id="main">
+
+<div class="sections" id="about">
+  <details class="section" id="panel-about">
+    <summary><span class="section-name">About</span><span class="section-first">A closer look at three Spec Kit reports about the evaluator for workflow conditions.</span></summary>
+    <div class="section-more">
+      <p>Spec Kit workflows decide what to run with conditions such as <code>{{ inputs.n &gt; 10 }}</code>. A small evaluator in Spec Kit works out each condition.</p>
+      <p>At the filing commit, the evaluator’s docstring called it “a safe Jinja2 subset”. Reports #5071, #5072 and #5073 show expressions it answered differently from Jinja2, or differently from its own other operators.</p>
+      <p>This page belongs to the <a href="../spec-kit/">Spec Kit study</a>, which lists all 28 reports.</p>
+      <p class="tab-link"><a href="../spec-kit/spec-kit-study.json" download>Download the publication record (JSON)</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-finding">
+    <summary><span class="section-name">Finding</span><span class="section-first">With <code>n = 50</code>, the condition <code>0 &lt;= n &lt;= 10</code> came out true, and the workflow took the wrong branch without an error.</span></summary>
+    <div class="section-more">
+      <p>The evaluator split the expression at one operator and read the rest as a single operand, so it compared 0 with a true-or-false value.</p>
+      <p>Validation accepted the condition, and the run reported success.</p>
+      <p>A grammar has since replaced the parser. The documentation now says comparisons group left to right.</p>
+      <p class="tab-link"><a href="#witnesses">Open the expressions from the reports</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-study">
+    <summary><span class="section-name">Study</span><span class="section-first">The reports’ recorded outputs, compared with what Jinja2 gives, then the upstream changes.</span></summary>
+    <div class="section-more">
+      <p>Each expression here comes from a report’s reproduction, with the output it recorded at Spec Kit commit <code>27d14e2</code>.</p>
+      <p>The study has not run these expressions on Spec Kit’s main branch. An AI agent read main’s source, and that reading is marked Not yet reached.</p>
+      <p class="tab-link"><a href="#reading">Open the reading of main</a></p>
+    </div>
+  </details>
+</div>
+
+<section class="filters" id="questions" aria-label="Filter the evidence">
+  <div class="filter-label">
+    <h2 id="filter-title">Questions</h2>
+    <p class="filter-hint">Each shows a short answer and the evidence for it.</p>
+    <p class="filter-notice" role="status" aria-live="polite"></p>
+  </div>
+  <div class="filter-questions">
+    <ol class="questions">
+      <li><a href="#q-went-wrong" data-question="went-wrong"><span>What went wrong?</span></a></li>
+      <li><a href="#q-know" data-question="know"><span>How do we know?</span></a></li>
+    </ol>
+    <ol class="questions">
+      <li><a href="#q-upstream" data-question="upstream"><span>What changed upstream?</span></a></li>
+      <li><a href="#q-fixed" data-question="fixed"><span>Is it fixed on main?</span></a></li>
+      <li><a href="#q-unchecked" data-question="unchecked"><span>What wasn’t checked?</span></a></li>
+    </ol>
+  </div>
+  <div class="filter-strengths">
+    <h2 id="strength-label">Evidence strength</h2>
+    <ul class="strength-key">
+      <li><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg>Proved</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg>Tested</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg>Decided by Harry</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg>Assumed</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg>Not yet reached</li>
+    </ul>
+    <ul class="strengths" role="group" aria-labelledby="strength-label" hidden>
+      <li><button type="button" data-strength="proved" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><span>Proved</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="tested" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><span>Tested</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="decided" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg><span>Decided by Harry</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="assumed" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg><span>Assumed</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="unreached" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg><span>Not yet reached</span><span class="strength-count" aria-hidden="true"></span></button></li>
+    </ul>
+    <p class="filter-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="answer" id="answer" aria-labelledby="answer-title" hidden>
+  <p class="answer-label" aria-hidden="true">Answer</p>
+  <div><h2 id="answer-title" tabindex="-1"></h2></div>
+  <div>
+    <div class="answer-text"></div>
+    <p class="answer-meta"><span class="answer-count" role="status" aria-live="polite"></span><button type="button" class="show-all">Show everything</button><a class="change-question" href="#questions">Change the question</a></p>
+  </div>
+</section>
+
+<section class="evidence" id="evidence" aria-labelledby="evidence-title">
+<h2 class="evidence-heading" id="evidence-title">Evidence</h2>
+
+<div class="group"><h3 class="group-title">Finding</h3><div>
+<span class="q-anchor" id="q-went-wrong"></span>
+<div class="answer-inline"><p class="answer-inline-q">What went wrong?</p>
+  <div data-answer="went-wrong">
+    <p>Some conditions gave a wrong answer instead of an error. <code>0 &lt;= n &lt;= 10</code> was true for <code>n = 50</code>. <code>1e3</code> was read as a missing variable.</p>
+    <p>Separately, <code>==</code> did not treat the text <code>"10"</code> as the number 10, while <code>&gt;=</code> and <code>&lt;=</code> did.</p>
+    <p>A workflow using such a condition took the wrong branch, and validation did not warn.</p>
+  </div>
+</div>
+<span class="q-anchor" id="q-know"></span>
+<div class="answer-inline"><p class="answer-inline-q">How do we know?</p>
+  <div data-answer="know">
+    <p>Each report has a reproduction script, and the output it gave at commit <code>27d14e2</code>. Two agents ran each script in the session that found it, and Harry re-ran every one before filing.</p>
+    <p>The Jinja2 column is what Jinja2 and Python give for the same expression. Spec Kit’s own docstring named Jinja2 as the model. This website did not run either.</p>
+  </div>
+</div>
+<details class="entry block" id="witnesses" data-q="went-wrong know" data-strength="tested assumed">
+  <summary><h4 class="entry-line"><span class="entry-title">The expressions from the reports</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports #5071, #5072 and #5073 · Tested, Assumed</span></summary>
+  <div class="entry-body">
+<!-- publication:expr-witnesses -->
+<table class="ledger ledger-witness"><caption>Expressions from the reports, at <code>27d14e2</code></caption><thead><tr><th scope="col">Report</th><th scope="col">Expression</th><th scope="col">Spec Kit gave</th><th scope="col">Jinja2 gives</th><th scope="col">Note</th></tr></thead><tbody><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5071" target="_blank" rel="noopener">#5071<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ 0 &lt;= inputs.n &lt;= 10 }}</code><br><span class="evidence-note">n = 50</span></td><td data-label="Spec Kit gave"><code>True</code></td><td data-label="Jinja2 gives"><code>False</code></td><td data-label="Note">Read as 0 &lt;= (inputs.n &lt;= 10). An if step with this condition ran its then branch, and validate_workflow reported no errors.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5071" target="_blank" rel="noopener">#5071<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ 1 &lt; inputs.n &lt; 10 }}</code><br><span class="evidence-note">n = 5</span></td><td data-label="Spec Kit gave"><code>False</code></td><td data-label="Jinja2 gives"><code>True</code></td><td data-label="Note">The same split, the other way round.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5072" target="_blank" rel="noopener">#5072<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ steps.count.output.stdout == 10 }}</code><br><span class="evidence-note">stdout = &quot;10&quot;</span></td><td data-label="Spec Kit gave"><code>False</code></td><td data-label="Jinja2 gives"><code>False</code></td><td data-label="Note">The same value was both &gt;= 10 and &lt;= 10. Jinja2 agrees with == here; the report is about the inconsistency inside Spec Kit.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ 1e3 }}</code></td><td data-label="Spec Kit gave"><code>None</code></td><td data-label="Jinja2 gives"><code>1000.0</code></td><td data-label="Note">The literal was looked up as a variable.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ inputs.name == &#39;it\&#39;s&#39; }}</code><br><span class="evidence-note">name = &quot;it&#39;s&quot;</span></td><td data-label="Spec Kit gave"><code>False</code></td><td data-label="Jinja2 gives"><code>True</code></td><td data-label="Note">An escaped quote was not recognised as part of the string.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ steps.plan.output.matrix[0][1] }}</code><br><span class="evidence-note">matrix = [[&quot;a&quot;, &quot;b&quot;], [&quot;c&quot;, &quot;d&quot;]]</span></td><td data-label="Spec Kit gave"><code>None</code></td><td data-label="Jinja2 gives"><code>&#39;b&#39;</code></td><td data-label="Note">Only one index was accepted per path segment.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Expression"><code>{{ &#39;x&#39;in inputs.a }}</code><br><span class="evidence-note">a = &quot;x&quot;</span></td><td data-label="Spec Kit gave"><code>False</code></td><td data-label="Jinja2 gives"><code>True</code></td><td data-label="Note">Word operators were found only with a space on both sides.</td></tr></tbody></table>
+<p class="evidence-note">The Spec Kit column is the output recorded in each report. The Jinja2 column is what Jinja2 and Python give for the same expression; this page did not run them. The module docstring at the filing commit describes the evaluator as “a safe Jinja2 subset”. <a href="https://github.com/github/spec-kit/blob/27d14e20c187c1f2916540ea201ecbdc9f8ed588/src/specify_cli/workflows/expressions.py#L3" target="_blank" rel="noopener">Read the docstring at the filing commit<span class="visually-hidden"> (opens in a new tab)</span></a></p>
+<!-- /publication:expr-witnesses -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Upstream</h3><div>
+<span class="q-anchor" id="q-upstream"></span>
+<div class="answer-inline"><p class="answer-inline-q">What changed upstream?</p>
+  <div data-answer="upstream">
+    <p>A Lark grammar replaced the hand-written parser on 2 November 2026. The documentation now says comparisons share one level and group left to right.</p>
+    <p>For #5072, the maintainers made <code>==</code> treat numeric text as numbers, as the ordering operators already did.</p>
+    <p>A fix for #5071 is open. The fix proposed for #5073 was closed without merging.</p>
+  </div>
+</div>
+<details class="entry block" id="changes" data-q="upstream fixed">
+  <summary><h4 class="entry-line"><span class="entry-title">Upstream changes</span><span class="entry-icons"></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Spec Kit pull requests</span></summary>
+  <div class="entry-body">
+<!-- publication:expr-upstream -->
+<dl class="contribution"><div><dt>2026-10-26 and 2026-10-28</dt><dd><a href="https://github.com/github/spec-kit/pull/5114" target="_blank" rel="noopener">#5114<span class="visually-hidden"> (opens in a new tab)</span></a> split the evaluator into a package. <a href="https://github.com/github/spec-kit/pull/5130" target="_blank" rel="noopener">#5130<span class="visually-hidden"> (opens in a new tab)</span></a> added tests that pin its existing behaviour, citing <a href="https://github.com/github/spec-kit/issues/5071" target="_blank" rel="noopener">#5071<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a>.</dd></div><div><dt>2026-11-02</dt><dd><a href="https://github.com/github/spec-kit/pull/5171" target="_blank" rel="noopener">#5171<span class="visually-hidden"> (opens in a new tab)</span></a> replaced the hand-written parser with a Lark grammar. The documentation now says all comparisons share one level and group left to right, so a == b &gt; 0 means (a == b) &gt; 0.</dd></div><div><dt>2026-10-23 and 2026-11-09</dt><dd>On <a href="https://github.com/github/spec-kit/issues/5072" target="_blank" rel="noopener">#5072<span class="visually-hidden"> (opens in a new tab)</span></a> a maintainer first wrote that Python semantics, with no coercion of numeric strings, were the intended contract. <a href="https://github.com/github/spec-kit/pull/5310" target="_blank" rel="noopener">#5310<span class="visually-hidden"> (opens in a new tab)</span></a> then made == and != coerce numeric strings, as the ordering operators do, and the maintainer closed the issue.</dd></div><div><dt>2026-11-10</dt><dd><a href="https://github.com/github/spec-kit/pull/5203" target="_blank" rel="noopener">#5203<span class="visually-hidden"> (opens in a new tab)</span></a>, which would evaluate chained comparisons pairwise, is open. <a href="https://github.com/github/spec-kit/pull/5206" target="_blank" rel="noopener">#5206<span class="visually-hidden"> (opens in a new tab)</span></a>, aimed at <a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a>, was closed without merging.</dd></div></dl>
+<!-- /publication:expr-upstream -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Main</h3><div>
+<span class="q-anchor" id="q-fixed"></span>
+<div class="answer-inline"><p class="answer-inline-q">Is it fixed on main?</p>
+  <div data-answer="fixed">
+    <p>Not known. Nobody has run the reproductions on main for this study.</p>
+    <p>A reading of main’s source suggests a mixed picture. Some cases now raise a syntax error, and two now evaluate correctly. <code>0 &lt;= 50 &lt;= 10</code> still looks true.</p>
+    <p>That reading is not evidence until a reproduction runs.</p>
+  </div>
+</div>
+<details class="entry block" id="reading" data-q="fixed unchecked" data-strength="unreached">
+  <summary><h4 class="entry-line"><span class="entry-title">A reading of main</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Source at 1ed587a0 · Not yet reached</span></summary>
+  <div class="entry-body">
+<!-- publication:expr-reading -->
+<table class="ledger ledger-reports"><caption>A reading of main at <code>1ed587a</code>, not yet run</caption><thead><tr><th scope="col">Report</th><th scope="col">Case</th><th scope="col">What the source suggests</th></tr></thead><tbody><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5071" target="_blank" rel="noopener">#5071<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Case"><code>0 &lt;= inputs.n &lt;= 10 with n = 50</code></td><td data-label="What the source suggests">Groups as (0 &lt;= 50) &lt;= 10, which is True &lt;= 10. The coercion helper treats True as a number, so the result still looks true. The documentation now describes left-to-right grouping.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5072" target="_blank" rel="noopener">#5072<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Case"><code>&quot;10&quot; == 10</code></td><td data-label="What the source suggests">Now coerces both sides, so it looks true. That matches Spec Kit’s ordering operators and differs from Jinja2 and Python.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Case"><code>1e3, &#39;it\&#39;s&#39; and matrix[0][1]</code></td><td data-label="What the source suggests">No longer match the grammar’s number, string or path terminals, so they look like syntax errors instead of None.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Case"><code>&#39;x&#39;in inputs.a and inputs.a==&#39;x&#39;and inputs.b</code></td><td data-label="What the source suggests">The operator terminals accept a quote before the word, so these look correctly evaluated.</td></tr><tr><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Case"><code>&quot;1e3&quot; &gt; 100</code></td><td data-label="What the source suggests">The coercion helper still reads “1e3” as text, so the comparison looks silently false.</td></tr></tbody></table>
+<p class="evidence-note">An AI agent read the grammar and operators on main at 1ed587a0 while preparing this page. It did not run them. A reading is not evidence, so every row here is Not yet reached until a reproduction runs on main.</p>
+<!-- /publication:expr-reading -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Limits</h3><div>
+<span class="q-anchor" id="q-unchecked"></span>
+<div class="answer-inline"><p class="answer-inline-q">What wasn’t checked?</p>
+  <div data-answer="unchecked">
+    <p>No reproduction ran on main, and no generated inputs were compared with Jinja2.</p>
+    <p>Spec Kit now documents some departures from Jinja2 on purpose, so Jinja2 alone is no longer a correct reference.</p>
+  </div>
+</div>
+<details class="entry block" id="limits" data-q="unchecked" data-strength="unreached">
+  <summary><h4 class="entry-line"><span class="entry-title">Not yet reached</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Publication record · Not yet reached</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-limits -->
+<table class="ledger"><caption>Not yet reached by this study</caption><thead><tr><th scope="col">Behaviour</th><th scope="col">Blocking property</th><th scope="col">Open question</th></tr></thead><tbody><tr><td data-label="Behaviour">Constraints on strings, paths and the shape of dictionaries, which most of Spec Kit’s defects involve</td><td data-label="Blocking property">CGV checks type, nullability and choice requirements, and has no requirement kind for these constraints.</td><td data-label="Open question">Which requirement kinds would let CGV check string, path and dictionary-shape constraints, and can their checks be proved sound like the existing ones?</td></tr><tr><td data-label="Behaviour">A proof or reference model of any Spec Kit component</td><td data-label="Blocking property">Dafny and Lean run in Docker, and the container that ran the study had no Docker daemon.</td><td data-label="Open question">Is the expression evaluator, the one component with a stated model in Jinja2, specified precisely enough to model in Lean?</td></tr><tr><td data-label="Behaviour">Whether each defect still reproduces on Spec Kit’s main branch</td><td data-label="Blocking property">Running Spec Kit’s code needs an environment approved for third-party code, and the session that built this page had none.</td><td data-label="Open question">Should the replay run in the same sandbox as Crosscheck’s Dafny and Lean containers, so third-party code never runs on the host?</td></tr><tr><td data-label="Behaviour">A differential test of the expression evaluator against Jinja2</td><td data-label="Blocking property">Spec Kit now documents deliberate departures from Jinja2, such as left-to-right comparison grouping and numeric-string equality, so Jinja2 alone is no longer a correct reference.</td><td data-label="Open question">Which Jinja2 behaviours does Spec Kit intend to keep, and can they be written down as a reference model to test against?</td></tr><tr><td data-label="Behaviour">Whether the defects matter to users</td><td data-label="Blocking property">The study has no data on how often the affected commands and inputs are used.</td><td data-label="Open question">How should a finding’s severity be estimated when the project publishes no usage data?</td></tr></tbody></table>
+<!-- /publication:spec-kit-limits -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+
+</section>
+</main>
+<footer class="colophon">
+  <div class="colophon-credit">
+    <p class="colophon-label">The tool behind this study</p>
+    <a class="brand-mark colophon-brand" href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg><span class="brand-name">Crosscheck</span><span class="visually-hidden"> (opens in a new tab)</span></a>
+  </div>
+  <nav class="colophon-group" aria-labelledby="colophon-study">
+    <p class="colophon-label" id="colophon-study">This study</p>
+    <ul><li><a href="./#questions">Questions</a></li><li><a href="../spec-kit/">All 28 reports</a></li><li><a href="../spec-kit/spec-kit-study.json" download>Publication record (JSON)</a></li></ul>
+  </nav>
+  <div class="colophon-group">
+    <p class="colophon-label" id="colophon-elsewhere">Elsewhere</p>
+    <ul aria-labelledby="colophon-elsewhere"><li><a href="https://github.com/github/spec-kit" target="_blank" rel="noopener">Spec Kit on GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/github/spec-kit/issues?q=is%3Aissue+author%3Ahnipps" target="_blank" rel="noopener">The 28 reports<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">Harry Nicholls on X<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls on GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
+  </div>
+</footer>
+<p class="copyright">© 2026 Nicholls Inc</p>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>

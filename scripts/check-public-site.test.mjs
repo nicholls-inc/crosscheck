@@ -11,14 +11,15 @@ let base;
 let mode = 'current';
 before(async () => {
   server = createServer((req, res) => {
-    const path = req.url === '/' ? 'index.html' : req.url.slice(1);
+    const path = (req.url.endsWith('/') ? `${req.url}index.html` : req.url).slice(1);
     try {
       let data = readFileSync(fileURLToPath(new URL(path, site)));
       if (mode === 'old-home' && path === 'index.html') data = Buffer.from('<h1>Old site</h1>');
-      if (mode === 'old-record' && path === 'everest-study.json') data = Buffer.from('{}');
+      if (mode === 'old-kit' && path === 'studies/spec-kit/index.html') data = Buffer.from('<h1>Old Spec Kit page</h1>');
+      if (mode === 'old-record' && path === 'studies/everest-ocpp/everest-study.json') data = Buffer.from('{}');
       if (mode === 'old-font' && path.endsWith('.woff2')) data = Buffer.from('wrong font');
       if (mode === 'old-card' && path === 'cards/study.png') data = Buffer.from('wrong card');
-      if (mode === 'missing-replay' && path === 'index.html') data = Buffer.from(data.toString().replace('id="replay"', 'id="old-replay"'));
+      if (mode === 'missing-replay' && path === 'studies/everest-ocpp/index.html') data = Buffer.from(data.toString().replace('id="replay"', 'id="old-replay"'));
       res.end(data);
     } catch { res.writeHead(404).end(); }
   });
@@ -29,11 +30,11 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 test('current release passes through HTTP routes', async () => {
   mode = 'current';
-  assert.match((await checkPublicSite(base)).join('\n'), /Contribution, decisions, replay/);
+  assert.match((await checkPublicSite(base)).join('\n'), /Study index, contribution, decisions, replay/);
 });
 
 test('old worktree, mismatched record, wrong assets and missing replay fail', async () => {
-  for (const [next, message] of [['old-home', /current case-study entry/], ['old-record', /snapshot differs/], ['old-font', /deployed file differs/], ['old-card', /cards\/study.png: deployed file differs/], ['missing-replay', /missing replay/]]) {
+  for (const [next, message] of [['old-home', /current study index/], ['old-kit', /studies\/spec-kit\/index.html: deployed file differs/], ['old-record', /snapshot differs/], ['old-font', /deployed file differs/], ['old-card', /cards\/study.png: deployed file differs/], ['missing-replay', /missing replay/]]) {
     mode = next;
     await assert.rejects(checkPublicSite(base), message);
   }

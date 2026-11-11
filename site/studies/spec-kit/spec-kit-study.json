@@ -1,0 +1,841 @@
+{
+ "format": "crosscheck-publication-snapshot/1",
+ "title": "Spec Kit: 28 reported defects",
+ "status": "Reported findings and their upstream outcomes as of 2026-11-10. This website did not rerun the reproductions",
+ "repository": "https://github.com/nicholls-inc/crosscheck",
+ "subject": {
+  "name": "Spec Kit",
+  "repository": "https://github.com/github/spec-kit",
+  "version": "1.2.4.dev0"
+ },
+ "filingCommit": "27d14e20c187c1f2916540ea201ecbdc9f8ed588",
+ "mainCommit": "1ed587a018c290ea36c4725d475189d2b3db94fa",
+ "filedOn": "2026-10-23",
+ "checkedOn": "2026-11-10",
+ "author": {
+  "name": "Harry Nicholls",
+  "profile": "https://github.com/hnipps"
+ },
+ "reporter": "hnipps",
+ "environments": [
+  "Linux 6.18 (Ubuntu container), Python 3.12.3",
+  "macOS (Darwin 25.6, arm64), Python 3.14.4"
+ ],
+ "disclosure": "Found and reproduced with Claude Code, run autonomously under human supervision. The human reporter re-ran every reproduction above before filing.",
+ "areas": {
+  "workflows": "Workflows",
+  "extensions": "Extensions",
+  "presets": "Presets",
+  "bundles": "Bundles",
+  "integrations": "Integrations and events",
+  "cli": "Command line and scripts"
+ },
+ "triageLabels": {
+  "triage-must-have": "Verdict: high-value, important work for Spec Kit — do first",
+  "triage-can-wait": "Verdict: valid and in-scope but deprioritized; held behind the evidence gate",
+  "triage-nice-to-have": "Verdict: evidence-backed fix or greenlit feature — land after review"
+ },
+ "issues": [
+  {
+   "number": 5071,
+   "title": "Chained comparisons such as `0 <= x <= 10` in workflow expressions silently return the wrong result",
+   "area": "workflows",
+   "contradicts": "The module docstring calls the evaluator “a safe Jinja2 subset”, and Jinja2 and Python both chain comparisons.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5203,
+     "state": "open",
+     "date": null,
+     "title": "fix(workflows): evaluate chained comparisons pairwise like Python"
+    }
+   ]
+  },
+  {
+   "number": 5072,
+   "title": "`==` and `!=` do not compare numeric strings as numbers, while `<`, `>`, `<=` and `>=` do",
+   "area": "workflows",
+   "contradicts": "The _safe_compare docstring and a test in tests/test_workflows.py say numeric strings compare as numbers.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-11-09",
+   "fixes": [
+    {
+     "number": 5310,
+     "state": "merged",
+     "date": "2026-11-09",
+     "title": "fix(workflows): coerce numeric strings for == and != like ordering ope"
+    }
+   ]
+  },
+  {
+   "number": 5073,
+   "title": "Unsupported expression syntax evaluates to None silently instead of raising",
+   "area": "workflows",
+   "contradicts": "The module docstring calls the evaluator “a safe Jinja2 subset” and lists string and numeric literals as supported.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5206,
+     "state": "closed",
+     "date": null,
+     "title": "fix(workflows): evaluate exponent numbers and chained indexing, reject"
+    }
+   ]
+  },
+  {
+   "number": 5074,
+   "title": "`catalog add` gives the new catalog the same priority as the first existing catalog when priorities are implicit",
+   "area": "workflows",
+   "contradicts": "A code comment says the new priority is the highest existing priority plus one.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5123,
+     "state": "open",
+     "date": null,
+     "title": "fix(workflows): append catalog sources after implicit priorities"
+    }
+   ]
+  },
+  {
+   "number": 5075,
+   "title": "`workflow update` rejects an archive catalog release when its version has leading zeros (for example CalVer `2024.02.01`)",
+   "area": "workflows",
+   "contradicts": "The workflow version format accepts 2024.02.01, and the same catalog entry installs when its URL is a .yml file.",
+   "expectationInferred": false,
+   "triage": "triage-nice-to-have",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-28",
+   "fixes": [
+    {
+     "number": 5155,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix(workflows): accept equivalent version spellings in archive updates"
+    }
+   ]
+  },
+  {
+   "number": 5076,
+   "title": "Workflow commands crash with `rich.errors.MarkupError` when user or catalog text contains square brackets",
+   "area": "workflows",
+   "contradicts": "command_info.py treats every workflow.yml field as untrusted, and workflow search already escapes the same text.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5112,
+     "state": "open",
+     "date": null,
+     "title": "fix(5076): escape Rich markup in workflow output"
+    }
+   ]
+  },
+  {
+   "number": 5077,
+   "title": "`workflow add <url>` installs workflow.yml with mode 0600, while a catalog install uses the project file mode",
+   "area": "workflows",
+   "contradicts": "A test asserts mode 0644 for a catalog install, and the _stage_workflow_file docstring describes the normal project mode.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5150,
+     "state": "open",
+     "date": null,
+     "title": "fix(workflows): give URL-installed workflow.yml project file mode"
+    }
+   ]
+  },
+  {
+   "number": 5078,
+   "title": "`integration switch` leaves the manifest out of date when a preset overrides a core command",
+   "area": "integrations",
+   "contradicts": "The _resync_manifest_after_registration docstring says the manifest is re-hashed after preset registration.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": true,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5145,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix(integrations): refresh manifest hashes after preset registration o"
+    },
+    {
+     "number": 5193,
+     "state": "merged",
+     "date": "2026-10-30",
+     "title": "fix(integrations): refresh manifest hashes after init --force and swit"
+    },
+    {
+     "number": 5274,
+     "state": "merged",
+     "date": "2026-11-05",
+     "title": "fix(integrations): refresh the fallback's manifest hashes on uninstall"
+    }
+   ]
+  },
+  {
+   "number": 5079,
+   "title": "Removing Vibe event hooks deletes user comments that follow a Spec Kit hook block",
+   "area": "integrations",
+   "contradicts": "The _without_managed_hooks docstring says it preserves every other source slice verbatim.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": true,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5109,
+     "state": "merged",
+     "date": "2026-10-27",
+     "title": "fix(vibe): keep user comments that follow a managed hook block"
+    }
+   ]
+  },
+  {
+   "number": 5080,
+   "title": "A hook with a list-valued `command` passes manifest validation, then crashes `extension add` and leaves files behind",
+   "area": "extensions",
+   "contradicts": "EXTENSION-API-REFERENCE.md documents command as a string, and the manifest promises a ValidationError for a bad manifest.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": true,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5146,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix(extensions): reject hook commands that are not strings"
+    }
+   ]
+  },
+  {
+   "number": 5081,
+   "title": "Extension alias conflict check misses spellings that map to the same file, so one extension overwrites and then deletes another's alias",
+   "area": "extensions",
+   "contradicts": "The _validate_install_conflicts docstring says installs that would shadow installed extension commands are rejected.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5134,
+     "state": "open",
+     "date": null,
+     "title": "fix(extensions): reject aliases that resolve to installed skill names"
+    }
+   ]
+  },
+  {
+   "number": 5082,
+   "title": "`specify extension update` crashes with KeyError when a catalog entry has no `version`, and stops checking the other extensions",
+   "area": "extensions",
+   "contradicts": "The same function skips an invalid catalog version with a warning, and catalog loading tolerates one malformed entry.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-11-02",
+   "fixes": [
+    {
+     "number": 5108,
+     "state": "merged",
+     "date": "2026-11-02",
+     "title": "fix(extensions): skip catalog entries without a version on update"
+    }
+   ]
+  },
+  {
+   "number": 5083,
+   "title": "Local config override file name differs between the docs (`<id>-config.local.yml`) and ConfigManager (`local-config.yml`)",
+   "area": "extensions",
+   "contradicts": "EXTENSION-USER-GUIDE.md names the override file <id>-config.local.yml.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5159,
+     "state": "open",
+     "date": null,
+     "title": "docs(extensions): name the runtime local override file"
+    }
+   ]
+  },
+  {
+   "number": 5084,
+   "title": "Top-level `defaults:` in extension.yml, as documented and used in the extension template, is ignored by ConfigManager",
+   "area": "extensions",
+   "contradicts": "EXTENSION-API-REFERENCE.md and the extension template put defaults under a top-level defaults key.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-28",
+   "fixes": [
+    {
+     "number": 5164,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix(extensions): load top-level defaults from extension.yml"
+    }
+   ]
+  },
+  {
+   "number": 5085,
+   "title": "`preset add` crashes with AttributeError when a composing command's frontmatter is not a YAML mapping",
+   "area": "presets",
+   "contradicts": "CommandRegistrar.parse_frontmatter treats the same non-mapping frontmatter as empty.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-28",
+   "fixes": [
+    {
+     "number": 5125,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix(presets): treat non-mapping command frontmatter as empty"
+    }
+   ]
+  },
+  {
+   "number": 5086,
+   "title": "`resolve_with_source` reports a core template whose name starts with \"overrides\" as a project override",
+   "area": "presets",
+   "contradicts": "collect_all_layers reports the same file as a core template.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-26",
+   "fixes": [
+    {
+     "number": 5129,
+     "state": "merged",
+     "date": "2026-10-26",
+     "title": "fix(presets): attribute core templates with overrides-prefixed names c"
+    }
+   ]
+  },
+  {
+   "number": 5087,
+   "title": "`specify preset set-priority` does not update agent command files that are already written",
+   "area": "presets",
+   "contradicts": "docs/reference/presets.md says the preset with the lowest priority number wins.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5113,
+     "state": "open",
+     "date": null,
+     "title": "fix(presets): reconcile command files after priority changes"
+    }
+   ]
+  },
+  {
+   "number": 5088,
+   "title": "`bundle build` reports success but omits a symlinked `bundle.yml`/`README.md`, producing an artifact that cannot be installed",
+   "area": "bundles",
+   "contradicts": "The build validates bundle.yml and README.md, then leaves them out of the artifact it reports as built.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-29",
+   "fixes": [
+    {
+     "number": 5169,
+     "state": "merged",
+     "date": "2026-10-29",
+     "title": "fix(bundles): refuse to build when bundle.yml or README.md is a symlin"
+    }
+   ]
+  },
+  {
+   "number": 5089,
+   "title": "`bundle init <bundle>` initialises with the default integration instead of the bundle's, then aborts with a clash",
+   "area": "bundles",
+   "contradicts": "bundle install initialises with the bundle’s declared integration.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "open",
+   "closed": null,
+   "fixes": [
+    {
+     "number": 5111,
+     "state": "open",
+     "date": null,
+     "title": "fix(bundles): honor bundle integration during init"
+    }
+   ]
+  },
+  {
+   "number": 5090,
+   "title": "`bundle install` rejects a local artifact with an upper-case `.ZIP` extension",
+   "area": "bundles",
+   "contradicts": "docs/reference/bundles.md accepts a local .zip artifact, and the download path compares the extension case-insensitively.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-26",
+   "fixes": [
+    {
+     "number": 5106,
+     "state": "merged",
+     "date": "2026-10-26",
+     "title": "Fix local bundle installation for uppercase .ZIP artifacts"
+    }
+   ]
+  },
+  {
+   "number": 5091,
+   "title": "`integration:` mapping without an `id` makes a bundle silently integration-agnostic",
+   "area": "bundles",
+   "contradicts": "A comment in manifest.py guards against a declared integration being dropped silently.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-28",
+   "fixes": [
+    {
+     "number": 5161,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix(bundles): reject integration mappings without an id"
+    }
+   ]
+  },
+  {
+   "number": 5092,
+   "title": "integration-events.yml entry without an `events` key silently removes all event hooks",
+   "area": "integrations",
+   "contradicts": "A code comment says only an explicitly present events field replaces the prior layers.",
+   "expectationInferred": false,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-26",
+   "fixes": [
+    {
+     "number": 5102,
+     "state": "merged",
+     "date": "2026-10-26",
+     "title": "fix: retain event hooks when override omits events"
+    }
+   ]
+  },
+  {
+   "number": 5093,
+   "title": "Malformed `events` in an unregistered extension directory makes `specify integration upgrade` fail",
+   "area": "integrations",
+   "contradicts": "validate_events rejects the same matcher and timeout values.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-28",
+   "fixes": [
+    {
+     "number": 5133,
+     "state": "merged",
+     "date": "2026-10-28",
+     "title": "fix: validate collected extension events"
+    }
+   ]
+  },
+  {
+   "number": 5094,
+   "title": "`specify extension add --dev` shows a traceback when `.extensionignore` is a directory",
+   "area": "extensions",
+   "contradicts": "The _install_ignore.py docstring says an invalid ignore file raises a validation error before copying.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-26",
+   "fixes": [
+    {
+     "number": 5131,
+     "state": "merged",
+     "date": "2026-10-26",
+     "title": "fix: report a non-file .extensionignore or .presetignore as a validati"
+    }
+   ]
+  },
+  {
+   "number": 5095,
+   "title": "`specify self upgrade` reports \"unsupported\" for uv tool installs under XDG_DATA_HOME (and likely for current pipx installs)",
+   "area": "cli",
+   "contradicts": "docs/upgrade.md says self upgrade detects uv tool and pipx installs.",
+   "expectationInferred": false,
+   "triage": "triage-nice-to-have",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-11-03",
+   "fixes": [
+    {
+     "number": 5103,
+     "state": "merged",
+     "date": "2026-11-03",
+     "title": "fix: detect relocated uv and pipx tool installations"
+    }
+   ]
+  },
+  {
+   "number": 5096,
+   "title": "`create-new-feature.sh` rejects the feature descriptions `-n`, `-e` and `-E`, which the Python script accepts",
+   "area": "cli",
+   "contradicts": "The Python version of the script accepts the same descriptions, and a comment in the bash script says it uses printf for this reason.",
+   "expectationInferred": false,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-11-06",
+   "fixes": [
+    {
+     "number": 5124,
+     "state": "open",
+     "date": null,
+     "title": "fix(git): preserve option-like branch descriptions"
+    },
+    {
+     "number": 5245,
+     "state": "merged",
+     "date": "2026-11-10",
+     "title": "fix(scripts): treat option-like feature descriptions as text in create"
+    },
+    {
+     "number": 5247,
+     "state": "merged",
+     "date": "2026-11-06",
+     "title": "fix: use printf instead of echo for feature description to avoid -n/-e"
+    }
+   ]
+  },
+  {
+   "number": 5097,
+   "title": "Cline extension and preset commands have `speckit.*.md` file names rewritten to `speckit-*-md`",
+   "area": "integrations",
+   "contradicts": "Inferred from the file naming in extensions/git; no document states it.",
+   "expectationInferred": true,
+   "triage": "triage-can-wait",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-11-02",
+   "fixes": [
+    {
+     "number": 5168,
+     "state": "merged",
+     "date": "2026-11-02",
+     "title": "fix(cline): keep .md extension on speckit.* file names in command bodi"
+    }
+   ]
+  },
+  {
+   "number": 5098,
+   "title": "Re-running `specify init --here --force` resets `feature_numbering` in init-options.json to \"sequential\"",
+   "area": "cli",
+   "contradicts": "Inferred from the option merge in command_init.py and the documentation of the setting; no document states it.",
+   "expectationInferred": true,
+   "triage": "triage-must-have",
+   "automatedInvalid": false,
+   "state": "closed",
+   "closed": "2026-10-26",
+   "fixes": [
+    {
+     "number": 5101,
+     "state": "merged",
+     "date": "2026-10-26",
+     "title": "fix: preserve feature numbering during reinitialization"
+    }
+   ]
+  }
+ ],
+ "automatedInvalidNote": "Spec Kit’s automated bug-assessment workflow added the invalid label to #5078, #5079 and #5080 on 2026-10-29, after fixes for all three had merged on 2026-10-27 and 2026-10-28. Its comment on #5078 says the label means “not currently reproducible/actionable on current codebase”, not “that the original report lacked merit”. Its comment on #5079 says it could not run the reproduction and read the code and tests instead.",
+ "expressions": {
+  "issues": [
+   5071,
+   5072,
+   5073
+  ],
+  "contract": "The module docstring at the filing commit describes the evaluator as “a safe Jinja2 subset”.",
+  "witnesses": [
+   {
+    "issue": 5071,
+    "expression": "{{ 0 <= inputs.n <= 10 }}",
+    "context": "n = 50",
+    "specKit": "True",
+    "jinja2": "False",
+    "note": "Read as 0 <= (inputs.n <= 10). An if step with this condition ran its then branch, and validate_workflow reported no errors."
+   },
+   {
+    "issue": 5071,
+    "expression": "{{ 1 < inputs.n < 10 }}",
+    "context": "n = 5",
+    "specKit": "False",
+    "jinja2": "True",
+    "note": "The same split, the other way round."
+   },
+   {
+    "issue": 5072,
+    "expression": "{{ steps.count.output.stdout == 10 }}",
+    "context": "stdout = \"10\"",
+    "specKit": "False",
+    "jinja2": "False",
+    "note": "The same value was both >= 10 and <= 10. Jinja2 agrees with == here; the report is about the inconsistency inside Spec Kit."
+   },
+   {
+    "issue": 5073,
+    "expression": "{{ 1e3 }}",
+    "context": "",
+    "specKit": "None",
+    "jinja2": "1000.0",
+    "note": "The literal was looked up as a variable."
+   },
+   {
+    "issue": 5073,
+    "expression": "{{ inputs.name == 'it\\'s' }}",
+    "context": "name = \"it's\"",
+    "specKit": "False",
+    "jinja2": "True",
+    "note": "An escaped quote was not recognised as part of the string."
+   },
+   {
+    "issue": 5073,
+    "expression": "{{ steps.plan.output.matrix[0][1] }}",
+    "context": "matrix = [[\"a\", \"b\"], [\"c\", \"d\"]]",
+    "specKit": "None",
+    "jinja2": "'b'",
+    "note": "Only one index was accepted per path segment."
+   },
+   {
+    "issue": 5073,
+    "expression": "{{ 'x'in inputs.a }}",
+    "context": "a = \"x\"",
+    "specKit": "False",
+    "jinja2": "True",
+    "note": "Word operators were found only with a space on both sides."
+   }
+  ],
+  "upstream": [
+   {
+    "change": "#5114 split the evaluator into a package. #5130 added tests that pin its existing behaviour, citing #5071 and #5073.",
+    "date": "2026-10-26 and 2026-10-28"
+   },
+   {
+    "change": "#5171 replaced the hand-written parser with a Lark grammar. The documentation now says all comparisons share one level and group left to right, so a == b > 0 means (a == b) > 0.",
+    "date": "2026-11-02"
+   },
+   {
+    "change": "On #5072 a maintainer first wrote that Python semantics, with no coercion of numeric strings, were the intended contract. #5310 then made == and != coerce numeric strings, as the ordering operators do, and the maintainer closed the issue.",
+    "date": "2026-10-23 and 2026-11-09"
+   },
+   {
+    "change": "#5203, which would evaluate chained comparisons pairwise, is open. #5206, aimed at #5073, was closed without merging.",
+    "date": "2026-11-10"
+   }
+  ],
+  "reading": [
+   {
+    "issue": 5071,
+    "case": "0 <= inputs.n <= 10 with n = 50",
+    "reading": "Groups as (0 <= 50) <= 10, which is True <= 10. The coercion helper treats True as a number, so the result still looks true. The documentation now describes left-to-right grouping."
+   },
+   {
+    "issue": 5072,
+    "case": "\"10\" == 10",
+    "reading": "Now coerces both sides, so it looks true. That matches Spec Kit’s ordering operators and differs from Jinja2 and Python."
+   },
+   {
+    "issue": 5073,
+    "case": "1e3, 'it\\'s' and matrix[0][1]",
+    "reading": "No longer match the grammar’s number, string or path terminals, so they look like syntax errors instead of None."
+   },
+   {
+    "issue": 5073,
+    "case": "'x'in inputs.a and inputs.a=='x'and inputs.b",
+    "reading": "The operator terminals accept a quote before the word, so these look correctly evaluated."
+   },
+   {
+    "issue": 5073,
+    "case": "\"1e3\" > 100",
+    "reading": "The coercion helper still reads \"1e3\" as text, so the comparison looks silently false."
+   }
+  ],
+  "readingNote": "An AI agent read the grammar and operators on main at 1ed587a0 while preparing this page. It did not run them. A reading is not evidence, so every row here is Not yet reached until a reproduction runs on main."
+ },
+ "notYetReached": [
+  {
+   "behavior": "Constraints on strings, paths and the shape of dictionaries, which most of Spec Kit’s defects involve",
+   "blocker": "CGV checks type, nullability and choice requirements, and has no requirement kind for these constraints.",
+   "question": "Which requirement kinds would let CGV check string, path and dictionary-shape constraints, and can their checks be proved sound like the existing ones?"
+  },
+  {
+   "behavior": "A proof or reference model of any Spec Kit component",
+   "blocker": "Dafny and Lean run in Docker, and the container that ran the study had no Docker daemon.",
+   "question": "Is the expression evaluator, the one component with a stated model in Jinja2, specified precisely enough to model in Lean?"
+  },
+  {
+   "behavior": "Whether each defect still reproduces on Spec Kit’s main branch",
+   "blocker": "Running Spec Kit’s code needs an environment approved for third-party code, and the session that built this page had none.",
+   "question": "Should the replay run in the same sandbox as Crosscheck’s Dafny and Lean containers, so third-party code never runs on the host?"
+  },
+  {
+   "behavior": "A differential test of the expression evaluator against Jinja2",
+   "blocker": "Spec Kit now documents deliberate departures from Jinja2, such as left-to-right comparison grouping and numeric-string equality, so Jinja2 alone is no longer a correct reference.",
+   "question": "Which Jinja2 behaviours does Spec Kit intend to keep, and can they be written down as a reference model to test against?"
+  },
+  {
+   "behavior": "Whether the defects matter to users",
+   "blocker": "The study has no data on how often the affected commands and inputs are used.",
+   "question": "How should a finding’s severity be estimated when the project publishes no usage data?"
+  }
+ ],
+ "contribution": {
+  "agents": "Claude Code ran CGV, split Spec Kit’s source into eight slices with one subagent each, and had a ninth triage CGV’s errors and a tenth search for existing reports. The agents found the defects, wrote and ran the reproductions, and drafted the reports.",
+  "human": "Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, and asked for the drafts and for the search for existing reports. Harry re-ran every reproduction before filing, which gave the macOS output in each report, filed the 28 reports, and emailed the security report.",
+  "checks": "Each reproduction is a script with recorded output at the filing commit. The maintainers’ triage and the merged fixes are their own decisions and are reported here, not counted as Crosscheck’s evidence."
+ },
+ "method": {
+  "session": "A Claude Code session on 2026-10-22, from 23:29 to 23:59 UTC, against Spec Kit at the filing commit. The transcript is not public.",
+  "requests": [
+   "Now clone https://github.com/github/spec-kit and run CGV and Crosscheck on it. Orchestrate parallel subagents.",
+   "Draft them in a file",
+   "Also check if our findings match any open issues."
+  ],
+  "cgv": [
+   {
+    "scope": "src/",
+    "functions": 1851,
+    "edges": 17361,
+    "exit": 1,
+    "errors": 39,
+    "unverified": 993
+   },
+   {
+    "scope": "scripts/python/",
+    "functions": 61,
+    "edges": 392,
+    "exit": 0,
+    "errors": 0,
+    "unverified": 17
+   },
+   {
+    "scope": "tests/",
+    "functions": 7568,
+    "edges": 22713,
+    "exit": 0,
+    "errors": 0,
+    "unverified": 1248
+   }
+  ],
+  "cgvTriage": {
+   "errors": 39,
+   "sites": 37,
+   "real": 0,
+   "annotationOnly": 11,
+   "falsePositive": 26,
+   "extractorDefect": 4
+  },
+  "cgvNote": "All 39 errors are nullability errors, most where a workflow step passes a value that may be None to the expression evaluator. A triage agent sorted the 37 distinct sites: 0 real bugs, 11 where only the type annotation is wrong, and 26 false positives where CGV missed a check that rules out None. Four of the false positives come from a defect in CGV’s extractor, which binds a function-local import to the wrong function. CGV found none of the 28 reported defects. The triage verdicts are an AI agent’s judgement, so they are not evidence that any site is safe; only the counts come from CGV itself.",
+  "slices": [
+   "Workflows core",
+   "Workflow commands and steps",
+   "Integrations",
+   "Extensions",
+   "Presets",
+   "Bundles and artifacts",
+   "Security, events and authentication",
+   "Top-level modules and scripts"
+  ],
+  "rule": "A finding counted only when a reproduction script’s actual output showed the wrong behaviour. A finding argued from reading the code alone was dropped or marked unconfirmed.",
+  "reasonNote": "Each subagent followed the certificate steps of Crosscheck’s /reason skill: premises with file and line, traces, and checks of alternative explanations. Those certificates are an AI agent’s reasoning, so they are not evidence; only the reproductions count.",
+  "rerun": "The main agent re-ran every reproduction script from the eight subagents. When drafting, each subagent made its reproduction self-contained and ran it again as written, and the main agent then ran all of them once more.",
+  "filedFindings": 31,
+  "mergedNote": "Four findings about unsupported expression syntax became one report, #5073, so 31 findings became 28 reports.",
+  "duplicateSearch": "A tenth subagent listed the titles of all 81 open issues and 98 open pull requests, ran two to six full-text searches for each finding and read every candidate. GitHub search does not cover comments or diffs.",
+  "notRun": "The container had no Docker daemon, so Crosscheck’s Dafny and Lean pipelines did not run.",
+  "reproduced": 38,
+  "privateReport": "One more finding was reported privately to GitHub’s security team by email, as Spec Kit’s SECURITY.md asks. This study does not describe it."
+ },
+ "heldBack": [
+  {
+   "title": "Command step options, and workflow-level options, are recorded but never passed to the integration",
+   "existing": 4916,
+   "kind": "issue",
+   "note": "Already reported as an open issue."
+  },
+  {
+   "title": "integration scaffold accepts keys such as base that shadow core modules and break imports",
+   "existing": 4540,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  },
+  {
+   "title": "A preset id with a trailing newline passes validation, installs, and is then ignored by the resolver",
+   "existing": 4745,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  },
+  {
+   "title": "bundle install leaves components installed and unowned when writing the bundle record fails",
+   "existing": 4470,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  },
+  {
+   "title": "The generated .specify/events.py dispatcher prints a traceback on non-UTF-8 input",
+   "existing": 3903,
+   "kind": "pull",
+   "note": "An open pull request fixes it, judged from its commit messages, not its diff."
+  },
+  {
+   "title": "A corrupt step-registry.json is replaced on the next step add, dropping every other installed step",
+   "existing": 3922,
+   "kind": "pull",
+   "note": "An open pull request fixes it."
+  }
+ ]
+}

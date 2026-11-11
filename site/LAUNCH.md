@@ -81,14 +81,15 @@ publication snapshot and the deployed CSS, script and fonts. It fails if the
 URL serves the old worktree or a different release. Run it over HTTPS for the
 public launch; HTTP is supported only for local origin testing.
 
-Open the home page, `/everest.html#contribution`, `/everest.html#witness` and
-`/everest.html#replay` on desktop and phone. Download the record and follow its
+Open the home page, `/studies/everest-ocpp/`, `/studies/spec-kit/`,
+`/studies/spec-kit-expressions/`, and the old links `/everest.html#witness` and
+`/#replay` (both should land on the EVerest study) on desktop and phone. Download the record and follow its
 pinned links. Record the checked release commit and public URL in your local
 launch notes. A local preview or a prepared config is not a completed launch.
 
 ## Search, link previews and AI crawlers
 
-The site allows every crawler in `robots.txt` and lists its two pages in
+The site allows every crawler in `robots.txt` and lists its pages in
 `sitemap.xml`. `llms.txt` gives agents a plain-text summary with links to the
 pages, the JSON record and the pinned sources. Each page carries Open Graph and
 X card tags with a 1200 by 630 preview image, and schema.org JSON-LD.
@@ -110,8 +111,9 @@ the card.
 
 ## Connect the publications
 
-Once the public check passes, use the stable `/everest.html` URL in applications
-and outreach. The shorter `#contribution` link is useful for a hiring reader;
+Once the public check passes, use `/studies/everest-ocpp/` and
+`/studies/spec-kit/` in applications and outreach. Old `/everest.html` links
+still forward. The `#contribution` link is useful for a hiring reader;
 `#witness` opens the concrete finding and `#replay` opens the reproduction path.
 An optional update to the published essay can link to the study. Draft language
 is in `docs/publication/crosscheck-story.md`; it is not sent or published by

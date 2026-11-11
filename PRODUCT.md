@@ -2,7 +2,10 @@
 
 ## Platform and readers
 
-A static public website about one thing: the EVerest OCPP 1.6 case study.
+A static public website of Crosscheck studies. The root is a short landing
+page with a study index; each study lives under `/studies/<slug>/`. The first
+study is the EVerest OCPP 1.6 case study; the second and third cover 28 defects
+reported in GitHub's Spec Kit (see `intent/2026-11-10-spec-kit-studies.md`).
 The first reader is a curious engineer arriving from the "Review Evidence, Not
 Code" essay or a shared link, who wants to know what was found, whether it is
 real and how sure the study is. Hiring engineers and reviewers who want to
@@ -22,7 +25,8 @@ text-heavy and chose to rebuild the site around the case study alone, borrowing
 two ideas from balfrontower.org: expandable index tabs at the top, and plain
 questions that filter the evidence. A second filter sorts evidence by strength.
 The confirmed brief is `intent/2026-10-28-everest-site-brief.md`. The study is
-`site/index.html`; `site/everest.html` only forwards old links.
+`site/studies/everest-ocpp/index.html`; `site/everest.html`, `site/glossary.html`
+and old fragment links on the root forward to it.
 
 ## Career and publication purpose
 

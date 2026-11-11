@@ -206,6 +206,14 @@ a:hover { color: var(--link-hover); text-decoration-color: currentColor; }
 .evidence .ledger th:nth-child(1) { width: 34%; }
 .evidence .ledger th:nth-child(2) { width: 22%; }
 .evidence .ledger th:nth-child(3) { width: 10%; }
+/* Spec Kit's report tables: a short report number, then three columns of prose read from the top */
+.evidence .ledger-reports th:nth-child(1) { width: 9%; }
+.evidence .ledger-reports th:nth-child(2) { width: 30%; }
+.evidence .ledger-reports th:nth-child(3) { width: 33%; }
+.evidence .ledger-witness th:nth-child(1) { width: 9%; }
+.evidence .ledger-witness th:nth-child(2) { width: 31%; }
+.evidence .ledger-witness th:nth-child(3), .evidence .ledger-witness th:nth-child(4) { width: 12%; }
+.ledger-reports td, .ledger-witness td { vertical-align: top; }
 .ledger td.strength {
   font-family: var(--sans);
   font-size: var(--label-size);
@@ -415,6 +423,9 @@ pre code { font-size: inherit; }
 
 .study-list { list-style: disc; padding-left: 22px; max-width: 65ch; font-size: 17.5px; line-height: 25px; }
 .study-list li + li { margin-top: 12px; }
+/* Lists and notes inside an entry keep the paragraph rhythm */
+.entry-body .study-prose + .study-list, .entry-body .study-list + .study-prose, .entry-body .study-list + .evidence-note, .entry-body .evidence-note + .study-prose, .entry-body .study-prose + .study-prose { margin-top: 12px; }
+.entry-body .ledger + .ledger { margin-top: 28px; }
 .revision { overflow-wrap: anywhere; }
 
 #limits .ledger { margin-top: 24px; }
@@ -777,6 +788,19 @@ pre code { font-size: inherit; }
 .colophon-credit { padding-left: 4px; }
 .colophon-group ul { display: grid; row-gap: 8px; }
 .copyright { margin-top: 48px; text-align: center; font: var(--label-size)/22px var(--sans); letter-spacing: var(--label-track); color: var(--muted); }
+
+/* The landing page: the same label column as the evidence groups, holding the study index,
+   the tool and how to install it */
+.landing { margin-top: 40px; }
+.landing .group { padding: 18px 0 30px; }
+.landing .group-title { font: 500 var(--label-size)/22px var(--sans); letter-spacing: var(--label-track); }
+.landing .study-prose + .study-prose, .landing .study-prose + .commands, .landing .commands + .study-prose { margin-top: 14px; }
+.study-index { list-style: none; padding: 0; max-width: 65ch; }
+.study-index li { padding: 2px 0 20px; }
+.study-index li + li { padding-top: 18px; border-top: 1px solid var(--rule); }
+.study-index-title { font-size: 22px; line-height: 29px; font-weight: 450; letter-spacing: -0.01em; text-underline-offset: 5px; text-decoration-thickness: 1px; }
+.study-index-kind { margin-top: 2px; font: 400 var(--label-size)/22px var(--sans); letter-spacing: var(--label-track); color: var(--muted); }
+.study-index p + p { margin-top: 8px; font-size: 17.5px; line-height: 25px; }
 
 @media (max-width: 1100px) {
   .filters { grid-template-columns: var(--aside) minmax(0, 1fr); row-gap: 26px; }

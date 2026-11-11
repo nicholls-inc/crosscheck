@@ -1,9 +1,21 @@
 # Crosscheck website
 
-A static website about one study: EVerest's OCPP 1.6 charging schedules,
-checked with Crosscheck. It is the worked example for the published
-[Review Evidence, Not Code](https://brainflow.substack.com/p/review-evidence-not-code)
-essay. `index.html` is the study; `everest.html` forwards old links to it.
+A static website of studies checked with Crosscheck. `index.html` is the
+landing page: a study index, a short account of the tool and the install
+commands. Each study lives in `studies/<slug>/`:
+
+- `studies/everest-ocpp/`: EVerest's OCPP 1.6 charging schedules, the worked
+  example for the published
+  [Review Evidence, Not Code](https://brainflow.substack.com/p/review-evidence-not-code)
+  essay, with its glossary and `everest-study.json`.
+- `studies/spec-kit/`: 28 defects reported in GitHub's Spec Kit, rendered from
+  `spec-kit-study.json`.
+- `studies/spec-kit-expressions/`: three of those reports on the workflow
+  expression evaluator, from the same record.
+
+`everest.html` and `glossary.html` at the root, and old fragment links on the
+root (`/#witness`), forward to the EVerest study. Shared assets (`styles.css`,
+`help.js`, `fonts/`, icons and `cards/`) stay at the root.
 
 Serve this directory with any static server, for example from the repository root:
 
@@ -19,8 +31,8 @@ font service, package installation or client-side framework is required.
 
 ## Updating the publication
 
-`everest-study.json` is the editorial publication snapshot and downloadable
-record. It is deliberately not the verifier's `evidence-record/1` format. It
+`studies/everest-ocpp/everest-study.json` is the EVerest editorial publication
+snapshot and downloadable record. It is deliberately not the verifier's `evidence-record/1` format. It
 summarizes historical evidence; generating the website does not rerun any proof
 or experiment. The article discloses the pinned report's legacy classification
 note alongside its newer warning rule.
@@ -42,12 +54,22 @@ study, when that commit is available in the local Git object store:
 node scripts/check-site.mjs --verify-sources
 ```
 
+`studies/spec-kit/spec-kit-study.json` is the Spec Kit record. Its fragments
+render through `scripts/site-spec-kit.mjs`. The answers on the Spec Kit page
+and the landing page repeat some of its counts in prose; `check-site.mjs`
+fails if one no longer matches the record, so update the prose with the
+record. The record reports upstream states as of its `checkedOn` date; to
+refresh them, read each issue and fix pull request again and update the
+record.
+
 The build also writes each page's head metadata (canonical URL, preview tags,
 icons and JSON-LD), `robots.txt`, `sitemap.xml` and `llms.txt` from the record,
 the page titles and descriptions, and the glossary. The icons and preview cards
 in `cards/` are drawn by `node scripts/render-site-images.mjs`, which needs
-ImageMagick and Google Chrome; rerun it after changing the mark, the study
-title or the palette.
+ImageMagick and Google Chrome; rerun it after changing the mark, a study
+title or the palette. `--cards-only` redraws only the cards. In a Linux
+container where Chrome's screenshot mode does not finish, `PLAYWRIGHT=1`
+draws the cards with an installed Playwright instead.
 
 The checks fail on stale generated fragments, broken local links, mismatched
 study revisions, inconsistent counters, missing assets or divergent glossary

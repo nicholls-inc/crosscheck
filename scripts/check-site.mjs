@@ -1,12 +1,21 @@
 // Publication and navigation checks; no dependencies or network access.
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { specKitCounts } from './site-spec-kit.mjs';
 import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const site = resolve(root, 'site');
-const record = JSON.parse(readFileSync(resolve(site, 'everest-study.json'), 'utf8'));
+const everestDir = resolve(site, 'studies/everest-ocpp');
+const record = JSON.parse(readFileSync(resolve(everestDir, 'everest-study.json'), 'utf8'));
+const specKit = JSON.parse(readFileSync(resolve(site, 'studies/spec-kit/spec-kit-study.json'), 'utf8'));
+// Every page and generated file in the release, by its path inside site/. Maintenance notes are not published.
+const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(resolve(dir, e.name)) : [relative(site, resolve(dir, e.name))]);
+const published = walk(site).filter((name) => !/(^|\/)(README|JOURNAL|LAUNCH)\.md$/.test(name));
+const htmlPages = published.filter((name) => name.endsWith('.html'));
+// A link to a directory serves its index.html.
+const fileFor = (path) => (path.endsWith('/') || existsSync(path) && statSync(path).isDirectory() ? resolve(path, 'index.html') : path);
 const problems = [];
 const requireThat = (condition, message) => { if (!condition) problems.push(message); };
 const definitions = (html) => new Map([...html.matchAll(/<(?:p|dd) id="(def-[a-z-]+)">([\s\S]*?)<\/(?:p|dd)>/g)].map((m) => [m[1], m[2].trim()]));
@@ -27,9 +36,37 @@ for (const c of Object.values(record.counters)) {
   requireThat(c.modelHasLimit + c.extraLimit + c.neither === c.instants, 'all instant counters must balance');
 }
 
-const glossary = definitions(readFileSync(resolve(site, 'glossary.html'), 'utf8'));
+// The Spec Kit record: pinned commits, one entry per report, and the counts the hand-written answers repeat.
+requireThat(specKit.format === 'crosscheck-publication-snapshot/1', 'Spec Kit record must be an editorial publication snapshot');
+for (const key of ['filingCommit', 'mainCommit']) requireThat(/^[a-f0-9]{40}$/.test(specKit[key]), `Spec Kit ${key} must be a full immutable commit`);
+const numbers = specKit.issues.map((i) => i.number);
+requireThat(new Set(numbers).size === numbers.length, 'Spec Kit record: duplicate report numbers');
+for (const i of specKit.issues) {
+  requireThat(Object.hasOwn(specKit.areas, i.area), `#${i.number}: unknown area ${i.area}`);
+  requireThat(Object.hasOwn(specKit.triageLabels, i.triage), `#${i.number}: unknown triage label ${i.triage}`);
+  requireThat(['open', 'closed'].includes(i.state) && (i.state === 'closed') === Boolean(i.closed), `#${i.number}: state and closing date disagree`);
+  for (const f of i.fixes) requireThat(['merged', 'open', 'closed'].includes(f.state) && (f.state === 'merged') === Boolean(f.date), `#${i.number}: fix #${f.number} state and merge date disagree`);
+}
+requireThat(specKit.method.filedFindings + specKit.heldBack.length + 1 === specKit.method.reproduced, 'reproduced findings must equal filed, held back and the one private report');
+requireThat(specKit.method.cgvTriage.real + specKit.method.cgvTriage.annotationOnly + specKit.method.cgvTriage.falsePositive === specKit.method.cgvTriage.sites, 'CGV triage verdicts must cover every site');
+requireThat(specKit.method.cgv.reduce((n, c) => n + c.errors, 0) === specKit.method.cgvTriage.errors, 'CGV error counts must match the triage');
+for (const n of specKit.expressions.issues) requireThat(numbers.includes(n), `expressions study names #${n}, which the record does not hold`);
+const kit = specKitCounts(specKit);
+const said = {
+  'studies/spec-kit/index.html': [`${kit.merged} now have a merged fix`, `${kit.merged} reports had a merged fix and ${kit.openFix} had a fix open`, `${kit.closed} issues are closed`,
+    ...Object.entries(kit.triage).map(([label, n]) => `${n} as “${label.replace('triage-', '').replace(/-/g, ' ')}”`), `${kit.total} defect reports`,
+    `${specKit.method.reproduced} findings were reproduced. ${specKit.method.filedFindings} became the ${kit.total} reports`, `${specKit.method.cgvTriage.errors} errors turned out to hold no real bug`],
+  'index.html': [`${kit.merged} have a merged fix`],
+};
+for (const [name, phrases] of Object.entries(said)) {
+  const page = readFileSync(resolve(site, name), 'utf8').replace(/<[^>]+>/g, '');
+  for (const phrase of phrases) requireThat(page.includes(phrase), `${name}: hand-written count no longer matches the record: expected "${phrase}"`);
+}
+
+const glossaryPage = resolve(everestDir, 'glossary.html');
+const glossary = definitions(readFileSync(glossaryPage, 'utf8'));
 requireThat(glossary.size > 0, 'glossary must contain definitions');
-for (const name of readdirSync(site).filter((name) => name.endsWith('.html'))) {
+for (const name of htmlPages) {
   const path = resolve(site, name);
   const html = readFileSync(path, 'utf8');
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
@@ -48,8 +85,7 @@ for (const name of readdirSync(site).filter((name) => name.endsWith('.html'))) {
       continue;
     }
     const [local, anchor] = value.split('#');
-    const target = resolve(dirname(path), local || name);
-    const file = local === './' ? resolve(site, 'index.html') : target;
+    const file = local ? fileFor(resolve(dirname(path), local)) : path;
     requireThat(!relative(site, file).startsWith('..'), `${name}: link escapes site: ${value}`);
     requireThat(existsSync(file), `${name}: missing local target: ${value}`);
     if (anchor && existsSync(file)) {
@@ -57,8 +93,8 @@ for (const name of readdirSync(site).filter((name) => name.endsWith('.html'))) {
       requireThat(content.includes(`id="${anchor}"`), `${name}: missing anchor: ${value}`);
     }
   }
-  // The glossary is the source of the definitions; a forwarding page has no content to check.
-  if (name === 'glossary.html' || html.includes('http-equiv="refresh"')) continue;
+  // The glossary is the source of the definitions; a forwarding page has no content to check. Only pages that explain terms carry the definitions.
+  if (path === glossaryPage || html.includes('http-equiv="refresh"') || !html.includes('id="definitions"')) continue;
   const tips = definitions(html);
   requireThat(tips.size === glossary.size, `${name}: glossary definition count differs`);
   for (const [id, text] of glossary) requireThat(tips.get(id) === text, `${name}: definition ${id} differs from glossary`);
@@ -66,26 +102,32 @@ for (const name of readdirSync(site).filter((name) => name.endsWith('.html'))) {
   for (const [, target] of html.matchAll(/data-copy="([^"]+)"/g)) requireThat(ids.includes(target), `${name}: missing copy target ${target}`);
 }
 // Without script the answers are the only copy of each answer a reader sees, so each one must sit under the question it answers.
-const index = readFileSync(resolve(site, 'index.html'), 'utf8');
-const questions = new Map([...index.matchAll(/<a href="#q-([a-z-]+)" data-question="\1"><span>(.+?)<\/span><\/a>/g)].map((m) => [m[1], m[2].replace(/<[^>]+>/g, '')]));
-const inlineQuestions = [...index.matchAll(/<p class="answer-inline-q">([^<]*)<\/p>\s*<div data-answer="([a-z-]+)">/g)].map((m) => ({ key: m[2], text: m[1] }));
-const answerKeys = [...index.matchAll(/data-answer="([a-z-]+)"/g)].map((m) => m[1]);
-requireThat(questions.size > 0, 'index.html: no questions found');
-for (const [key, text] of questions) {
-  requireThat(answerKeys.filter((k) => k === key).length === 1, `index.html: question ${key} must have exactly one answer`);
-  const inline = inlineQuestions.filter((q) => q.key === key);
-  requireThat(inline.length === 1 && inline[0].text === text, `index.html: the question above the ${key} answer must read "${text}"`);
+const studyPages = htmlPages.filter((name) => readFileSync(resolve(site, name), 'utf8').includes('id="questions"'));
+requireThat(studyPages.length >= 3, 'expected a question filter on every study page');
+for (const name of studyPages) {
+  const page = readFileSync(resolve(site, name), 'utf8');
+  const questions = new Map([...page.matchAll(/<a href="#q-([a-z-]+)" data-question="\1"><span>(.+?)<\/span><\/a>/g)].map((m) => [m[1], m[2].replace(/<[^>]+>/g, '')]));
+  const inlineQuestions = [...page.matchAll(/<p class="answer-inline-q">([^\n]*?)<\/p>\s*<div data-answer="([a-z-]+)">/g)].map((m) => ({ key: m[2], text: m[1].replace(/<[^>]+>/g, '') }));
+  const answerKeys = [...page.matchAll(/data-answer="([a-z-]+)"/g)].map((m) => m[1]);
+  requireThat(questions.size > 0, `${name}: no questions found`);
+  for (const [key, text] of questions) {
+    requireThat(answerKeys.filter((k) => k === key).length === 1, `${name}: question ${key} must have exactly one answer`);
+    const inline = inlineQuestions.filter((q) => q.key === key);
+    requireThat(inline.length === 1 && inline[0].text === text, `${name}: the question above the ${key} answer must read "${text}"`);
+  }
+  for (const key of answerKeys) requireThat(questions.has(key), `${name}: answer ${key} has no question`);
+  for (const [, strengths] of page.matchAll(/data-strength="([a-z ]+)"/g)) for (const s of strengths.split(' ')) requireThat(['proved', 'tested', 'decided', 'assumed', 'unreached'].includes(s), `${name}: unknown strength ${s}`);
 }
-for (const key of answerKeys) requireThat(questions.has(key), `index.html: answer ${key} has no question`);
 
 // Absolute URLs into the site's own origin must resolve inside this release, and preview cards must be the size the pages declare.
+const index = readFileSync(resolve(site, 'index.html'), 'utf8');
 const origin = index.match(/<link rel="canonical" href="(https:\/\/[^"]+\/)">/)?.[1];
 requireThat(origin, 'index.html: needs an absolute canonical URL ending in /');
-for (const name of [...readdirSync(site).filter((name) => /\.(html|txt|xml)$/.test(name))]) {
+for (const name of published.filter((name) => /\.(html|txt|xml)$/.test(name))) {
   const content = readFileSync(resolve(site, name), 'utf8');
   for (const [url] of origin ? content.matchAll(new RegExp(`${origin.replace(/[.]/g, '\\.')}[^"\\s)<#]*`, 'g')) : []) {
-    const local = url.slice(origin.length) || 'index.html';
-    requireThat(existsSync(resolve(site, local)), `${name}: ${url} has no file in this release`);
+    const local = url.slice(origin.length);
+    requireThat(existsSync(fileFor(resolve(site, local || './'))), `${name}: ${url} has no file in this release`);
   }
   if (!name.endsWith('.html')) continue;
   const card = content.match(/<meta property="og:image" content="([^"]+)">/)?.[1];

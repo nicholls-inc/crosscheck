@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec Kit: 28 reported defects</title>
+<meta name="description" content="28 defects reported in GitHub’s Spec Kit, each with a reproduction and the line of Spec Kit’s own documentation it contradicts, and what happened to each upstream.">
+<!-- publication:head -->
+<link rel="canonical" href="https://crosscheck.harrynicholls.com/studies/spec-kit/">
+<link rel="icon" href="../../favicon.ico" sizes="32x32">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="alternate" type="application/json" href="spec-kit-study.json" title="Publication record">
+<meta name="author" content="Harry Nicholls">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Crosscheck">
+<meta property="og:title" content="Spec Kit: 28 reported defects">
+<meta property="og:description" content="28 defects reported in GitHub’s Spec Kit, each with a reproduction and the line of Spec Kit’s own documentation it contradicts, and what happened to each upstream.">
+<meta property="og:url" content="https://crosscheck.harrynicholls.com/studies/spec-kit/">
+<meta property="og:image" content="https://crosscheck.harrynicholls.com/cards/spec-kit.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crosscheck: Spec Kit, 28 reported defects. 19 have a merged fix.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:creator" content="@harrynicholls">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://crosscheck.harrynicholls.com/#website","url":"https://crosscheck.harrynicholls.com/","name":"Crosscheck"},{"@type":"Person","@id":"https://crosscheck.harrynicholls.com/#author","name":"Harry Nicholls","url":"https://github.com/hnipps","sameAs":["https://x.com/harrynicholls","https://github.com/hnipps"]},{"@type":"TechArticle","headline":"Spec Kit: 28 reported defects","author":{"@id":"https://crosscheck.harrynicholls.com/#author"},"image":"https://crosscheck.harrynicholls.com/cards/spec-kit.png","isBasedOn":"https://github.com/github/spec-kit/tree/27d14e20c187c1f2916540ea201ecbdc9f8ed588","about":{"@type":"SoftwareApplication","name":"Spec Kit","url":"https://github.com/github/spec-kit"},"@id":"https://crosscheck.harrynicholls.com/studies/spec-kit/#page","url":"https://crosscheck.harrynicholls.com/studies/spec-kit/","name":"Spec Kit: 28 reported defects","description":"28 defects reported in GitHub’s Spec Kit, each with a reproduction and the line of Spec Kit’s own documentation it contradicts, and what happened to each upstream.","inLanguage":"en","isPartOf":{"@id":"https://crosscheck.harrynicholls.com/#website"}}]}</script>
+<!-- /publication:head -->
+<link rel="preload" href="../../fonts/newsreader-roman.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../../fonts/public-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../styles.css">
+<script src="../../help.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-proved" viewBox="0 0 16 16"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="1"/><path d="M4.5 8.2l2.4 2.4 4.6-5"/></symbol>
+  <symbol id="i-tested" viewBox="0 0 16 16"><path d="M6 1.75h4M6.75 1.75v4.5L2.6 12.9a1 1 0 0 0 .85 1.35h9.1a1 1 0 0 0 .85-1.35L9.25 6.25v-4.5M4.4 10.25h7.2"/></symbol>
+  <symbol id="i-decided" viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.75"/><path d="M2.5 14.5c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/></symbol>
+  <symbol id="i-assumed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" stroke-dasharray="2.2 2.2"/></symbol>
+  <symbol id="i-unreached" viewBox="0 0 16 16"><path d="M10 1.75H1.75v12.5h12.5V6"/></symbol>
+</svg>
+<div class="page">
+<header class="title-block">
+  <a class="brand-mark" href="../../"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg><span class="brand-name">Crosscheck</span><span class="visually-hidden">: all studies</span></a>
+  <h1 id="title">Spec Kit: 28 reported defects</h1>
+</header>
+<main id="main">
+
+<div class="sections" id="about">
+  <details class="section" id="panel-about">
+    <summary><span class="section-name">About</span><span class="section-first">A study of 28 defects reported in Spec Kit, GitHub’s toolkit for spec-driven development.</span></summary>
+    <div class="section-more">
+      <p><a href="https://github.com/github/spec-kit" target="_blank" rel="noopener">Spec Kit<span class="visually-hidden"> (opens in a new tab)</span></a> is GitHub’s open-source toolkit for spec-driven development. It sets up a project so that an AI coding agent works from a written specification, a plan and a task list.</p>
+      <p>Its command-line tool, <code>specify</code>, also installs extensions, presets, bundles and workflows, and wires them into each supported coding agent.</p>
+      <p>On 23 October 2026, Harry filed 28 defect reports against Spec Kit 1.2.4.dev0. This study lists them, how each was checked, and what happened upstream.</p>
+      <p>Each piece of evidence has one of five strengths: Proved, Tested, Decided by Harry, Assumed or Not yet reached. Nothing here is Proved. The defects were tested, one reproduction at a time.</p>
+      <p>The <a href="../spec-kit-expressions/">workflow expressions study</a> looks more closely at three of the reports.</p>
+      <p class="tab-link"><a href="spec-kit-study.json" download>Download the publication record (JSON)</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-finding">
+    <summary><span class="section-name">Finding</span><span class="section-first">28 reproduced defects; by 10 November 2026, 19 had a merged fix and 8 more had a fix open.</span></summary>
+    <div class="section-more">
+      <p>Most of the defects fail quietly. A build reports success but leaves out a required file. A re-init resets a setting. A workflow condition takes the wrong branch.</p>
+      <p>Each report names the line of Spec Kit’s own documentation, docstring or tests that the behaviour contradicts.</p>
+      <p>The maintainers triaged all 28 as in scope. Other contributors wrote the fixes.</p>
+      <p class="tab-link"><a href="#record">Open the reports at a glance</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-study">
+    <summary><span class="section-name">Study</span><span class="section-first">Each report is a reproduction script with recorded output, checked against Spec Kit’s own documentation.</span></summary>
+    <div class="section-more">
+      <p>Claude Code ran CGV over Spec Kit’s source, then eight subagents searched one slice each with Crosscheck’s <code>/reason</code> method. All 28 defects came from that search; CGV found none of them.</p>
+      <p>A finding counted only when a reproduction script showed the wrong behaviour. The agent that found it ran the script, and the main agent ran it again.</p>
+      <p>A reproduction shows that the defect happens. It does not prove anything about inputs it does not try.</p>
+      <p class="tab-link"><a href="#method">Open how each report was checked</a></p>
+    </div>
+  </details>
+  <details class="section" id="panel-repeat">
+    <summary><span class="section-name">Repeat</span><span class="section-first">Every reproduction runs against Spec Kit commit <code>27d14e2</code>.</span></summary>
+    <div class="section-more">
+      <p>Clone Spec Kit, check out that commit, run <code>uv sync</code>, then follow the report’s steps.</p>
+      <p>Run the same steps on Spec Kit’s main branch to see whether a defect is fixed.</p>
+      <p class="tab-link"><a href="#replay">Open the replay commands</a></p>
+    </div>
+  </details>
+</div>
+
+<section class="filters" id="questions" aria-label="Filter the evidence">
+  <div class="filter-label">
+    <h2 id="filter-title">Questions</h2>
+    <p class="filter-hint">Each shows a short answer and the evidence for it.</p>
+    <p class="filter-notice" role="status" aria-live="polite"></p>
+  </div>
+  <div class="filter-questions">
+    <ol class="questions">
+      <li><a href="#q-found" data-question="found"><span>What was found?</span></a></li>
+      <li><a href="#q-how" data-question="how"><span>How were they found?</span></a></li>
+      <li><a href="#q-real" data-question="real"><span>Are the defects real?</span></a></li>
+    </ol>
+    <ol class="questions">
+      <li><a href="#q-upstream" data-question="upstream"><span>What did Spec Kit do with them?</span></a></li>
+      <li><a href="#q-people" data-question="people"><span>What did Harry decide, and what did the AI do?</span></a></li>
+      <li><a href="#q-unchecked" data-question="unchecked"><span>What wasn’t checked?</span></a></li>
+    </ol>
+    <ol class="questions">
+      <li><a href="#q-run" data-question="run"><span>Can I run a reproduction mysel<span class="no-kern">f?</span></span></a></li>
+    </ol>
+  </div>
+  <div class="filter-strengths">
+    <h2 id="strength-label">Evidence strength</h2>
+    <ul class="strength-key">
+      <li><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg>Proved</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg>Tested</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg>Decided by Harry</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg>Assumed</li>
+      <li><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg>Not yet reached</li>
+    </ul>
+    <ul class="strengths" role="group" aria-labelledby="strength-label" hidden>
+      <li><button type="button" data-strength="proved" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-proved"/></svg><span>Proved</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="tested" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><span>Tested</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="decided" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg><span>Decided by Harry</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="assumed" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg><span>Assumed</span><span class="strength-count" aria-hidden="true"></span></button></li>
+      <li><button type="button" data-strength="unreached" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg><span>Not yet reached</span><span class="strength-count" aria-hidden="true"></span></button></li>
+    </ul>
+    <p class="filter-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="answer" id="answer" aria-labelledby="answer-title" hidden>
+  <p class="answer-label" aria-hidden="true">Answer</p>
+  <div><h2 id="answer-title" tabindex="-1"></h2></div>
+  <div>
+    <div class="answer-text"></div>
+    <p class="answer-meta"><span class="answer-count" role="status" aria-live="polite"></span><button type="button" class="show-all">Show everything</button><a class="change-question" href="#questions">Change the question</a></p>
+  </div>
+</section>
+
+<section class="evidence" id="evidence" aria-labelledby="evidence-title">
+<h2 class="evidence-heading" id="evidence-title">Evidence</h2>
+
+<div class="group"><h3 class="group-title">Overview</h3><div>
+<details class="entry block" id="record" data-q="found upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">The reports at a glance</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Publication record · Tested</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-counts -->
+<p>28 reports were filed on 2026-10-23. By 2026-11-10, 19 of 28 had a merged fix and 8 more had a fix open for review. One had neither.</p>
+<!-- /publication:spec-kit-counts -->
+<!-- publication:spec-kit-summary -->
+<table class="ledger ledger-numeric"><caption>Where the 28 reports stand on 2026-11-10</caption><thead><tr><th scope="col">Upstream state</th><th scope="col">Reports</th></tr></thead><tbody>
+<tr><td data-label="Upstream state">A fix has merged</td><td data-label="Reports">19</td></tr>
+<tr><td data-label="Upstream state">A fix is proposed and open</td><td data-label="Reports">8</td></tr>
+<tr><td data-label="Upstream state">No fix merged or open</td><td data-label="Reports">1</td></tr>
+<tr><td data-label="Upstream state">Issue closed by the maintainers</td><td data-label="Reports">16</td></tr>
+<tr><td data-label="Upstream state">Triaged “must have”</td><td data-label="Reports">15</td></tr>
+<tr><td data-label="Upstream state">Triaged “can wait”</td><td data-label="Reports">11</td></tr>
+<tr><td data-label="Upstream state">Triaged “nice to have”</td><td data-label="Reports">2</td></tr>
+</tbody></table>
+<p class="evidence-note">Spec Kit’s maintainers give each report a triage verdict. “must have” reads: Verdict: high-value, important work for Spec Kit — do first. “can wait” reads: Verdict: valid and in-scope but deprioritized; held behind the evidence gate. “nice to have” reads: Verdict: evidence-backed fix or greenlit feature — land after review. None of the 28 was triaged out of scope.</p>
+<!-- /publication:spec-kit-summary -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Findings</h3><div>
+<span class="q-anchor" id="q-found"></span>
+<div class="answer-inline"><p class="answer-inline-q">What was found?</p>
+  <div data-answer="found">
+    <p>28 defects in Spec Kit, GitHub’s toolkit for spec-driven development with AI coding agents. They cover workflows, extensions, presets, bundles, agent integrations and the command line.</p>
+    <p>Most are quiet failures. A command reports success, or a condition takes the wrong branch, with no error.</p>
+    <p>Each report names the line of Spec Kit’s own documentation, docstring, test or sibling code that the behaviour contradicts. Two reports infer the expected behaviour instead.</p>
+  </div>
+</div>
+<span class="q-anchor" id="q-how"></span>
+<div class="answer-inline"><p class="answer-inline-q">How were they found?</p>
+  <div data-answer="how">
+    <p>In one Claude Code session on 22 October 2026. CGV ran first, over Spec Kit’s source. Its 39 errors turned out to hold no real bug.</p>
+    <p>Then eight subagents each searched one part of the source, following Crosscheck’s <code>/reason</code> method. A finding counted only when a script reproduced it.</p>
+    <p>38 findings were reproduced. 31 became the 28 reports. Six were left out because an open issue or pull request already covered them, and one was reported privately to GitHub’s security team.</p>
+  </div>
+</div>
+<span class="q-anchor" id="q-real"></span>
+<div class="answer-inline"><p class="answer-inline-q">Are the defects real?</p>
+  <div data-answer="real">
+    <p>Each report has a reproduction script and the output it gave at Spec Kit commit <code>27d14e2</code>. Two agents ran each script in the session that found it, and Harry re-ran every one before filing.</p>
+    <p>Spec Kit’s maintainers triaged all 28 as in scope. 19 now have a merged fix.</p>
+    <p>This website did not rerun the reproductions.</p>
+  </div>
+</div>
+<details class="entry block" id="area-workflows" data-q="found real upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Workflows</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports and reproductions · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">7 reports on workflow commands, catalogs and the expression evaluator.</p>
+<!-- publication:spec-kit-area-workflows -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Workflows: 7 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">What goes wrong</th><th scope="col">What it contradicts</th><th scope="col">Upstream</th></tr></thead><tbody><tr id="i5071"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5071" target="_blank" rel="noopener">#5071<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Chained comparisons such as <code>0 &lt;= x &lt;= 10</code> in workflow expressions silently return the wrong result</td><td data-label="What it contradicts">The module docstring calls the evaluator “a safe Jinja2 subset”, and Jinja2 and Python both chain comparisons.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5203" target="_blank" rel="noopener">#5203<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr><tr id="i5072"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5072" target="_blank" rel="noopener">#5072<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>==</code> and <code>!=</code> do not compare numeric strings as numbers, while <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code> and <code>&gt;=</code> do</td><td data-label="What it contradicts">The _safe_compare docstring and a test in tests/test_workflows.py say numeric strings compare as numbers.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5310" target="_blank" rel="noopener">#5310<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-11-09. Triaged “can wait”.</td></tr><tr id="i5073"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5073" target="_blank" rel="noopener">#5073<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Unsupported expression syntax evaluates to None silently instead of raising</td><td data-label="What it contradicts">The module docstring calls the evaluator “a safe Jinja2 subset” and lists string and numeric literals as supported.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5206" target="_blank" rel="noopener">#5206<span class="visually-hidden"> (opens in a new tab)</span></a>, was closed without merging. Issue open. Triaged “must have”.</td></tr><tr id="i5074"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5074" target="_blank" rel="noopener">#5074<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>catalog add</code> gives the new catalog the same priority as the first existing catalog when priorities are implicit</td><td data-label="What it contradicts">A code comment says the new priority is the highest existing priority plus one.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5123" target="_blank" rel="noopener">#5123<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr><tr id="i5075"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5075" target="_blank" rel="noopener">#5075<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>workflow update</code> rejects an archive catalog release when its version has leading zeros (for example CalVer <code>2024.02.01</code>)</td><td data-label="What it contradicts">The workflow version format accepts 2024.02.01, and the same catalog entry installs when its URL is a .yml file.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5155" target="_blank" rel="noopener">#5155<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-28. Triaged “nice to have”.</td></tr><tr id="i5076"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5076" target="_blank" rel="noopener">#5076<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Workflow commands crash with <code>rich.errors.MarkupError</code> when user or catalog text contains square brackets</td><td data-label="What it contradicts">command_info.py treats every workflow.yml field as untrusted, and workflow search already escapes the same text.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5112" target="_blank" rel="noopener">#5112<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr><tr id="i5077"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5077" target="_blank" rel="noopener">#5077<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>workflow add &lt;url&gt;</code> installs workflow.yml with mode 0600, while a catalog install uses the project file mode</td><td data-label="What it contradicts">A test asserts mode 0644 for a catalog install, and the _stage_workflow_file docstring describes the normal project mode.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5150" target="_blank" rel="noopener">#5150<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “can wait”.</td></tr></tbody></table>
+<!-- /publication:spec-kit-area-workflows -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="area-extensions" data-q="found real upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Extensions</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports and reproductions · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">6 reports on extension manifests, aliases, updates and configuration.</p>
+<!-- publication:spec-kit-area-extensions -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Extensions: 6 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">What goes wrong</th><th scope="col">What it contradicts</th><th scope="col">Upstream</th></tr></thead><tbody><tr id="i5080"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5080" target="_blank" rel="noopener">#5080<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">A hook with a list-valued <code>command</code> passes manifest validation, then crashes <code>extension add</code> and leaves files behind</td><td data-label="What it contradicts">EXTENSION-API-REFERENCE.md documents command as a string, and the manifest promises a ValidationError for a bad manifest.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5146" target="_blank" rel="noopener">#5146<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue open. Triaged “must have”.</td></tr><tr id="i5081"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5081" target="_blank" rel="noopener">#5081<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Extension alias conflict check misses spellings that map to the same file, so one extension overwrites and then deletes another’s alias</td><td data-label="What it contradicts">The _validate_install_conflicts docstring says installs that would shadow installed extension commands are rejected.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5134" target="_blank" rel="noopener">#5134<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr><tr id="i5082"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5082" target="_blank" rel="noopener">#5082<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>specify extension update</code> crashes with KeyError when a catalog entry has no <code>version</code>, and stops checking the other extensions</td><td data-label="What it contradicts">The same function skips an invalid catalog version with a warning, and catalog loading tolerates one malformed entry.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5108" target="_blank" rel="noopener">#5108<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-11-02. Triaged “must have”.</td></tr><tr id="i5083"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5083" target="_blank" rel="noopener">#5083<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Local config override file name differs between the docs (<code>&lt;id&gt;-config.local.yml</code>) and ConfigManager (<code>local-config.yml</code>)</td><td data-label="What it contradicts">EXTENSION-USER-GUIDE.md names the override file &lt;id&gt;-config.local.yml.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5159" target="_blank" rel="noopener">#5159<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr><tr id="i5084"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5084" target="_blank" rel="noopener">#5084<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Top-level <code>defaults:</code> in extension.yml, as documented and used in the extension template, is ignored by ConfigManager</td><td data-label="What it contradicts">EXTENSION-API-REFERENCE.md and the extension template put defaults under a top-level defaults key.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5164" target="_blank" rel="noopener">#5164<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-28. Triaged “must have”.</td></tr><tr id="i5094"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5094" target="_blank" rel="noopener">#5094<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>specify extension add --dev</code> shows a traceback when <code>.extensionignore</code> is a directory</td><td data-label="What it contradicts">The _install_ignore.py docstring says an invalid ignore file raises a validation error before copying.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5131" target="_blank" rel="noopener">#5131<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-26. Triaged “can wait”.</td></tr></tbody></table>
+<!-- /publication:spec-kit-area-extensions -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="area-presets" data-q="found real upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Presets</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports and reproductions · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">3 reports on how presets compose and resolve commands.</p>
+<!-- publication:spec-kit-area-presets -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Presets: 3 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">What goes wrong</th><th scope="col">What it contradicts</th><th scope="col">Upstream</th></tr></thead><tbody><tr id="i5085"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5085" target="_blank" rel="noopener">#5085<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>preset add</code> crashes with AttributeError when a composing command’s frontmatter is not a YAML mapping</td><td data-label="What it contradicts">CommandRegistrar.parse_frontmatter treats the same non-mapping frontmatter as empty.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5125" target="_blank" rel="noopener">#5125<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-28. Triaged “can wait”.</td></tr><tr id="i5086"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5086" target="_blank" rel="noopener">#5086<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>resolve_with_source</code> reports a core template whose name starts with “overrides” as a project override</td><td data-label="What it contradicts">collect_all_layers reports the same file as a core template.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5129" target="_blank" rel="noopener">#5129<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-26. Triaged “can wait”.</td></tr><tr id="i5087"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5087" target="_blank" rel="noopener">#5087<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>specify preset set-priority</code> does not update agent command files that are already written</td><td data-label="What it contradicts">docs/reference/presets.md says the preset with the lowest priority number wins.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5113" target="_blank" rel="noopener">#5113<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr></tbody></table>
+<!-- /publication:spec-kit-area-presets -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="area-bundles" data-q="found real upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Bundles</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports and reproductions · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">4 reports on building, validating and installing bundles.</p>
+<!-- publication:spec-kit-area-bundles -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Bundles: 4 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">What goes wrong</th><th scope="col">What it contradicts</th><th scope="col">Upstream</th></tr></thead><tbody><tr id="i5088"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5088" target="_blank" rel="noopener">#5088<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>bundle build</code> reports success but omits a symlinked <code>bundle.yml</code>/<code>README.md</code>, producing an artifact that cannot be installed</td><td data-label="What it contradicts">The build validates bundle.yml and README.md, then leaves them out of the artifact it reports as built.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5169" target="_blank" rel="noopener">#5169<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-29. Triaged “can wait”.</td></tr><tr id="i5089"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5089" target="_blank" rel="noopener">#5089<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>bundle init &lt;bundle&gt;</code> initialises with the default integration instead of the bundle’s, then aborts with a clash</td><td data-label="What it contradicts">bundle install initialises with the bundle’s declared integration.</td><td data-label="Upstream">A fix, <a href="https://github.com/github/spec-kit/pull/5111" target="_blank" rel="noopener">#5111<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue open. Triaged “must have”.</td></tr><tr id="i5090"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5090" target="_blank" rel="noopener">#5090<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>bundle install</code> rejects a local artifact with an upper-case <code>.ZIP</code> extension</td><td data-label="What it contradicts">docs/reference/bundles.md accepts a local .zip artifact, and the download path compares the extension case-insensitively.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5106" target="_blank" rel="noopener">#5106<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-26. Triaged “can wait”.</td></tr><tr id="i5091"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5091" target="_blank" rel="noopener">#5091<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>integration:</code> mapping without an <code>id</code> makes a bundle silently integration-agnostic</td><td data-label="What it contradicts">A comment in manifest.py guards against a declared integration being dropped silently.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5161" target="_blank" rel="noopener">#5161<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-28. Triaged “can wait”.</td></tr></tbody></table>
+<!-- /publication:spec-kit-area-bundles -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="area-integrations" data-q="found real upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Integrations and events</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports and reproductions · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">5 reports on agent integrations and their event hooks.</p>
+<!-- publication:spec-kit-area-integrations -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Integrations and events: 5 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">What goes wrong</th><th scope="col">What it contradicts</th><th scope="col">Upstream</th></tr></thead><tbody><tr id="i5078"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5078" target="_blank" rel="noopener">#5078<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>integration switch</code> leaves the manifest out of date when a preset overrides a core command</td><td data-label="What it contradicts">The _resync_manifest_after_registration docstring says the manifest is re-hashed after preset registration.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5145" target="_blank" rel="noopener">#5145<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/github/spec-kit/pull/5193" target="_blank" rel="noopener">#5193<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/github/spec-kit/pull/5274" target="_blank" rel="noopener">#5274<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue open. Triaged “must have”.</td></tr><tr id="i5079"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5079" target="_blank" rel="noopener">#5079<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Removing Vibe event hooks deletes user comments that follow a Spec Kit hook block</td><td data-label="What it contradicts">The _without_managed_hooks docstring says it preserves every other source slice verbatim.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5109" target="_blank" rel="noopener">#5109<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue open. Triaged “must have”.</td></tr><tr id="i5092"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5092" target="_blank" rel="noopener">#5092<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">integration-events.yml entry without an <code>events</code> key silently removes all event hooks</td><td data-label="What it contradicts">A code comment says only an explicitly present events field replaces the prior layers.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5102" target="_blank" rel="noopener">#5102<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-26. Triaged “must have”.</td></tr><tr id="i5093"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5093" target="_blank" rel="noopener">#5093<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Malformed <code>events</code> in an unregistered extension directory makes <code>specify integration upgrade</code> fail</td><td data-label="What it contradicts">validate_events rejects the same matcher and timeout values.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5133" target="_blank" rel="noopener">#5133<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-28. Triaged “can wait”.</td></tr><tr id="i5097"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5097" target="_blank" rel="noopener">#5097<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Cline extension and preset commands have <code>speckit.*.md</code> file names rewritten to <code>speckit-*-md</code></td><td data-label="What it contradicts">Inferred from the file naming in extensions/git; no document states it.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5168" target="_blank" rel="noopener">#5168<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-11-02. Triaged “can wait”.</td></tr></tbody></table>
+<!-- /publication:spec-kit-area-integrations -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="area-cli" data-q="found real upstream" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">Command line and scripts</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports and reproductions · Tested</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">3 reports on init, self upgrade and the feature script.</p>
+<!-- publication:spec-kit-area-cli -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Command line and scripts: 3 reports</caption><thead><tr><th scope="col">Report</th><th scope="col">What goes wrong</th><th scope="col">What it contradicts</th><th scope="col">Upstream</th></tr></thead><tbody><tr id="i5095"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5095" target="_blank" rel="noopener">#5095<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>specify self upgrade</code> reports “unsupported” for uv tool installs under XDG_DATA_HOME (and likely for current pipx installs)</td><td data-label="What it contradicts">docs/upgrade.md says self upgrade detects uv tool and pipx installs.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5103" target="_blank" rel="noopener">#5103<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-11-03. Triaged “nice to have”.</td></tr><tr id="i5096"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5096" target="_blank" rel="noopener">#5096<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong"><code>create-new-feature.sh</code> rejects the feature descriptions <code>-n</code>, <code>-e</code> and <code>-E</code>, which the Python script accepts</td><td data-label="What it contradicts">The Python version of the script accepts the same descriptions, and a comment in the bash script says it uses printf for this reason.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5245" target="_blank" rel="noopener">#5245<span class="visually-hidden"> (opens in a new tab)</span></a> and <a href="https://github.com/github/spec-kit/pull/5247" target="_blank" rel="noopener">#5247<span class="visually-hidden"> (opens in a new tab)</span></a>. Another fix, <a href="https://github.com/github/spec-kit/pull/5124" target="_blank" rel="noopener">#5124<span class="visually-hidden"> (opens in a new tab)</span></a>, is open. Issue closed 2026-11-06. Triaged “can wait”.</td></tr><tr id="i5098"><td data-label="Report"><a href="https://github.com/github/spec-kit/issues/5098" target="_blank" rel="noopener">#5098<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="What goes wrong">Re-running <code>specify init --here --force</code> resets <code>feature_numbering</code> in init-options.json to “sequential”</td><td data-label="What it contradicts">Inferred from the option merge in command_init.py and the documentation of the setting; no document states it.</td><td data-label="Upstream">Fixed by <a href="https://github.com/github/spec-kit/pull/5101" target="_blank" rel="noopener">#5101<span class="visually-hidden"> (opens in a new tab)</span></a>. Issue closed 2026-10-26. Triaged “must have”.</td></tr></tbody></table>
+<!-- /publication:spec-kit-area-cli -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Checks</h3><div>
+<details class="entry block" id="method" data-q="how real people" data-strength="tested decided">
+  <summary><h4 class="entry-line"><span class="entry-title">How the defects were found</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Session transcript and reports · Tested, Decided by Harry</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">Only the reproductions count as evidence. The agents’ reasoning pointed at where to look.</p>
+<!-- publication:spec-kit-method -->
+<p class="study-prose">A Claude Code session on 2026-10-22, from 23:29 to 23:59 UTC, against Spec Kit at the filing commit. The transcript is not public. The requests that started it read:</p>
+<ul class="study-list"><li>“Now clone https://github.com/github/spec-kit and run CGV and Crosscheck on it. Orchestrate parallel subagents.”</li><li>“Draft them in a file”</li><li>“Also check if our findings match any open issues.”</li></ul>
+<p class="study-prose">CGV ran first. Then eight subagents each searched one slice of Spec Kit’s source for defects: Workflows core; workflow commands and steps; integrations; extensions; presets; bundles and artifacts; security, events and authentication; top-level modules and scripts.</p>
+<p class="study-prose">A finding counted only when a reproduction script’s actual output showed the wrong behaviour. A finding argued from reading the code alone was dropped or marked unconfirmed. Each subagent followed the certificate steps of Crosscheck’s /reason skill: premises with file and line, traces, and checks of alternative explanations. Those certificates are an AI agent’s reasoning, so they are not evidence; only the reproductions count.</p>
+<p class="study-prose">The main agent re-ran every reproduction script from the eight subagents. When drafting, each subagent made its reproduction self-contained and ran it again as written, and the main agent then ran all of them once more. Four findings about unsupported expression syntax became one report, #5073, so 31 findings became 28 reports.</p>
+<p class="study-prose">A tenth subagent listed the titles of all 81 open issues and 98 open pull requests, ran two to six full-text searches for each finding and read every candidate. GitHub search does not cover comments or diffs.</p>
+<p class="evidence-note">The container had no Docker daemon, so Crosscheck’s Dafny and Lean pipelines did not run.</p>
+<!-- /publication:spec-kit-method -->
+    <p class="study-prose">Each report records its reproduction’s output, from a Linux container and from macOS:</p>
+<!-- publication:spec-kit-environments -->
+<ul class="study-list"><li>Linux 6.18 (Ubuntu container), Python 3.12.3</li><li>macOS (Darwin 25.6, arm64), Python 3.14.4</li></ul>
+<p class="evidence-note">Every report names Spec Kit 1.2.4.dev0 at <a href="https://github.com/github/spec-kit/tree/27d14e20c187c1f2916540ea201ecbdc9f8ed588" target="_blank" rel="noopener"><code>27d14e2</code><span class="visually-hidden"> (opens in a new tab)</span></a> and ends: “Found and reproduced with Claude Code, run autonomously under human supervision. The human reporter re-ran every reproduction above before filing.”</p>
+<!-- /publication:spec-kit-environments -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="cgv" data-q="how" data-strength="tested">
+  <summary><h4 class="entry-line"><span class="entry-title">What CGV found</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-tested"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">CGV run and triage · Tested</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-cgv -->
+<table class="ledger ledger-cgv"><caption>CGV on Spec Kit at <code>27d14e2</code></caption><thead><tr><th scope="col">Scope</th><th scope="col">Functions</th><th scope="col">Edges</th><th scope="col">Exit</th><th scope="col">Errors</th><th scope="col">Unverified</th></tr></thead><tbody><tr><td data-label="Scope"><code>src/</code></td><td data-label="Functions">1,851</td><td data-label="Edges">17,361</td><td data-label="Exit">1</td><td data-label="Errors">39</td><td data-label="Unverified">993</td></tr><tr><td data-label="Scope"><code>scripts/python/</code></td><td data-label="Functions">61</td><td data-label="Edges">392</td><td data-label="Exit">0</td><td data-label="Errors">0</td><td data-label="Unverified">17</td></tr><tr><td data-label="Scope"><code>tests/</code></td><td data-label="Functions">7,568</td><td data-label="Edges">22,713</td><td data-label="Exit">0</td><td data-label="Errors">0</td><td data-label="Unverified">1,248</td></tr></tbody></table>
+<table class="ledger ledger-numeric"><caption>Triage of the 39 errors, at 37 distinct sites</caption><thead><tr><th scope="col">Verdict</th><th scope="col">Sites</th></tr></thead><tbody><tr><td data-label="Verdict">A real bug</td><td data-label="Sites">0</td></tr><tr><td data-label="Verdict">Only the type annotation is wrong</td><td data-label="Sites">11</td></tr><tr><td data-label="Verdict">False positive</td><td data-label="Sites">26</td></tr></tbody></table>
+<p class="evidence-note">All 39 errors are nullability errors, most where a workflow step passes a value that may be None to the expression evaluator. A triage agent sorted the 37 distinct sites: 0 real bugs, 11 where only the type annotation is wrong, and 26 false positives where CGV missed a check that rules out None. Four of the false positives come from a defect in CGV’s extractor, which binds a function-local import to the wrong function. CGV found none of the 28 reported defects. The triage verdicts are an AI agent’s judgement, so they are not evidence that any site is safe; only the counts come from CGV itself. An exit code of 1 means only that the extracted graph has these errors.</p>
+<!-- /publication:spec-kit-cgv -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="contract" data-q="real found" data-strength="assumed">
+  <summary><h4 class="entry-line"><span class="entry-title">What each report is measured against</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-assumed"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports · Assumed</span></summary>
+  <div class="entry-body">
+    <p class="aside-note">Where Spec Kit’s documentation and its code disagree, either could be the one that is wrong.</p>
+    <p class="study-prose">No report rests on an outside opinion of how Spec Kit should behave. Each one quotes Spec Kit’s own statement of the behaviour: a docstring, a page of its documentation, a test, a code comment, or another code path that handles the same input differently.</p>
+    <p class="study-prose">That is an assumption. A report shows that code and statement disagree. It does not show which one the maintainers meant. In #5083 the fix that is open changes the documentation, not the code.</p>
+    <p class="study-prose">Two reports, #5097 and #5098, find no written statement and infer the expected behaviour from nearby code. Each says so.</p>
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Upstream</h3><div>
+<span class="q-anchor" id="q-upstream"></span>
+<div class="answer-inline"><p class="answer-inline-q">What did Spec Kit do with them?</p>
+  <div data-answer="upstream">
+    <p>The maintainers triaged every report: 15 as “must have”, 11 as “can wait” and 2 as “nice to have”.</p>
+    <p>Other contributors then opened fix pull requests. By 10 November 2026, 19 reports had a merged fix and 8 had a fix open for review. 16 issues are closed.</p>
+    <p>Three open issues carry an “invalid” label from an automated workflow. It added the label after their fixes had merged.</p>
+  </div>
+</div>
+<details class="entry block" id="held" data-q="how upstream">
+  <summary><h4 class="entry-line"><span class="entry-title">Six findings not filed</span><span class="entry-icons"></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Spec Kit issues and pull requests</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-held -->
+<table class="ledger ledger-reports"><caption class="visually-hidden">Findings not filed</caption><thead><tr><th scope="col">Existing</th><th scope="col">Finding</th><th scope="col">Why it was not filed</th></tr></thead><tbody><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/issues/4916" target="_blank" rel="noopener">#4916<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">Command step options, and workflow-level options, are recorded but never passed to the integration</td><td data-label="Why it was not filed">Already reported as an open issue.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/4540" target="_blank" rel="noopener">#4540<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">integration scaffold accepts keys such as base that shadow core modules and break imports</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/4745" target="_blank" rel="noopener">#4745<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">A preset id with a trailing newline passes validation, installs, and is then ignored by the resolver</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/4470" target="_blank" rel="noopener">#4470<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">bundle install leaves components installed and unowned when writing the bundle record fails</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/3903" target="_blank" rel="noopener">#3903<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">The generated .specify/events.py dispatcher prints a traceback on non-UTF-8 input</td><td data-label="Why it was not filed">An open pull request fixes it, judged from its commit messages, not its diff.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/3922" target="_blank" rel="noopener">#3922<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">A corrupt step-registry.json is replaced on the next step add, dropping every other installed step</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr></tbody></table>
+<p class="evidence-note">These were reproduced like the others. They are not counted in the 28.</p>
+<p class="evidence-note">One more finding was reported privately to GitHub’s security team by email, as Spec Kit’s SECURITY.md asks. This study does not describe it.</p>
+<!-- /publication:spec-kit-held -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+<details class="entry block" id="invalid" data-q="upstream real">
+  <summary><h4 class="entry-line"><span class="entry-title">Three “invalid” labels</span><span class="entry-icons"></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Spec Kit issues</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-invalid -->
+<p>Spec Kit’s automated bug-assessment workflow added the invalid label to #5078, #5079 and #5080 on 2026-10-29, after fixes for all three had merged on 2026-10-27 and 2026-10-28. Its comment on #5078 says the label means “not currently reproducible/actionable on current codebase”, not “that the original report lacked merit”. Its comment on #5079 says it could not run the reproduction and read the code and tests instead.</p>
+<!-- /publication:spec-kit-invalid -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Limits</h3><div>
+<span class="q-anchor" id="q-unchecked"></span>
+<div class="answer-inline"><p class="answer-inline-q">What wasn’t checked?</p>
+  <div data-answer="unchecked">
+    <p>The constraints most of these defects involve. CGV has no way to state rules about strings, paths or the shape of a dictionary, and Dafny and Lean did not run.</p>
+    <p>Whether each defect still reproduces on Spec Kit’s main branch. Upstream merged fixes are the maintainers’ evidence, not this study’s.</p>
+    <p>How much any defect matters to users. The study has no usage data.</p>
+  </div>
+</div>
+<details class="entry block" id="limits" data-q="unchecked" data-strength="unreached">
+  <summary><h4 class="entry-line"><span class="entry-title">Not yet reached</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-unreached"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Publication record · Not yet reached</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-limits -->
+<table class="ledger"><caption>Not yet reached by this study</caption><thead><tr><th scope="col">Behaviour</th><th scope="col">Blocking property</th><th scope="col">Open question</th></tr></thead><tbody><tr><td data-label="Behaviour">Constraints on strings, paths and the shape of dictionaries, which most of Spec Kit’s defects involve</td><td data-label="Blocking property">CGV checks type, nullability and choice requirements, and has no requirement kind for these constraints.</td><td data-label="Open question">Which requirement kinds would let CGV check string, path and dictionary-shape constraints, and can their checks be proved sound like the existing ones?</td></tr><tr><td data-label="Behaviour">A proof or reference model of any Spec Kit component</td><td data-label="Blocking property">Dafny and Lean run in Docker, and the container that ran the study had no Docker daemon.</td><td data-label="Open question">Is the expression evaluator, the one component with a stated model in Jinja2, specified precisely enough to model in Lean?</td></tr><tr><td data-label="Behaviour">Whether each defect still reproduces on Spec Kit’s main branch</td><td data-label="Blocking property">Running Spec Kit’s code needs an environment approved for third-party code, and the session that built this page had none.</td><td data-label="Open question">Should the replay run in the same sandbox as Crosscheck’s Dafny and Lean containers, so third-party code never runs on the host?</td></tr><tr><td data-label="Behaviour">A differential test of the expression evaluator against Jinja2</td><td data-label="Blocking property">Spec Kit now documents deliberate departures from Jinja2, such as left-to-right comparison grouping and numeric-string equality, so Jinja2 alone is no longer a correct reference.</td><td data-label="Open question">Which Jinja2 behaviours does Spec Kit intend to keep, and can they be written down as a reference model to test against?</td></tr><tr><td data-label="Behaviour">Whether the defects matter to users</td><td data-label="Blocking property">The study has no data on how often the affected commands and inputs are used.</td><td data-label="Open question">How should a finding’s severity be estimated when the project publishes no usage data?</td></tr></tbody></table>
+<!-- /publication:spec-kit-limits -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">Repeat</h3><div>
+<span class="q-anchor" id="q-run"></span>
+<div class="answer-inline"><p class="answer-inline-q">Can I run a reproduction mysel<span class="no-kern">f?</span></p>
+  <div data-answer="run">
+    <p>Yes. Each report gives its steps. You need git, <code>uv</code> and Python 3.12 or later.</p>
+    <p>Check out the filing commit to see the defect. Check out Spec Kit’s main branch to see whether it is fixed.</p>
+  </div>
+</div>
+<details class="entry block" id="replay" data-q="run">
+  <summary><h4 class="entry-line"><span class="entry-title">Repeat a reproduction</span><span class="entry-icons"></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Commands</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-replay -->
+<div class="commands"><pre id="replay-commands" tabindex="0" aria-label="Commands to repeat one reproduction"><code><span class="cmd">git clone https:/<wbr>/<wbr>github.com/<wbr>github/<wbr>spec-kit</span>
+<span class="cmd">cd spec-kit</span>
+<span class="cmd">git checkout --detach <span class="hash">27d14e20c187c1f2916540ea201ecbdc9f8ed588</span></span>
+<span class="cmd">uv sync</span>
+<span class="cmd"># Save the script from the report’s Steps to Reproduce as repro.py, then:</span>
+<span class="cmd">uv run python -I repro.py</span></code></pre><button type="button" class="copy" data-copy="replay-commands">Copy replay commands</button><span class="copy-status" role="status" aria-live="polite"></span></div>
+<p class="evidence-note">Each report gives its own steps and its expected output under Actual Behavior. A few reports drive the command line instead of a Python script; follow the steps in the report. To see whether a defect is fixed, run the same steps on Spec Kit’s main branch.</p>
+<!-- /publication:spec-kit-replay -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+<div class="group"><h3 class="group-title">People</h3><div>
+<span class="q-anchor" id="q-people"></span>
+<div class="answer-inline"><p class="answer-inline-q">What did Harry decide, and what did the AI do?</p>
+  <div data-answer="people">
+    <p>Harry chose Spec Kit, asked for CGV and Crosscheck with parallel subagents, and asked for the drafts and the search for existing reports.</p>
+    <p>The agents found the defects, wrote and ran the reproductions, and drafted the reports. Harry re-ran every reproduction and filed the reports. The maintainers’ verdicts and fixes are their own.</p>
+  </div>
+</div>
+<details class="entry block" id="contribution" data-q="people" data-strength="decided">
+  <summary><h4 class="entry-line"><span class="entry-title">Who did what</span><span class="entry-icons"><svg class="icon" aria-hidden="true"><use href="#i-decided"/></svg></span></h4><span class="visually-hidden">. </span><span class="entry-meta">Reports · Decided by Harry</span></summary>
+  <div class="entry-body">
+<!-- publication:spec-kit-contribution -->
+<dl class="contribution"><div><dt>AI assistance</dt><dd>Claude Code ran CGV, split Spec Kit’s source into eight slices with one subagent each, and had a ninth triage CGV’s errors and a tenth search for existing reports. The agents found the defects, wrote and ran the reproductions, and drafted the reports.</dd></div>
+<div><dt>Harry</dt><dd>Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, and asked for the drafts and for the search for existing reports. Harry re-ran every reproduction before filing, which gave the macOS output in each report, filed the 28 reports, and emailed the security report.</dd></div>
+<div><dt>What the checks establish</dt><dd>Each reproduction is a script with recorded output at the filing commit. The maintainers’ triage and the merged fixes are their own decisions and are reported here, not counted as Crosscheck’s evidence.</dd></div></dl>
+<!-- /publication:spec-kit-contribution -->
+    <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
+  </div>
+</details>
+</div></div>
+
+
+</section>
+</main>
+<footer class="colophon">
+  <div class="colophon-credit">
+    <p class="colophon-label">The tool behind this study</p>
+    <a class="brand-mark colophon-brand" href="https://github.com/nicholls-inc/crosscheck" target="_blank" rel="noopener"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0H6V8H10.5V13H6V24H0ZM24 0H18V11H13.5V16H18V24H24Z" fill="currentColor" fill-rule="evenodd"/></svg><span class="brand-name">Crosscheck</span><span class="visually-hidden"> (opens in a new tab)</span></a>
+  </div>
+  <nav class="colophon-group" aria-labelledby="colophon-study">
+    <p class="colophon-label" id="colophon-study">This study</p>
+    <ul><li><a href="./#questions">Questions</a></li><li><a href="./#replay">Repeat a reproduction</a></li><li><a href="spec-kit-study.json" download>Publication record (JSON)</a></li><li><a href="../spec-kit-expressions/">Workflow expressions</a></li></ul>
+  </nav>
+  <div class="colophon-group">
+    <p class="colophon-label" id="colophon-elsewhere">Elsewhere</p>
+    <ul aria-labelledby="colophon-elsewhere"><li><a href="https://github.com/github/spec-kit" target="_blank" rel="noopener">Spec Kit on GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/github/spec-kit/issues?q=is%3Aissue+author%3Ahnipps" target="_blank" rel="noopener">The 28 reports<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://x.com/harrynicholls" target="_blank" rel="noopener">Harry Nicholls on X<span class="visually-hidden"> (opens in a new tab)</span></a></li><li><a href="https://github.com/hnipps" target="_blank" rel="noopener">Harry Nicholls on GitHub<span class="visually-hidden"> (opens in a new tab)</span></a></li></ul>
+  </div>
+</footer>
+<p class="copyright">© 2026 Nicholls Inc</p>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>

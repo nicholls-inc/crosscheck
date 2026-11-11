@@ -1,5 +1,78 @@
 # Website journal
 
+## 2026-11-11 — Harry's re-run, and the private report
+
+**Type:** fix
+**Touches:** site/studies/spec-kit/, site/studies/spec-kit-expressions/index.html,
+scripts/site-spec-kit.mjs, scripts/check-site.mjs
+**Why:** Harry confirmed re-running every reproduction before filing, and that the
+security finding was emailed to GitHub's security team.
+
+The pages now state the re-run as Harry's, and the count reads 38 reproduced findings:
+31 in the 28 reports, 6 already covered upstream, and 1 reported privately. The private
+report is named only as existing; nothing about its subject or status is published. check-site
+fails if those parts stop adding up to the total. A sentence that gave Harry a pronoun
+now names Harry instead.
+
+## 2026-11-11 — The Spec Kit study says how the defects were found
+
+**Type:** fix
+**Touches:** site/studies/spec-kit/, site/studies/spec-kit-expressions/index.html,
+scripts/site-spec-kit.mjs, scripts/check-site.mjs, site/styles.css
+**Why:** Harry pointed to the session that found the defects. The first version said the
+method was not recorded.
+
+The record gains the method from that session's transcript. CGV ran first: 39 errors on
+`src/`, which an agent's triage found held no real bug (11 annotation-only, 26 false
+positives, 4 of those from a CGV extractor defect). Eight subagents then searched one slice
+each with `/reason`, and a finding counted only when a reproduction showed it. 31 findings
+became the 28 reports, and 6 more were not filed because an open issue or pull request
+covered them; those six are now listed. New entries: "How the defects were found", "What
+CGV found" and "Six findings not filed", under a new question, "How were they found?".
+
+Sentences that said Harry re-ran every reproduction now say the reports state it, because
+the transcript does not show that re-run. The limits drop "which skill" and add CGV's
+missing requirement kinds and the Dafny and Lean pipelines, which did not run without
+Docker. A security finding from the same session is left out. check-site now ties the new
+counts to the record. Checked at 1440px and 390px with no horizontal scroll or errors.
+
+## 2026-11-10 — The site holds more than one study, and Spec Kit is the second
+
+**Type:** feature
+**Touches:** site/, scripts/build-site.mjs, scripts/site-spec-kit.mjs,
+scripts/check-site.mjs, scripts/check-public-site.mjs, scripts/render-site-images.mjs,
+scripts/site.test.mjs, scripts/check-public-site.test.mjs, PRODUCT.md
+**Why:** Harry filed 28 defect reports against GitHub's Spec Kit on 2026-10-23 and
+wanted them published on the same domain as the EVerest study.
+**Links:** [intent](../intent/2026-11-10-spec-kit-studies.md),
+[the reports](https://github.com/github/spec-kit/issues?q=is%3Aissue+author%3Ahnipps)
+
+The root is now a landing page: a study index, three paragraphs on the tool and the
+install commands. The EVerest study, its glossary and its record moved to
+`studies/everest-ocpp/`. `everest.html`, `glossary.html` and old fragment links on the
+root forward there, fragment included. The study page carried its head metadata twice;
+the move removed the second copy.
+
+`studies/spec-kit/` lists the 28 reports by area, each with the line of Spec Kit's own
+documentation, docstring, test or code it contradicts and its upstream state on
+2026-11-10: 19 with a merged fix, 8 with a fix open, 1 with neither. It uses the EVerest
+page's questions, strengths and entries. `studies/spec-kit-expressions/` looks at
+#5071, #5072 and #5073: the outputs the reports recorded, what Jinja2 gives, and what
+changed upstream. An agent's reading of main's source is shown as Not yet reached.
+
+Nothing on the Spec Kit pages was rerun. The session's auto-mode classifier refused to
+run Spec Kit's code, so the pages report each report's recorded output and say so. The
+reports do not say which Crosscheck skill found each defect, and the pages do not claim
+one. Both gaps are in the limits table with their blocking property and open question.
+
+`check-site.mjs` now walks the study directories, checks the questions on every study
+page, validates the Spec Kit record, and fails if a count the hand-written answers
+repeat no longer matches it. Five new site tests cover those checks and the forwarding.
+The three new preview cards were drawn with a new `PLAYWRIGHT=1` path, because Chrome's
+screenshot mode did not finish in the container. The two EVerest cards were not redrawn.
+Checked in headless Chromium at 1440px and 390px: no console errors, no horizontal
+scroll, the filters work, and the old links forward.
+
 ## 2026-10-30 — The glossary reads like the study page
 
 **Type:** fix
