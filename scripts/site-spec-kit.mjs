@@ -76,7 +76,8 @@ ${Object.entries(counts.triage).map(([label, n]) => `<tr><td data-label="Upstrea
 <p class="evidence-note">${prose(m.notRun)}</p>`;
     },
     'spec-kit-held': () => `<table class="ledger ledger-reports"><caption class="visually-hidden">Findings not filed</caption><thead><tr><th scope="col">Existing</th><th scope="col">Finding</th><th scope="col">Why it was not filed</th></tr></thead><tbody>${record.heldBack.map((h) => `<tr><td data-label="Existing"><a href="${repo}/${h.kind === 'issue' ? 'issues' : 'pull'}/${h.existing}" target="_blank" rel="noopener">#${h.existing}${newTab}</a></td><td data-label="Finding">${prose(h.title)}</td><td data-label="Why it was not filed">${prose(h.note)}</td></tr>`).join('')}</tbody></table>
-<p class="evidence-note">These were reproduced like the others. They are not counted in the 28.</p>`,
+<p class="evidence-note">These were reproduced like the others. They are not counted in the ${counts.total}.</p>
+<p class="evidence-note">${prose(record.method.privateReport)}</p>`,
     'spec-kit-invalid': () => `<p>${prose(record.automatedInvalidNote)}</p>`,
     'spec-kit-environments': () => `<ul class="study-list">${record.environments.map((e) => `<li>${prose(e)}</li>`).join('')}</ul>
 <p class="evidence-note">Every report names Spec Kit ${esc(record.subject.version)} at <a href="${repo}/tree/${record.filingCommit}" target="_blank" rel="noopener"><code>${record.filingCommit.slice(0, 7)}</code>${newTab}</a> and ends: “${prose(record.disclosure)}”</p>`,

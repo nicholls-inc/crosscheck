@@ -735,7 +735,7 @@
  ],
  "contribution": {
   "agents": "Claude Code ran CGV, split Spec Kit’s source into eight slices with one subagent each, and had a ninth triage CGV’s errors and a tenth search for existing reports. The agents found the defects, wrote and ran the reproductions, and drafted the reports.",
-  "human": "Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, asked for the drafts and for the search for existing reports, and filed the 28 reports under his own account. Each report states that the reporter re-ran its reproduction before filing and records a macOS run; that re-run is not in the session transcript.",
+  "human": "Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, and asked for the drafts and for the search for existing reports. Harry re-ran every reproduction before filing, which gave the macOS output in each report, filed the 28 reports, and emailed the security report.",
   "checks": "Each reproduction is a script with recorded output at the filing commit. The maintainers’ triage and the merged fixes are their own decisions and are reported here, not counted as Crosscheck’s evidence."
  },
  "method": {
@@ -796,7 +796,9 @@
   "filedFindings": 31,
   "mergedNote": "Four findings about unsupported expression syntax became one report, #5073, so 31 findings became 28 reports.",
   "duplicateSearch": "A tenth subagent listed the titles of all 81 open issues and 98 open pull requests, ran two to six full-text searches for each finding and read every candidate. GitHub search does not cover comments or diffs.",
-  "notRun": "The container had no Docker daemon, so Crosscheck’s Dafny and Lean pipelines did not run."
+  "notRun": "The container had no Docker daemon, so Crosscheck’s Dafny and Lean pipelines did not run.",
+  "reproduced": 38,
+  "privateReport": "One more finding was reported privately to GitHub’s security team by email, as Spec Kit’s SECURITY.md asks. By 2026-11-11 no reply had come. This study does not describe it."
  },
  "heldBack": [
   {

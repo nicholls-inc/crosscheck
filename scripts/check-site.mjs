@@ -47,6 +47,7 @@ for (const i of specKit.issues) {
   requireThat(['open', 'closed'].includes(i.state) && (i.state === 'closed') === Boolean(i.closed), `#${i.number}: state and closing date disagree`);
   for (const f of i.fixes) requireThat(['merged', 'open', 'closed'].includes(f.state) && (f.state === 'merged') === Boolean(f.date), `#${i.number}: fix #${f.number} state and merge date disagree`);
 }
+requireThat(specKit.method.filedFindings + specKit.heldBack.length + 1 === specKit.method.reproduced, 'reproduced findings must equal filed, held back and the one private report');
 requireThat(specKit.method.cgvTriage.real + specKit.method.cgvTriage.annotationOnly + specKit.method.cgvTriage.falsePositive === specKit.method.cgvTriage.sites, 'CGV triage verdicts must cover every site');
 requireThat(specKit.method.cgv.reduce((n, c) => n + c.errors, 0) === specKit.method.cgvTriage.errors, 'CGV error counts must match the triage');
 for (const n of specKit.expressions.issues) requireThat(numbers.includes(n), `expressions study names #${n}, which the record does not hold`);
@@ -54,7 +55,7 @@ const kit = specKitCounts(specKit);
 const said = {
   'studies/spec-kit/index.html': [`${kit.merged} now have a merged fix`, `${kit.merged} reports had a merged fix and ${kit.openFix} had a fix open`, `${kit.closed} issues are closed`,
     ...Object.entries(kit.triage).map(([label, n]) => `${n} as “${label.replace('triage-', '').replace(/-/g, ' ')}”`), `${kit.total} defect reports`,
-    `${specKit.method.filedFindings} findings became the ${kit.total} reports`, `${specKit.method.cgvTriage.errors} errors turned out to hold no real bug`],
+    `${specKit.method.reproduced} findings were reproduced. ${specKit.method.filedFindings} became the ${kit.total} reports`, `${specKit.method.cgvTriage.errors} errors turned out to hold no real bug`],
   'index.html': [`${kit.merged} have a merged fix`],
 };
 for (const [name, phrases] of Object.entries(said)) {

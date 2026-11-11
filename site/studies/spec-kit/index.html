@@ -177,13 +177,13 @@
   <div data-answer="how">
     <p>In one Claude Code session on 22 October 2026. CGV ran first, over Spec Kit’s source. Its 39 errors turned out to hold no real bug.</p>
     <p>Then eight subagents each searched one part of the source, following Crosscheck’s <code>/reason</code> method. A finding counted only when a script reproduced it.</p>
-    <p>31 findings became the 28 reports. Six more were left out because an open issue or pull request already covered them.</p>
+    <p>38 findings were reproduced. 31 became the 28 reports. Six were left out because an open issue or pull request already covered them, and one was reported privately to GitHub’s security team.</p>
   </div>
 </div>
 <span class="q-anchor" id="q-real"></span>
 <div class="answer-inline"><p class="answer-inline-q">Are the defects real?</p>
   <div data-answer="real">
-    <p>Each report has a reproduction script and the output it gave at Spec Kit commit <code>27d14e2</code>. Two agents ran each script in the session that found it, and each report states that the reporter re-ran it before filing.</p>
+    <p>Each report has a reproduction script and the output it gave at Spec Kit commit <code>27d14e2</code>. Two agents ran each script in the session that found it, and Harry re-ran every one before filing.</p>
     <p>Spec Kit’s maintainers triaged all 28 as in scope. 19 now have a merged fix.</p>
     <p>This website did not rerun the reproductions.</p>
   </div>
@@ -310,6 +310,7 @@
 <!-- publication:spec-kit-held -->
 <table class="ledger ledger-reports"><caption class="visually-hidden">Findings not filed</caption><thead><tr><th scope="col">Existing</th><th scope="col">Finding</th><th scope="col">Why it was not filed</th></tr></thead><tbody><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/issues/4916" target="_blank" rel="noopener">#4916<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">Command step options, and workflow-level options, are recorded but never passed to the integration</td><td data-label="Why it was not filed">Already reported as an open issue.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/4540" target="_blank" rel="noopener">#4540<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">integration scaffold accepts keys such as base that shadow core modules and break imports</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/4745" target="_blank" rel="noopener">#4745<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">A preset id with a trailing newline passes validation, installs, and is then ignored by the resolver</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/4470" target="_blank" rel="noopener">#4470<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">bundle install leaves components installed and unowned when writing the bundle record fails</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/3903" target="_blank" rel="noopener">#3903<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">The generated .specify/events.py dispatcher prints a traceback on non-UTF-8 input</td><td data-label="Why it was not filed">An open pull request fixes it, judged from its commit messages, not its diff.</td></tr><tr><td data-label="Existing"><a href="https://github.com/github/spec-kit/pull/3922" target="_blank" rel="noopener">#3922<span class="visually-hidden"> (opens in a new tab)</span></a></td><td data-label="Finding">A corrupt step-registry.json is replaced on the next step add, dropping every other installed step</td><td data-label="Why it was not filed">An open pull request fixes it.</td></tr></tbody></table>
 <p class="evidence-note">These were reproduced like the others. They are not counted in the 28.</p>
+<p class="evidence-note">One more finding was reported privately to GitHub’s security team by email, as Spec Kit’s SECURITY.md asks. By 2026-11-11 no reply had come. This study does not describe it.</p>
 <!-- /publication:spec-kit-held -->
     <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>
   </div>
@@ -375,7 +376,7 @@
 <div class="answer-inline"><p class="answer-inline-q">What did Harry decide, and what did the AI do?</p>
   <div data-answer="people">
     <p>Harry chose Spec Kit, asked for CGV and Crosscheck with parallel subagents, and asked for the drafts and the search for existing reports.</p>
-    <p>The agents found the defects, wrote and ran the reproductions, and drafted the reports. Harry filed them under his own account. The maintainers’ verdicts and fixes are their own.</p>
+    <p>The agents found the defects, wrote and ran the reproductions, and drafted the reports. Harry re-ran every reproduction and filed the reports. The maintainers’ verdicts and fixes are their own.</p>
   </div>
 </div>
 <details class="entry block" id="contribution" data-q="people" data-strength="decided">
@@ -383,7 +384,7 @@
   <div class="entry-body">
 <!-- publication:spec-kit-contribution -->
 <dl class="contribution"><div><dt>AI assistance</dt><dd>Claude Code ran CGV, split Spec Kit’s source into eight slices with one subagent each, and had a ninth triage CGV’s errors and a tenth search for existing reports. The agents found the defects, wrote and ran the reproductions, and drafted the reports.</dd></div>
-<div><dt>Harry</dt><dd>Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, asked for the drafts and for the search for existing reports, and filed the 28 reports under his own account. Each report states that the reporter re-ran its reproduction before filing and records a macOS run; that re-run is not in the session transcript.</dd></div>
+<div><dt>Harry</dt><dd>Harry chose Spec Kit as the target, asked for CGV and Crosscheck with parallel subagents, and asked for the drafts and for the search for existing reports. Harry re-ran every reproduction before filing, which gave the macOS output in each report, filed the 28 reports, and emailed the security report.</dd></div>
 <div><dt>What the checks establish</dt><dd>Each reproduction is a script with recorded output at the filing commit. The maintainers’ triage and the merged fixes are their own decisions and are reported here, not counted as Crosscheck’s evidence.</dd></div></dl>
 <!-- /publication:spec-kit-contribution -->
     <p class="back-to-filters"><a href="#questions">Back to the filters</a></p>

@@ -1,5 +1,19 @@
 # Website journal
 
+## 2026-11-11 — Harry's re-run, and the private report
+
+**Type:** fix
+**Touches:** site/studies/spec-kit/, site/studies/spec-kit-expressions/index.html,
+scripts/site-spec-kit.mjs, scripts/check-site.mjs
+**Why:** Harry confirmed re-running every reproduction before filing, and that the
+security finding was emailed to GitHub's security team with no reply.
+
+The pages now state the re-run as Harry's, and the count reads 38 reproduced findings:
+31 in the 28 reports, 6 already covered upstream, and 1 reported privately. The private
+report is named only as existing; nothing about its subject is published. check-site
+fails if those parts stop adding up to the total. A sentence that gave Harry a pronoun
+now names Harry instead.
+
 ## 2026-11-11 — The Spec Kit study says how the defects were found
 
 **Type:** fix
